@@ -1,11 +1,15 @@
-POETRY_PYTHON ?= python3
+POETRY_PYTHON ?= $(if $(pythonLocation),$(pythonLocation)/bin/python,python3)
 SRC_DIRS = src/quickapp src/scripts
 
 -include .env
 export
 
-init_venv:
-	poetry env use ${POETRY_PYTHON}
+remove_venv:
+	poetry env remove --all || true
+	$(POETRY_PYTHON) -m venv .venv
+
+init_venv: remove_venv
+	poetry env use .venv/bin/python
 	git submodule init
 	git submodule update --recursive
 
@@ -18,30 +22,30 @@ install_dev: init_venv
 install_all: init_venv
 	poetry install --with dev
 
-clean: init_venv
+clean: install_dev
 	poetry run python -m src.scripts.clean
 	poetry env remove --all
 
 lint: install_dev
 	poetry check --lock
-	flake8 ${SRC_DIRS}
-	black ${SRC_DIRS} --check
-	isort ${SRC_DIRS} --check-only --diff
-	autoflake ${SRC_DIRS} --check
-	mypy --show-error-codes ${SRC_DIRS}
+	poetry run flake8 ${SRC_DIRS}
+	poetry run black ${SRC_DIRS} --check
+	poetry run isort ${SRC_DIRS} --check-only --diff
+	poetry run autoflake ${SRC_DIRS} --check
+	poetry run mypy --show-error-codes ${SRC_DIRS}
 
-mypy:
-	mypy --show-error-codes ${SRC_DIRS}
+mypy: install_dev
+	poetry run mypy --show-error-codes ${SRC_DIRS}
 
-format:
-	autoflake ${SRC_DIRS}
-	black ${SRC_DIRS}
-	isort ${SRC_DIRS}
+format: install_dev
+	poetry run autoflake ${SRC_DIRS}
+	poetry run black ${SRC_DIRS}
+	poetry run isort ${SRC_DIRS}
 
 install_pre_commit_hooks:
 	pre-commit install
 
-run_chat:
+run_chat: install
 	poetry run python src/quickapp/app.py
 
 test: install_dev
