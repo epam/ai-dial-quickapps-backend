@@ -1,0 +1,85 @@
+import logging
+from typing import Optional
+
+import openai
+from aidial_sdk.chat_completion import ChatCompletion, Request, Response
+from aidial_sdk.chat_completion.choice import Choice
+from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
+from httpx import HTTPError
+from injector import Injector, inject
+
+from quickapp.agent.orchestrator import Orchestrator
+from quickapp.common import DIAL_API_KEY, InitializerType
+from quickapp.common.base_initializer import invoke_initializers
+from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.config_template_resolver import ConfigResolver
+
+from ._initialization_error_handler import _InitializationErrorHandler
+from ._request_context import _RequestContext
+from .configuration import Configuration
+
+logger = logging.getLogger(__name__)
+
+
+# The _QuickAppCompletion class is a dependency-injected implementation of the ChatCompletion interface.
+# It handles chat completion and configuration requests in a FastAPI application by:
+# - Setting up per-request context (API key, app config, messages, response choice)
+# - Invoking initializers of other modules
+# - Delegating message processing to an agent
+# - Returning application-specific configuration if available
+@inject
+class _QuickAppCompletion(ChatCompletion):
+
+    def __init__(self, injector: Injector, config_resolver: ConfigResolver):
+        self.__injector: Injector = injector
+        self.__config_resolver: ConfigResolver = config_resolver
+
+    async def chat_completion(self, request: Request, response: Response) -> None:
+        with response.create_single_choice() as choice:
+            try:
+                await self.__setup_request_context(request, choice)
+                await invoke_initializers(self.__injector, InitializerType.completion)
+                self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
+                agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
+                await agent_invoker.invoke()
+            except Exception as e:
+                self.__handle_exception(choice, e)
+
+    async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
+        await self.__setup_request_context(request)
+        await invoke_initializers(self.__injector, InitializerType.configuration)
+        if not self.__injector.binder.has_explicit_binding_for(list[Configuration]):
+            return ConfigurationResponse()
+        configurations = self.__injector.get(list[Configuration])
+        return Configuration.from_list_of_configurations(configurations).to_configuration_response()
+
+    def __resolve_application_config(self, application_properties):
+        application_config = ApplicationConfig.model_validate(application_properties)
+        return self.__config_resolver.resolve_config(application_config)
+
+    async def __setup_request_context(
+        self, request: Request | ConfigurationRequest, choice: Optional[Choice] = None
+    ) -> None:
+        context = self.__injector.get(_RequestContext)
+        context.api_key = DIAL_API_KEY(request.api_key)
+        context.application_config = self.__resolve_application_config(
+            await request.request_dial_application_properties()
+        )
+        if isinstance(request, Request):
+            context.messages = request.messages
+        if choice:
+            context.choice = choice
+
+    @staticmethod
+    def __handle_exception(choice: Choice, e: Exception):
+        # TODO: exception stage?
+        logger.exception(f"exception {type(e)} occured. {e}")
+        if isinstance(e, HTTPError):
+            choice.append_content(str(e))
+        elif isinstance(e, OrchestratorExceedMaxIterationsException):
+            choice.append_content(str(e))
+        elif isinstance(e, openai.InternalServerError):
+            choice.append_content(f"{e.message} \n\r {e.status_code} {e.request} \n\r")
+        else:
+            choice.append_content("Something went wrong with the execution of your request")

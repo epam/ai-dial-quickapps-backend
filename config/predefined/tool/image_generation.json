@@ -1,0 +1,94 @@
+{
+  "type": "deployment-tool",
+  "display": {
+    "stage": {
+      "name": "Image Generation: "
+    }
+  },
+  "deployment": {
+    "name": "dall-e-3"
+  },
+  "open_ai_tool": {
+    "type": "function",
+    "function": {
+      "name": "image_generation_tool",
+      "description": "**Image generator** Generates image based on the provided description.\n\n## Instructions:\n- Use that tool when user asks to generate an image based on the description or to visualize some text or information.\n- Choose the best size from available options based on user request or image type. For specific size requests, use the closest supported option.\n- When the tool returns a markdown image URL, always include it in your response and follow it with a brief description.\n\n## Restrictions:\n- Never use this tool for data or numerical information visualization.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Extensive description of the image that should be generated.",
+            "display": {
+              "stage": {
+                "show_value_in_stage_title": true,
+                "name": "**Prompt:** "
+              }
+            }
+          },
+          "size": {
+            "type": "string",
+            "description": "The size of the generated image. ",
+            "enum": [
+              "1024x1024",
+              "1024x1792",
+              "1792x1024"
+            ],
+            "default": "1024x1024",
+            "display": {
+              "stage": {
+                "name": "**Image size:** "
+              }
+            }
+          },
+          "style": {
+            "type": "string",
+            "description": "The style of the generated image. Must be one of vivid or natural. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.",
+            "enum": [
+              "natural",
+              "vivid"
+            ],
+            "default": "natural",
+            "display": {
+              "stage": {
+                "name": "**Image style:** "
+              }
+            }
+          },
+          "quality": {
+            "type": "string",
+            "description": "The quality of the image that will be generated. `hd` creates images with finer details and greater consistency across the image.",
+            "enum": [
+              "standard",
+              "hd"
+            ],
+            "default": "standard",
+            "display": {
+              "stage": {
+                "name": "**Image quality:** "
+              }
+            }
+          }
+        },
+        "required": [
+          "query",
+          "size",
+          "style",
+          "quality"
+        ]
+      }
+    }
+  },
+  "attachment": {
+    "propagate_types_to_choice": [
+      "image/*"
+    ]
+  },
+  "fallback_configuration": {
+    "strategies": [
+      {
+        "type": "continue"
+      }
+    ]
+  }
+}

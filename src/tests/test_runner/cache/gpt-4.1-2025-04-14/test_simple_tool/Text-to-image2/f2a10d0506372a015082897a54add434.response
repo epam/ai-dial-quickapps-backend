@@ -1,0 +1,26 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A beautiful winter scene in Vilnius, Lithuania. Snow-covered baroque architecture with the iconic Gediminas Tower visible on the hill. The old town streets are blanketed in fresh white snow, with warm golden lights glowing from windows of historic buildings. The Cathedral Square with its bell tower is partially visible, all covered in pristine snow. Street lamps create a warm glow in the winter evening atmosphere. Traditional Lithuanian architectural details are visible on the colorful building facades despite the snow coverage."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Thu, 25 Sep 2025 14:27:28 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-79f8d270-cb45-4621-9659-cdca4cde594a\",\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\",\"custom_content\":{\"attachments\":[{\"title\":\"Revised prompt\",\"data\":\"A stunning winter evening in Vilnius, Lithuania, featuring snow-covered baroque architecture. The iconic Gediminas Tower sits prominently on a hill surrounded by pristine snow. The streets of the old town are blanketed with fresh snow, illuminated by warm golden lights glowing from windows of historic buildings. The Cathedral Square is partially visible, showcasing its bell tower covered with snow. Traditional Lithuanian architectural details are highlighted on colorful building facades despite the snow. Street lamps cast a warm and inviting glow, enhancing the magical winter atmosphere.\"},{\"title\":\"Image\",\"type\":\"image/png\",\"url\":\"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/appdata/dall-e-3/images/8894b595e14a5c85f4d3f90b1af3a9046ca65a6de62911334463b11e8b2d0b09.png\"}]}},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1758810450,\"model\":\"dall-e-3\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

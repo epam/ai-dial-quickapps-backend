@@ -1,0 +1,50 @@
+import logging
+import time
+from typing import Awaitable, Callable, Dict, Generic, Optional, TypeVar
+
+logger = logging.getLogger(__name__)
+
+T = TypeVar('T')
+LONG_CACHE_TTL: float = 1200  # 20 minutes
+SHORT_CACHE_TTL: float = 300  # 5 minutes
+
+
+class CacheEntry(Generic[T]):
+    def __init__(self, value: T, ttl: float):
+        self.value = value
+        self.expiry = time.time() + ttl
+
+    def is_expired(self) -> bool:
+        return time.time() > self.expiry
+
+
+class Cache(Generic[T]):
+    def __init__(self):
+        self._store: Dict[str, CacheEntry[T]] = {}
+
+    def get(self, key) -> Optional[CacheEntry[T]]:
+        return self._store.get(key, None)
+
+    def put(self, key, entry: CacheEntry):
+        self._store[key] = entry
+
+
+class CacheService(Generic[T]):
+    def __init__(self, ttl: float = LONG_CACHE_TTL):
+        self._cache: Cache[T] = Cache[T]()
+        self._ttl: float = ttl
+
+    async def get(
+        self, key: str, loader: Callable[..., Awaitable[Optional[T]]], *args, **kwargs
+    ) -> T:
+        entry = self._cache.get(key)
+        if entry is not None and not entry.is_expired():
+            logger.debug(f"{key} value loaded from cache")
+            return entry.value
+        # Load new value because expired or missing
+        value = await loader(*args, **kwargs)
+        if value is None:
+            raise RuntimeError("loader returns None. None can't be cached.")
+        logger.debug(f"{key} value loaded and updated in cache")
+        self._cache.put(key, CacheEntry(value, self._ttl))
+        return value

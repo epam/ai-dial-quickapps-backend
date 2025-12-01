@@ -1,0 +1,10 @@
+{
+  "name": "mcp-local-toolset",
+  "description": "Set with MCP tools",
+  "type": "mcp",
+  "mcp_server_info": {
+    "url": "http://localhost:8003/mcp",
+    "protocol": "streamable_http",
+    "authorization": null
+  }
+}

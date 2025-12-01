@@ -1,0 +1,82 @@
+{
+  "type": "deployment-tool",
+  "display": {
+    "stage": {
+      "name": "RAG search: "
+    }
+  },
+  "deployment": {
+    "name": "dial-rag",
+    "parameters": {
+      "seed": 820288,
+      "custom_fields": {
+        "configuration": {}
+      }
+    }
+  },
+  "content_propagation": {
+    "propagate_history": true,
+    "propagate_headers": []
+  },
+  "open_ai_tool": {
+    "type": "function",
+    "function": {
+      "name": "rag_search_tool",
+      "description": "Performs RAG search in text files and returns llm answer based on the search.\nSupports the following attachment types:\n- .pdf - application/pdf\n- .txt - text/plain\n- .doc - application/msword\n- .docx - application/vnd.openxmlformats-officedocument.wordprocessingml.document\n- .odt - application/vnd.oasis.opendocument.text\n- .ppt - application/vnd.ms-powerpoint\n- .pptx - application/vnd.openxmlformats-officedocument.presentationml.presentation\n- .odp - application/vnd.oasis.opendocument.presentation\n- .png - image/png\n- .jpg/jpeg - image/jpeg\n- .bmp - image/bmp\n- .tiff/tif - image/tiff\nShould be used when user asks to search for information in files or to answer questions based on file content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "RAG search prompt",
+            "display": {
+              "stage": {
+                "show_value_in_stage_title": true,
+                "name": "**Prompt:** "
+              }
+            }
+          },
+          "attachment_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "A list of full URLs for each attachment related to the tool call. Each item must be a full URL string. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+            "display": {
+              "stage": {
+                "name": "**Files:** "
+              }
+            }
+          }
+        },
+        "required": [
+          "query",
+          "attachment_urls"
+        ]
+      }
+    }
+  },
+  "attachment": {
+    "supported_types": [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.oasis.opendocument.text",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.oasis.opendocument.presentation",
+      "image/png",
+      "image/jpeg",
+      "image/bmp",
+      "image/tiff"
+    ]
+  },
+  "fallback_configuration": {
+    "strategies": [
+      {
+        "type": "continue"
+      }
+    ]
+  }
+}

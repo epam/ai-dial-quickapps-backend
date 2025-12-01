@@ -1,0 +1,11 @@
+{
+  "name": "internal-tool-set",
+  "type": "internal",
+  "description": "Set with internal tools",
+  "tools": [
+    {
+      "type": "predefined-tool",
+      "template_name": "py_interpreter"
+    }
+  ]
+}
