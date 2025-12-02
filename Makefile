@@ -18,11 +18,11 @@ install: init_env
 	$(POETRY) install
 
 install_dev: init_env
-    $(POETRY) env use python$(DEV_PYTHON)
+	$(POETRY) env use python$(DEV_PYTHON)
 	$(POETRY) install --with dev
 
 install_all: init_env
-    $(POETRY) env use python$(DEV_PYTHON)
+	$(POETRY) env use python$(DEV_PYTHON)
 	$(POETRY) install --with dev
 
 clean:
