@@ -1,7 +1,6 @@
-DEV_PYTHON ?= 3.13
-VENV_DIR ?= .venv
-POETRY ?= $(VENV_DIR)/bin/poetry
 POETRY_VERSION ?= 2.1.1
+POETRY ?= $(VENV_DIR)/bin/poetry
+VENV_DIR ?= .venv
 SRC_DIRS = src/quickapp src/scripts
 
 -include .env
@@ -14,20 +13,17 @@ init_env:
 	git submodule update --recursive
 
 install: init_env
-	$(POETRY) env use python$(DEV_PYTHON)
 	$(POETRY) install
 
 install_dev: init_env
-	$(POETRY) env use python$(DEV_PYTHON)
 	$(POETRY) install --with dev
 
 install_all: init_env
-	$(POETRY) env use python$(DEV_PYTHON)
 	$(POETRY) install --with dev
 
 clean:
-	$(POETRY) run python -m scripts.clean
-	$(POETRY) env remove --all
+	$(POETRY) run python -m src.scripts.clean || true
+	rm -rf $(VENV_DIR)
 
 lint: install_dev
 	$(POETRY) check --lock
