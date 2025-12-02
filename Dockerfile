@@ -6,7 +6,13 @@ RUN pip install poetry==2.1.1
 
 WORKDIR /app
 
+# HACK: Copy git metadata to populate the submodule because CI checkout
+# does not support submodules yet.
 COPY ./injector injector
+COPY .git .git
+COPY .gitmodules .gitmodules
+RUN git submodule update --init --recursive injector
+
 COPY pyproject.toml poetry.lock poetry.toml README.md ./
 RUN poetry install --no-interaction --no-ansi --no-cache --no-root \
   --no-directory --only main

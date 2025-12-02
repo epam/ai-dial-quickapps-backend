@@ -1,0 +1,34 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    # Disable version updates, keep security updates only
+    open-pull-requests-limit: 0
+    commit-message:
+      # Prefix all commit messages with "chore: "
+      prefix: "chore"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+    commit-message:
+      # Prefix all commit messages with "chore: "
+      prefix: "chore"
+    groups:
+      ai-dial-ci:
+        applies-to: version-updates
+        patterns:
+          - "epam/ai-dial-ci/*"
+      github-actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "epam/ai-dial-ci/*"
+    open-pull-requests-limit: 10
