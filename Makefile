@@ -1,13 +1,14 @@
+PYTHON ?= python3.13
 POETRY_VERSION ?= 2.1.1
-POETRY ?= $(VENV_DIR)/bin/poetry
 VENV_DIR ?= .venv
+POETRY ?= $(VENV_DIR)/bin/poetry
 SRC_DIRS = src/quickapp src/scripts
 
 -include .env
 export
 
 init_env:
-	python -m venv $(VENV_DIR)
+	$(PYTHON) -m venv $(VENV_DIR)
 	$(VENV_DIR)/bin/pip install poetry==$(POETRY_VERSION) --quiet
 	git submodule init
 	git submodule update --recursive
@@ -22,7 +23,7 @@ install_all: init_env
 	$(POETRY) install --with dev
 
 clean:
-	$(POETRY) run python -m src.scripts.clean || true
+	-$(POETRY) run python -m src.scripts.clean || true
 	rm -rf $(VENV_DIR)
 
 lint: install_dev
