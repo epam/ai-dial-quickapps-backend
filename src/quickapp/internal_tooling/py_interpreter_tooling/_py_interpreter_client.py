@@ -57,6 +57,11 @@ class _PyInterpreterClient:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
+        assert isinstance(self.base_url, str)
+        logger.debug("PyInterpreterClient base_url: %s", self.base_url)
+        assert self.base_url.startswith(
+            ("http://", "https://")
+        ), "Base URL must start with 'http://' or 'https://'"
 
     async def _make_post_request(self, path: str, json: dict[str, Any]) -> httpx.Response:
         if not self._client:

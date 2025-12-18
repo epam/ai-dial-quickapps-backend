@@ -21,15 +21,14 @@ logger = logging.getLogger(__name__)
 
 class MCPToolingModule(Module):
     def configure(self, binder: Binder) -> None:
-        binder.bind(_MCPToolInitializer, to=_MCPToolInitializer)
+        binder.bind(_MCPToolInitializer, to=_MCPToolInitializer, scope=request_scope)
         binder.bind(_MCPToolingContext, to=_MCPToolingContext, scope=request_scope)
-        binder.bind(_MCPStageWrapper, to=_MCPStageWrapper)
-        binder.bind(_MCPTool, to=_MCPTool)
-        binder.bind(_MCPConnectionManager, to=_MCPConnectionManager)
+        binder.bind(_MCPStageWrapper, to=_MCPStageWrapper, scope=request_scope)
+        binder.bind(_MCPTool, to=_MCPTool, scope=request_scope)
+        binder.bind(_MCPConnectionManager, to=_MCPConnectionManager, scope=request_scope)
         binder.bind(DialToolsetCacheService, to=DialToolsetCacheService, scope=singleton)
         logger.debug("MCPToolingModule module configuration completed")
 
-    @request_scope
     @multiprovider
     def __provide_mcp_toolsets(
         self, app_config: ApplicationConfig
@@ -46,7 +45,6 @@ class MCPToolingModule(Module):
     ) -> list[CompletionInitializer]:
         return [initializer_provider.get()]
 
-    @request_scope
     @multiprovider
     def _provide_mcp_tools(self, mcp_context: _MCPToolingContext) -> list[StagedBaseTool]:
         return mcp_context.tools

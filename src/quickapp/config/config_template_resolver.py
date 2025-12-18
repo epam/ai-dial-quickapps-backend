@@ -145,7 +145,7 @@ class ConfigResolver:
         if self.predefined_settings.base_path:
             self.base_path = Path(self.predefined_settings.base_path)
         else:
-            self.base_path = project_root_path / "helm/predefined"
+            self.base_path = project_root_path / "config/predefined"
         self.cache = {}  # avoid re-reading files
         self.prompt_mapping = PromptMapping()
         self.template_map = self._scan_templates()

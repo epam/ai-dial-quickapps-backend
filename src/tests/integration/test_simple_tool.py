@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import date
 from pathlib import Path
 
@@ -232,7 +231,8 @@ def test_rag_search(client):
                     "Identify the organization that provided or published the article described in this document and the year of publication. Provide the organization name and year.",
                     "who is the author of the document and what is the year of publication",
                     "Which organization provided the article and when was it published?",
-                    "Which organization provided this article or report and in what year was it published?"
+                    "Which organization provided this article or report and in what year was it published?",
+                    "The article is provided by XXX organization in YYYY year"
                 ],
                 similarity_threshold=SimilarityThreshold.LENIENT.value)
         ],

@@ -6,13 +6,6 @@ RUN pip install poetry==2.1.1
 
 WORKDIR /app
 
-# HACK: Copy git metadata to populate the submodule because CI checkout
-# does not support submodules yet.
-COPY ./injector injector
-COPY .git .git
-COPY .gitmodules .gitmodules
-RUN git submodule update --init --recursive injector
-
 COPY pyproject.toml poetry.lock poetry.toml README.md ./
 RUN poetry install --no-interaction --no-ansi --no-cache --no-root \
   --no-directory --only main
@@ -28,6 +21,7 @@ RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
 RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
 ENV CHROME_BIN=/usr/bin/chromium
 
+
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -39,7 +33,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=builder /app .
 
-RUN cat <<'EOF' > /docker_entrypoint.sh && chmod +x /docker_entrypoint.sh
+RUN cat << 'EOF' > /docker_entrypoint.sh && chmod +x /docker_entrypoint.sh
 #!/bin/sh
 set -e
 . ./.venv/bin/activate

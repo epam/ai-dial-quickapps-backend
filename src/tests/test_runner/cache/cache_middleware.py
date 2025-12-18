@@ -5,8 +5,8 @@ import logging
 import warnings
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 
-import aiohttp
 import httpx
 import pytest
 from fastapi import APIRouter, FastAPI, Request, Response
@@ -16,7 +16,6 @@ from tests.test_runner.cache.cache_request import CacheRequest
 from tests.test_runner.cache.cache_response import CacheResponse
 from tests.test_runner.config import TestConfig
 from tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
-from tests.test_runner.utils.core_utils import extract_host_port
 
 llm_cache = None
 
@@ -43,14 +42,22 @@ class CacheMiddlewareConfig:
     no_cache: bool = False
 
 
+def _extract_host_port(url: str) -> str:
+    parsed_url = urlparse(url)
+    host = parsed_url.hostname
+    port = parsed_url.port
+    if port is None:
+        port = 80 if parsed_url.scheme == "http" else 443
+    return f"{host}:{port}"
+
+
 class CacheMiddlewareApp(FastAPI):
     llm_cache: LlmCache
-    _session: aiohttp.ClientSession | None = None
     _background_tasks: List[asyncio.Task] = []
 
     def __init__(self, app_config: CacheMiddlewareConfig):
         self.target_url = app_config.dial_core_url
-        self.dial_core_host = extract_host_port(app_config.dial_core_url)
+        self.dial_core_host = _extract_host_port(app_config.dial_core_url)
         self.dial_core_api_key = app_config.dial_core_api_key
         self.test_name = app_config.test_name
         self.refresh = app_config.refresh
@@ -62,7 +69,6 @@ class CacheMiddlewareApp(FastAPI):
             enable_cache=True,
         )
         self.used_cache_responses = set()
-        self._session = None
         self._background_tasks = []
 
         super().__init__()
@@ -71,11 +77,10 @@ class CacheMiddlewareApp(FastAPI):
 
         self.add_event_handler("shutdown", self.close_resources)
 
-    async def get_session(self) -> aiohttp.ClientSession:
-        """Get or create a shared aiohttp session"""
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-        return self._session
+        self.http_client = httpx.AsyncClient(
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
+            timeout=600.0
+        )
 
     def track_task(self, task: asyncio.Task):
         """Track a background task for cleanup"""
@@ -108,88 +113,86 @@ class CacheMiddlewareApp(FastAPI):
             except Exception as e:
                 logger.warning(f"Error waiting for tasks: {e}")
 
-        # Close the HTTP session if it exists
-        if self._session is not None and not self._session.closed:
-            try:
-                logger.debug("Closing aiohttp session")
-                await self._session.close()
-            except Exception as e:
-                logger.warning(f"Error closing aiohttp session: {e}")
+        if not self.http_client.is_closed:
+            await self.http_client.aclose()
+            logger.debug("HTTP client closed")
 
         logger.debug("CacheMiddlewareApp resources closed")
 
     async def send_put(self, request: Request, request_body: bytes):
-        async with httpx.AsyncClient() as client:
-            logger.debug(
-                f"Sending PUT request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
-            )
-            response = await client.put(
-                url=f"{self.target_url}{request.url.path}",
-                params=request.query_params,
-                content=request_body,
-                headers=self._get_headers(request),
-                timeout=600,
-            )
-            await response.aclose()
-        return response
+        logger.debug(
+            f"Sending PUT request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
+        )
+        response = await self.http_client.put(
+            url=f"{self.target_url}{request.url.path}",
+            params=request.query_params,
+            content=request_body,
+            headers=self._get_headers(request),
+            timeout=600,
+        )
+        content = response.content
+        headers = dict(response.headers)
+        status = response.status_code
+        return content, status, headers
 
     async def send_delete(self, request: Request):
-        async with httpx.AsyncClient() as client:
-            logger.debug(
-                f"Sending PUT request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
-            )
-            response = await client.delete(
-                url=f"{self.target_url}{request.url.path}",
-                params=request.query_params,
-                headers=self._get_headers(request),
-                timeout=600,
-            )
-            await response.aclose()
-        return response
+        logger.debug(
+            f"Sending DELETE request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
+        )
+        response = await self.http_client.delete(
+            url=f"{self.target_url}{request.url.path}",
+            params=request.query_params,
+            headers=self._get_headers(request),
+            timeout=600,
+        )
+        content = response.content
+        headers = dict(response.headers)
+        status = response.status_code
+        return content, status, headers
 
     async def send_post(self, request: Request, request_body: bytes):
-        async with httpx.AsyncClient() as client:
-            logger.debug(
-                f"Sending POST request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
-            )
-            response = await client.post(
-                url=f"{self.target_url}{request.url.path}",
-                params=request.query_params,
-                content=request_body,
-                headers=self._get_headers(request),
-                timeout=600,
-            )
-            cache_request = CacheRequest.from_request_body(request_body)
-            cache_response = CacheResponse.from_response(response, cache_request)
-            await response.aclose()
+        logger.debug(
+            f"Sending POST request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
+        )
+        response = await self.http_client.post(
+            url=f"{self.target_url}{request.url.path}",
+            params=request.query_params,
+            content=request_body,
+            headers=self._get_headers(request),
+            timeout=600,
+        )
+        cache_request = CacheRequest.from_request_body(request_body)
+        cache_response = CacheResponse.from_response(response, cache_request)
         return cache_response
 
     async def send_get(self, request: Request):
-        async with httpx.AsyncClient() as client:
-            logger.debug(
-                f"Sending GET request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
-            )
-            response = await client.get(
-                url=f"{self.target_url}{request.url.path}",
-                params=request.query_params,
-                headers=self._get_headers(request),
-                timeout=600,
-            )
-        return response
+
+        logger.debug(
+            f"Sending GET request to real DIAL at {self.target_url}{request.url.path}, params: {request.query_params}"
+        )
+        r = await self.http_client.get(
+            url=f"{self.target_url}{request.url.path}",
+            params=request.query_params,
+            headers=self._get_headers(request),
+            timeout=600,
+        )
+        content = r.content
+        headers = dict(r.headers)
+        status = r.status_code
+        return content, status, headers
 
     async def handle_get(self, request: Request):
         logger.debug(f"Receive GET request to {request.url.path}")
-        response = await self.send_get(request)
+        content, status_code, headers = await self.send_get(request)
         # Ensure content-length is correct
-        headers = dict(response.headers)
         if "content-encoding" in headers.keys() and "gzip" in headers["content-encoding"]:
-            body = gzip.compress(response.content)
+            body = gzip.compress(content)
         else:
-            body = response.content
+            body = content
         headers["content-length"] = str(len(body))
         return Response(
             content=body,
-            status_code=response.status_code,
+            status_code=status_code,
             headers=headers,
         )
 
@@ -254,33 +257,31 @@ class CacheMiddlewareApp(FastAPI):
     async def handle_put(self, request: Request):
         logger.info(f"Receive PUT request to {request.url.path}")
         body = await request.body()
-        response = await self.send_put(request, body)
+        content, status_code, headers = await self.send_put(request, body)
         # Ensure content-length is correct
-        headers = dict(response.headers)
         if "content-encoding" in headers.keys() and "gzip" in headers["content-encoding"]:
-            body = gzip.compress(response.content)
+            body = gzip.compress(content)
         else:
-            body = response.content
+            body = content
         headers["content-length"] = str(len(body))
         return Response(
             content=body,
-            status_code=response.status_code,
+            status_code=status_code,
             headers=headers,
         )
 
     async def handle_delete(self, request: Request):
-        logger.info(f"Receive PUT request to {request.url.path}")
-        response = await self.send_delete(request)
+        logger.info(f"Receive DELETE request to {request.url.path}")
+        content, status_code, headers = await self.send_delete(request)
         # Ensure content-length is correct
-        headers = dict(response.headers)
         if "content-encoding" in headers.keys() and "gzip" in headers["content-encoding"]:
-            body = gzip.compress(response.content)
+            body = gzip.compress(content)
         else:
-            body = response.content
+            body = content
         headers["content-length"] = str(len(body))
         return Response(
             content=body,
-            status_code=response.status_code,
+            status_code=status_code,
             headers=headers,
         )
 
@@ -317,3 +318,6 @@ class CacheMiddlewareApp(FastAPI):
             self.llm_cache.cleanup(
                 set(self.llm_cache.cache_responses).difference(self.used_cache_responses)
             )
+
+
+

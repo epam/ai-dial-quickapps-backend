@@ -59,6 +59,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
+        perf_timer=Mock()
     )
 
     await orchestrator.invoke()
@@ -156,6 +157,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
+        perf_timer=Mock()
     )
 
     await orchestrator.invoke()
@@ -235,6 +237,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
+        perf_timer=Mock()
     )
 
     with pytest.raises(RuntimeError) as excinfo:

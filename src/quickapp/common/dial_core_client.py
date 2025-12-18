@@ -103,12 +103,12 @@ class DialCoreClient:
         return response.json()
 
     async def _get_items(self, path):
-        response = await self.get_metadata(path)
+        response = await self.get_metadata(path + "/")
         return response["items"]
 
     async def search_file_on_core(self, name):
         bucket = await self.get_bucket()
-        sub_folders = [bucket]
+        sub_folders = ["files/" + bucket]
         for folder in sub_folders:
             items = await self._get_items(folder)
             for item in items:
@@ -197,3 +197,24 @@ class DialCoreClient:
         response = await self._client.get(f"/openai/models/{model_name}")
         response.raise_for_status()
         return response.json()
+
+    async def get_bucket_items(self, bucket: str) -> list[dict]:
+        """
+        Return list of metadata items under the given bucket/path.
+        """
+        return await self._get_items(bucket)
+
+    async def upload_bytes(
+        self,
+        name: str,
+        file_bytes: bytes,
+        mime_type: Optional[str] = None,
+        path: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Upload raw bytes as a file. MIME type defaults to 'application/octet-stream'
+        if not provided.
+        """
+        bio = BytesIO(file_bytes)
+        mt = mime_type or "application/octet-stream"
+        return await self.put_file(name=name, mime_type=mt, content=bio, path=path)

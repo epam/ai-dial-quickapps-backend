@@ -14,6 +14,7 @@ from starlette.testclient import TestClient
 
 from pydantic import SecretStr
 
+from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.utils import bool_env_var
@@ -22,7 +23,6 @@ from tests.test_runner.app_test_module import TestApp
 from tests.test_runner.cache.cache_middleware import CacheMiddlewareApp, CacheMiddlewareConfig
 from tests.test_runner.config import TestConfig, TestDialCoreConfig
 from tests.test_runner.models import Failure, TstCase, check_multiple_alternatives
-from tests.test_runner.utils.core_utils import search_file_on_core, upload_attachment
 from tests.test_runner.utils.string_utils import extract_total_price
 from tests.test_runner.validators import ResponseValidator
 
@@ -100,15 +100,18 @@ class TestRunner:
 
     @staticmethod
     async def get_attachment_url(dial_url: str, headers, attachment: Path):
-        headers = {k: headers[k] for k in [API_KEY_HEADER] if k in headers}
-        url = await search_file_on_core(dial_url, headers, attachment.name)
-        if url is None:
-            with open(attachment.absolute(), 'rb') as file:
-                file_bytes = file.read()
-                metadata = await upload_attachment(
-                    dial_url, headers, attachment.name, file_bytes
-                )
-                url = metadata['url']
+        # Use DialCoreClient (httpx-based) directly.
+        api_key = headers.get(API_KEY_HEADER)
+        async with DialCoreClient(api_key, dial_url) as client:
+            url = await client.search_file_on_core(attachment.name)
+            if url is None:
+                with open(attachment.absolute(), "rb") as file:
+                    file_bytes = file.read()
+                    file_mime = mimetypes.guess_type(attachment.name)[0]
+                    metadata = await client.upload_bytes(
+                        name=attachment.name, file_bytes=file_bytes, mime_type=file_mime
+                    )
+                    url = metadata["url"]
         return url
 
     @staticmethod

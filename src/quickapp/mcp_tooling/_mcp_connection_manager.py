@@ -4,9 +4,11 @@ from typing import AsyncIterator
 from injector import inject
 from mcp import ClientSession, Tool
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from mcp.types import CallToolResult
 
+from quickapp.common import DIAL_BEARER
+from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.toolsets.authorization import (
     BasicAuthorization,
@@ -23,12 +25,29 @@ MAX_ITERATIONS = 1000
 class _MCPConnectionManager:
     """Manages MCP connections and sessions."""
 
-    def __init__(self, toolset_info: MCPToolSet, oauth_token_fetcher: OAuthTokenFetcher):
+    def __init__(
+        self,
+        toolset_info: MCPToolSet,
+        oauth_token_fetcher: OAuthTokenFetcher,
+        dial_settings: DialSettings,
+        bearer: DIAL_BEARER = None,
+    ):
         self.__toolset_info = toolset_info
         self.__oauth_token_fetcher: OAuthTokenFetcher = oauth_token_fetcher
+        self.__dial_settings: DialSettings = dial_settings
+        self.__bearer: DIAL_BEARER = bearer
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
-        headers = {}
+        headers = (
+            {"Authorization": f"Bearer {self.__bearer.get_secret_value()}"}
+            if (
+                self.__bearer
+                and self.__toolset_info.mcp_server_info.url.startswith(
+                    self.__dial_settings.url
+                )  # append header only for Dial-internal servers
+            )
+            else {}
+        )
         match server_info.authorization:
             case BasicAuthorization(username=username, password=password):
                 import base64
@@ -55,7 +74,7 @@ class _MCPConnectionManager:
         headers = await self.__build_headers(self.__toolset_info.mcp_server_info)
 
         if self.__toolset_info.mcp_server_info.protocol == MCPProtocol.streamable_http:
-            async with streamablehttp_client(
+            async with streamable_http_client(
                 self.__toolset_info.mcp_server_info.url, headers=headers
             ) as (read_stream, write_stream, _):
                 async with ClientSession(read_stream, write_stream) as session:
@@ -75,7 +94,7 @@ class _MCPConnectionManager:
             )
 
     async def get_tools_list(self) -> list[Tool]:
-        """Return the tools list from the MCP server."""
+        """Return the tool list from the MCP server."""
         async with self.__session_context() as session:
             current_cursor: str | None = None
             all_tools: list[Tool] = []

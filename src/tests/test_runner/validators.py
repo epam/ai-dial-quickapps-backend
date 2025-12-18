@@ -206,7 +206,7 @@ class ResponseValidator:
             if not found_match:
                 failures.append(
                     Failure(
-                        actual=[call._asdict() for call in tool_call_history if call.name == expected.name],
+                        actual=[call._asdict() for call in tool_call_history],
                         expected=expected.arguments,
                         comment=f"No matching call for '{expected.name}' found with the required arguments.",
                     )

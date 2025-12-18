@@ -6,6 +6,8 @@ from aidial_sdk.chat_completion import ToolCall
 from injector import inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.utils import sanitize_toolname
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +15,10 @@ logger = logging.getLogger(__name__)
 class ToolExecutor:
 
     @inject
-    def __init__(self, tools: list[StagedBaseTool]):
+    def __init__(self, tools: list[StagedBaseTool], perf_timer: PerformanceTimer):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        self.__perf_timer: PerformanceTimer = perf_timer
+        self.__period_name = "tool_execution"
 
     async def execute(self, tool_call_list: List[ToolCall]) -> List[CompletionResult]:
         tasks = []
@@ -46,7 +50,8 @@ class ToolExecutor:
                 continue
             function = getattr(open_ai_tool, 'function', None)
             if function and hasattr(function, 'name'):
-                tool_name = function.name
+                # Sanitize tool name to ensure consistency. Orchestrator make a call to function with sanitized name. So we need to build dict also using sanitized names
+                tool_name = sanitize_toolname(function.name)
                 tool_dict[tool_name] = tool
         return tool_dict
 

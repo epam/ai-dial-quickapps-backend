@@ -19,12 +19,11 @@ class RestApiToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_RestApiStageWrapper, to=_RestApiStageWrapper)
-        binder.bind(_RestApiTool, to=_RestApiTool)
+        binder.bind(_RestApiTool, to=_RestApiTool, scope=request_scope)
         binder.bind(_RequestDetailsBuilder, to=_RequestDetailsBuilder)
         binder.bind(OAuthTokenFetcher, to=OAuthTokenFetcher)
         logger.debug("RestApiTooling module configuration completed")
 
-    @request_scope
     @multiprovider
     def __provide_rest_api_tools(
         self, app_config: ApplicationConfig, tool_builder: ClassAssistedBuilder[_RestApiTool]

@@ -2,25 +2,25 @@ import base64
 import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, AsyncMock
-import pytest
 
 from aidial_client.types.chat.response import Attachment
 from aidial_sdk.chat_completion import Stage
 from fastapi_injector import Injected
-from injector import Binder, Injector
+from injector import Binder, Injector, InstanceProvider
 from mcp.types import ImageContent, EmbeddedResource, TextResourceContents, BlobResourceContents
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool
+from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.mcp import MCPToolSet, MCPServerInfo, MCPProtocol
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
-from tests.common import create_test_app
-from tests.common.common import create_app_configuration, build_tool_expected_result
+from tests.unit_tests.common import create_test_app
+from tests.unit_tests.common.common import create_app_configuration
 
 
 class MCPToolTest(unittest.IsolatedAsyncioTestCase):
@@ -88,11 +88,13 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
             binder.bind(Stage, to=mock_stage)
             binder.bind(DialSettings, DialSettings(url="https://core"))
             binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(
                 ApplicationConfig,
                 to=create_app_configuration([mcp_toolset]),
             )
+            binder.bind(PerformanceTimer, to=PerformanceTimer)
 
         app = create_test_app([MCPToolingModule, configure])
 

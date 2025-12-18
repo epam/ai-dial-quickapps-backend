@@ -1,4 +1,4 @@
-from ._di_types import DIAL_API_KEY
+from ._di_types import DIAL_API_KEY, DIAL_BEARER
 from .base_initializer import BaseInitializer, InitializerType
 from .completion_result import CompletionResult
 from .staged_base_tool import StagedBaseTool

@@ -32,14 +32,13 @@ logger = logging.getLogger(__name__)
 class InternalToolModule(Module):
 
     def configure(self, binder: Binder) -> None:
-        binder.bind(
-            _PyInterpreterClient, to=self._provide_py_interpreter_client, scope=request_scope
-        )
         binder.bind(ContentSanitizer, to=ContentSanitizer)
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
+        binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
 
-    @request_scope
+        logger.debug("InternalTooling module configuration completed")
+
     @multiprovider
     def _provide_internal_tools(
         self,
@@ -68,7 +67,6 @@ class InternalToolModule(Module):
                             )
         return tools
 
-    @request_scope
     @multiprovider
     def _provide_content_downloader(
         self, cd_builder: AssistedBuilder[_ContentDownloadTool], config_resolver: ConfigResolver
@@ -85,6 +83,9 @@ class InternalToolModule(Module):
     ) -> _PyInterpreterSettings:
         py_interpreter_settings = _PyInterpreterSettings()
         if not py_interpreter_settings.url:
+            logger.debug(
+                f"No url provided for py_interpreter, using default url {dial_settings.url}"
+            )
             py_interpreter_settings.url = dial_settings.url
         return py_interpreter_settings
 
@@ -119,5 +120,5 @@ class InternalToolModule(Module):
             description=tool_config.open_ai_tool.function.description,
             content_size_limit=int(
                 os.getenv("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", "20971520")
-            ),  # 100Mb
+            ),  # 20Mb
         )

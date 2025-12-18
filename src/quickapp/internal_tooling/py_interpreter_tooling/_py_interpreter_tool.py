@@ -7,6 +7,7 @@ from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
@@ -54,11 +55,13 @@ class _PyInterpreterTool(StagedBaseTool):
         dial_settings: DialSettings,
         dial_api_key: DIAL_API_KEY,
         tool_config: InternalTool,
+        perf_timer: PerformanceTimer,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
+            perf_timer=perf_timer,
             **kwargs,
         )
         self.__messages: list[Message] = messages

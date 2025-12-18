@@ -12,6 +12,7 @@ from quickapp.agent.processors.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
@@ -34,6 +35,7 @@ class Orchestrator:
         assistant_invoker_provider: ProviderOf[AssistantInvoker],
         chunk_processor_provider: ProviderOf[ChunkProcessor],
         app_config: ApplicationConfig,
+        perf_timer: PerformanceTimer,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -47,9 +49,12 @@ class Orchestrator:
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
         self.__usage_statistics_list: list[DeploymentUsage] = []
+        self.__perf_timer: PerformanceTimer = perf_timer
+        self.__period_name = "orchestrator_invocation"
 
     async def invoke(self):
         await self.__track_iterations()
+        self.__perf_timer.start_period(f"{self.__period_name}_{self.__iterations_counter}", level=2)
 
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
@@ -73,6 +78,9 @@ class Orchestrator:
                     completion_tokens=assistant_call_result.usage.completion_tokens,
                 )
             )
+        self.__perf_timer.add_milestone(
+            f"{self.__period_name}_{self.__iterations_counter}", "assistant_response_received"
+        )
         logger.debug(f"Message from agent: {self.__messages_context.messages}")
         # State already contains assistant call result.
         # 2. Check for tool calls in the response and handle them concurrently
@@ -83,7 +91,7 @@ class Orchestrator:
             logger.debug(f"Agent requests tool calls: {tool_calls}")
             tool_call_results = await self.__tool_executor.execute(tool_calls)
             if tool_call_results:
-                logger.debug(tool_call_results)
+                logger.debug(f"Tool call results: {tool_call_results}")
                 # 5. store tool results to state  ## Check if state might be pushed during the actual call.
                 # refactor below? seems we need to append to the state
                 tool_execution_history = self.__state_holder.get_state().get(
@@ -106,10 +114,11 @@ class Orchestrator:
                         self.__usage_statistics_list.extend(tool_call_results[i].usage)
                 logger.debug(f"State:{tool_execution_history}")
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
+                self.__perf_timer.stop_period(f"{self.__period_name}_{self.__iterations_counter}")
             else:
                 raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
 
-            logger.debug(self.__messages_context.messages)
+            logger.debug(f"Message from context: {self.__messages_context.messages}")
             # 7. Call agent if there were any tool call
             await self.invoke()
         else:
@@ -119,7 +128,7 @@ class Orchestrator:
                 await self.__usage_statistics_service.process_usage_statistics(
                     self.__usage_statistics_list
                 )
-            logger.debug(self.__state_holder.get_state())
+            logger.debug(f"State holder: {self.__state_holder.get_state()}")
         # 9. Push usage stats to the stage if that is configured
 
         return None  # As we are storing state in StateHolder, there is no need to return any value.

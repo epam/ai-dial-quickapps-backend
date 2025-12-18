@@ -1,5 +1,3 @@
-import os
-
 from injector import provider, Injector, singleton
 from fastapi_injector import request_scope
 
@@ -19,6 +17,7 @@ from tests.test_runner.config import TestConfig
 
 
 class PyInterpreterTestModule(InternalToolModule):
+    @request_scope
     @provider
     def _provide_py_interpreter_client(
         self, api_key: DIAL_API_KEY, py_interpreter_settings: _PyInterpreterSettings

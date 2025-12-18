@@ -101,6 +101,8 @@ class _MCPToolInitializer(CompletionInitializer):
                     description=dial_toolset_info.description,
                     enabled=toolset_info.enabled,
                     allowed_tools=toolset_info.allowed_tools,
+                    attachment=toolset_info.attachment,
+                    fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(
                         url=f"{self.__dial_setting.url}/v1/toolset/{toolset_info.dial_id}/mcp",
                         authorization=MCPApiKeyAuthorization(

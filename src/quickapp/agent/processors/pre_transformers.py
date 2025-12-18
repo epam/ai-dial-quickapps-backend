@@ -93,7 +93,6 @@ class ExtractToolCallsFromStateProcessor(PreTransformer):
         updated_messages = []
         for message in messages:
             custom_content = message.custom_content
-            # logger.debug(custom_content)
             if (
                 message.role == Role.ASSISTANT
                 and custom_content
@@ -107,7 +106,7 @@ class ExtractToolCallsFromStateProcessor(PreTransformer):
                 for history_part in tool_history:
                     executed_tool_call = ExecutedToolCallDTO.validate(history_part)
                     assistant_tool_call = copy.deepcopy(assistant_message)
-                    assistant_tool_call.content = ''
+                    assistant_tool_call.content = StrictStr("")
 
                     if assistant_tool_call.tool_calls is None:
                         assistant_tool_call.tool_calls = []

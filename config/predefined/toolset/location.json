@@ -1,0 +1,51 @@
+{
+  "name": "Location rest-api toolset",
+  "type": "rest-api",
+  "authorization": {
+    "type": "api_key",
+    "key": "66ffe77d0c491772030151dzacba530",
+    "name": "api_key",
+    "location": "query"
+  },
+  "tools": [
+    {
+      "rest_api_method_info": {
+        "method_url": "https://geocode.maps.co/search",
+        "method_type": "get"
+      },
+      "display": {
+        "stage": {
+          "name": "Get GEO code: "
+        }
+      },
+      "open_ai_tool": {
+        "type": "function",
+        "function": {
+          "name": "geo_code",
+          "description": "To get geo information (lat, lon, etc.) for the address, or city, or location",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "q": {
+                "type": "string",
+                "description": "location you want to get geo information about",
+                "parameter_info": {
+                  "type": "query",
+                  "key": "q"
+                },
+                "display": {
+                  "stage": {
+                    "show_value_in_stage_title": true
+                  }
+                }
+              }
+            },
+            "required": [
+              "q"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

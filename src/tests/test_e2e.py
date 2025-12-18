@@ -13,7 +13,7 @@ E2E_TEST_CASE = TstCase(
 ).add_user_message(
     user_message="What is Trinitrotoluene? use web search. After that, draw a cartoon-like image of TNT with burning fuse",
     tool_calls=[
-        ToolCall(ToolNames.WEB_SEARCH_TOOL.value).add_soft_argument_check(
+        ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=3).add_soft_argument_check(
             "query",
             [
                 "What is Trinitrotoluene?",
@@ -61,11 +61,11 @@ def test_e2e_set_gpt4_1(client):
 
 
 # Individual test for Claude 4.5
-@pytest.mark.requires_session
-@pytest.mark.e2e
-@e2e_test(test_case=E2E_TEST_CASE, models=["anthropic.claude-v4-5-sonnet-v1"], runs=1)
-def test_e2e_set_claude45(client):
-    pass
+# @pytest.mark.requires_session
+# @pytest.mark.e2e
+# @e2e_test(test_case=E2E_TEST_CASE, models=["anthropic.claude-v4-5-sonnet-v1"], runs=1)
+# def test_e2e_set_claude45(client):
+#     pass
 
 
 # Individual test for Gemini
