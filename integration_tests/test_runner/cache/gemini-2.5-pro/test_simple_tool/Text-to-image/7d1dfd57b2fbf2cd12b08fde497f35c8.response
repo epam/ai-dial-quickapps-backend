@@ -1,0 +1,26 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A hyper-realistic, vivid image of a dinosaur."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Fri, 26 Sep 2025 12:26:09 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-be1684f3-70e6-44d7-b19e-4f1d232e1b9f\",\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\",\"custom_content\":{\"attachments\":[{\"title\":\"Revised prompt\",\"data\":\"A hyper-realistic, vividly detailed depiction of an ancient dinosaur set in its natural habitat. The dinosaur features intricate textures of its scaled skin with earthy tones, detailed musculature, and expressive eyes. It is portrayed in a lush environment filled with towering trees, dense foliage, and a sharply contoured terrain. The lighting captures realistic shadow play and the atmosphere feels dynamic, with attention to vibrant details in every corner of the image.\"},{\"title\":\"Image\",\"type\":\"image/png\",\"url\":\"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/appdata/dall-e-3/images/8242d6c3d8dc8241557a1b1dff4be24ae2a0b27ff6ec09d75f1d8949c0e4df21.png\"}]}},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1758889571,\"model\":\"dall-e-3\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
