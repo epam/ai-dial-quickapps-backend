@@ -4,7 +4,7 @@ from typing import AsyncIterator
 from injector import inject
 from mcp import ClientSession, Tool
 from mcp.client.sse import sse_client
-from mcp.client.streamable_http import streamable_http_client
+from mcp.client.streamable_http import streamablehttp_client
 from mcp.types import CallToolResult
 
 from quickapp.common import DIAL_BEARER
@@ -74,7 +74,7 @@ class _MCPConnectionManager:
         headers = await self.__build_headers(self.__toolset_info.mcp_server_info)
 
         if self.__toolset_info.mcp_server_info.protocol == MCPProtocol.streamable_http:
-            async with streamable_http_client(
+            async with streamablehttp_client(
                 self.__toolset_info.mcp_server_info.url, headers=headers
             ) as (read_stream, write_stream, _):
                 async with ClientSession(read_stream, write_stream) as session:
