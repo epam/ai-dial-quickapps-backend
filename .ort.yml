@@ -123,7 +123,7 @@ resolutions:
     - message: ".*PyPI::rpds-py:0\\.29\\.0.*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/crate-py/rpds/blob/main/LICENSE"
-    - message: ".*PyPI::idna:3\\.11\\.*"
+    - message: ".*PyPI::idna:3\\.11.*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/kjd/idna/blob/master/LICENSE.md"
     - message: ".*PyPI::jaraco-functools:4\\.3\\.0.*"
