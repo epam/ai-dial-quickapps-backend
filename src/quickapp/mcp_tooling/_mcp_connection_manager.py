@@ -1,7 +1,6 @@
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from httpx import AsyncClient
 from injector import inject
 from mcp import ClientSession, Tool
 from mcp.client.sse import sse_client

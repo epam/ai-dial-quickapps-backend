@@ -11,8 +11,6 @@ poetry-boot:
 
 init_venv: poetry-boot
 	$(POETRY) env use $(PYTHON)
-	git submodule init
-	git submodule update --recursive
 
 install: init_venv
 	$(POETRY) install
