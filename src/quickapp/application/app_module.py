@@ -4,9 +4,10 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
-from quickapp.common import DIAL_API_KEY
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
@@ -37,9 +38,14 @@ class AppModule(Module):
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
+        binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
+
+    @provider
+    def __provide_bearer(self, context: _RequestContext) -> DIAL_BEARER:
+        return context.bearer
 
     @provider
     def __provide_api_key(self, context: _RequestContext) -> DIAL_API_KEY:
@@ -58,13 +64,14 @@ class AppModule(Module):
         return choice.create_stage()
 
     @provider
-    def __provide_async_dialog(
-        self, dial_settings: DialSettings, api_key: DIAL_API_KEY
+    def __provide_async_dial(
+        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
     ) -> AsyncDial:
         return AsyncDial(
             base_url=dial_settings.url,
             api_key=api_key.get_secret_value(),
             api_version=dial_settings.api_version,
+            bearer_token=bearer.get_secret_value() if bearer else None,
         )
 
     @provider

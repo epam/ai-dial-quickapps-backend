@@ -1,6 +1,5 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
-import pytest
 
 from aidial_sdk.chat_completion import Stage
 from fastapi_injector import Injected
@@ -17,8 +16,8 @@ from quickapp.config.tools.rest_api import RestApiTool, RestApiEndpointMethodInf
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.rest_api_tooling import RestApiToolingModule
-from tests.common import create_test_app
-from tests.common.common import create_app_configuration, build_tool_expected_result
+from tests.unit_tests.common import create_test_app
+from tests.unit_tests.common.common import create_app_configuration
 
 
 class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):

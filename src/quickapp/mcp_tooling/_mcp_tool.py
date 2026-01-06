@@ -7,6 +7,7 @@ from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
@@ -28,6 +29,7 @@ class _MCPTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_MCPStageWrapper],
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
+        perf_timer: PerformanceTimer,
     ):
         super().__init__(
             name=tool.name or "MCP Tool",
@@ -35,6 +37,7 @@ class _MCPTool(StagedBaseTool):
             description=tool.description or "MCP Tool",
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
+            perf_timer=perf_timer,
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"
         self.__tool: Tool = tool

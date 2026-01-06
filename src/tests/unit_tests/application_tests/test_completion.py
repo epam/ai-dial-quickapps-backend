@@ -1,7 +1,8 @@
+from unittest.mock import Mock
+
 import pytest
 from types import SimpleNamespace
 
-from aidial_sdk.chat_completion import Message
 from httpx import HTTPError
 
 import quickapp.application._quick_app_completion as quick_app_completion
@@ -14,7 +15,20 @@ class FakeChoice:
         self.contents = []
 
     def append_content(self, content: str):
-        self.contents.append(content)
+        # only append actual string content (ignore mocks/other objects)
+        if isinstance(content, str):
+            self.contents.append(content)
+
+    def create_stage(self, name: str):
+        # synchronous context manager used inside async method
+        class CM:
+            def __enter__(inner):
+                return self
+
+            def __exit__(inner, exc_type, exc, tb):
+                return False
+
+        return CM()
 
 
 class FakeResponse:
@@ -92,6 +106,7 @@ def make_request_completion():
             quick_app_completion._InitializationErrorHandler: init_handler,
             quick_app_completion._RequestContext: request_context,
             quick_app_completion.ConfigResolver: config_resolver,
+            quick_app_completion.PerformanceTimer: Mock(),
         }
         if orchestrator is not None:
             mapping[quick_app_completion.Orchestrator] = orchestrator

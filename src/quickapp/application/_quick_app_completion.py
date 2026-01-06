@@ -7,14 +7,17 @@ from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
 from httpx import HTTPError
 from injector import Injector, inject
+from pydantic import SecretStr
 
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.common import DIAL_API_KEY, InitializerType
+from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
+from ..config.utils import bool_env_var
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._request_context import _RequestContext
 from .configuration import Configuration
@@ -34,17 +37,30 @@ class _QuickAppCompletion(ChatCompletion):
     def __init__(self, injector: Injector, config_resolver: ConfigResolver):
         self.__injector: Injector = injector
         self.__config_resolver: ConfigResolver = config_resolver
+        self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
+        timer_service = self.__injector.get(PerformanceTimer)
+        timer_service.start_period(self.__timer_period_name, level=1)
         with response.create_single_choice() as choice:
             try:
                 await self.__setup_request_context(request, choice)
+                timer_service.add_milestone(self.__timer_period_name, "request context setup")
                 await invoke_initializers(self.__injector, InitializerType.completion)
                 self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
+                timer_service.add_milestone(self.__timer_period_name, "tools initialization")
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
             except Exception as e:
                 self.__handle_exception(choice, e)
+            finally:
+                timer_service.stop_period(self.__timer_period_name)
+                logger.debug(
+                    "Chat completion performance report:\n%s", timer_service.get_report_json()
+                )
+                if bool_env_var("SHOW_EXECUTION_TIME_STAGE", False):
+                    with choice.create_stage("Execution time") as stage:
+                        stage.append_content(timer_service.get_report_md())
 
     async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
         await self.__setup_request_context(request)
@@ -62,7 +78,13 @@ class _QuickAppCompletion(ChatCompletion):
         self, request: Request | ConfigurationRequest, choice: Optional[Choice] = None
     ) -> None:
         context = self.__injector.get(_RequestContext)
-        context.api_key = DIAL_API_KEY(request.api_key)
+        context.api_key = SecretStr(request.api_key)
+
+        if getattr(request, "bearer_token", None):
+            context.bearer = SecretStr(request.bearer_token)
+        else:
+            context.bearer = None
+
         context.application_config = self.__resolve_application_config(
             await request.request_dial_application_properties()
         )

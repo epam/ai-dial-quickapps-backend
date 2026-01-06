@@ -9,6 +9,7 @@ from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.content_download_tooling._content_download_stage_wrapper import (
@@ -39,11 +40,13 @@ class _ContentDownloadTool(StagedBaseTool):
         state_holder: StateHolder,
         tool_config: InternalTool,
         content_size_limit: int,
+        perf_timer: PerformanceTimer,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
+            perf_timer=perf_timer,
             **kwargs,
         )
         self.__dial_settings: DialSettings = dial_settings

@@ -3,7 +3,7 @@ from typing import Optional
 
 from aidial_sdk.chat_completion import Choice
 
-from quickapp.common import DIAL_API_KEY
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -18,6 +18,21 @@ class _RequestContext(MessagesMixin):
     __choice: Optional[Choice] = None
     __api_key: Optional[DIAL_API_KEY] = None
     __application_config: Optional[ApplicationConfig] = None
+    __bearer_set: bool = False
+    __bearer: DIAL_BEARER = None
+
+    @property
+    def bearer(self) -> DIAL_BEARER:
+        if not self.__bearer_set:
+            raise RuntimeError("Bearer is not set")
+        return self.__bearer
+
+    @bearer.setter
+    def bearer(self, bearer: DIAL_BEARER) -> None:
+        if self.__bearer_set:
+            raise RuntimeError("Bearer is already set")
+        self.__bearer_set = True
+        self.__bearer = bearer
 
     @property
     def api_key(self) -> DIAL_API_KEY:

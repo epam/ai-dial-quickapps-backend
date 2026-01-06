@@ -80,7 +80,7 @@ class ChunkProcessor:
 
         async for chunk in chat_completion:
             if not chunk.choices:
-                break
+                continue
             for ch in chunk.choices:
                 if (content := ch.delta.content) and stream_content:
                     destination.append_content(content)

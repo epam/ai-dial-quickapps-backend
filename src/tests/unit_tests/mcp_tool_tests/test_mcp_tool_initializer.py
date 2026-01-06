@@ -1,6 +1,8 @@
 import base64
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 import pytest
+
+from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.toolsets.authorization import BasicAuthorization, BearerAuthorization, MCPApiKeyAuthorization, \
     ClientIdSecretAuthorization
@@ -60,7 +62,8 @@ def mcp_tool1(tool1, mock_tool_config, mock_stage_wrapper_builder, mock_dial_att
         connection_manager=mock_connection_manager,
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
-        state_holder=mock_state_holder()
+        state_holder=mock_state_holder(),
+        perf_timer=Mock()
     )
 
 @pytest.fixture
@@ -73,7 +76,8 @@ def mcp_tool2(tool2, mock_tool_config, mock_stage_wrapper_builder, mock_dial_att
         connection_manager=mock_connection_manager,
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
-        state_holder=mock_state_holder()
+        state_holder=mock_state_holder(),
+        perf_timer=Mock()
     )
 
 # --- New reusable fixtures to remove duplication ---
@@ -98,7 +102,8 @@ def builder_mock():
             connection_manager=connection_manager,
             stage_wrapper_builder=MagicMock(),
             dial_attachment_service=MagicMock(),
-            state_holder=MagicMock()
+            state_holder=MagicMock(),
+            perf_timer=Mock()
         )
     m = MagicMock()
     m.build.side_effect = side_effect
@@ -205,8 +210,9 @@ async def test_connection_manager_build_headers(auth, header_name, expected_head
     server_info = MCPServerInfo(url="https://test", authorization=auth, protocol=MCPProtocol.streamable_http)
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
     oauth_token_fetcher = AsyncMock()
+    dial_settings = DialSettings(url = "https://dial.test")
+    conn_manager = _MCPConnectionManager(toolset_info=toolset_info, oauth_token_fetcher=oauth_token_fetcher, dial_settings = dial_settings)
 
-    conn_manager = _MCPConnectionManager(toolset_info=toolset_info, oauth_token_fetcher=oauth_token_fetcher)
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
 
     assert header_name in headers
@@ -225,8 +231,9 @@ async def test_connection_manager_build_headers_client_id_secret():
 
     oauth_token_fetcher = MagicMock(spec=OAuthTokenFetcher)
     oauth_token_fetcher.fetch_oauth_token = AsyncMock(return_value="mock_token")
+    dial_settings = DialSettings(url="https://dial.test")
 
-    conn_manager = _MCPConnectionManager(toolset_info=toolset_info, oauth_token_fetcher=oauth_token_fetcher)
+    conn_manager = _MCPConnectionManager(toolset_info=toolset_info, oauth_token_fetcher=oauth_token_fetcher, dial_settings = dial_settings)
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
 
     assert "Authorization" in headers
