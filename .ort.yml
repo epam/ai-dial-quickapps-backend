@@ -15,7 +15,7 @@ resolutions:
     - message: ".*PyPI::zipp:3\\.23\\.0.*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/jaraco/zipp/blob/main/pyproject.toml#L24"
-    - message: ".*PyPI::PyPI::jaraco-context:6\\.0\\.2.*"
+    - message: ".*PyPI::jaraco-context:6\\.0\\.2.*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/jaraco/jaraco.context/blob/main/pyproject.toml#L24"
     - message: ".*PyPI::httpcore:1\\.0\\.9.*"
