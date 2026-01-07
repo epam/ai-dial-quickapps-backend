@@ -109,7 +109,9 @@ class Orchestrator:
                     )
                     for attachment in tool_call_results[i].propagate_to_choice:
                         # Need to repack, cause Message contains same attachment but from other package: aidial_client.types.chat.response.Attachment
-                        self.__choice.add_attachment(**attachment.model_dump())
+                        self.__choice.add_attachment(
+                            **attachment.model_dump(exclude={"index"})
+                        )  # attachment can't be created with any extra parameters
                     if tool_call_results[i].usage and self.__SHOW_USAGE_STATISTICS:
                         self.__usage_statistics_list.extend(tool_call_results[i].usage)
                 logger.debug(f"State:{tool_execution_history}")
