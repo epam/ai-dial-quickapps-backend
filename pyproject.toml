@@ -27,7 +27,7 @@ authlib = "^1.6.5"
 plotly = {version = "^6.5.0", extras = ["kaleido"]}
 mcp = "^1.23.2"
 fastmcp = "^2.14.0"
-urllib3 = "^2.6.0"
+urllib3 = "^2.6.3"
 
 [tool.poetry.group.dev.dependencies]
 black = { version = "^24.4.0", extras = ["jupyter"] }
