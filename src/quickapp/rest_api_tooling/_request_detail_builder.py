@@ -82,7 +82,7 @@ class _RequestDetailsBuilder:
         if self.__url is None:
             raise ValueError(
                 "Url must be set before adding parameters"
-            )  # todo think about preventing setting params before url
+            )
         if isinstance(value, (str, bool, int, float)):
             path = self.__url.path.replace(f"{{{param_key}}}", str(value))
             self.__url = self.__url.copy_with(path=path)

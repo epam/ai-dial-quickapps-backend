@@ -1,8 +1,17 @@
-# Quick Apps (2.0)
-
-[![DIALX Community on Discord](https://img.shields.io/static/v1?label=DIALX%20Community%20on&message=Discord&color=blue&logo=Discord&style=flat-square)](https://discord.gg/ukzj9U9tEe)
-
-[![DIALX](https://dialx.ai/dialx_logo.svg)](https://dialx.ai/)
+<h1 align="center">
+         Quick Apps (2.0)
+    </h1>
+    <p align="center">
+        <p align="center">
+        <a href="https://dialx.ai/">
+          <img src="https://dialx.ai/dialx_logo.svg" alt="About DIALX">
+        </a>
+    </p>
+<h4 align="center">
+    <a href="https://discord.gg/ukzj9U9tEe">
+        <img src="https://img.shields.io/static/v1?label=DIALX%20Community%20on&message=Discord&color=blue&logo=Discord&style=flat-square" alt="Discord">
+    </a>
+</h4>
 
 Quick Apps (2.0) is a composer for building DIAL applications from reusable tools and integrations. It lets you
 declaratively compose new DIAL applications by wiring DIAL-native tools, REST APIs, and MCP servers with any LLM
@@ -49,10 +58,10 @@ Schema reference:
 
 | Variable                                 | Required | Description                                                                                                                | Available Values | Default Value              |
 |------------------------------------------|----------|----------------------------------------------------------------------------------------------------------------------------|------------------|----------------------------|
-| DIAL_URL                                 | No       | URL for the DIAL service                                                                                                   | URL string       | `"http://localhost:8090"`  |
+| DIAL_URL                                 | Yes      | URL for the DIAL service                                                                                                   | URL string       |                            |
 | DIAL_API_VERSION                         | No       | API version for LLM models access                                                                                          | String           | `2024-05-01-preview`       |
 | PY_INTERPRETER_LOCAL_RUN                 | No       | Run the PyInterpreter locally or use the DIAL Core API                                                                     | `true`, `false`  | `false`                    |
-| PY_INTERPRETER_URL                       | No       | The URL of the PyInterpreter service or DIAL Core API                                                                      | URL string       | `http://localhost:8080`    |
+| PY_INTERPRETER_URL                       | No       | The URL of the PyInterpreter service or DIAL Core API                                                                      | URL string       | DIAL_URL value             |
 | PY_INTERPRETER_API_KEY                   | No       | API key for local run of the PyInterpreter                                                                                 | String           | `null`                     |
 | PY_INTERPRETER_DEFAULT_SESSION_ID        | No       | Default session ID for the PyInterpreter                                                                                   | String           | `null`                     |
 | PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL | No       | Model used for additional handling in the PyInterpreter                                                                    | String           | `"gpt-4o-mini-2024-07-18"` |
@@ -87,6 +96,9 @@ Schema reference:
     - When following the docker-compose route, use the compose-provided hostnames (example DIAL inside
       containers: http://core:8080); when deploying in Kubernetes/Helm use service DNS names as shown in
       helm/development.yaml.
+    - If you plan use `pyinterpreter` tool, you require to setup according to the next documentation:
+      - DIAL Core: https://github.com/epam/ai-dial-core
+      - PyInterpreter docs: https://github.com/epam/ai-dial-code-interpreter
 
 ## Local Development
 
@@ -102,10 +114,14 @@ Schema reference:
     - Official downloads: https://www.python.org/downloads/
     - Ensure `python3.13` (or `python3`) is in PATH (`python3.13 --version`).
 
-3. Install Poetry (https://python-poetry.org/)
-    - macOS: consider using `pipx` for installation.
-    - Windows: use the official Poetry installer.
-    - Ensure `poetry` is available (`poetry --version`).
+3. Recommended way - system-wide, independent of any particular python venv:
+
+   - MacOS - recommended way to install poetry is to [use pipx](https://python-poetry.org/docs/#installing-with-pipx)
+   - Windows - recommended way to install poetry is to
+     use [official installer](https://python-poetry.org/docs/#installing-with-the-official-installer)
+   - Make sure that `poetry` is in the PATH and works properly (run `poetry --version`).
+   - Alternative - venv-specific (using `pip`):  
+     make sure the correct python venv is activated `make install_poetry`
 
 ### Setup
 
@@ -128,15 +144,6 @@ Schema reference:
      ```bash
      cp .env.template .env
      ```
-5. Generate DIAL configuration files:
-
-    ```bash
-    make generate_dial_config
-    ```
-
-   This command will generate two files in `docker_compose_files/core/configuration/generated/`:
-    - `models.json` - contains the models configuration for DIAL.
-    - `application-schemas.json` - contains the QuickApps schema.
 
 ### Run
 

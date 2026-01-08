@@ -25,7 +25,7 @@ class ToolExecutor:
         for tc in tool_call_list:
             tool = self.__tools.get(tc.function.name)
 
-            # Hack, cause tc.function.arguments from agent returns json-like string
+            # tc.function.arguments from agent returns json-like string
             import json
 
             args = json.loads(tc.function.arguments)
@@ -33,7 +33,7 @@ class ToolExecutor:
             logger.debug(f"Making tool calls: {tc.function.name} with args:{args}")
             if tool:
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
-        # fill tool calls here?
+
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
         return results
