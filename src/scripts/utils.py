@@ -18,7 +18,7 @@ def load_env():
     try:
         dotenv.load_dotenv(dotenv_path)
     except Exception as e:
-        print(f"Failed to lead .env: {e}")
+        print(f"Failed to load .env: {e}")
 
 
 def _replace_envs_dict(d: dict, prefix: str | None = None) -> dict:

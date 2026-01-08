@@ -237,7 +237,7 @@ The project contains predefined configs of application and predefined tools
     {
       "type": "file",
       "description": "Some file context description",
-      "url": "https://dev-dial-core.staging.deltixhub.io"
+      "url": "https://dial-core.example.com"
     },
     {
       "type": "user-defined",

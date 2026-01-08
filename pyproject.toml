@@ -4,7 +4,12 @@ version = "0.1.0rc"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
+license = "Apache-2.0"
+authors = [
+    {name = "EPAM Systems"}
+]
 homepage = "https://dialx.ai"
+repository = "https://github.com/epam/ai-dial-quickapps-backend"
 keywords = ["ai"]
 
 [tool.poetry]
