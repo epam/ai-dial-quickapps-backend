@@ -11,7 +11,6 @@ poetry-boot:
 
 init_venv: poetry-boot
 	$(POETRY) env use $(PYTHON)
-	source .venv/bin/activate
 
 install: init_venv
 	$(POETRY) install
