@@ -1,5 +1,5 @@
 PYTHON ?= $(if $(pythonLocation),$(pythonLocation)/bin/python,python3)
-POETRY := $(PYTHON) -m poetry
+POETRY := poetry
 SRC_DIRS = src/quickapp src/scripts
 
 -include .env
@@ -11,6 +11,7 @@ poetry-boot:
 
 init_venv: poetry-boot
 	$(POETRY) env use $(PYTHON)
+	source .venv/bin/activate
 
 install: init_venv
 	$(POETRY) install
