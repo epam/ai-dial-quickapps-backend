@@ -25,12 +25,6 @@ Core.
 - Native DIAL tools plus external REST and MCP integrations.
 - Any LLM available in DIAL Core (Azure OpenAI, Anthropic, Vertex AI, etc.).
 
-## What it does
-
-* Composes applications by wiring tools and an LLM orchestrator through declarative configuration.
-* Orchestrates execution with advanced flow controls: fallback strategies, parallel tool execution, loops, and retries.
-* Integrates natively with DIAL tools and supports external REST APIs and MCP servers.
-* Uses any LLM registered in DIAL Core (e.g., Azure OpenAI, Anthropic, Vertex AI, Google)
 
 ## Quick start (general)
 
@@ -52,7 +46,7 @@ All configuration-specific details (configuration model, environment variables, 
     - Windows: see https://gnuwin32.sourceforge.net/packages/make.htm or use Chocolatey.
     - Ensure `make` is in PATH (`which make`).
 
-2. Install Python 3.11
+2. Install Python 3.13
     - macOS (Homebrew): `brew install python@3.13`
     - Official downloads: https://www.python.org/downloads/
     - Ensure `python3.13` (or `python3`) is in PATH (`python3.13 --version`).
@@ -82,7 +76,7 @@ All configuration-specific details (configuration model, environment variables, 
     make install_dev
     ```
 
-4. Create `.env` file in the root of the project. Copy `.env.template` files and fill the values for secrets.
+4. Create `.env` file in the root of the project. Copy `.env.template` file data to the `.env` and fill the values.
 
      ```bash
      cp .env.template .env
