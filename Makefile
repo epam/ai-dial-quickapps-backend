@@ -52,3 +52,10 @@ test: install_dev
 
 dump_app_schema: install_dev
 	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
+
+generate_dial_config: install_dev
+	$(POETRY) run python src/scripts/generate_dial_config.py --models \
+	--template docker_compose_files/core/configuration/models-template.json \
+	--config docker_compose_files/core/configuration/generated/models.json \
+	--applications dial-rag,dial-web-rag \
+    --schemas docker_compose_files/core/configuration/generated/application-schemas.json

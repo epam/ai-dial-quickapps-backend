@@ -33,12 +33,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=builder /app .
 
-RUN cat << 'EOF' > /docker_entrypoint.sh && chmod +x /docker_entrypoint.sh
-#!/bin/sh
-set -e
-. ./.venv/bin/activate
-exec "$@"
-EOF
+RUN echo '#!/bin/sh' > /docker_entrypoint.sh && \
+    echo 'set -e' >> /docker_entrypoint.sh && \
+    echo '. ./.venv/bin/activate' >> /docker_entrypoint.sh && \
+    echo 'exec "$@"' >> /docker_entrypoint.sh && \
+    chmod +x /docker_entrypoint.sh
 
 EXPOSE 5000
 

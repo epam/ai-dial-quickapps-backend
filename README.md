@@ -76,15 +76,36 @@ All configuration-specific details (configuration model, environment variables, 
     make install_dev
     ```
 
-4. Create `.env` file in the root of the project. Copy `.env.template` file data to the `.env` and fill the values.
+4. Create `.env` file in the root of the project. Copy `.env.template` file data to the `.env` and fill the values. The full information about ENV variables can be found in [Configuration](./CONFIGURATION.md).
 
      ```bash
      cp .env.template .env
      ```
 
-### Run
+5. Generate DIAL configuration files:
 
-- Quick Apps standalone (connect to an existing DIAL Core)
+    ```bash
+    make generate_dial_config
+    ```
+
+   This command will generate two files in `docker_compose_files/core/configuration/generated/`:
+    - `models.json` - contains the models configuration for DIAL.
+    - `application-schemas.json` - contains the QuickApps schema.
+
+### Run
+- Option A — Full local stack (docker-compose)
+    - Use this if you want to bring up DIAL Core, chat UI, redis, themes and adapters locally for end-to-end development and testing.
+    - This docker-compose setup launches multiple services and uses internal hostnames (for example core, redis, themes). Example:
+
+      ```bash
+      docker compose up -d
+      ```
+
+    - Notes:
+        - When running via docker-compose the compose files set service hostnames (for example DIAL URL inside containers is http://core:8080). Those container-internal hostnames are not valid from your host machine — use the exposed ports (for example http://localhost:8090) when calling services from the host.
+        - Some environment variables in the repo (e.g. adapter or chat-specific variables) are only relevant for the full stack docker-compose setup and may be ignored when you deploy Quick Apps standalone.
+
+- Option B — Quick Apps standalone (connect to an existing DIAL Core)
     - Use this when you already have a DIAL Core instance available (local, staging, or cloud). You do NOT need to run
       core, chat, redis, themes, or adapter containers to deploy Quick Apps.
     - Steps:

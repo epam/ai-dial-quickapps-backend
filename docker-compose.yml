@@ -1,0 +1,70 @@
+services:
+
+  themes:
+    image: epam/ai-dial-chat-themes:0.10.0
+    ports:
+      - "3011:3000"
+
+  chat:
+    ports:
+      - "3010:3000"
+    image: epam/ai-dial-chat:development
+    depends_on:
+      - themes
+      - core
+    environment:
+      NEXTAUTH_SECRET: "secret"
+      THEMES_CONFIG_HOST: "http://themes:8080"
+      DIAL_API_HOST: "http://core:8080"
+      DIAL_API_KEY: "dial_api_key"
+      ENABLED_FEATURES: "conversations-section,prompts-section,top-settings,top-clear-conversation,top-chat-info,top-chat-model-settings,empty-chat-settings,header,footer,request-api-key,report-an-issue,likes,conversations-sharing,prompts-sharing,input-files,attachments-manager,conversations-publishing,prompts-publishing,input-links,custom-applications,message-templates,marketplace,quick-apps,toolsets"
+
+  redis:
+    image: redis:7.4.1-alpine3.20
+    restart: always
+    mem_limit: 2200M
+    command: >
+      redis-server --maxmemory 2000mb --maxmemory-policy volatile-lfu --save "" --appendonly no --loglevel warning
+
+  core:
+    ports:
+      - "8090:8080"
+    image: epam/ai-dial-core:development
+    environment:
+      'AIDIAL_SETTINGS': '/opt/configuration/settings/settings.json'
+      'JAVA_OPTS': '-Dgflog.config=/opt/configuration/settings/gflog.xml'
+      'LOG_DIR': '/app/log'
+      'STORAGE_DIR': '/app/data'
+      'AIDIAL_LOG_LEVEL': 'DEBUG'
+      'aidial.config.files': |-
+        [
+          "/opt/configuration/generated/models.json",
+          "/opt/configuration/generated/application-schemas.json",
+          "/opt/configuration/applications.json",
+          "/opt/configuration/chathub/anthropic.json",
+          "/opt/configuration/chathub/gemini.json",
+          "/opt/configuration/chathub/openai.json",
+          "/opt/configuration/toolsets.json"
+        ]
+      'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
+    depends_on:
+      - redis
+    volumes:
+      - ./docker_compose_files/core/configuration:/opt/configuration
+      - ./docker_compose_files/core/logs/:/app/log
+      - ./docker_compose_files/core/data/:/app/data
+
+  adapter-dial:
+    image: epam/ai-dial-adapter-dial:latest
+    environment:
+      DIAL_URL: "http://core:8080"
+      LOG_LEVEL: "INFO"
+
+  quick_apps:
+    build:
+        context: .
+        dockerfile: ./Dockerfile
+    environment:
+      DIAL_URL: "http://core:8080"
+      SHOW_USAGE_STATISTICS: "true"
+      QUICKAPP_LOG_LEVEL: "DEBUG"
