@@ -26,13 +26,14 @@ Schema reference:
 | PY_INTERPRETER_CLIENT_TIMEOUT            | No       | Timeout for the PyInterpreter client requests in seconds                                                                       | Float            | `60.0`                     |
 | PY_INTERPRETER_CLIENT_MAX_RETRIES        | No       | Maximum number of retries for the PyInterpreter client requests                                                                | Integer          | `3`                        |
 | OTEL_SERVICE_NAME                        | No       | The name of the service for OpenTelemetry tracing and metrics                                                                  | String           | `"quickapps"`              |
-| REMOTE_DIAL_URL                          | No       | The URL of the remote DIAL used only by the `generate_dial_config` script and e2e/integration tests                            | URL string            | `null`                     |
-| REMOTE_DIAL_API_KEY                      | No       | The API KEY of the remote DIAL used only by the `generate_dial_config` script and e2e/integration tests                        | String                | `null`                     |
+| REMOTE_DIAL_URL                          | No       | The URL of the remote DIAL used only by the `generate_dial_config` script and e2e/integration tests                            | URL string       | `null`                     |
+| REMOTE_DIAL_API_KEY                      | No       | The API KEY of the remote DIAL used only by the `generate_dial_config` script and e2e/integration tests                        | String           | `null`                     |
 | PREDEFINED_BASE_PATH:                    | No       | Specifies the base path to the predefined configurations/templates files for the application.                                  | String           | `config/predefined`        |
 | SHOW_USAGE_STATISTICS                    | No       | Flag to show the "Usage statistics" stage per user message.                                                                    | `true`, `false`  | `false`                    |
 | DEFAULT_AGENT_MAX_ITERATIONS             | No       | Default vale for the server for the max count of orchestrator(agent) operations.                                               | Integer          | 15                         |
 | CONTENT_DOWNLOADER_FILE_SIZE_LIMIT       | No       | Internal tool file size limitation. It is used to download files from DIAL to pass content as MCP attachment. Bytes count.     | Integer          | 20971520                   |
 | SHOW_EXECUTION_TIME_STAGE                | No       | Flag to show time execution stage                                                                                              | `true`, `false`  | `false`                    |
+| CHAT_MESSAGE_LOG_LEN                     | No       | Truncates message, tool-argument and stage content shown in OpenAI message log previews.                                       | Integer          | -1                         |
 
 Notes:
 - Variables marked in this table are a superset used across development and deployment modes. Some variables are only used when running the full local stack via docker-compose.
