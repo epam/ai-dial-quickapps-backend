@@ -1,5 +1,9 @@
 name: Release Workflow
 
+env:
+  POETRY: ${{ vars.POETRY }}
+  PYTHON: ${{ vars.PYTHON }}
+
 on:
   push:
     branches: [development, release-*]
