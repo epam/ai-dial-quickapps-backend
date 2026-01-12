@@ -53,8 +53,8 @@ Notes:
 
 The project contains predefined configs of application and predefined tools
 
-* [Sample application](config/examples/applications.json).
-* [Chat-hub application](config/examples/chat-hub-openai.json).
+* [Sample application](docker_compose_files/core/configuration/applications.json).
+* [Chat-hub application](docker_compose_files/core/configuration/chathub/openai.json).
 * [Predefined Tools/Toolsets](config/predefined).
 
 <br>Here's a full example of configuration:
