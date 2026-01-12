@@ -1,4 +1,3 @@
-POETRY := poetry
 SRC_DIRS = src/quickapp src/scripts
 
 -include .env
