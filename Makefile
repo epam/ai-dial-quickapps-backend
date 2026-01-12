@@ -1,4 +1,6 @@
 SRC_DIRS = src/quickapp src/scripts
+POETRY ?= poetry
+PYTHON ?= python3
 
 -include .env
 export
