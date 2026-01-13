@@ -1,0 +1,10 @@
+{
+  "toolsets": {
+    "Fetch": {
+      "transport": "HTTP",
+      "endpoint": "https://remote.mcpservers.org/fetch/mcp",
+      "displayName": "Fetch",
+      "description": "Test mcp  server with fetch tool."
+    }
+  }
+}

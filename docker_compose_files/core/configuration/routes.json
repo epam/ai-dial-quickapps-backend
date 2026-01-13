@@ -1,0 +1,14 @@
+{
+  "routes": {
+    "quick_apps2": {
+      "paths": ["/v1/quickapps_2(/[^/]+)*$"],
+      "rewritePath": true,
+      "methods": ["GET", "POST", "HEAD"],
+      "upstreams": [
+        {
+          "endpoint": "http://dial-web-scrapper.dial-web-scrapper.svc.cluster.local"
+        }
+      ]
+    }
+  }
+}

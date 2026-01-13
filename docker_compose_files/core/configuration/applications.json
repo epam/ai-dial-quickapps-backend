@@ -1,0 +1,75 @@
+{
+  "applications": {
+    "quick_app_2": {
+      "displayName": "Quick App 2",
+      "description": "The sample of Quick App v2",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "gpt-5-2025-08-07",
+            "parameters": {
+              "temperature": 1.0,
+              "seed": 820288
+            }
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nWhen using MCP tools with file parameter, always use file url like files/<file_path>/<file_name>\nAlways format your responses in markdown."
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "location"
+          },
+          {
+            "type": "predefined",
+            "template_name": "weather"
+          },
+          {
+            "name": "dial-deployment-tool-set",
+            "type": "dial-deployment",
+            "description": "Set with DIAL deployments tools",
+            "tools": [
+              {
+                "type": "predefined-tool",
+                "template_name": "dial_rag"
+              },
+              {
+                "type": "predefined-tool",
+                "template_name": "image_generation"
+              },
+              {
+                "type": "predefined-tool",
+                "template_name": "web_search"
+              }
+            ]
+          },
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          },
+          {
+            "name": "mcp-toolset",
+            "description": "Fetch MCP tool",
+            "type": "mcp",
+            "mcp_server_info": {
+              "url": "https://remote.mcpservers.org/fetch/mcp",
+              "protocol": "streamable_http",
+              "authorization": null
+            }
+          }
+        ]
+      },
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "features": {
+        "assistant_attachments_in_request_supported": true
+      }
+    }
+  }
+}

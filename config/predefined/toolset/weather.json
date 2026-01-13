@@ -1,0 +1,68 @@
+{
+  "type": "rest-api",
+  "authorization": null,
+  "name": "Weather rest-api toolset",
+  "tools": [
+    {
+      "rest_api_method_info": {
+        "method_url": "https://api.open-meteo.com/v1/forecast",
+        "method_type": "get"
+      },
+      "display": {
+        "stage": {
+          "name": "Search weather forecast"
+        }
+      },
+      "open_ai_tool": {
+        "type": "function",
+        "function": {
+          "name": "weather",
+          "description": "To get current weather for geo coordinates (lat, lon)",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "latitude": {
+                "type": "number",
+                "description": "latitude of location you want to get current weather",
+                "parameter_info": {
+                  "type": "query",
+                  "key": "latitude"
+                }
+              },
+              "longitude": {
+                "type": "number",
+                "description": "longitude of location you want to get current weather",
+                "parameter_info": {
+                  "type": "query",
+                  "key": "longitude"
+                }
+              },
+              "current": {
+                "type": null,
+                "const": "temperature_2m",
+                "parameter_info": {
+                  "type": "query",
+                  "key": "current"
+                }
+              },
+              "format": {
+                "type": null,
+                "const": "csv",
+                "parameter_info": {
+                  "type": "query",
+                  "key": "format"
+                }
+              }
+            },
+            "required": [
+              "latitude",
+              "longitude",
+              "current",
+              "format"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

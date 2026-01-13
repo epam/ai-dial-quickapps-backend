@@ -1,0 +1,21 @@
+name: Release Workflow
+
+env:
+  POETRY: ${{ vars.POETRY }}
+  PYTHON: ${{ vars.PYTHON }}
+
+on:
+  push:
+    branches: [development, release-*]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  release:
+    uses: epam/ai-dial-ci/.github/workflows/python_docker_release.yml@3.0.0
+    secrets: inherit
+    with:
+      python-version: "3.13"
+      poetry-version: "2.1.1"

@@ -1,0 +1,277 @@
+{
+  "orchestrator": {
+    "deployment": {
+      "name": "gpt-4o-2024-08-06",
+      "parameters": {
+        "temperature": 1.1,
+        "seed": 820288,
+        "custom_fields": {
+          "configuration": {
+            "betas": [
+              "token-efficient-tools-2025-02-19"
+            ]
+          }
+        }
+      }
+    },
+    "system_prompt": {
+      "type": "custom",
+      "variables": {},
+      "content": "This is base Agent prompt."
+    }
+  },
+  "contexts": [
+    {
+      "type": "file",
+      "description": "Some file context description",
+      "url": "https://dev-dial-core.staging.deltixhub.io"
+    },
+    {
+      "type": "user-defined",
+      "description": "Some user context description",
+      "content": "Content of user defined context"
+    }
+  ],
+  "tool_sets": [
+    {
+      "name": "dial-rag-tool-set",
+      "type": "dial-deployment",
+      "description": "Performs RAG search in text files and returns llm answer based on the search.Always used when user asks for information from attached files.Can perform search in multiple attachments.",
+      "tools": [
+        {
+          "display": {
+            "stage": {
+              "name": "RAG search"
+            }
+          },
+          "deployment": {
+            "name": "dial-rag",
+            "parameters": {
+              "seed": 820288,
+              "custom_fields": {
+                "configuration": {}
+              }
+            }
+          },
+          "content_propagation": {
+            "propagate_history": true,
+            "propagate_headers": []
+          },
+          "open_ai_tool": {
+            "type": "function",
+            "function": {
+              "name": "rag_search_tool",
+              "description": "Performs RAG search in text files and returns llm answer based on the search.Always used when user asks for information from attached files.Can perform search in multiple attachments.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "RAG search prompt",
+                    "display": {
+                      "stage": {
+                        "stage_body_prefix": "Prompt"
+                      }
+                    }
+                  },
+                  "attachment_urls": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    },
+                    "description": "List of attachment names for RAG search. If not 100% confident which attachment to use - do not provide this parameter at all.",
+                    "display": {
+                      "stage": {
+                        "ignore": true
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "prompt",
+                  "attachment_urls"
+                ]
+              }
+            }
+          },
+          "attachment": {
+            "supported_types": [
+              "*/*"
+            ],
+            "propagate_types_to_choice": [
+              "image/png",
+              "image/jpeg",
+              "application/vnd.plotly.v1+json"
+            ]
+          },
+          "fallback_configuration": {
+            "strategies": [
+              {
+                "type": "ignore"
+              }
+            ]
+          }
+        },
+        {
+          "display": {
+            "stage": {
+              "name": "**Image Generation:** "
+            }
+          },
+          "deployment": {
+            "name": "dall-e-3"
+          },
+          "open_ai_tool": {
+            "type": "function",
+            "function": {
+              "name": "image_generation_tool",
+              "description": "**Image generator**\nGenerates image based on the provided description.\n\n## Instructions:\n- Use that tool when user asks to generate an image based on the description or to visualize some text or information.\n- Choose the best size from available options based on user request or image type. For specific size requests, use the closest supported option.\n- When the tool returns a markdown image URL, always include it in your response and follow it with a brief description.\n\n## Restrictions:\n- Never use this tool for data or numerical information visualization.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "prompt": {
+                    "type": "string",
+                    "description": "Extensive description of the image that should be generated.",
+                    "display": {
+                      "stage": {
+                        "show_value_in_stage_title": true,
+                        "name": "**Prompt:** "
+                      }
+                    }
+                  },
+                  "size": {
+                    "type": "string",
+                    "description": "The size of the generated image. ",
+                    "enum": [
+                      "1024x1024",
+                      "1024x1792",
+                      "1792x1024"
+                    ],
+                    "default": "1024x1024",
+                    "display": {
+                      "stage": {
+                        "ignore": true
+                      }
+                    }
+                  },
+                  "style": {
+                    "type": "string",
+                    "description": "The style of the generated image. Must be one of vivid or natural. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.",
+                    "enum": [
+                      "natural",
+                      "vivid"
+                    ],
+                    "default": "natural",
+                    "display": {
+                      "stage": {
+                        "ignore": true
+                      }
+                    }
+                  },
+                  "quality": {
+                    "type": "string",
+                    "description": "The quality of the image that will be generated. ‘hd’ creates images with finer details and greater consistency across the image.",
+                    "enum": [
+                      "standard",
+                      "hd"
+                    ],
+                    "default": "standard",
+                    "display": {
+                      "stage": {
+                        "ignore": true
+                      }
+                    }
+                  }
+                },
+                "required": [
+                  "prompt",
+                  "size",
+                  "style",
+                  "quality"
+                ]
+              }
+            }
+          },
+          "attachment": {
+            "propagate_types_to_choice": [
+              "*/*"
+            ]
+          },
+          "fallback_configuration": {
+            "strategies": [
+              {
+                "type": "ignore"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "rest-tool-set",
+      "type": "rest-api",
+      "authorization": {
+        "type": "bearer",
+        "token": "123"
+      },
+      "tools": [
+        {
+          "rest_api_method_info": {
+            "method_url": "https://google.com?abc={xyz}",
+            "method_type": "get"
+          },
+          "open_ai_tool": {
+            "type": "function",
+            "function": {
+              "name": "foo",
+              "description": "test function",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "abc": {
+                    "type": "object",
+                    "properties": {
+                      "xyz": {
+                        "type": "string",
+                        "description": "xyz prop description"
+                      }
+                    },
+                    "required": [
+                      "xyz"
+                    ],
+                    "parameter_info": {
+                      "key": "abc",
+                      "type": "query"
+                    },
+                    "description": "abc param description"
+                  },
+                  "def": {
+                    "type": "boolean",
+                    "description": "def param description",
+                    "parameter_info": {
+                      "key": "def",
+                      "type": "header"
+                    }
+                  },
+                  "ghj": {
+                    "type": "array",
+                    "description": "ghj param description",
+                    "items": {
+                      "type": "string",
+                      "description": "ghj item description"
+                    },
+                    "parameter_info": {
+                      "key": "ghj",
+                      "type": "body"
+                    }
+                  }
+                },
+                "required": []
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "models": {},
+  "applications": {},
+  "routes": {},
+  "keys": {
+    "dial_api_key": {
+      "project": "EPM-DIALX",
+      "role": "default"
+    }
+  },
+  "roles": {
+    "default": {
+      "limits": {
+      }
+    }
+  }
+}

@@ -1,0 +1,130 @@
+[project]
+name = "QuickApps"
+version = "0.1.0rc"
+description = "Configurable agentic application for DIAL"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = "Apache-2.0"
+authors = [
+    {name = "EPAM Systems"}
+]
+homepage = "https://dialx.ai"
+repository = "https://github.com/epam/ai-dial-quickapps-backend"
+keywords = ["ai"]
+
+[tool.poetry]
+package-mode = false
+requires-poetry = '>=2.0.0,<3.0.0'
+
+[tool.poetry.dependencies]
+aidial-client = "^0.4.0"
+aidial-sdk = {version="^0.31.0", extras = ["telemetry"]}
+pydantic = { version = "^2.12.4" }
+pydantic-settings = { version = "^2.12.0" }
+injector = "^0.23.0"
+fastapi-injector = "^0.9.0"
+pandas = "^2.3.3"
+tabulate = "^0.9.0"
+common = "^0.1.2"
+beautifulsoup4 = "^4.14.2"
+bs4 = "^0.0.2"
+authlib = "^1.6.5"
+plotly = {version = "^6.5.0", extras = ["kaleido"]}
+mcp = "^1.23.2"
+fastmcp = "^2.14.0"
+urllib3 = "^2.6.3"
+
+[tool.poetry.group.dev.dependencies]
+black = { version = "^24.4.0", extras = ["jupyter"] }
+isort = "^5.13.2"
+mypy = "^1.9.0"
+fastmcp = "^2.12.5"
+types-requests = "^2.31.0.20240406"
+pre-commit = "^3.8.0"
+flake8 = "^7.1.2"
+autoflake = "^2.3.1"
+pyright = "^1.1.394"
+
+[tool.poetry.group.test.dependencies]
+pytest = "^8.3.4"
+parameterized = "^0.9.0"
+pytest-asyncio = "^0.25.3"
+pytest-xdist = "^3.6.1"
+pytest-cov = "^5.0.0"
+pytest-env = "^1.1.5"
+
+[tool.isort]
+profile = "black"
+line_length = 100
+src_paths = ["src"]
+extend_skip_glob = ["src/**/__init__.py"]
+
+[tool.black]
+line-length = 100
+skip-string-normalization = true
+target-version = ["py313"]
+include = '\.pyi?$'
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+  # The following are specific to Black, you probably don't want those.
+  | blib2to3
+  | tests/data
+  | profiling
+)/
+'''
+
+[tool.pyright]
+typeCheckingMode = "basic"
+reportIncompatibleMethodOverride = "error"
+reportUnusedVariable = "error"
+
+exclude = [
+    ".git",
+    ".venv",
+    ".nox",
+    "**/__pycache__",
+    "**/.pytest_cache"
+]
+
+[tool.autoflake]
+ignore_init_module_imports = true
+remove_all_unused_imports = true
+in_place = true
+recursive = true
+quiet = true
+exclude = [
+    '\.git',
+    '\.venv',
+    '\.nox',
+    '\.pytest_cache',
+    '__pycache__'
+]
+
+[tool.mypy]
+ignore_missing_imports = true
+
+[tool.poetry.group.dev]
+optional = true
+
+[[tool.poetry.source]]
+name = "PyPI"
+priority = "primary"
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+asyncio_default_fixture_loop_scope = "session"
+addopts = "-ra"
+markers = [
+    "integration: integration tests, that require LLM calls and cached LLM Tool calls (deselect with '-m \"not integration\"')",
+    "e2e: e2e tests, that require LLM calls without using cached responses (deselect with '-m \"not e2e\"')"
+]

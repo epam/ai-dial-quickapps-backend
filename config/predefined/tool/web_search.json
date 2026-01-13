@@ -1,0 +1,46 @@
+{
+  "type": "deployment-tool",
+  "display": {
+    "stage": {
+      "name": "Web Search: "
+    }
+  },
+  "deployment": {
+    "name": "gemini-2.5-pro-google-search"
+  },
+  "content_propagation": {
+    "propagate_history": true,
+    "propagate_headers": []
+  },
+  "open_ai_tool": {
+    "type": "function",
+    "function": {
+      "name": "web_search_tool",
+      "description": "Performs comprehensive web searches across the internet to retrieve up-to-date information about news, current events, facts, and recent developments. This tool returns AI-generated responses grounded in real-time web search results, not the raw web pages. Use this tool when you need factual, timely information that may have changed since your training data cutoff. Ideal for questions about recent events, current facts, or time-sensitive information.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "A clear, specific search query designed to retrieve the most relevant information. Formulate this as a precise question or search term that will yield the best results. Include key details like names, dates, or specific aspects you're interested in. For example, 'Latest SpaceX rocket launch details' is better than just 'SpaceX news'.",
+            "display": {
+              "stage": {
+                "show_value_in_stage_title": true
+              }
+            }
+          }
+        },
+        "required": [
+          "query"
+        ]
+      }
+    }
+  },
+  "fallback_configuration": {
+    "strategies": [
+      {
+        "type": "continue"
+      }
+    ]
+  }
+}
