@@ -146,7 +146,7 @@ def _preview_text(text: str, limit: int) -> Tuple[str, bool]:
     if not text:
         return "", False
     if limit < 0:
-        return text, True
+        return text, False
     collapsed = re.sub(r"\s+", " ", text).strip()
     if len(collapsed) <= limit:
         return collapsed, False
