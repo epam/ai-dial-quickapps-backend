@@ -89,4 +89,4 @@ class AssistantInvoker:
     @staticmethod
     def _log_messages(messages: list[Message]):
         for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg.dict(), idx, preview_len=75)
+            format_openai_message_pipe_tree(msg.dict(), idx)
