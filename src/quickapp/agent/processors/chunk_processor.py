@@ -107,18 +107,21 @@ class ChunkProcessor:
     ) -> None:
         if attachments := custom_content.get('attachments'):
             for attachment in attachments:
+                # bugfix issue#16 - if attachment has no data and no url, but has reference_url, use it as url
                 if attachment.get('data') is None and attachment.get('url') is None:
-                    attachment['data'] = ''
-                    att = Attachment(
-                        type=attachment.get('type'),
-                        title=attachment.get('title'),
-                        data=attachment.get('data'),
-                        url=attachment.get('url'),
-                        reference_url=attachment.get('reference_url'),
-                        reference_type=attachment.get('reference_type'),
-                    )
-                    destination.add_attachment(att)
-                    self.__assistant_call_result.append_attachment(attachment)
+                    if attachment.get('reference_url') is None:
+                        attachment['data'] = ''
+                    else:
+                        attachment['url'] = attachment.get('reference_url')
+                destination.add_attachment(
+                    type=attachment.get('type'),
+                    title=attachment.get('title'),
+                    data=attachment.get('data'),
+                    url=attachment.get('url'),
+                    reference_url=attachment.get('reference_url'),
+                    reference_type=attachment.get('reference_type')
+                )
+                self.__assistant_call_result.append_attachment(attachment)
 
     @staticmethod
     def __log_assistant_call_result(result: AssistantCallResult) -> None:

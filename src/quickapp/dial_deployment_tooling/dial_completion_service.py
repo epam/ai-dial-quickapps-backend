@@ -86,6 +86,12 @@ class DialCompletionService:
                         custom_content.attachments.extend(attachments)
                         if stage_wrapper:
                             for attachment in attachments:
+                                # bugfix issue#16 - if attachment has no data and no url, but has reference_url, use it as url
+                                if attachment.data is None and attachment.url is None:
+                                    if attachment.reference_url is None:
+                                        attachment['data'] = ''
+                                    else:
+                                        attachment.url = attachment.reference_url
                                 stage_wrapper.add_stage_attachment(
                                     Attachment(
                                         type=attachment.type,
