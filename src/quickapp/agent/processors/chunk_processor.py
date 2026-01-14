@@ -119,7 +119,7 @@ class ChunkProcessor:
                     data=attachment.get('data'),
                     url=attachment.get('url'),
                     reference_url=attachment.get('reference_url'),
-                    reference_type=attachment.get('reference_type')
+                    reference_type=attachment.get('reference_type'),
                 )
                 self.__assistant_call_result.append_attachment(attachment)
 
