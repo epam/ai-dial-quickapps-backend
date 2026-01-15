@@ -10,8 +10,7 @@ init_venv:
 	$(PYTHON) --version
 	which $(POETRY)
 	$(POETRY) --version
-	$(POETRY) env use $(PYTHON)
-	$(POETRY) env info
+	$(POETRY) env info || $(POETRY) env use $(PYTHON)
 	$(POETRY) env list --full-path
 
 install: init_venv
