@@ -3,6 +3,8 @@ VENV_DIR ?= .venv
 PYTHON ?= python
 POETRY ?= poetry
 
+SHELL := /bin/bash
+
 -include .env
 export
 
