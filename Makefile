@@ -54,7 +54,7 @@ format: install_dev
 	$(POETRY) run black $(SRC_DIRS)
 	$(POETRY) run isort $(SRC_DIRS)
 
-install_pre_commit_hooks: $(POETRY)-boot
+install_pre_commit_hooks: poetry-boot
 	pre-commit install
 
 run_chat: install_dev
