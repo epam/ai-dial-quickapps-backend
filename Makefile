@@ -7,6 +7,7 @@ export
 
 init_venv:
 	echo ==== DEBUG ====
+	source .venv/bin/activate
 	python --version
 	poetry debug info
 	poetry env list --full-path
