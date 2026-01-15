@@ -6,7 +6,11 @@ PYTHON ?= python3.13
 export
 
 init_venv:
+	echo ==== DEBUG ====
 	python --version
+	poetry debug info
+	poetry env list --full-path
+	echo ==== DEBUG ====
 	$(POETRY) env use $(PYTHON)
 
 install: init_venv
@@ -14,9 +18,7 @@ install: init_venv
 
 install_dev: init_venv
 	echo ==== DEBUG ====
-	echo $(PYTHON)
 	python --version
-	python3 --version
 	poetry --version
 	poetry debug info
 	poetry env list --full-path
