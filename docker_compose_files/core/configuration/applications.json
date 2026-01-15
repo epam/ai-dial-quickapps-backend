@@ -16,7 +16,7 @@
           "system_prompt": {
             "type": "custom",
             "variables": {},
-            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nWhen using MCP tools with file parameter, always use file url like files/<file_path>/<file_name>\nAlways format your responses in markdown."
+            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.When using tools, be sure to provide clear and concise input to get the best results.\nAlways format your responses in markdown. # Agent Prompt: Dynamic Tool Call Parameter Creation\n\nWhen creating tool call parameters for file transferring, you MUST ALWAYS construct the file or file data parameter according to the following rules:\n\n### Base Format\nAll file parameters must follow this pattern:\n```\nfile:{prefix}::{file_url}\n```\n\n### Prefix Types\n\n**1. Base64 Prefix**\n- Use when: The file content needs to be encoded in base64 format\n- Result format: `file:base64::{file_url}`\n- Example: `file:base64::https://example.com/document.pdf`\n\n**2. URL Prefix**\n- Use when: The file is referenced by a direct web URL or remote file location\n- Result format: `file:URL::{file_url}`\n- Example: `file:URL::https://example.com/document.pdf`\n\n**3. Text Prefix**\n- Use when: The user attaches a file and requests to call a tool with plain text data from that attachment\n- Use the file URL from the attachment as the parameter\n- Result format: `file:text::{file_url}`\n- Example: `file:text::https://example.com/document.txt`\n\n### Selection Logic\n1. Identify the parameter type based on the user's request context\n2. Select the appropriate prefix according to the type\n3. For text prefix: recognize when user provides an attached file and wants tool to read plain text data from it\n4. Construct the final parameter: `file:{selected_prefix}::{file_url}`\n\n---"
           }
         },
         "contexts": [],
@@ -53,13 +53,17 @@
             "template_name": "py_interpreter"
           },
           {
-            "name": "mcp-toolset",
-            "description": "Fetch MCP tool",
+            "name": "Fetch toolset",
+            "type": "dial-mcp",
+            "dial_id": "Fetch"
+          },
+          {
+            "name": "test-mcp-toolset",
+            "description": "Set with MCP tools",
             "type": "mcp",
             "mcp_server_info": {
-              "url": "https://remote.mcpservers.org/fetch/mcp",
-              "protocol": "streamable_http",
-              "authorization": null
+              "url": "http://localhost:8003/mcp",
+              "protocol": "streamable_http"
             }
           }
         ]

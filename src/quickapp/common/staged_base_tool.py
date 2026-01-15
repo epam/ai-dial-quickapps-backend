@@ -6,9 +6,11 @@ from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
+from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .base_stage_wrapper import BaseStageWrapper
 from .completion_result import CompletionResult
+from .exceptions import InvalidToolCallParameterException
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type
@@ -61,6 +63,18 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     return await self._run_in_stage_report_success(
                         tool_call_id, stage_wrapper, *args, **kwargs
                     )
+                except InvalidToolCallParameterException as e:
+                    logger.exception("Invalid parameter detected while running tool")
+                    stage_wrapper.add_exception(e)
+                    return FallbackProcessor.process_fallback(
+                        [
+                            RetryStrategyModel(
+                                instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
+                            )
+                        ],
+                        tool_call_id,
+                        e,
+                    )
                 except Exception as e:
                     logger.exception("Error occurred while running tool")
                     if (
@@ -79,7 +93,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                         )
                     raise e
 
-    def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> Any:
         # No preprocessing of parameters by default. return parameters "as is"
         return kwargs
 
@@ -90,7 +104,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
-        params = self._pre_process_params(**kwargs)
+        params = await self._pre_process_params(**kwargs)
         timer_name = f"tool_{tool_call_id}"
         if stage_wrapper:
             # TODO: filter params ro remove attachment_urls if it's empty
