@@ -16,9 +16,9 @@ install_dev: init_venv
 	echo $(PYTHON)
 	python --version
 	python3 --version
-	whoami
 	poetry --version
 	poetry debug info
+	poetry env list --full-path
 	echo ==== DEBUG ====
 	$(POETRY) install --with dev
 
