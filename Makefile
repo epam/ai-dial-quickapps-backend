@@ -6,6 +6,7 @@ PYTHON ?= python3.13
 export
 
 init_venv:
+	python --version
 	$(POETRY) env use $(PYTHON)
 
 install: init_venv
