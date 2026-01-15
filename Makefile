@@ -15,7 +15,7 @@ init_venv:
 	$(POETRY) env list --full-path
 	$(POETRY) env info
 
-	$(PYTHON) -m venv $(VENV_DIR)
+	source $(VENV_DIR)/bin/activate
 
 	@echo "===== After init_venv ====="
 	which $(PYTHON)
@@ -25,6 +25,7 @@ init_venv:
 	$(POETRY) env info
 	$(POETRY) env list --full-path
 	ls -lah /home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/
+	/home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/python --version
 
 install: init_venv
 	$(POETRY) install
