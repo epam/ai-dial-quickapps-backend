@@ -12,6 +12,11 @@ install: init_venv
 	$(POETRY) install
 
 install_dev: init_venv
+	echo ==== DEBUG ====
+	echo $(PYTHON)
+	python --version
+	python3 --version
+	echo ==== DEBUG ====
 	$(POETRY) install --with dev
 
 install_all: init_venv
