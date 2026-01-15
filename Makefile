@@ -1,6 +1,6 @@
 SRC_DIRS = src/quickapp src/scripts
 VENV_DIR ?= .venv
-PYTHON ?= python3
+PYTHON ?= python
 POETRY ?= poetry
 
 -include .env
@@ -24,6 +24,7 @@ init_venv:
 	$(POETRY) --version
 	$(POETRY) env info
 	$(POETRY) env list --full-path
+	ls -lah /home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/
 
 install: init_venv
 	$(POETRY) install
