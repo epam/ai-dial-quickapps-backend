@@ -1,7 +1,7 @@
 SRC_DIRS = src/quickapp src/scripts
 VENV_DIR ?= .venv
 PYTHON ?= python3
-POETRY ?= $(POETRY)
+POETRY ?= poetry
 
 -include .env
 export

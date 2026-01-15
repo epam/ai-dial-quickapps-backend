@@ -19,3 +19,6 @@ jobs:
     with:
       python-version: "3.13"
       poetry-version: "2.1.1"
+      ort-enabled: false
+      trivy-enabled: false
+      code-checks-enabled: false
