@@ -7,9 +7,10 @@ export
 
 init_venv:
 	echo ==== DEBUG ====
+	/opt/hostedtoolcache/Python/3.13.11/x64/bin/python --version
 	poetry env use /opt/hostedtoolcache/Python/3.13.11/x64/bin/python
 	python --version
-	poetry debug info
+	poetry env info
 	poetry env list --full-path
 	echo ==== DEBUG ====
 	$(POETRY) env use $(PYTHON)
