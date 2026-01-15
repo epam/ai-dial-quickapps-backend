@@ -17,7 +17,7 @@ init_venv:
 	$(POETRY) env list --full-path
 	$(POETRY) env info
 
-	source $(VENV_DIR)/bin/activate
+	$(PYTHON) -m venv $(VENV_DIR)
 
 	@echo "===== After init_venv ====="
 	which $(PYTHON)
