@@ -1,29 +1,29 @@
 SRC_DIRS = src/quickapp src/scripts
 VENV_DIR ?= .venv
-POETRY ?= $(VENV_DIR)/bin/poetry
-POETRY_VERSION ?= 2.1.1
+PYTHON ?= python3
+POETRY ?= $(POETRY)
 
 -include .env
 export
 
 init_venv:
-	which python
-	python --version
-	which poetry
-	poetry --version
-	poetry env list --full-path
-	poetry env info
-
-	python -m venv $(VENV_DIR)
-	$(VENV_DIR)/bin/pip install poetry==$(POETRY_VERSION) --quiet
-	$(POETRY) env use python3.13
-
-	which python
-	python --version
+	@echo "===== Before init_venv ====="
+	which $(PYTHON)
+	$(PYTHON) --version
 	which $(POETRY)
 	$(POETRY) --version
 	$(POETRY) env list --full-path
-	poetry env info
+	$(POETRY) env info
+
+	$(PYTHON) -m venv $(VENV_DIR)
+
+	@echo "===== After init_venv ====="
+	which $(PYTHON)
+	$(PYTHON) --version
+	which $(POETRY)
+	$(POETRY) --version
+	$(POETRY) env info
+	$(POETRY) env list --full-path
 
 install: init_venv
 	$(POETRY) install
@@ -35,7 +35,7 @@ install_all: init_venv
 	$(POETRY) install --with dev
 
 clean:
-	-$(POETRY) run python -m src.scripts.clean
+	-$(POETRY) run $(PYTHON) -m src.scripts.clean
 	-$(POETRY) env remove --all
 
 lint: install_dev
@@ -54,20 +54,20 @@ format: install_dev
 	$(POETRY) run black $(SRC_DIRS)
 	$(POETRY) run isort $(SRC_DIRS)
 
-install_pre_commit_hooks: poetry-boot
+install_pre_commit_hooks: $(POETRY)-boot
 	pre-commit install
 
 run_chat: install_dev
-	$(POETRY) run python src/quickapp/app.py
+	$(POETRY) run $(PYTHON) src/quickapp/app.py
 
 test: install_dev
 	$(POETRY) run pytest src/tests/ --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
 
 dump_app_schema: install_dev
-	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
+	$(POETRY) run $(PYTHON) src/scripts/dump_app_schema.py generated-app-schema.json
 
 generate_dial_config: install_dev
-	$(POETRY) run python src/scripts/generate_dial_config.py --models \
+	$(POETRY) run $(PYTHON) src/scripts/generate_dial_config.py --models \
 	--template docker_compose_files/core/configuration/models-template.json \
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag \
