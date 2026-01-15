@@ -11,11 +11,19 @@ init_venv:
 	python --version
 	which poetry
 	poetry --version
+	poetry env list --full-path
+	poetry env info
+
 	python -m venv $(VENV_DIR)
 	$(VENV_DIR)/bin/pip install poetry==$(POETRY_VERSION) --quiet
+	$(POETRY) env use python3.13
+
+	which python
+	python --version
 	which $(POETRY)
 	$(POETRY) --version
 	$(POETRY) env list --full-path
+	poetry env info
 
 install: init_venv
 	$(POETRY) install
