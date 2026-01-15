@@ -1,16 +1,16 @@
 SRC_DIRS = src/quickapp src/scripts
-VENV_DIR ?= .venv
-POETRY_VERSION ?= 2.1.1
-PYTHON_VERSION ?= 3.13
-POETRY ?= $(VENV_DIR)/bin/poetry
+PYTHON ?= python3
+POETRY ?= poetry
 
 -include .env
 export
 
 init_venv:
-	python$(PYTHON_VERSION) -m venv .venv
-	$(VENV_DIR)/bin/pip install poetry==$(POETRY_VERSION) --quiet
-	$(POETRY) env use python$(PYTHON_VERSION)
+	which $(PYTHON)
+	$(PYTHON) --version
+	which $(POETRY)
+	$(POETRY) --version
+	$(POETRY) env use $(PYTHON)
 	$(POETRY) env info
 	$(POETRY) env list --full-path
 
