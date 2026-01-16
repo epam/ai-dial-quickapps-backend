@@ -9,25 +9,25 @@ SHELL := /bin/bash
 export
 
 init_venv:
-	@echo "===== Before init_venv ====="
-	which $(PYTHON)
-	$(PYTHON) --version
-	which $(POETRY)
-	$(POETRY) --version
-	$(POETRY) env list --full-path
-	$(POETRY) env info
+# 	@echo "===== Before init_venv ====="
+# 	which $(PYTHON)
+# 	$(PYTHON) --version
+# 	which $(POETRY)
+# 	$(POETRY) --version
+# 	$(POETRY) env list --full-path
+# 	$(POETRY) env info
 
 	$(PYTHON) -m venv $(VENV_DIR)
 
-	@echo "===== After init_venv ====="
-	which $(PYTHON)
-	$(PYTHON) --version
-	which $(POETRY)
-	$(POETRY) --version
-	$(POETRY) env info
-	$(POETRY) env list --full-path
-	ls -lah /home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/
-	/home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/python --version
+# 	@echo "===== After init_venv ====="
+# 	which $(PYTHON)
+# 	$(PYTHON) --version
+# 	which $(POETRY)
+# 	$(POETRY) --version
+# 	$(POETRY) env info
+# 	$(POETRY) env list --full-path
+# 	ls -lah /home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/
+# 	/home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/.venv/bin/python --version
 
 install: init_venv
 	$(POETRY) install
