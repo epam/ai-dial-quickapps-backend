@@ -37,6 +37,18 @@ All configuration-specific details (configuration model, environment variables, 
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
+### Agens instructions
+
+You can define instructions for Quick Apps by adding one or more Markdown files to config/predefined/instructions. These files are appended after the predefined system prompt (prompt first, instructions after) to form the final system message the project uses.
+How to add instructions
+- Add *.md files to config/predefined/instructions.
+- Name files to control order (for example 01-overview.md, 02-guidelines.md); files are concatenated in filename sort order.
+- Use blank lines between sections inside files; when combined, files are separated by a blank line.
+- Restart the service to apply changes.
+Notes
+- If no files are present, no extra instructions will be added.
+- Check application logs if expected instructions do not appear.
+
 ## Local Development
 
 ### Pre-requisites
