@@ -1,6 +1,6 @@
 [project]
 name = "QuickApps"
-version = "0.1.0rc"
+version = "0.4.0rc"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -29,9 +29,9 @@ common = "^0.1.2"
 beautifulsoup4 = "^4.14.2"
 bs4 = "^0.0.2"
 authlib = "^1.6.5"
-plotly = {version = "^6.5.0", extras = ["kaleido"]}
+plotly = {version = "^6.5.2", extras = ["kaleido"]}
 mcp = "^1.23.2"
-fastmcp = "^2.14.0"
+fastmcp = "^2.14.3"
 urllib3 = "^2.6.3"
 
 [tool.poetry.group.dev.dependencies]
