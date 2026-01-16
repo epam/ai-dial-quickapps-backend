@@ -168,6 +168,9 @@ resolutions:
     - message: ".*PyPI::python-json-logger:4\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/nhairs/python-json-logger/blob/main/LICENSE"
+    - message: ".*PyPI::websockets:16\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "BSD 3-Clause License: https://github.com/python-websockets/websockets/blob/main/LICENSE"
 
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
