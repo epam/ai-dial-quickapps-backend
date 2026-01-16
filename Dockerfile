@@ -2,7 +2,7 @@ FROM python:3.13-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
-RUN pip install poetry==2.1.1
+RUN pip install poetry==2.2.1
 
 WORKDIR /app
 
