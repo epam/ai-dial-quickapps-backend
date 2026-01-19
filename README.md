@@ -37,7 +37,7 @@ All configuration-specific details (configuration model, environment variables, 
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
-### Agens instructions
+### Agent instructions
 
 You can define instructions for Quick Apps by adding one or more Markdown files to config/predefined/instructions. These files are appended after the predefined system prompt (prompt first, instructions after) to form the final system message the project uses.
 How to add instructions
