@@ -51,7 +51,7 @@ Always use the `file:{prefix}::{file_url}` format.
 - **Behavior**: The system extracts plain text content from the file at the given URL
 - **Result format**: `file:text::{file_url}`
 - **Example**: `file:text::files/data/content.txt`
-- **Common use cases**: Text file processing, document analysis, content extraction from .txt, .md, .csv files
+- **Common use cases**: Text file processing, document analysis, content extraction from .txt, .md, .csv, .json files
 
 ---
 
@@ -94,7 +94,7 @@ Follow these steps to construct the correct parameter:
 3. **Select the appropriate prefix**:
     - Tool needs encoded content → `base64`
     - Tool accepts URL references → `URL`
-    - Tool needs plain text extraction → `text`
+    - Tool needs plain text extraction from attached file → `text`
 
 4. **Construct the parameter**: `file:{selected_prefix}::{file_url}`
 

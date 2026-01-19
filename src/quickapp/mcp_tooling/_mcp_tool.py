@@ -1,3 +1,4 @@
+import base64
 import logging
 from typing import Any, Optional
 
@@ -14,6 +15,7 @@ from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.file_downloader_service import DialFileService
+from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 
@@ -77,8 +79,9 @@ class _MCPTool(StagedBaseTool):
                     key,
                     file_url_part,
                 )
-                base64file = await self.__file_service.download_file(file_url_part)
-                kwargs[key] = base64file
+                kwargs[key] = await FilePrefixHandlers.handle_base64(
+                    file_url_part, self.__file_service
+                )
             elif detected_prefix == "url":
                 logger.debug(
                     "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
@@ -97,7 +100,9 @@ class _MCPTool(StagedBaseTool):
                     key,
                     file_url_part,
                 )
-                # TODO: implement text-specific logic
+                kwargs[key] = await FilePrefixHandlers.handle_text(
+                    file_url_part, self.__file_service, parameter_name=key
+                )
             else:
                 logger.warning(
                     "Detected file reference without prefix for key %s (value: %s)", key, value

@@ -1,4 +1,3 @@
-import base64
 import logging
 
 from injector import inject
@@ -28,11 +27,11 @@ class DialFileService:
         self.__state_holder: StateHolder = state_holder
         self.__content_size_limit = 10 * 1024 * 1024
 
-    async def download_file(self, file_url: str) -> str:
+    async def download_file(self, file_url: str) -> bytes:
         # Check state holder for the file content:
         logger.debug(f"File url to download url:{file_url}")
-        base64_content = self.__state_holder.get_file_content(url=file_url)
-        if base64_content is None:
+        file_bytes = self.__state_holder.get_file_content(url=file_url)
+        if file_bytes is None:
             try:
                 logger.debug(f"Downloading file:{file_url}")
                 async with DialCoreClient(
@@ -46,14 +45,12 @@ class DialFileService:
                         )
 
                     content_bytes = await dial_core.get_file(file_url)
-                    base64_content = base64.b64encode(content_bytes).decode()
-                    # Store base64_content into state_holder
-                    self.__state_holder.store_file_content(file_url, base64_content)
+                    self.__state_holder.store_file_content(file_url, content_bytes)
             except Exception as e:
                 logger.error(e)
                 raise e
 
-        return base64_content
+        return content_bytes
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str

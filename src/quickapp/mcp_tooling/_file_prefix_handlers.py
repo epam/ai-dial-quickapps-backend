@@ -1,0 +1,84 @@
+import base64
+import logging
+from typing import Any
+
+from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.dial_core_services.file_downloader_service import DialFileService
+
+logger = logging.getLogger(__name__)
+
+
+class FilePrefixHandlers:
+    """Static handlers for file:{prefix}::{file_url} processing."""
+
+    @staticmethod
+    async def handle_base64(file_url: str, file_service: DialFileService) -> str:
+        content = await file_service.download_file(file_url)
+        if content is None:
+            logger.warning("Downloaded content is None for %s", file_url)
+            return ""
+        if not isinstance(content, (bytes, bytearray)):
+            try:
+                content = bytes(content)
+            except Exception:
+                logger.exception("Failed to coerce downloaded content to bytes for %s", file_url)
+                raise InvalidToolCallParameterException(
+                    parameter_name=file_url,
+                    message="Downloaded content is not bytes and cannot be converted to base64.",
+                )
+        return base64.b64encode(content).decode()
+
+    @staticmethod
+    async def handle_text(
+        file_url: str, file_service: DialFileService, parameter_name: str = "<unknown>"
+    ) -> str:
+        content_bytes = await file_service.download_file(file_url)
+        if content_bytes is None:
+            logger.warning("Downloaded content is None for %s; returning empty text", file_url)
+            return ""
+
+        if not isinstance(content_bytes, (bytes, bytearray)):
+            try:
+                content_bytes = bytes(content_bytes)
+            except Exception:
+                logger.exception("Failed to coerce downloaded content to bytes for %s", file_url)
+                raise InvalidToolCallParameterException(
+                    parameter_name=parameter_name,
+                    message="Downloaded content is not bytes and cannot be converted to text.",
+                )
+
+        # Detect common binary signatures and reject for text decoding
+        binary_signatures = [
+            (b"\x89PNG\r\n\x1a\n", "PNG image"),
+            (b"\xff\xd8\xff", "JPEG image"),
+            (b"GIF8", "GIF image"),
+            (b"%PDF-", "PDF document"),
+            (b"PK\x03\x04", "ZIP archive"),
+        ]
+
+        for sig, desc in binary_signatures:
+            if content_bytes.startswith(sig):
+                logger.warning(
+                    "Downloaded file %s appears to be binary (%s); 'text' prefix is invalid for binary files",
+                    file_url,
+                    desc,
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name=parameter_name,
+                    message=(
+                        f"File at {file_url} appears to be binary ({desc}). "
+                        "Use `file:base64::...` or `file:URL::...` instead of `file:text::...`."
+                    ),
+                )
+
+        # Decode text: utf-8-sig -> latin-1 -> utf-8 with replacement
+        try:
+            logger.debug("Trying to decode text content as utf-8-sig")
+            return content_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                logger.debug("utf-8-sig failed; trying latin-1")
+                return content_bytes.decode("latin-1")
+            except Exception:
+                logger.debug("latin-1 failed; falling back to utf-8 with replacement")
+                return content_bytes.decode("utf-8", errors="replace")
