@@ -86,3 +86,6 @@ integration_test: install_integration
 	$(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration"
 	stop_test_server
 
+e2e_test: install_integration
+	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"
+
