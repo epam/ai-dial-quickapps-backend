@@ -1,6 +1,5 @@
 import base64
 import logging
-from typing import Any
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_core_services.file_downloader_service import DialFileService
