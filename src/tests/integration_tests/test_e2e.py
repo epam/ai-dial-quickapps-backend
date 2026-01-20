@@ -1,10 +1,10 @@
 from pathlib import Path
 
 import pytest
-from tests.test_runner.config import SimilarityThreshold
-from tests.test_runner.e2e_runner import e2e_test
-from tests.test_runner.models import ToolCall, TstCase
-from tests.test_runner.utils.tool_names_with_hash import ToolNames
+from tests.integration_tests.test_runner.config import SimilarityThreshold
+from tests.integration_tests.test_runner.e2e_runner import e2e_test
+from tests.integration_tests.test_runner.models import ToolCall, TstCase
+from tests.integration_tests.test_runner.utils.tool_names_with_hash import ToolNames
 
 E2E_TEST_CASE = TstCase(
     "E2E Set",

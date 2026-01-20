@@ -18,13 +18,13 @@ from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.utils import bool_env_var
-from tests.conftest import FailureReason, TestStats, report_test_stats
-from tests.test_runner.app_test_module import TestApp
-from tests.test_runner.cache.cache_middleware import CacheMiddlewareApp, CacheMiddlewareConfig
-from tests.test_runner.config import TestConfig, TestDialCoreConfig
-from tests.test_runner.models import Failure, TstCase, check_multiple_alternatives
-from tests.test_runner.utils.string_utils import extract_total_price
-from tests.test_runner.validators import ResponseValidator
+from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
+from tests.integration_tests.test_runner.app_test_module import TestApp
+from tests.integration_tests.test_runner.cache.cache_middleware import CacheMiddlewareApp, CacheMiddlewareConfig
+from tests.integration_tests.test_runner.config import TestConfig, TestDialCoreConfig
+from tests.integration_tests.test_runner.models import Failure, TstCase, check_multiple_alternatives
+from tests.integration_tests.test_runner.utils.string_utils import extract_total_price
+from tests.integration_tests.test_runner.validators import ResponseValidator
 
 logging_config = LoggingConfig()
 

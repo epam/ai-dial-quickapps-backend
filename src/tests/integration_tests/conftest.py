@@ -13,7 +13,6 @@ from _pytest.nodes import Node
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings
 from quickapp.internal_tooling.py_interpreter_tooling.model.common import PyInterpreterSession
-from test_runner.config import TestConfig
 
 logger = logging.getLogger(__name__)
 print(" Loading conftest.py")

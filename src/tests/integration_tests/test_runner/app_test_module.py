@@ -13,7 +13,7 @@ from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings, _PY_INTERPRETER_API_KEY
 from quickapp.rest_api_tooling import RestApiToolingModule
-from tests.test_runner.config import TestConfig
+from tests.integration_tests.test_runner.config import TestConfig
 
 
 class PyInterpreterTestModule(InternalToolModule):

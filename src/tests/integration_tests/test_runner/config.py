@@ -13,7 +13,7 @@ from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from pydantic.type_adapter import TypeAdapter
 
-from tests.test_runner.test_tool_set_rest import TestToolSetRest
+from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
 logger = logging.getLogger(__name__)
 

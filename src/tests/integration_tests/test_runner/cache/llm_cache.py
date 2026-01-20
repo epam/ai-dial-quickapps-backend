@@ -4,9 +4,9 @@ import logging
 from pathlib import Path
 from typing import List, Optional, Set
 
-from tests.test_runner.cache.cache_request import CacheRequest
-from tests.test_runner.cache.cache_response import CacheResponse
-from tests.test_runner.similarity_checker import get_similarity
+from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
+from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
+from tests.integration_tests.test_runner.similarity_checker import get_similarity
 
 logger = logging.getLogger("__name__")
 

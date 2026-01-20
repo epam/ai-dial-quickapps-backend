@@ -13,10 +13,10 @@ import pytest
 from fastapi import APIRouter, FastAPI, Request, Response
 from pydantic.dataclasses import dataclass
 from pydantic import SecretStr
-from tests.test_runner.cache.cache_request import CacheRequest
-from tests.test_runner.cache.cache_response import CacheResponse
-from tests.test_runner.config import TestConfig
-from tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
+from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
+from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
+from tests.integration_tests.test_runner.config import TestConfig
+from tests.integration_tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
 
 llm_cache = None
 
