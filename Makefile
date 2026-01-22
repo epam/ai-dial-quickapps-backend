@@ -18,7 +18,7 @@ install_integration: init_venv
 	$(POETRY) install --with integration
 
 install_all: init_venv
-	$(POETRY) install --with dev
+	$(POETRY) install --with dev,integration
 
 clean:
 	-$(POETRY) run python -m src.scripts.clean
