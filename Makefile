@@ -47,7 +47,7 @@ run_chat: install_dev
 	$(POETRY) run python src/quickapp/app.py
 
 test: install_dev
-	$(POETRY) run pytest src/tests/ --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
+	$(POETRY) run pytest src/tests/unit_tests --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
 
 dump_app_schema: install_dev
 	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
