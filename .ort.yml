@@ -171,6 +171,9 @@ resolutions:
     - message: ".*PyPI::websockets:16\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/python-websockets/websockets/blob/main/LICENSE"
+    - message: ".*PyPI::nvidia-cudnn-cu12:9\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Other/Proprietary License (LicenseRef-NVIDIA-Proprietary): https://docs.nvidia.com/deeplearning/cudnn/backend/latest/reference/eula.html"
 
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
