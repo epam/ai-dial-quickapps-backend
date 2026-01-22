@@ -4,14 +4,13 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
-
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication
@@ -58,6 +57,10 @@ class AppModule(Module):
     @provider
     def __provide_choice(self, context: _RequestContext) -> Choice:
         return context.choice
+
+    @provider
+    def __provide_response_format(self, context: _RequestContext) -> RESPONSE_FORMAT:
+        return context.response_format
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:

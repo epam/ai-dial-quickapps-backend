@@ -14,6 +14,7 @@ from openai.types.chat import ChatCompletionChunk
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.processors.pre_transformers import PreTransformer
+from quickapp.common import RESPONSE_FORMAT
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -30,6 +31,7 @@ class AssistantInvoker:
         choice: Choice,
         azure_client: AsyncAzureOpenAI,
         pre_process_transformers: list[PreTransformer],
+        response_format: RESPONSE_FORMAT,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -37,6 +39,7 @@ class AssistantInvoker:
         self.__tools: list[OpenAiToolConfigDict] = tools
         self.__pre_process_transformers = pre_process_transformers or []
         self.__azure_client = azure_client
+        self.__response_format = response_format
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         # Pre-process
@@ -67,6 +70,18 @@ class AssistantInvoker:
             "tools": self.__tools,
         }
 
+        if self.__response_format:
+            logger.debug("Setting response format: %s", self.__response_format)
+            if hasattr(self.__response_format, "model_dump"):
+                payload["response_format"] = self.__response_format.model_dump(
+                    exclude_none=True,
+                    mode="json"
+                )
+            elif isinstance(self.__response_format, dict):
+                payload["response_format"] = self.__response_format
+            else:
+                logger.error("Unsupported response format type: %s. The response format will not be applied.", type(self.__response_format))
+
         _env = os.getenv("SHOW_USAGE_STATISTICS")
         if _env is not None:
             payload["stream_options"] = {
@@ -84,6 +99,9 @@ class AssistantInvoker:
                 message=e.code,
                 display_message=e.body["message"] if isinstance(e.body, dict) else e.body,
             )
+        except Exception as e:
+            logger.exception("Error during chat completion")
+            raise
         return chat_completion
 
     @staticmethod

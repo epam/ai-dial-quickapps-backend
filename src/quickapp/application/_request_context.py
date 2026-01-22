@@ -1,7 +1,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
-from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion import Choice, ResponseFormat
+from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER
 from quickapp.common.messages_mixin import MessagesMixin
@@ -12,6 +13,17 @@ from quickapp.config.application import ApplicationConfig
 # The AppModule DI module then uses _RequestContext to provide dependencies (api_key, choice, application_config, choice)
 # to other parts of the application during the request lifecycle.
 
+def _validate_response_format(response_format: Optional[ResponseFormat]) -> None:
+    """Validate that response_format has the correct structure."""
+    if response_format is None:
+        return
+
+    if response_format.type == "json_schema":
+        if not hasattr(response_format, 'json_schema') or response_format.json_schema is None:
+            raise InvalidRequestError(
+                message="Invalid response format",
+                display_message="When type is 'json_schema', the 'json_schema' field must be provided"
+            )
 
 @dataclass
 class _RequestContext(MessagesMixin):
@@ -20,6 +32,7 @@ class _RequestContext(MessagesMixin):
     __application_config: Optional[ApplicationConfig] = None
     __bearer_set: bool = False
     __bearer: DIAL_BEARER = None
+    __response_format: Optional[ResponseFormat] = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -69,3 +82,14 @@ class _RequestContext(MessagesMixin):
         if self.__choice:
             raise RuntimeError("Choice is already set")
         self.__choice = choice
+
+    @property
+    def response_format(self) -> Optional[ResponseFormat]:
+        return self.__response_format
+
+    @response_format.setter
+    def response_format(self, response_format: Optional[ResponseFormat]) -> None:
+        if self.__response_format is not None:
+            raise RuntimeError("Response format is already set")
+        _validate_response_format(response_format)
+        self.__response_format = response_format
