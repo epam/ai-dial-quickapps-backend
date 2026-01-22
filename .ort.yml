@@ -4,6 +4,9 @@ excludes:
     - pattern: "dev"
       reason: "DEV_DEPENDENCY_OF"
       comment: "Packages for development only."
+    - pattern: "integration"
+      reason: "DEV_DEPENDENCY_OF"
+      comment: "Packages for integration testing only."
     - pattern: "experiments"
       reason: "DEV_DEPENDENCY_OF"
       comment: "Packages for experimentation only."
@@ -233,7 +236,6 @@ resolutions:
     - message: ".*PyPI::nvidia-cusparselt-cu12:0.\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "Other/Proprietary License (LicenseRef-NVIDIA-Proprietary): https://developer.nvidia.com/cuda-toolkit/eula"
-
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
       reason: "CANT_FIX_EXCEPTION"
