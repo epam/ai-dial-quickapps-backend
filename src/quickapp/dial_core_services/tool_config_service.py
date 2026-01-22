@@ -27,6 +27,10 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
+from quickapp.dial_core_services.exceptions import (
+    ToolsetForbiddenException,
+    ToolsetNotFoundException,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -165,13 +169,20 @@ class ToolConfigCoreService:
         if api_key is None:
             raise RuntimeError("API-KEY must be set")
         async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
-            toolset_model: Optional[ToolsetInfo] = None
             try:
                 logger.debug(f"Getting toolset tool config for {toolset_dial_id}")
                 info_dict = await dial_core.get_toolset_info(toolset_dial_id)
-                toolset_model = ToolsetInfo.model_validate(info_dict)
+                return ToolsetInfo.model_validate(info_dict)
             except HTTPStatusError as e:
+                logger.exception(f"Something went wrong during getting toolset {toolset_dial_id}")
                 if e.response.status_code == 404:
-                    logger.error(f"No toolset found for {toolset_dial_id}")
-
-            return toolset_model
+                    raise ToolsetNotFoundException(
+                        toolset_id=toolset_dial_id,
+                        details=f"{e.response.status_code} {getattr(e.response, 'reason_phrase', '')}",
+                    )
+                elif e.response.status_code == 403:
+                    raise ToolsetForbiddenException(
+                        toolset_id=toolset_dial_id,
+                        details=f"{e.response.status_code} {getattr(e.response, 'reason_phrase', '')}",
+                    )
+                raise

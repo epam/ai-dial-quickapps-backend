@@ -59,8 +59,12 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 tool_info.deployment_id,
             )
             if tool_config is None:
-                return  # skip if config could not be retrieved
+                raise ToolInitializationException(f"No tool config for {tool_info.deployment_id}")
             return self.__init_deployment_tool(tool_config)
+
+        except ToolInitializationException as e:
+            logger.error(e, exc_info=True)
+            self.__deployment_context.append_exception(e)
         except Exception as e:
             logger.error(e, exc_info=True)
             self.__deployment_context.append_exception(
