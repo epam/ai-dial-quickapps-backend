@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Optional
 
 import httpx
 from injector import AssistedBuilder, ProviderOf, inject
@@ -91,11 +91,16 @@ class _MCPToolInitializer(CompletionInitializer):
         try:
             # Resolve DialMCPToolSet data asynchronously if needed
             if isinstance(toolset_info, DialMCPToolSet):
-                dial_toolset_info: ToolsetInfo = await self.__mcp_cache.get(
+                dial_toolset_info: Optional[ToolsetInfo] = await self.__mcp_cache.get(
                     f"mcp_toolset_{toolset_info.dial_id}",
                     self.__tool_config_service.get_basic_toolset_config,
                     toolset_info.dial_id,
                 )
+                if not dial_toolset_info:
+                    raise ToolInitializationException(
+                        message=f"Failed to retrieve toolset info for DIAL ID {toolset_info.dial_id}",
+                        toolset_name=toolset_info.name,
+                    )
                 resolved_toolset = MCPToolSet(
                     name=dial_toolset_info.display_name or toolset_info.name,
                     description=dial_toolset_info.description,
@@ -141,6 +146,9 @@ class _MCPToolInitializer(CompletionInitializer):
             if created_tools:
                 self.__mcp_context.extend_tools(created_tools)
 
+        except ToolInitializationException as e:
+            logger.error(e, exc_info=True)
+            self.__mcp_context.append_exception(e)
         except httpx.HTTPStatusError as e:
             logger.error(f"HTTP error: {e}", exc_info=True)
             self.__mcp_context.append_exception(

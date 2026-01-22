@@ -5,9 +5,7 @@ class ToolInitializationException(Exception):
         self, message: str, tool_name: str = "", toolset_name: str = "", details: str = ""
     ):
         super().__init__(
-            f"Initialization Error: {message}"
-            + (f" for Tool: {tool_name}" if tool_name else "")
-            + (f", Toolset: {toolset_name}" if toolset_name else "")
+            f"Initialization Error: {message}" + (f" for Tool: {tool_name}" if tool_name else "")
         )
         self.toolset_name = toolset_name
         self.message = message
