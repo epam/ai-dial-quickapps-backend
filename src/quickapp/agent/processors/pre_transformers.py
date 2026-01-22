@@ -21,16 +21,19 @@ class PreTransformer(ABC):
 
 class AddSystemPromptTransformer(PreTransformer):
 
-    def __init__(self, system_prompt: Optional[str]):
-        self.system_prompt = system_prompt
+    def __init__(self, system_prompt: Optional[str], instructions: Optional[str] = None):
+        parts = (system_prompt or "", instructions or "")
+        self._combined_system_prompt = "\n\n".join(p for p in parts if p)
 
     def transform(self, messages: list[Message]):
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
-        if not self.system_prompt:
+        if not self._combined_system_prompt:
             return messages
         if len(messages) > 0 and messages[0].role != Role.SYSTEM:
-            return [Message(role=Role.SYSTEM, content=StrictStr(self.system_prompt))] + messages
+            return [
+                Message(role=Role.SYSTEM, content=StrictStr(self._combined_system_prompt))
+            ] + messages
 
         return messages
 
