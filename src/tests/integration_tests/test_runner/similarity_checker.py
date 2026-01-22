@@ -29,7 +29,7 @@ def load_or_download_model(model_name: str, local_dir: Path) -> SentenceTransfor
 
 model_name = 'BAAI/bge-small-en-v1.5'
 # model_name = 'all-MiniLM-L6-v2'
-model_base_path = Path(__file__).parent.parent.parent.parent / "models"
+model_base_path = Path(__file__).parent.parent.parent.parent.parent / "models"
 model = load_or_download_model(model_name, model_base_path)
 
 

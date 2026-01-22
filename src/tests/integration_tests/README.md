@@ -33,13 +33,13 @@ Changes required:
     - Update the agent/orchestrator model list in `src/tests/test_runner/cache/cache_middleware.py` (the `AGENT_MODELS` list) to include or remove models available on your instance.
 
 Notes:
-- Building the cache (with `REFRESH=TRUE`) records real model responses for later deterministic integration runs.
+- Building the cache (with `REFRESH=TRUE`) saves real model responses for later deterministic integration runs.
 - Keep the cached responses committed if you intend to share reproducible integration tests.
 
 
 ## 3. Execute tests
 - Run end-to-end tests: `make e2e_test`
-- Run end-to-end tests: `make e2e_test`
+- Run integration tests: `make integration_test`
 
 ## Test types (brief)
 - `e2e`:
