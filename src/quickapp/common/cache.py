@@ -36,7 +36,7 @@ class CacheService(Generic[T]):
 
     async def get(
         self, key: str, loader: Callable[..., Awaitable[Optional[T]]], *args, **kwargs
-    ) -> T:
+    ) -> Optional[T]:
         entry = self._cache.get(key)
         if entry is not None and not entry.is_expired():
             logger.debug(f"{key} value loaded from cache")
@@ -44,7 +44,8 @@ class CacheService(Generic[T]):
         # Load new value because expired or missing
         value = await loader(*args, **kwargs)
         if value is None:
-            raise RuntimeError("loader returns None. None can't be cached.")
+            logger.warning(f"Loader return None for {key}. None can't be cached.")
+            return None
         logger.debug(f"{key} value loaded and updated in cache")
         self._cache.put(key, CacheEntry(value, self._ttl))
         return value

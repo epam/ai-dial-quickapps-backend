@@ -11,7 +11,7 @@ from quickapp.config.toolsets.base import BaseToolSet
 class DialMCPToolSet(BaseToolSet):
     type: Literal["dial-mcp"] = Field(default="dial-mcp", description="The type of the tool set.")
     # Override name of BaseToolSet. UI team doesn't send us this field.
-    name: str = Field(default="dial-mcp", description="default name of the toolset")
+    name: str = Field(default="untitled-mcp-toolset", description="default name of the toolset")
     dial_id: str = DialResourceConfigField(
         description="The Dial ID associated with this MCP toolset."
     )
