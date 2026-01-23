@@ -14,8 +14,11 @@ install: init_venv
 install_dev: init_venv
 	$(POETRY) install --with dev
 
+install_integration: init_venv
+	$(POETRY) install --with integration
+
 install_all: init_venv
-	$(POETRY) install --with dev
+	$(POETRY) install --with dev,integration
 
 clean:
 	-$(POETRY) run python -m src.scripts.clean
@@ -44,7 +47,7 @@ run_chat: install_dev
 	$(POETRY) run python src/quickapp/app.py
 
 test: install_dev
-	$(POETRY) run pytest src/tests/ --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
+	$(POETRY) run pytest src/tests/unit_tests --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
 
 dump_app_schema: install_dev
 	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
@@ -55,3 +58,34 @@ generate_dial_config: install_dev
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag \
     --schemas docker_compose_files/core/configuration/generated/application-schemas.json
+
+start_test_server:
+	echo "Starting MCP + REST servers..."
+	python src/tests/integration_tests/data_server_for_tests.py & echo $$! > .mcp_rest_server.pid
+	sleep 1
+	echo "Servers started with PID `cat .mcp_rest_server.pid`"
+
+stop_test_server:
+	@if [ -f .mcp_rest_server.pid ]; then \
+		pid=$$(cat .mcp_rest_server.pid); \
+		if kill -0 $$pid >/dev/null 2>&1; then \
+			echo "Stopping MCP + REST servers..."; \
+			kill $$pid; \
+			rm -f .mcp_rest_server.pid; \
+			echo "Servers stopped"; \
+		else \
+			echo "No running process found with PID $$pid"; \
+			rm -f .mcp_rest_server.pid; \
+		fi \
+	else \
+		echo "PID file not found. Are servers running?"; \
+	fi
+
+integration_test: install_integration
+	$(MAKE) start_test_server
+	$(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration"
+	$(MAKE) stop_test_server
+
+e2e_test: install_integration
+	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"
+

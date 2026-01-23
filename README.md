@@ -4,7 +4,7 @@
     <p align="center">
         <p align="center">
         <a href="https://dialx.ai/">
-          <img src="https://dialx.ai/dialx_logo.svg" alt="About DIALX">
+          <img src="https://dialx.ai/logo/dialx_logo.svg" alt="About DIALX">
         </a>
     </p>
 <h4 align="center">
@@ -164,6 +164,14 @@ Notes
 
    This command will set up the git hook scripts.
 
+## E2E & Integration tests:
+    
+    refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
+
+## Documentation
+
+- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## More
 
