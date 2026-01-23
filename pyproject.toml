@@ -31,7 +31,7 @@ bs4 = "^0.0.2"
 authlib = "^1.6.5"
 plotly = {version = "^6.5.2", extras = ["kaleido"]}
 mcp = "^1.23.2"
-fastmcp = "^2.14.3, <3"
+fastmcp = "^2.14.3"
 urllib3 = "^2.6.3"
 
 [tool.poetry.group.dev.dependencies]
