@@ -12,8 +12,9 @@ from quickapp.agent.processors.chunk_processor import ChunkProcessor
 from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
     AddSystemPromptTransformer,
+    ExtractToolCallsFromStateProcessor,
     PreTransformer,
-    ReduceAttachmentTransformer, ExtractToolCallsFromStateProcessor,
+    ReduceAttachmentTransformer,
 )
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
