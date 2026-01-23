@@ -168,6 +168,11 @@ Notes
     
     refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
 
+## Documentation
+
+- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
+
 ## More
 
 For more information about DIAL and its components, visit the [DIAL documentation](https://dialx.ai/docs). Join the DIAL community on [Discord](https://discord.gg/ukzj9U9tEe) for support and collaboration.
