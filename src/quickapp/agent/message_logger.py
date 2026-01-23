@@ -80,24 +80,6 @@ def format_openai_message_pipe_tree(
                     parts.append(f"ref_url={ref}")
                 logger.info("|------ " + " ".join(parts))
 
-        # Try to parse 'Attachment ...' lines embedded in content text
-        inline_atts = _parse_attachments_from_text(_flatten_content(msg.get("content")))
-        if inline_atts:
-            # If we already had attachments, keep a single section; else create it.
-            if not atts:
-                logger.info("|--- attachments:")
-            for i, att in enumerate(inline_atts, start=(len(atts) + 1) if atts else 1):
-                name = att.get("name", "-")
-                mime = att.get("mime", "-")
-                url = att.get("url")
-                ref = att.get("reference_url")
-                parts = [f"[{i}] name={name}", f"type={mime}"]
-                if url:
-                    parts.append(f"url={url}")
-                if ref:
-                    parts.append(f"ref_url={ref}")
-                logger.info("|------ " + " ".join(parts))
-
     # Stages (optional)
     if include_stages:
         stages = _extract_stages(msg)
