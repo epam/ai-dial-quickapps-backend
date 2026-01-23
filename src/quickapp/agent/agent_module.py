@@ -13,7 +13,7 @@ from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
     AddSystemPromptTransformer,
     PreTransformer,
-    ReduceAttachmentTransformer,
+    ReduceAttachmentTransformer, ExtractToolCallsFromStateProcessor,
 )
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
@@ -84,7 +84,7 @@ class AgentModule(Module):
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
-            # ExtractToolCallsFromStateProcessor(),
+            ExtractToolCallsFromStateProcessor(),
             # RemoveStateTransformer(),
             AddContextAttachmentTransformer(config.contexts),
             ReduceAttachmentTransformer(),
