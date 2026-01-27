@@ -12,6 +12,7 @@ from quickapp.agent.processors.chunk_processor import ChunkProcessor
 from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
     AddSystemPromptTransformer,
+    ExtractToolCallsFromStateProcessor,
     PreTransformer,
     ReduceAttachmentTransformer,
 )
@@ -84,7 +85,7 @@ class AgentModule(Module):
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
-            # ExtractToolCallsFromStateProcessor(),
+            ExtractToolCallsFromStateProcessor(),
             # RemoveStateTransformer(),
             AddContextAttachmentTransformer(config.contexts),
             ReduceAttachmentTransformer(),

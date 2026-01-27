@@ -1,0 +1,19 @@
+{
+  "name": "chat-hub",
+  "description": "Chat Hub tool set",
+  "type": "dial-deployment",
+  "tools": [
+    {
+      "type": "predefined-tool",
+      "template_name": "dial_rag"
+    },
+    {
+      "type": "predefined-tool",
+      "template_name": "image_generation"
+    },
+    {
+      "type": "predefined-tool",
+      "template_name": "web_search"
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "Hyper-realistic dinosaur in a natural prehistoric environment, extremely detailed skin texture, muscular body, sharp teeth, photo-realistic style, dramatic lighting, professional wildlife photography, ultra HD quality"
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Thu, 25 Sep 2025 13:26:14 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-8d56f7e4-df08-4ab3-8a2d-562cc7695a27\",\"choices\":[{\"delta\":{\"content\":\"\",\"role\":\"assistant\",\"custom_content\":{\"attachments\":[{\"title\":\"Revised prompt\",\"data\":\"A hyper-realistic dinosaur in a natural prehistoric environment. The dinosaur features extremely detailed skin textures, showcasing intricate scales and patterns. It has a muscular body structure, with visible tendons and sharp claws. The focus is on its sharp, glistening teeth, giving an impression of ferocity. The background depicts lush prehistoric vegetation, such as massive ferns and towering cycads, under dramatic lighting conditions. The scene is designed in a photo-realistic style, resembling professional wildlife photography. The overall image exudes lifelike details, with ultra HD quality and perfect lighting balance to highlight the creature's grandeur and the environment\\u2019s authenticity.\"},{\"title\":\"Image\",\"type\":\"image/png\",\"url\":\"files/DpZGXdhaTxtaR67JyAHgDVkSP3Fo4nvV4FYCWNadE2Ln/appdata/dall-e-3/images/7dfe2b3d1d02e6bd8a2c49b10bc45787d2447cdb0b068f57362435e95bd4f683.png\"}]}},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1758806777,\"model\":\"dall-e-3\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
