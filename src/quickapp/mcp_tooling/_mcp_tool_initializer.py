@@ -36,13 +36,9 @@ _UNTITLED_MCP_TOOLSET = DialMCPToolSet.model_fields["name"].default
 
 def _human_readable_dial_id(dial_id: str) -> str:
     """Extract a human-readable label from a DIAL toolset id.
-    E.g. 'toolsets/684f6.../GekkoMCP__0.0.1' or 'toolsets/GekkoMCP__0.0.1' -> 'GekkoMCP 0.0.1'.
+    E.g. 'toolsets/684f6.../TestMCP__0.0.1' or 'toolsets/TestMCP__0.0.1' -> 'TestMCP__0.0.1'.
     """
-    segment = dial_id.split("/")[-1] if "/" in dial_id else dial_id
-    # Normalize common version separator for readability: "Name__0.0.1" -> "Name 0.0.1"
-    if "__" in segment:
-        segment = segment.replace("__", " ", 1)
-    return segment
+    return dial_id.split("/")[-1] if "/" in dial_id else dial_id
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
