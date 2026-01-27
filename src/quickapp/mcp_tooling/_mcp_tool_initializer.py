@@ -30,6 +30,29 @@ from ._mcp_tooling_context import _MCPToolingContext
 
 logger = logging.getLogger(__name__)
 
+# Default name when UI doesn't send toolset name; must match DialMCPToolSet.name default
+_UNTITLED_MCP_TOOLSET = DialMCPToolSet.model_fields["name"].default
+
+
+def _human_readable_dial_id(dial_id: str) -> str:
+    """Extract a human-readable label from a DIAL toolset id.
+    E.g. 'toolsets/684f6.../GekkoMCP__0.0.1' or 'toolsets/GekkoMCP__0.0.1' -> 'GekkoMCP 0.0.1'.
+    """
+    segment = dial_id.split("/")[-1] if "/" in dial_id else dial_id
+    # Normalize common version separator for readability: "Name__0.0.1" -> "Name 0.0.1"
+    if "__" in segment:
+        segment = segment.replace("__", " ", 1)
+    return segment
+
+
+def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
+    """Return a label for this toolset suitable for error messages.
+    For DialMCPToolSet with default name, use a human-readable form of dial_id.
+    """
+    if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
+        return _human_readable_dial_id(toolset_info.dial_id)
+    return getattr(toolset_info, "name", "")
+
 
 @inject
 class _MCPToolInitializer(CompletionInitializer):
@@ -99,7 +122,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 if not dial_toolset_info:
                     raise ToolInitializationException(
                         message=f"Failed to retrieve toolset info for DIAL ID {toolset_info.dial_id}",
-                        toolset_name=toolset_info.name,
+                        toolset_name=_toolset_label_for_error(toolset_info),
                     )
                 resolved_toolset = MCPToolSet(
                     name=dial_toolset_info.display_name or toolset_info.name,
@@ -150,15 +173,17 @@ class _MCPToolInitializer(CompletionInitializer):
             logger.error(e, exc_info=True)
             self.__mcp_context.append_exception(e)
         except httpx.HTTPStatusError as e:
+            label = _toolset_label_for_error(toolset_info)
             logger.error(f"HTTP error: {e}", exc_info=True)
             self.__mcp_context.append_exception(
                 ToolInitializationException(
                     message=str(e),
-                    toolset_name=getattr(toolset_info, "name", ''),
-                    details=f"HTTP error for {getattr(toolset_info, 'name', '')}: {getattr(e.response, 'status_code', '')} {getattr(e.response, 'reason_phrase', '')}",
+                    toolset_name=label,
+                    details=f"HTTP error for {label}: {getattr(e.response, 'status_code', '')} {getattr(e.response, 'reason_phrase', '')}",
                 )
             )
         except Exception as e:
+            label = _toolset_label_for_error(toolset_info)
             logger.error(e, exc_info=True)
             details = ""
             if hasattr(e, "exceptions"):
@@ -166,7 +191,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 for sub_e in e.exceptions:
                     if isinstance(sub_e, httpx.HTTPStatusError):
                         details_list.append(
-                            f"HTTP error for {getattr(toolset_info, 'name', '')}: {getattr(sub_e.response, 'status_code', '')} {getattr(sub_e.response, 'reason_phrase', '')}"
+                            f"HTTP error for {label}: {getattr(sub_e.response, 'status_code', '')} {getattr(sub_e.response, 'reason_phrase', '')}"
                         )
                     else:
                         details_list.append(str(sub_e))
@@ -174,7 +199,7 @@ class _MCPToolInitializer(CompletionInitializer):
             self.__mcp_context.append_exception(
                 ToolInitializationException(
                     message=str(e),
-                    toolset_name=getattr(toolset_info, "name", ''),
+                    toolset_name=label,
                     details=details,
                 )
             )
