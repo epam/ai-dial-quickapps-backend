@@ -123,3 +123,70 @@ def test_rag_interpreter(client):
           )
 def test_image_recognition_and_web_search(client):
     pass
+
+
+@pytest.mark.integration
+@pytest.mark.requires_session
+@e2e_test(config_file_set="integration",
+          test_case=TstCase(
+              name="Message history tree",
+              description="Two tool calls followed by message history request in markdown format",
+              similarity_threshold=0.8,
+          )
+          .add_mock_date(date(2024, 12, 31))
+          .add_user_message(
+              user_message="Search for information about Python programming language using web search, give me one sentence summary. then calculate 2+2 using the Python interpreter.",
+              tool_calls=[
+                  ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=4),
+                  ToolCall(ToolNames.PYTHON_CODE_INTERPRETER.value, max_calls=2),
+              ],
+              answer=[
+                  "Python is a high-level programming language",
+                  "4",
+              ],
+          )
+          .add_user_message(
+              user_message="Please show me the conversation history in markdown format as a tree structure. Include all messages: user messages, assistant messages, and tool calls.",
+              answer=[
+                  """Here is the conversation history in markdown tree format:
+
+```markdown
+# Conversation History
+
+## Message 1: User
+- Search for information about Python programming language using web search, then calculate 2+2 using the Python interpreter.
+
+## Message 2: Assistant
+- Python is a high-level programming language
+- Tool: web_search_tool
+- Tool: python_code_interpreter
+- Result: 4
+
+## Message 3: User
+- Please show me the conversation history in markdown format as a tree structure.
+```""",
+                  """# Conversation History
+
+## 1. User Message
+Search for information about Python programming language using web search, then calculate 2+2 using the Python interpreter.
+
+## 2. Assistant Response
+- Used web_search_tool to search for Python information
+- Used python_code_interpreter to calculate 2+2 = 4
+
+## 3. User Message
+Please show me the conversation history in markdown format as a tree structure.""",
+                  """```markdown
+# Message History
+
+1. **User**: Search for information about Python programming language using web search, then calculate 2+2 using the Python interpreter.
+2. **Assistant**: 
+   - Tool Call: web_search_tool
+   - Tool Call: python_code_interpreter
+   - Result: 4
+3. **User**: Please show me the conversation history in markdown format as a tree structure.
+```""",
+              ],
+          ))
+def test_message_history_tree(client):
+    pass

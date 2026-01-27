@@ -91,7 +91,7 @@ def test_text_to_image2(client):
     test_case=TstCase("Web search", "NBA winner 2025", similarity_threshold=0.7)
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations'",
+        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations. You may add source citations, but it is not required.'",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
