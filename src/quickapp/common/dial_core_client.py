@@ -38,6 +38,7 @@ class AttachmentResponse(BaseModel):
 # The model representing actual response on 11/11/2025. The documentation
 # https://dialx.ai/dial_api#tag/Deployment-listing/operation/getToolset is outdated.
 # might be updated with new version of aidial_client
+# todo check can we use model from .config instead of redefining it here
 class ToolsetInfo(BaseModel, extra='allow'):
     id: str
     toolset: str
