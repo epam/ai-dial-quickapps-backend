@@ -60,6 +60,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
         pre_process_transformers=[FakeTransformer()],
+        response_format=None
     )
 
     result = await invoker.invoke()
@@ -97,6 +98,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         choice=SimpleNamespace(),
         azure_client=azure_client,
         pre_process_transformers=[],
+        response_format=None
     )
 
     result = await invoker.invoke()
@@ -147,6 +149,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         choice=SimpleNamespace(),
         azure_client=azure_client,
         pre_process_transformers=[],
+        response_format=None
     )
 
     from aidial_sdk.exceptions import InvalidRequestError
