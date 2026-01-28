@@ -11,6 +11,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication

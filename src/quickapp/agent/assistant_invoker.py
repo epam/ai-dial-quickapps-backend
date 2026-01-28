@@ -74,13 +74,15 @@ class AssistantInvoker:
             logger.debug("Setting response format: %s", self.__response_format)
             if hasattr(self.__response_format, "model_dump"):
                 payload["response_format"] = self.__response_format.model_dump(
-                    exclude_none=True,
-                    mode="json"
+                    exclude_none=True, mode="json"
                 )
             elif isinstance(self.__response_format, dict):
                 payload["response_format"] = self.__response_format
             else:
-                logger.error("Unsupported response format type: %s. The response format will not be applied.", type(self.__response_format))
+                logger.error(
+                    "Unsupported response format type: %s. The response format will not be applied.",
+                    type(self.__response_format),
+                )
 
         _env = os.getenv("SHOW_USAGE_STATISTICS")
         if _env is not None:
@@ -99,7 +101,7 @@ class AssistantInvoker:
                 message=e.code,
                 display_message=e.body["message"] if isinstance(e.body, dict) else e.body,
             )
-        except Exception as e:
+        except Exception:
             logger.exception("Error during chat completion")
             raise
         return chat_completion

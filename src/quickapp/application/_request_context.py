@@ -13,6 +13,7 @@ from quickapp.config.application import ApplicationConfig
 # The AppModule DI module then uses _RequestContext to provide dependencies (api_key, choice, application_config, choice)
 # to other parts of the application during the request lifecycle.
 
+
 def _validate_response_format(response_format: Optional[ResponseFormat]) -> None:
     """Validate that response_format has the correct structure."""
     if response_format is None:
@@ -22,8 +23,9 @@ def _validate_response_format(response_format: Optional[ResponseFormat]) -> None
         if not hasattr(response_format, 'json_schema') or response_format.json_schema is None:
             raise InvalidRequestError(
                 message="Invalid response format",
-                display_message="When type is 'json_schema', the 'json_schema' field must be provided"
+                display_message="When type is 'json_schema', the 'json_schema' field must be provided",
             )
+
 
 @dataclass
 class _RequestContext(MessagesMixin):
