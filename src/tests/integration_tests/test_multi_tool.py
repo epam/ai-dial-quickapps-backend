@@ -119,6 +119,7 @@ def test_rag_interpreter(client):
                   Worldwide Gross: Over $104 million
               """
               ]
+
           ).add_mock_date(date(2024, 12, 31))
           )
 def test_image_recognition_and_web_search(client):
