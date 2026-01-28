@@ -42,7 +42,7 @@ class ToolsetInfo(BaseModel, extra='allow'):
     id: str
     toolset: str
     display_name: str
-    description: str
+    description: str | None = Field(default=None, description="Optional toolset description")
     features: Features
     transport: str = Field(
         description="The transport supported by a specific MCP server. The available options are HTTP or SSE"

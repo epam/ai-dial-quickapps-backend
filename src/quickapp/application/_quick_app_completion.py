@@ -93,6 +93,9 @@ class _QuickAppCompletion(ChatCompletion):
         if choice:
             context.choice = choice
 
+        if getattr(request, "response_format", None):
+            context.response_format = request.response_format
+
     @staticmethod
     def __handle_exception(choice: Choice, e: Exception):
         # TODO: exception stage?
