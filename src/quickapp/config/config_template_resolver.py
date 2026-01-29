@@ -141,17 +141,21 @@ class TemplateType(str, Enum):
 
 
 def add_default_content_downloader(raw_config: ApplicationConfig):
+    # Check if any existing tool set already has the `content_downloader` predefined tool
     for tool_set in raw_config.tool_sets:
-        for tool in tool_set.tools:
+        if not hasattr(tool_set, "tools"):
+            # Some tool set variants do not define `tools`
+            continue
+        for tool in tool_set.tools:  # type: ignore[union-attr]
             if isinstance(tool, PredefinedTool) and tool.template_name == "content_downloader":
                 return
-    raw_config.tool_sets.extend(
-        [
-            InternalToolSet(
-                name="Default tools",
-                tools=[PredefinedTool(template_name="content_downloader", enabled=True)],
-            )
-        ]
+
+    # If not found, append a default internal tool set with the content_downloader tool
+    raw_config.tool_sets.append(
+        InternalToolSet(
+            name="Default tools",
+            tools=[PredefinedTool(template_name="content_downloader", enabled=True)],
+        )
     )
 
 
