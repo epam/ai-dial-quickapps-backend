@@ -7,7 +7,6 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
@@ -44,6 +43,7 @@ class InternalToolModule(Module):
         self,
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
+        cd_builder: AssistedBuilder[_ContentDownloadTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
         for tool_set in app_config.tool_sets:
@@ -65,16 +65,20 @@ class InternalToolModule(Module):
                                     description=tool_config.open_ai_tool.function.description,
                                 )
                             )
+                        elif tool_config.open_ai_tool.function.name.startswith(
+                            'content_downloader'
+                        ):
+                            tools.append(
+                                cd_builder.build(
+                                    tool_config=tool_config,
+                                    name=tool_config.open_ai_tool.function.name,
+                                    description=tool_config.open_ai_tool.function.description,
+                                    content_size_limit=int(
+                                        os.getenv("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", "20971520")
+                                    ),  # 20Mb
+                                )
+                            )
         return tools
-
-    @multiprovider
-    def _provide_content_downloader(
-        self, cd_builder: AssistedBuilder[_ContentDownloadTool], config_resolver: ConfigResolver
-    ) -> list[StagedBaseTool]:
-        tool_config = config_resolver.resolve_tool(
-            PredefinedTool(template_name="content_downloader")
-        )
-        return [self._build_cd_tool(tool_config, cd_builder)]
 
     @singleton
     @provider
@@ -110,15 +114,4 @@ class InternalToolModule(Module):
             base_url=py_interpreter_settings.url,
             timeout=py_interpreter_settings.client_timeout,
             max_retries=py_interpreter_settings.client_max_retries,
-        )
-
-    @staticmethod
-    def _build_cd_tool(tool_config, cd_builder: AssistedBuilder[_ContentDownloadTool]):
-        return cd_builder.build(
-            tool_config=tool_config,
-            name=tool_config.open_ai_tool.function.name,
-            description=tool_config.open_ai_tool.function.description,
-            content_size_limit=int(
-                os.getenv("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", "20971520")
-            ),  # 20Mb
         )
