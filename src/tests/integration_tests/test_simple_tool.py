@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import date
 from pathlib import Path
 
@@ -447,4 +446,51 @@ def test_rest_api_toolcall(client):
     )
 )
 def test_mcp_toolcall(client):
+    pass
+
+
+@pytest.mark.integration
+@e2e_test(
+    config_file_set="integration_simple",
+    models=["gpt-5-2025-08-07"],
+    test_case=TstCase(
+        "Response format JSON schema",
+        "Test response format with JSON schema for structured output",
+        similarity_threshold=0.7,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "city_weather_response",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "city": {
+                            "type": "string",
+                            "description": "The name of the city"
+                        },
+                        "temperature": {
+                            "type": "number",
+                            "description": "The temperature in Celsius"
+                        },
+                        "condition": {
+                            "type": "string",
+                            "description": "Weather condition (e.g., sunny, rainy, cloudy)"
+                        },
+                        "humidity": {
+                            "type": "integer",
+                            "description": "Humidity percentage"
+                        }
+                    },
+                    "required": ["city", "temperature", "condition", "humidity"],
+                    "additionalProperties": False
+                }
+            }
+        }
+    ).add_user_message(
+        user_message="Provide weather information for New York City. The temperature is 22 degrees Celsius, it's sunny with 65% humidity.",
+        tool_calls=[],
+    )
+)
+def test_response_format_json_schema(client):
     pass

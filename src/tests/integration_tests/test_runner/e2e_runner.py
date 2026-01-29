@@ -140,13 +140,22 @@ class TestRunner:
                 message["custom_content"] = {"attachments": attachment_objects}
             messages.append(message)
             logger.debug(f"send {message} to {client.base_url}")
+
+            # Prepare request payload
+            request_payload = {
+                "model": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
+                "messages": messages,
+            }
+
+            # Add response_format if specified in test case
+            if test_case.response_format:
+                request_payload["response_format"] = test_case.response_format
+                logger.debug(f"Using response_format: {test_case.response_format}")
+
             response = client.post(
                 TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
                 headers=headers,
-                json={
-                    "model": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
-                    "messages": messages,
-                },
+                json=request_payload,
                 timeout=100.0,
             )
 
@@ -176,6 +185,16 @@ class TestRunner:
                 break
 
             logger.info(f"content:{response_message.content}")
+
+            # Validate response format if specified
+            if test_case.response_format:
+                format_failures = ResponseValidator.validate_json_schema_response(
+                    response_message.content, test_case.response_format, ts
+                )
+                if format_failures:
+                    ts.increment_failure(FailureReason.ANSWER)
+                    all_failures.extend(format_failures)
+
             # Check message answer if expected
             if test_message_data.answer:
                 failures = check_multiple_alternatives(
@@ -282,21 +301,11 @@ def e2e_test(
 
             execution_model_list = models if models else []
 
-            # Prefer decorator-provided models. If none provided, fall back to CLI.
-            cli_model = None
-            try:
-                cli_model = request.config.getoption("--model")
-            except Exception:
-                cli_model = None
-
-            if execution_model_list:
-                if cli_model:
-                    logger.warning("CLI --model parameter is ignored because models were provided to the decorator.")
-            else:
-                if cli_model:
-                    execution_model_list.append(cli_model)
+            if len(execution_model_list) == 0:
+                if request.config.getoption("--model"):
+                    execution_model_list.append(request.config.getoption("--model"))
                 else:
-                    raise ValueError("Model parameter is not defined. Provide --model CLI option or pass `models` to the decorator.")
+                    raise ValueError("Model parameter is not defined. Provide --model CLI option or pass 'models' to the decorator.")
 
             for m in execution_model_list:
                 # Run the test multiple times according to the runs parameter
