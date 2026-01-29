@@ -255,7 +255,6 @@ async def execute_single_test_run(
 def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
-    model: str = None,
     models: List[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
@@ -283,13 +282,21 @@ def e2e_test(
 
             execution_model_list = models if models else []
 
-            if len(execution_model_list) == 0:
-                if execution_model_list:
-                    execution_model_list.append(model)
-                elif request.config.getoption("--model"):
-                    execution_model_list.append(request.config.getoption("--model"))
+            # Prefer decorator-provided models. If none provided, fall back to CLI.
+            cli_model = None
+            try:
+                cli_model = request.config.getoption("--model")
+            except Exception:
+                cli_model = None
+
+            if execution_model_list:
+                if cli_model:
+                    logger.warning("CLI --model parameter is ignored because models were provided to the decorator.")
+            else:
+                if cli_model:
+                    execution_model_list.append(cli_model)
                 else:
-                    execution_model_list.append(TestConfig.DEFAULT_MODEL)
+                    raise ValueError("Model parameter is not defined. Provide --model CLI option or pass `models` to the decorator.")
 
             for m in execution_model_list:
                 # Run the test multiple times according to the runs parameter
