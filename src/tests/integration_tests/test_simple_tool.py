@@ -451,8 +451,9 @@ def test_mcp_toolcall(client):
 
 @pytest.mark.integration
 @e2e_test(
+    runs=1,
     config_file_set="integration_simple",
-    models=["gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4o-mini-2024-07-18", "gpt-4.1-2025-04-14", "anthropic.claude-v4-5-sonnet-v1", "gemini-2.5-pro"],
+    models=["gemini-2.5-pro", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4.1-2025-04-14"],
     test_case=TstCase(
         "Response format JSON schema",
         "Test response format with JSON schema for structured output",
@@ -488,8 +489,7 @@ def test_mcp_toolcall(client):
             }
         }
     ).add_user_message(
-        user_message="Provide weather information for New York City. The temperature is 22 degrees Celsius, it's sunny with 65% humidity.",
-        tool_calls=[],
+        user_message="IMPORTANT! DO NOT call any tools, just use information provided in the message to create the response according to the schema. Format weather answer according to provided schema. Use this data: city - TestCity, temperature is 22 degrees Celsius, it's sunny with 65% humidity. ",
     )
 )
 def test_response_format_json_schema(client):

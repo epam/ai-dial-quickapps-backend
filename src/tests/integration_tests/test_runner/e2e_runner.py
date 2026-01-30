@@ -91,12 +91,21 @@ class TestRunner:
 
     @staticmethod
     async def stop_server(server, cache_middleware_app):
-
-        await cache_middleware_app.close_resources()
-
+        # Signal server to shut down first
         server.should_exit = True
-        logger.debug("Shutting down server...")
-        await asyncio.sleep(1)
+        logger.debug("Signaling server shutdown...")
+
+        # Give server a moment to start shutting down
+        await asyncio.sleep(0.5)
+
+        # Then close app resources
+        try:
+            await cache_middleware_app.close_resources()
+        except Exception as e:
+            logger.warning(f"Error during resource cleanup: {e}")
+
+        # Give more time for cleanup to complete
+        await asyncio.sleep(1.5)
 
     @staticmethod
     async def get_attachment_url(dial_url: str, headers, attachment: Path):
@@ -378,13 +387,8 @@ def e2e_test(
 
             finally:
                 await TestRunner.stop_server(server, middleware)
-                # Properly close the client
-                if hasattr(client, "aclose"):
-                    await client.aclose()
-                # Shutdown async generators
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    await loop.shutdown_asyncgens()
+                # TestClient is synchronous and doesn't need async close
+                # Don't shutdown async generators while loop is running
 
         return wrapper
 
