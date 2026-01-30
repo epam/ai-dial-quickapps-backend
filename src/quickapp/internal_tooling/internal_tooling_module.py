@@ -38,7 +38,6 @@ class InternalToolModule(Module):
         self,
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
-        cd_builder: AssistedBuilder[_ContentDownloadTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
         for tool_set in app_config.tool_sets:
@@ -58,19 +57,6 @@ class InternalToolModule(Module):
                                     tool_config=tool_config,
                                     name=tool_config.open_ai_tool.function.name,
                                     description=tool_config.open_ai_tool.function.description,
-                                )
-                            )
-                        elif tool_config.open_ai_tool.function.name.startswith(
-                            'content_downloader'
-                        ):
-                            tools.append(
-                                cd_builder.build(
-                                    tool_config=tool_config,
-                                    name=tool_config.open_ai_tool.function.name,
-                                    description=tool_config.open_ai_tool.function.description,
-                                    content_size_limit=int(
-                                        os.getenv("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", "20971520")
-                                    ),  # 20Mb
                                 )
                             )
         return tools
