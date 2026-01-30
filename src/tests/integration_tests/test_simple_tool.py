@@ -452,7 +452,7 @@ def test_mcp_toolcall(client):
 @pytest.mark.integration
 @e2e_test(
     config_file_set="integration_simple",
-    models=["gpt-5-2025-08-07"],
+    models=["gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4o-mini-2024-07-18", "gpt-4.1-2025-04-14", "anthropic.claude-v4-5-sonnet-v1", "gemini-2.5-pro"],
     test_case=TstCase(
         "Response format JSON schema",
         "Test response format with JSON schema for structured output",
