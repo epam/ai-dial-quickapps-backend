@@ -85,20 +85,19 @@ class AgentModule(Module):
     def provide_pre_processors(
         self, config: ApplicationConfig, instructions_provider: AgentInstructionsProvider
     ) -> list[PreTransformer]:
-        # Order of Transformers is crucial for correct request processing
+        # Order matters: injector must capture attachment metadata before reducer strips non-images
         return [
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
             ExtractToolCallsFromStateProcessor(),
-            # RemoveStateTransformer(),
             AddContextAttachmentTransformer(config.contexts),
-            ReduceAttachmentTransformer(),
             AttachmentNotificationInjector(
                 attachments_tool_name=AVAILABLE_ATTACHMENTS_TOOL_NAME,
                 context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
                 contexts=config.contexts,
             ),
+            ReduceAttachmentTransformer(),
         ]
 
     @multiprovider
