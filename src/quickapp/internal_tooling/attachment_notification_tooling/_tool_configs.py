@@ -9,23 +9,6 @@ from quickapp.config.tools.internal import InternalTool
 
 INTERNAL_TOOL_NAME_PREFIX = "quickapps_internal_"
 
-AVAILABLE_ATTACHMENTS_TOOL_CONFIG = InternalTool(
-    open_ai_tool=OpenAiToolConfig(
-        function=OpenAiToolFunction(
-            name=f"{INTERNAL_TOOL_NAME_PREFIX}available_attachments",
-            description=(
-                "Returns metadata about user-uploaded file attachments"
-                " available in the conversation."
-            ),
-            parameters=OpenAiToolFunctionParameters(
-                type=JsonTypeEnum.object,
-                properties={},
-            ),
-        )
-    ),
-    display=ToolDisplayConfig(stage=ToolStageConfig(name="Available attachments")),
-)
-
 AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
@@ -43,6 +26,5 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Available context")),
 )
 
-# Tool names after hashing by OpenAiToolFunction.set_name validator
-AVAILABLE_ATTACHMENTS_TOOL_NAME = AVAILABLE_ATTACHMENTS_TOOL_CONFIG.open_ai_tool.function.name
+# Tool name after hashing by OpenAiToolFunction.set_name validator
 AVAILABLE_CONTEXT_TOOL_NAME = AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name

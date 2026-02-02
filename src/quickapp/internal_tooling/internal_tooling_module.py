@@ -9,14 +9,10 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-from quickapp.internal_tooling.attachment_notification_tooling._available_attachments_tool import (
-    _AvailableAttachmentsTool,
-)
 from quickapp.internal_tooling.attachment_notification_tooling._available_context_tool import (
     _AvailableContextTool,
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_ATTACHMENTS_TOOL_CONFIG,
     AVAILABLE_CONTEXT_TOOL_CONFIG,
 )
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
@@ -45,7 +41,6 @@ class InternalToolModule(Module):
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
-        binder.bind(_AvailableAttachmentsTool, to=_AvailableAttachmentsTool, scope=request_scope)
         binder.bind(_AvailableContextTool, to=_AvailableContextTool, scope=request_scope)
 
         logger.debug("InternalTooling module configuration completed")
@@ -56,7 +51,6 @@ class InternalToolModule(Module):
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
         cd_builder: AssistedBuilder[_ContentDownloadTool],
-        aa_builder: AssistedBuilder[_AvailableAttachmentsTool],
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
@@ -93,14 +87,7 @@ class InternalToolModule(Module):
                                 )
                             )
 
-        # Always register attachment notification tools
-        tools.append(
-            aa_builder.build(
-                tool_config=AVAILABLE_ATTACHMENTS_TOOL_CONFIG,
-                name=AVAILABLE_ATTACHMENTS_TOOL_CONFIG.open_ai_tool.function.name,
-                description=AVAILABLE_ATTACHMENTS_TOOL_CONFIG.open_ai_tool.function.description,
-            )
-        )
+        # Always register context notification tool
         tools.append(
             ac_builder.build(
                 tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,

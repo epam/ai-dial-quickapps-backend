@@ -77,6 +77,12 @@ class ReduceAttachmentTransformer(PreTransformer):
                     attachment.type, self.SUPPORTED_ATTACHMENTS
                 ):
                     updated_attachments.append(attachment)
+                # Inform agent that message had contained some attachment.
+                # As adapter would resolve the actual bytes and URL would be lost.
+                message.content += (
+                    f"\n\rAttachment {attachment.title}, of type {attachment.type}, "
+                    f"url {attachment.url}, reference_url {attachment.reference_url}\n\r"
+                )
             message.custom_content.attachments = updated_attachments
 
         return message
@@ -154,67 +160,27 @@ class AddContextAttachmentTransformer(PreTransformer):
 
 class AttachmentNotificationInjector(PreTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
-    available attachments and contexts when changes are detected."""
+    available contexts when changes are detected."""
 
     def __init__(
         self,
-        attachments_tool_name: str,
         context_tool_name: str,
         contexts: list[Context],
     ):
-        self._attachments_tool_name = sanitize_toolname(attachments_tool_name)
         self._context_tool_name = sanitize_toolname(context_tool_name)
         self._contexts = contexts
-        self._seen_attachment_urls: set[str] = set()
         self._seen_context_urls: set[str] = set()
 
     def transform(self, messages: list[Message]) -> list[Message]:
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
 
-        synthetic: list[Message] = []
-        synthetic.extend(self._check_attachments(messages))
-        synthetic.extend(self._check_contexts())
+        synthetic: list[Message] = self._check_contexts()
 
         if not synthetic:
             return messages
 
         return messages + synthetic
-
-    def _check_attachments(self, messages: list[Message]) -> list[Message]:
-        """Collect user attachment metadata and return synthetic messages if changed."""
-        current_urls: set[str] = set()
-        entries: list[dict[str, str]] = []
-
-        for message in messages:
-            if message.role != Role.USER:
-                continue
-            if not message.custom_content or not message.custom_content.attachments:
-                continue
-            for attachment in message.custom_content.attachments:
-                url = str(attachment.url) if attachment.url else ""
-                if not url or url in current_urls:
-                    continue
-                current_urls.add(url)
-                entry: dict[str, str] = {
-                    "title": str(attachment.title) if attachment.title else "",
-                    "url": url,
-                    "type": str(attachment.type) if attachment.type else "",
-                }
-                if url not in self._seen_attachment_urls:
-                    entry["status"] = "new"
-                entries.append(entry)
-
-        if current_urls == self._seen_attachment_urls:
-            return []
-
-        self._seen_attachment_urls = current_urls
-        if not entries:
-            return []
-
-        return self._build_synthetic_messages(
-            self._attachments_tool_name, json.dumps(entries, ensure_ascii=False)
-        )
 
     def _check_contexts(self) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""

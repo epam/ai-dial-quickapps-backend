@@ -85,7 +85,7 @@ calls or the maximum iteration limit is reached.
 1. **Iteration Tracking**: The iteration counter is incremented and checked against the configured maximum. If exceeded,
    the loop terminates with an error message.
 
-2. **Attachment Notification**: Before the LLM call, the system checks whether available attachments or contexts have
+2. **Attachment Notification**: Before the LLM call, the system checks whether admin-configured context files have
    changed since the last notification. If changes are detected, synthetic tool call and tool result messages are
    injected into the conversation history to inform the agent. See [Attachment Notification](#attachment-notification)
    for details.
@@ -141,7 +141,7 @@ Quick Apps supports several tool types:
 - **REST API Tools**: HTTP endpoints defined declaratively in configuration
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
-- **Internal Tools**: Built-in tools like Python interpreter, content downloader, and attachment notification tools
+- **Internal Tools**: Built-in tools like Python interpreter, content downloader, and context notification tool
 
 ### Parallel Execution
 
@@ -204,13 +204,13 @@ Before each LLM call, messages pass through a series of transformers that modify
    them available to the LLM.
 
 3. **Attachment Reducer**: Filters attachments to only those supported by the LLM (typically images) so that vision
-   models can process them inline. Non-image attachments are removed from message content. The agent is informed about
-   all attachments (including non-image ones) through the attachment notification tools rather than text injected into
-   user messages.
+   models can process them inline. Non-image attachments are removed from `custom_content`. For all attachments, text
+   metadata (`Attachment X, of type Y, url Z`) is appended to the user message content so the agent knows which files
+   are available.
 
-4. **Attachment Notification Injector**: Checks whether available user attachments or admin-configured contexts have
-   changed since the last notification. If changes are detected, inserts synthetic tool call and tool result message
-   pairs into the history. See [Attachment Notification](#attachment-notification) for details.
+4. **Attachment Notification Injector**: Checks whether admin-configured context files have changed since the last
+   notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
+   using the `available_context` tool. See [Attachment Notification](#attachment-notification) for details.
 
 The transformers operate on a deep copy of the messages to avoid mutating the conversation history.
 
@@ -232,74 +232,56 @@ The processor builds an aggregated result containing all accumulated data for th
 
 ## Attachment Notification
 
-The attachment notification system informs the agent about available files without polluting user messages with metadata
-text. It uses two internal tools and an algorithmic injection mechanism.
+The system uses two separate mechanisms to inform the agent about available files:
 
-### Problem
+- **User attachments**: The Attachment Reducer appends text metadata to user message content (e.g.,
+  `Attachment X, of type Y, url Z`). This is simple, direct, and preserves the natural conversation flow.
+- **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
+  `available_context` internal tool. This provides structured metadata without modifying user messages.
 
-Previously, the Attachment Reducer appended text like `Attachment X, of type Y, url Z` to user message content. This
-approach polluted user messages with metadata and confused the agent's context awareness — the agent could not clearly
-distinguish between what the user wrote and what files were available.
+### Context Notification Tool
 
-### Design
-
-Two internal tools provide file awareness to the agent:
-
-- **`available_attachments`**: Returns metadata about user-uploaded attachments accumulated across the conversation.
-- **`available_context`**: Returns metadata about admin-configured context files attached to the application.
-
-The tools are kept separate so the agent can distinguish user-provided files from admin-configured contexts, avoiding
-confusion (e.g., the agent telling a user they "attached" a file that was actually configured by an administrator).
-
-### Tool Output
-
-Both tools return a list of attachment metadata entries. Each entry contains:
+The **`available_context`** internal tool returns metadata about admin-configured context files attached to the
+application. Each entry contains:
 
 - **Title**: File name
 - **URL**: DIAL-relative file URL
 - **MIME Type**: Content type of the file
-- **Change Status**: Whether the file is newly added since the last call of the tool
+- **Description**: Optional admin-provided description
+- **Change Status**: Whether the file is newly added since the last notification
 
 Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
 file contents when needed.
 
 ### Algorithmic Injection
 
-Before each LLM call, the pre-transformer pipeline checks whether attachments or contexts have changed since the last
-notification was injected. Changes include:
-
-- New user-uploaded attachments appearing in subsequent conversation turns
-- Admin-configured contexts being added or modified between calls
+Before each LLM call, the `AttachmentNotificationInjector` pre-transformer checks whether admin-configured contexts
+have changed since the last notification was injected.
 
 If changes are detected, synthetic message pairs are inserted into the (deep-copied) message history:
 
-1. An **assistant message** containing a tool call to `available_attachments` and/or `available_context`
+1. An **assistant message** containing a tool call to `available_context`
 2. A **tool result message** with the current metadata and change indicators
 
-These synthetic messages appear to the LLM as if the tools were already called, giving it up-to-date file awareness
+These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
 without requiring it to make the call itself.
 
 If no changes occurred since the last injection, no messages are inserted.
 
 ### On-Demand Access
 
-Both tools are also registered in the tool registry and available in the tool list provided to the LLM. The agent can
-call them at any point during the conversation to re-check available files — for example, after a tool produces new
-attachments or when the agent needs to verify what files are accessible.
+The `available_context` tool is also registered in the tool registry and available in the tool list provided to the LLM.
+The agent can call it at any point during the conversation to re-check available context files.
 
 ### Interaction with Existing Components
 
-- **Attachment Reducer**: No longer appends text metadata to user messages. Continues to filter attachments, keeping
-  only `image/*` inline in message content for vision model support.
-- **Context Attachment Transformer**: Continues to add admin-configured context files to the last user message's
-  `custom_content`, so they remain accessible to the LLM natively. The `available_context` tool provides the agent with
-  an explicit, structured summary of these files.
-- **User Attachments**: Remain in user messages' `custom_content` as before. The `available_attachments` tool provides
-  the agent with an explicit, structured summary instead of text metadata in message content.
+- **Attachment Reducer**: Appends text metadata to user messages for all attachments and keeps only `image/*` inline in
+  `custom_content` for vision model support.
+- **Context Attachment Transformer**: Adds admin-configured context files to the last user message's `custom_content`,
+  so they remain accessible to the LLM natively. The `available_context` tool provides an explicit, structured summary.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
-- **Content Downloader Tool**: The agent can use this tool to fetch actual file content when the metadata from
-  `available_attachments` or `available_context` indicates a relevant file.
+- **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
 
 ---
 

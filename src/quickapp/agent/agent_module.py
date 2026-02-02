@@ -36,7 +36,6 @@ from quickapp.config.tools.display.paramenter import (
     ParameterDisplayConfig,
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_ATTACHMENTS_TOOL_NAME,
     AVAILABLE_CONTEXT_TOOL_NAME,
 )
 
@@ -85,19 +84,18 @@ class AgentModule(Module):
     def provide_pre_processors(
         self, config: ApplicationConfig, instructions_provider: AgentInstructionsProvider
     ) -> list[PreTransformer]:
-        # Order matters: injector must capture attachment metadata before reducer strips non-images
+        # Order of Transformers is crucial for correct request processing
         return [
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
             ExtractToolCallsFromStateProcessor(),
             AddContextAttachmentTransformer(config.contexts),
+            ReduceAttachmentTransformer(),
             AttachmentNotificationInjector(
-                attachments_tool_name=AVAILABLE_ATTACHMENTS_TOOL_NAME,
                 context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
                 contexts=config.contexts,
             ),
-            ReduceAttachmentTransformer(),
         ]
 
     @multiprovider

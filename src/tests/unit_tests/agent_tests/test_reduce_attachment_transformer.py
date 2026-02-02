@@ -39,7 +39,7 @@ class TestReduceAttachmentTransformer:
         result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 0
 
-    def test_no_text_metadata_injected(self):
+    def test_text_metadata_injected_for_attachments(self):
         transformer = ReduceAttachmentTransformer()
         msg = _user_msg(
             "original content",
@@ -49,10 +49,11 @@ class TestReduceAttachmentTransformer:
             ],
         )
         result = transformer.transform([msg])
-        # Content should remain unchanged - no attachment metadata text appended
-        assert result[0].content == "original content"
-        assert "Attachment" not in str(result[0].content)
-        assert "url" not in str(result[0].content)
+        content = str(result[0].content)
+        assert "Attachment doc.pdf" in content
+        assert "application/pdf" in content
+        assert "Attachment photo.png" in content
+        assert "image/png" in content
 
     def test_mixed_attachments_only_images_kept(self):
         transformer = ReduceAttachmentTransformer()
