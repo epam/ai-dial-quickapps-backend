@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 import httpx
 from aidial_client.types.chat.response import Attachment
@@ -71,7 +71,7 @@ class _RestApiTool(StagedBaseTool):
             )
             response.raise_for_status()
 
-            raw_mime = cast(Optional[str], response.headers.get('Content-Type', None))
+            raw_mime: Optional[str] = response.headers.get('Content-Type', None)
 
             mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
 
@@ -79,15 +79,15 @@ class _RestApiTool(StagedBaseTool):
                 mime_type, base_filename=self._tool_config.open_ai_tool.function.name
             )
 
-            attachment = Attachment(title=title, type=mime_type, data=response.text)
             attachments = []
             if (
-                attachment
-                and self._tool_config
-                and matches_type(attachment.type, self._tool_config.attachment.supported_types)
+                self._tool_config
+                and mime_type
+                and matches_type(mime_type, self._tool_config.attachment.supported_types)
                 # type: ignore[arg-type]
             ):
-                logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
+                logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
+                attachment = Attachment(title=title, type=mime_type, data=response.text)
                 attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                     attachment
                 )
