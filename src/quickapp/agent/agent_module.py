@@ -12,6 +12,7 @@ from quickapp.agent.processors.chunk_processor import ChunkProcessor
 from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
     AddSystemPromptTransformer,
+    AttachmentNotificationInjector,
     ExtractToolCallsFromStateProcessor,
     PreTransformer,
     ReduceAttachmentTransformer,
@@ -33,6 +34,10 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
+)
+from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+    AVAILABLE_ATTACHMENTS_TOOL_NAME,
+    AVAILABLE_CONTEXT_TOOL_NAME,
 )
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
@@ -89,6 +94,11 @@ class AgentModule(Module):
             # RemoveStateTransformer(),
             AddContextAttachmentTransformer(config.contexts),
             ReduceAttachmentTransformer(),
+            AttachmentNotificationInjector(
+                attachments_tool_name=AVAILABLE_ATTACHMENTS_TOOL_NAME,
+                context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
+                contexts=config.contexts,
+            ),
         ]
 
     @multiprovider

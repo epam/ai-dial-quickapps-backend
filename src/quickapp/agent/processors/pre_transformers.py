@@ -1,14 +1,17 @@
 import copy
+import json
 import logging
 import mimetypes
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any, Optional
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from pydantic.v1 import StrictStr
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
-from quickapp.common.utils import matches_type
+from quickapp.common.utils import matches_type, sanitize_toolname
 from quickapp.config.context import Context, FileContextConfig
 
 logger = logging.getLogger(__name__)
@@ -74,12 +77,6 @@ class ReduceAttachmentTransformer(PreTransformer):
                     attachment.type, self.SUPPORTED_ATTACHMENTS
                 ):
                     updated_attachments.append(attachment)
-                # This attachment needed to inform agent that message had contained some attachment.
-                # As adapter would resolve the actual bytes and URL would be lost.
-                message.content += (
-                    f"\n\rAttachment {attachment.title}, of type {attachment.type}, "
-                    f"url {attachment.url}, reference_url {attachment.reference_url}\n\r"
-                )
             message.custom_content.attachments = updated_attachments
 
         return message
@@ -153,3 +150,126 @@ class AddContextAttachmentTransformer(PreTransformer):
                         )
                     )
                     logger.debug(f"File {ctx.url} added to the message.")
+
+
+class AttachmentNotificationInjector(PreTransformer):
+    """Injects synthetic tool call/result messages to inform the agent about
+    available attachments and contexts when changes are detected."""
+
+    def __init__(
+        self,
+        attachments_tool_name: str,
+        context_tool_name: str,
+        contexts: list[Context],
+    ):
+        self._attachments_tool_name = sanitize_toolname(attachments_tool_name)
+        self._context_tool_name = sanitize_toolname(context_tool_name)
+        self._contexts = contexts
+        self._seen_attachment_urls: set[str] = set()
+        self._seen_context_urls: set[str] = set()
+
+    def transform(self, messages: list[Message]) -> list[Message]:
+        if not isinstance(messages, list):
+            raise TypeError("Data must be a list of Message objects")
+
+        synthetic: list[Message] = []
+        synthetic.extend(self._check_attachments(messages))
+        synthetic.extend(self._check_contexts())
+
+        if not synthetic:
+            return messages
+
+        return messages + synthetic
+
+    def _check_attachments(self, messages: list[Message]) -> list[Message]:
+        """Collect user attachment metadata and return synthetic messages if changed."""
+        current_urls: set[str] = set()
+        entries: list[dict[str, str]] = []
+
+        for message in messages:
+            if message.role != Role.USER:
+                continue
+            if not message.custom_content or not message.custom_content.attachments:
+                continue
+            for attachment in message.custom_content.attachments:
+                url = str(attachment.url) if attachment.url else ""
+                if not url or url in current_urls:
+                    continue
+                current_urls.add(url)
+                entry: dict[str, str] = {
+                    "title": str(attachment.title) if attachment.title else "",
+                    "url": url,
+                    "type": str(attachment.type) if attachment.type else "",
+                }
+                if url not in self._seen_attachment_urls:
+                    entry["status"] = "new"
+                entries.append(entry)
+
+        if current_urls == self._seen_attachment_urls:
+            return []
+
+        self._seen_attachment_urls = current_urls
+        if not entries:
+            return []
+
+        return self._build_synthetic_messages(
+            self._attachments_tool_name, json.dumps(entries, ensure_ascii=False)
+        )
+
+    def _check_contexts(self) -> list[Message]:
+        """Collect context file metadata and return synthetic messages if changed."""
+        current_urls: set[str] = set()
+        entries: list[dict[str, str]] = []
+
+        for ctx in self._contexts:
+            if not isinstance(ctx, FileContextConfig):
+                continue
+            url = ctx.url
+            if url in current_urls:
+                continue
+            current_urls.add(url)
+            title = url.rsplit("/", 1)[-1]
+            mime_type = mimetypes.guess_type(title)[0] or ""
+            entry: dict[str, str] = {
+                "title": title,
+                "url": url,
+                "type": mime_type,
+            }
+            if ctx.description:
+                entry["description"] = ctx.description
+            if url not in self._seen_context_urls:
+                entry["status"] = "new"
+            entries.append(entry)
+
+        if current_urls == self._seen_context_urls:
+            return []
+
+        self._seen_context_urls = current_urls
+        if not entries:
+            return []
+
+        return self._build_synthetic_messages(
+            self._context_tool_name, json.dumps(entries, ensure_ascii=False)
+        )
+
+    @staticmethod
+    def _build_synthetic_messages(tool_name: str, content: str) -> list[Message]:
+        """Build a pair of assistant tool_call + tool result messages."""
+        call_id = f"synthetic_{uuid.uuid4().hex[:12]}"
+        assistant_msg = Message(
+            role=Role.ASSISTANT,
+            content=StrictStr(""),
+            tool_calls=[
+                ToolCall(
+                    id=StrictStr(call_id),
+                    type="function",
+                    function=FunctionCall(name=tool_name, arguments="{}"),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content=StrictStr(content),
+            tool_call_id=StrictStr(call_id),
+        )
+        return [assistant_msg, tool_msg]
