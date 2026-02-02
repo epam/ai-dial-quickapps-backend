@@ -8,6 +8,7 @@ class AuthorizationType(str, Enum):
     bearer = 'bearer'
     client_id_secret = 'client_id_secret'
     api_key = 'api_key'
+    forward_auth_token = 'forward_auth_token'
 
 
 class AuthorizationLocation(str, Enum):
@@ -34,6 +35,12 @@ class BasicAuthorization(BaseAuthorization):
 class BearerAuthorization(BaseAuthorization):
     type: Literal[AuthorizationType.bearer] = Field(default=AuthorizationType.bearer)
     token: str
+
+
+class ForwardAuthTokenAuthorization(BaseAuthorization):
+    type: Literal[AuthorizationType.forward_auth_token] = Field(
+        default=AuthorizationType.forward_auth_token
+    )
 
 
 class ClientIdSecretAuthorization(BaseAuthorization):
