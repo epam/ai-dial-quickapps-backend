@@ -38,7 +38,9 @@ class BearerAuthorization(BaseAuthorization):
 
 
 class ForwardAuthTokenAuthorization(BaseAuthorization):
-    type: Literal[AuthorizationType.forward_auth_token] = Field(default=AuthorizationType.forward_auth_token)
+    type: Literal[AuthorizationType.forward_auth_token] = Field(
+        default=AuthorizationType.forward_auth_token
+    )
 
 
 class ClientIdSecretAuthorization(BaseAuthorization):

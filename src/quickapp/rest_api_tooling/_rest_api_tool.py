@@ -12,6 +12,7 @@ from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import Authorization
 from quickapp.dial_core_services.attachment_service import AttachmentService
+
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
 
@@ -22,13 +23,13 @@ logger = logging.getLogger(__name__)
 class _RestApiTool(StagedBaseTool):
 
     def __init__(
-            self,
-            auth_info: Authorization,
-            request_details_builder: _RequestDetailsBuilder,
-            tool_config: RestApiTool,
-            stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
-            dial_attachment_service: AttachmentService,
-            perf_timer: PerformanceTimer,
+        self,
+        auth_info: Authorization,
+        request_details_builder: _RequestDetailsBuilder,
+        tool_config: RestApiTool,
+        stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
+        dial_attachment_service: AttachmentService,
+        perf_timer: PerformanceTimer,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
@@ -44,7 +45,7 @@ class _RestApiTool(StagedBaseTool):
         self.__dial_attachment_service = dial_attachment_service
 
     async def _run_in_stage_async(
-            self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
     ) -> CompletionResult:
         request_details = (
             self.__request_details_builder.with_url(
@@ -81,21 +82,22 @@ class _RestApiTool(StagedBaseTool):
             attachment = Attachment(title=title, type=mime_type, data=response.text)
             attachments = []
             if (
-                    attachment
-                    and self._tool_config
-                    and matches_type(attachment.type, self._tool_config.attachment.supported_types)
-                    # type: ignore[arg-type]
+                attachment
+                and self._tool_config
+                and matches_type(attachment.type, self._tool_config.attachment.supported_types)
+                # type: ignore[arg-type]
             ):
                 logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
                 attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                     attachment
-
                 )
 
                 attachments.append(attachment)
 
             result = CompletionResult(
-                content=response.text, content_type=response.headers.get('Content-Type', ""), attachments=attachments
+                content=response.text,
+                content_type=response.headers.get('Content-Type', ""),
+                attachments=attachments,
             )
 
             if stage_wrapper:

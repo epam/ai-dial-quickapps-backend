@@ -5,18 +5,15 @@ from httpx import URL, Headers, QueryParams
 from injector import inject
 from pydantic import BaseModel
 
+from quickapp.common import DIAL_BEARER
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.tools.base import ConfigurableSchemaConst
 from quickapp.config.tools.rest_api import ToolEndpointInfoMethodType, ToolEndpointParamType
 from quickapp.config.toolsets.authorization import AuthorizationLocation, AuthorizationType
-from quickapp.config.toolsets.rest_api import (
-    ApiKeyAuthorization,
-    Authorization
-)
+from quickapp.config.toolsets.rest_api import ApiKeyAuthorization, Authorization
 
 from ._request_details import _RequestDetails
-from quickapp.common import DIAL_BEARER
 
 
 @inject
@@ -139,6 +136,10 @@ class _RequestDetailsBuilder:
                 case AuthorizationType.api_key:  # type: ignore[union-attr]
                     self.__handle_api_key_auth(auth_info)
                 case AuthorizationType.forward_auth_token:
+                    if self.__bearer is None:
+                        raise ValueError(
+                            "Missing forwarded bearer token for AuthorizationType.forward_auth_token"
+                        )
                     self.__headers['Authorization'] = f"Bearer {self.__bearer.get_secret_value()}"
         return self
 

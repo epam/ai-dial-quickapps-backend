@@ -15,7 +15,11 @@ from quickapp.config.toolsets.base import BaseToolSet
 
 Authorization = Annotated[
     Union[
-        BasicAuthorization, BearerAuthorization, ClientIdSecretAuthorization, ApiKeyAuthorization, ForwardAuthTokenAuthorization
+        BasicAuthorization,
+        BearerAuthorization,
+        ClientIdSecretAuthorization,
+        ApiKeyAuthorization,
+        ForwardAuthTokenAuthorization,
     ],
     Field(discriminator="type"),
 ]
