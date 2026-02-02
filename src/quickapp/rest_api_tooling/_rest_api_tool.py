@@ -75,17 +75,17 @@ class _RestApiTool(StagedBaseTool):
 
             mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
 
-            title = generate_attachment_filename(
-                mime_type, base_filename=self._tool_config.open_ai_tool.function.name
-            )
-
             attachments = []
+
             if (
                 self._tool_config
                 and mime_type
                 and matches_type(mime_type, self._tool_config.attachment.supported_types)
                 # type: ignore[arg-type]
             ):
+                title = generate_attachment_filename(
+                    mime_type, base_filename=self._tool_config.open_ai_tool.function.name
+                )
                 logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
                 attachment = Attachment(title=title, type=mime_type, data=response.text)
                 attachment = await self.__dial_attachment_service.upload_attachment_to_core(
