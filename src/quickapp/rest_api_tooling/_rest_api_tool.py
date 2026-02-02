@@ -71,7 +71,7 @@ class _RestApiTool(StagedBaseTool):
             )
             response.raise_for_status()
 
-            raw_mime: Optional[str] = response.headers.get('Content-Type', None)
+            raw_mime = response.headers.get('Content-Type', None)
 
             mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
 
@@ -81,7 +81,6 @@ class _RestApiTool(StagedBaseTool):
                 self._tool_config
                 and mime_type
                 and matches_type(mime_type, self._tool_config.attachment.supported_types)
-                # type: ignore[arg-type]
             ):
                 title = generate_attachment_filename(
                     mime_type, base_filename=self._tool_config.open_ai_tool.function.name
