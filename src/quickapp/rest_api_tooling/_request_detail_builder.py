@@ -1,20 +1,17 @@
 import json
-from typing import Any, Optional, cast
+from typing import Any, Optional
 
 from httpx import URL, Headers, QueryParams
 from injector import inject
 from pydantic import BaseModel
 
+from quickapp.common import DIAL_BEARER
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.tools.base import ConfigurableSchemaConst
 from quickapp.config.tools.rest_api import ToolEndpointInfoMethodType, ToolEndpointParamType
 from quickapp.config.toolsets.authorization import AuthorizationLocation, AuthorizationType
-from quickapp.config.toolsets.rest_api import (
-    ApiKeyAuthorization,
-    Authorization,
-    ClientIdSecretAuthorization,
-)
+from quickapp.config.toolsets.rest_api import ApiKeyAuthorization, Authorization
 
 from ._request_details import _RequestDetails
 
@@ -39,11 +36,12 @@ class _RequestDetailsBuilder:
         + '; charset=utf-8'
     }
 
-    def __init__(self, oauth_token_fetcher: OAuthTokenFetcher):
+    def __init__(self, oauth_token_fetcher: OAuthTokenFetcher, bearer: DIAL_BEARER = None):
         self.__oauth_token_fetcher: OAuthTokenFetcher = oauth_token_fetcher
+        self.__bearer: DIAL_BEARER = bearer
         self.__headers: Headers = Headers(self.DEFAULT_HEADERS)
         self.__params: QueryParams = QueryParams()
-        self.__data: dict[str, Any] = dict()
+        self.__data: dict[str, Any] = {}
         self.__url: Optional[URL] = None
         self.__method: Optional[str] = None
 
@@ -133,11 +131,16 @@ class _RequestDetailsBuilder:
                 case AuthorizationType.bearer:
                     self.__headers['Authorization'] = f"Bearer {auth_info.token}"  # type: ignore[union-attr]
                 case AuthorizationType.client_id_secret:
-                    client_secret_auth = cast(ClientIdSecretAuthorization, auth_info)
-                    token = await self.__oauth_token_fetcher.fetch_oauth_token(client_secret_auth)
+                    token = await self.__oauth_token_fetcher.fetch_oauth_token(auth_info)
                     self.__headers['Authorization'] = f"Bearer {token}"
                 case AuthorizationType.api_key:  # type: ignore[union-attr]
                     self.__handle_api_key_auth(auth_info)
+                case AuthorizationType.forward_auth_token:
+                    if self.__bearer is None:
+                        raise ValueError(
+                            "Missing forwarded bearer token for AuthorizationType.forward_auth_token"
+                        )
+                    self.__headers['Authorization'] = f"Bearer {self.__bearer.get_secret_value()}"
         return self
 
     def with_parameters(self, parameters: dict[str, Any], **kwargs: Any):
