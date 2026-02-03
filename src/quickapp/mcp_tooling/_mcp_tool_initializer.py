@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from typing import Any, Optional
+from urllib.parse import unquote
 
 import httpx
 from injector import AssistedBuilder, ProviderOf, inject
@@ -37,8 +38,10 @@ _UNTITLED_MCP_TOOLSET = DialMCPToolSet.model_fields["name"].default
 def _human_readable_dial_id(dial_id: str) -> str:
     """Extract a human-readable label from a DIAL toolset id.
     E.g. 'toolsets/684f6.../TestMCP__0.0.1' or 'toolsets/TestMCP__0.0.1' -> 'TestMCP__0.0.1'.
+    URL-decodes the result to convert %20 to spaces and other encoded characters.
     """
-    return dial_id.split("/")[-1] if "/" in dial_id else dial_id
+    last_part = dial_id.split("/")[-1] if "/" in dial_id else dial_id
+    return unquote(last_part)
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
