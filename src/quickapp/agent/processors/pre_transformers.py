@@ -142,20 +142,21 @@ class AddContextAttachmentTransformer(PreTransformer):
         return messages
 
     def __append_context_files_to_last_message(self, last_msg: Message):
-        if self.contexts:
-            for ctx in self.contexts:
-                if isinstance(ctx, FileContextConfig):
-                    title = ctx.url.rsplit('/', 1)[-1]
-                    if not last_msg.custom_content:
-                        last_msg.custom_content = CustomContent(attachments=[])
+        if not self.contexts:
+            return
+        for ctx in self.contexts:
+            if isinstance(ctx, FileContextConfig):
+                title = ctx.url.rsplit('/', 1)[-1]
+                if not last_msg.custom_content:
+                    last_msg.custom_content = CustomContent(attachments=[])
+                mime_type = mimetypes.guess_type(title)[0]  # ToDo: fetch from DIAL Files API
+                if matches_type(mime_type, ReduceAttachmentTransformer.SUPPORTED_ATTACHMENTS):
                     last_msg.custom_content.attachments.append(
-                        Attachment(
-                            type=StrictStr(mimetypes.guess_type(title)[0]),
-                            url=StrictStr(ctx.url),
-                            title=StrictStr(title),
-                        )
+                        Attachment(type=mime_type, url=ctx.url, title=title)
                     )
                     logger.debug(f"File {ctx.url} added to the message.")
+                else:
+                    logger.debug(f"File {ctx.url} skipped, unsupported mime type: {mime_type}")
 
 
 class AttachmentNotificationInjector(PreTransformer):
