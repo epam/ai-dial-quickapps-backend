@@ -47,7 +47,7 @@ class TestConfig:
     DEFAULT_MODEL = os.getenv("MODEL", "gpt4_1")  # "gpt4o", "claude35", "claude37"
     REMOTE_DIAL_API_KEY = SecretStr(os.getenv("REMOTE_DIAL_API_KEY", "dial_api_key"))
 
-    PY_INTERPRETER_URL = "https://dev-dial-core.staging.deltixhub.io"
+    PY_INTERPRETER_URL = os.getenv("PY_INTERPRETER_URL")
     PY_INTERPRETER_API_KEY = SecretStr(os.getenv("PY_INTERPRETER_API_KEY", REMOTE_DIAL_API_KEY))
 
     WARNING_MESSAGE = "No cached value found, this means that something was changed in the logic"

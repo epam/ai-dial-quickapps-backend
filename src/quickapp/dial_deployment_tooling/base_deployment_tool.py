@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from injector import AssistedBuilder
 
@@ -9,6 +9,7 @@ from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentT
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
+from ..common.utils import to_plain_dict
 
 
 class BaseDeploymentTool(StagedBaseTool):
@@ -49,3 +50,25 @@ class BaseDeploymentTool(StagedBaseTool):
             stage_wrapper,
             attachment_urls,
         )
+
+    def _pre_process_params(self, **kwargs: Any) -> Any:
+
+        if isinstance(self.tool_config, DialDeploymentTool):
+            tool_config = cast(DialDeploymentTool, self.tool_config)
+            # deployment and parameters are expected to be present on DialDeploymentTool
+            deployment = tool_config.deployment
+            params = deployment.parameters
+            params_dict = to_plain_dict(params)
+
+            for key, value in params_dict.items():
+                if key == "custom_fields":
+                    cf = to_plain_dict(value)
+                    if cf:
+                        kwargs["custom_fields"] = cf
+                    else:
+                        # if custom_fields exists but is empty, set as empty dict to be explicit
+                        kwargs["custom_fields"] = {}
+                else:
+                    kwargs[key] = value
+
+        return kwargs
