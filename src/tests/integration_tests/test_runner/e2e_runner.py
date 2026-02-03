@@ -288,9 +288,14 @@ def e2e_test(
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
+    no_cache: bool = False,
 ):
     """
     Decorator for end-to-end tests.
+
+    Args:
+        no_cache: If True, bypass cache for this test. Can also be set globally via --no-cache CLI flag.
+                  CLI flag takes precedence over decorator parameter.
     """
 
     if refresh is None:
@@ -371,13 +376,16 @@ def e2e_test(
 
             client = TestClient(app)
 
-            no_cache = bool(request.config.getoption("--no-cache", default=False))
+            # Combine CLI flag with decorator parameter - CLI takes precedence
+            cli_no_cache = bool(request.config.getoption("--no-cache", default=False))
+            effective_no_cache = cli_no_cache or no_cache
+
             task, server, middleware = await TestRunner.start_server(
                 model=execution_model,
                 test_name=test_name,
                 refresh=refresh,
                 port=unique_port,
-                no_cache=no_cache
+                no_cache=effective_no_cache
             )
             try:
                 run_failures, test_result = await execute_single_test_run(
