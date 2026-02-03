@@ -11,7 +11,7 @@ _INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]")
 
 
 # Normalize propagation types (split wildcards like 'image/*' for matching)
-def matches_type(mime_type: str, allowed_mime_types: Optional[list[str]]) -> bool:
+def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) -> bool:
     if mime_type is None or allowed_mime_types is None:
         logger.warning(
             f"The mime_type is None, for the match check. Allowed_mime_types: {allowed_mime_types}"
