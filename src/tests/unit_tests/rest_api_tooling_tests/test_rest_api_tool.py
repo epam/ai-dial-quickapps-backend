@@ -1,14 +1,17 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 
+from aidial_client.types.chat.response import Attachment
 from aidial_sdk.chat_completion import Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
-from injector import Binder
+from injector import Binder, InstanceProvider
 from parameterized import parameterized
+from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import  StagedBaseTool, DIAL_BEARER, DIAL_API_KEY
+from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import OpenAiToolConfig, OpenAiToolFunction, OpenAiToolFunctionParameters
 from quickapp.config.tools.rest_api import RestApiTool, RestApiEndpointMethodInfo, RestApiEndpointSimpleTypeParam, \
@@ -73,6 +76,10 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
 
 
         def configure(binder: Binder):
+            binder.bind(DialSettings, DialSettings(url="https://core"))
+            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+            # binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(
                 ApplicationConfig,
@@ -87,7 +94,17 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             tool = tools[0]
 
             result = await tool.arun("call-1", None, **{"query_key": "query_value"})
-            self.assertEqual(result, CompletionResult(tool_call_id="call-1", content='{"some_key":"some value"}', content_type="application/json", attachments=None))
+
+            # Validate core completion result properties without asserting on auto-generated attachment filenames
+            self.assertEqual(result.tool_call_id, "call-1")
+            self.assertEqual(result.content, '{"some_key":"some value"}')
+            self.assertEqual(result.content_type, "application/json")
+            self.assertIsNotNone(result.attachments)
+            self.assertEqual(len(result.attachments), 1)
+            self.assertIsInstance(result.attachments[0], Attachment)
+            self.assertEqual(result.attachments[0].type, "application/json")
+            self.assertEqual(result.attachments[0].data, '{"some_key":"some value"}')
+
             return {"message": "success"}
 
         client = TestClient(app)
