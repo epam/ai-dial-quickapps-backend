@@ -85,10 +85,10 @@ calls or the maximum iteration limit is reached.
 1. **Iteration Tracking**: The iteration counter is incremented and checked against the configured maximum. If exceeded,
    the loop terminates with an error message.
 
-2. **Attachment Notification**: Before the LLM call, the system checks whether admin-configured context files have
-   changed since the last notification. If changes are detected, synthetic tool call and tool result messages are
-   injected into the conversation history to inform the agent. See [Attachment Notification](#attachment-notification)
-   for details.
+2. **Attachment Notification**: When the context tool is active (see [Attachment Notification](#attachment-notification)),
+   the system checks before the LLM call whether admin-configured context files have changed since the last
+   notification. If changes are detected, synthetic tool call and tool result messages are injected into the
+   conversation history to inform the agent.
 
 3. **LLM Invocation**: The Assistant Invoker prepares the messages (applying pre-transformers) and calls the LLM. The
    response is streamed back.
@@ -141,7 +141,8 @@ Quick Apps supports several tool types:
 - **REST API Tools**: HTTP endpoints defined declaratively in configuration
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
-- **Internal Tools**: Built-in tools like Python interpreter, content downloader, and context notification tool
+- **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
+  registered conditionally (see [Attachment Notification](#attachment-notification))
 
 ### Parallel Execution
 
@@ -209,9 +210,10 @@ Before each LLM call, messages pass through a series of transformers that modify
    `custom_content`, making them available to tools. Runs after the reducer so context files are never treated as
    user-uploaded attachments.
 
-4. **Attachment Notification Injector**: Checks whether admin-configured context files have changed since the last
-   notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
-   using the `available_context` tool. See [Attachment Notification](#attachment-notification) for details.
+4. **Attachment Notification Injector** *(conditional)*: Only present when the context tool is active (see
+   [Attachment Notification](#attachment-notification)). Checks whether admin-configured context files have changed
+   since the last notification. If changes are detected, inserts synthetic tool call and tool result message pairs
+   into the history using the `available_context` tool.
 
 The transformers operate on a deep copy of the messages to avoid mutating the conversation history.
 
@@ -239,6 +241,20 @@ The system uses two separate mechanisms to inform the agent about available file
   `Attachment X, of type Y, url Z`). This is simple, direct, and preserves the natural conversation flow.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
+
+### Activation Conditions
+
+The context notification tool and the `AttachmentNotificationInjector` pre-transformer are **registered
+conditionally** — only when at least one of the following is true:
+
+1. The application configuration contains at least one `FileContextConfig` context.
+2. The message history already contains tool calls for the context tool (i.e. it was active in a prior chat turn).
+
+When neither condition is met, the tool does not appear in the LLM's tool list and the injector is not part of the
+pre-transformer pipeline. This keeps the tool list clean for applications that never use file contexts.
+
+Both the tool provider (`InternalToolModule`) and the pre-transformer provider (`AgentModule`) evaluate the same
+`should_activate_context_tool()` predicate with the same request-scoped inputs, so they are always in sync.
 
 ### Context Notification Tool
 
@@ -271,8 +287,8 @@ If no changes occurred since the last injection, no messages are inserted.
 
 ### On-Demand Access
 
-The `available_context` tool is also registered in the tool registry and available in the tool list provided to the LLM.
-The agent can call it at any point during the conversation to re-check available context files.
+When the context tool is active, it is registered in the tool registry and available in the tool list provided to the
+LLM. The agent can call it at any point during the conversation to re-check available context files.
 
 ### Interaction with Existing Components
 
@@ -299,7 +315,7 @@ The application is composed of 9 specialized DI modules:
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
 5. **MCP Tooling Module**: MCP server tool construction
-6. **Internal Tool Module**: Python interpreter, content downloader
+6. **Internal Tool Module**: Python interpreter, content downloader, and conditionally the context notification tool
 7. **Starters Module**: UI starter button configuration
 8. **Configuration Support API Module**: Configuration validation endpoints
 9. **DIAL Core Services Module**: DIAL Core integration
