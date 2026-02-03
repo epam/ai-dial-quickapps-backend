@@ -91,6 +91,53 @@ class TestContextInjection:
         assert data2[0]["url"] == "files/bucket/ref.csv"
         assert data2[0]["status"] == "removed"
 
+    def test_context_lifecycle_add_remove_all(self):
+        file_a = FileContextConfig(url="files/bucket/a.csv", description="File A")
+        file_b = FileContextConfig(url="files/bucket/b.pdf")
+        contexts: list[FileContextConfig] = []
+        injector = AttachmentNotificationInjector(
+            context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME, contexts=contexts
+        )
+        messages = [_user_msg("hello")]
+
+        # Step 1: no contexts — no injection
+        result1 = injector.transform(messages)
+        assert len(result1) == 1
+
+        # Step 2: add 2 files — both reported as new
+        contexts.extend([file_a, file_b])
+        result2 = injector.transform(messages)
+        assert len(result2) == 3
+        data2 = json.loads(result2[2].content)
+        assert len(data2) == 2
+        by_title = {e["title"]: e for e in data2}
+        assert by_title["a.csv"]["status"] == "new"
+        assert by_title["a.csv"]["description"] == "File A"
+        assert by_title["b.pdf"]["status"] == "new"
+
+        # Step 3: same files, no change — no injection
+        result2b = injector.transform(messages)
+        assert len(result2b) == 1
+
+        # Step 4: remove file_b — file_a still present, file_b reported as removed
+        contexts.remove(file_b)
+        result3 = injector.transform(messages)
+        assert len(result3) == 3
+        data3 = json.loads(result3[2].content)
+        assert len(data3) == 2
+        by_title3 = {e["title"]: e for e in data3}
+        assert "status" not in by_title3["a.csv"]
+        assert by_title3["b.pdf"]["status"] == "removed"
+
+        # Step 5: remove file_a — reported as removed
+        contexts.clear()
+        result4 = injector.transform(messages)
+        assert len(result4) == 3
+        data4 = json.loads(result4[2].content)
+        assert len(data4) == 1
+        assert data4[0]["title"] == "a.csv"
+        assert data4[0]["status"] == "removed"
+
     def test_context_removal_then_no_change(self):
         ctx = FileContextConfig(url="files/bucket/ref.csv")
         contexts: list[FileContextConfig] = [ctx]

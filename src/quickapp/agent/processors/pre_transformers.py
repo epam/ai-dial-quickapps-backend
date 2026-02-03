@@ -184,6 +184,12 @@ class AttachmentNotificationInjector(PreTransformer):
         if not synthetic:
             return messages
 
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                f"Injecting {len(synthetic)} synthetic messages for context notification: "
+                f"{[str(msg) for msg in synthetic]}"
+            )
+
         return messages + synthetic
 
     def _check_contexts(self) -> list[Message]:
