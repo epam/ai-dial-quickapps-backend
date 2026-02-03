@@ -283,7 +283,8 @@ async def execute_single_test_run(
 def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
-    models: List[str] = None,
+    model: str = None,
+    models_applicable_for_test: List[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
@@ -308,33 +309,44 @@ def e2e_test(
                 f"{test_case.name if test_case else request.node.name}"
             )
 
-            execution_model_list = models if models else []
-
-            if len(execution_model_list) == 0:
-                if request.config.getoption("--model"):
-                    execution_model_list.append(request.config.getoption("--model"))
+            model_to_use: str
+            if model:
+                model_to_use = model
+                logger.debug(f"Using model from parameter defined in test: {model_to_use}")
+            elif request.config.getoption("--model"):
+                cli_model = request.config.getoption("--model")
+                if models_applicable_for_test is None or len(
+                        models_applicable_for_test) == 0 or cli_model in models_applicable_for_test:
+                    model_to_use = cli_model
+                    logger.debug(f"Using model from CLI option: {model_to_use}")
                 else:
-                    raise ValueError("Model parameter is not defined. Provide --model CLI option or pass 'models' to the decorator.")
+                    logger.debug(
+                        f"Model '{cli_model}' is not in the applicable models list: {models_applicable_for_test}")
+                    pytest.skip(f"Model '{cli_model}' is not applicable for this test")
+            else:
+                logger.debug("No model specified")
+                pytest.fail("No model specified for test")
 
-            for m in execution_model_list:
-                # Run the test multiple times according to the runs parameter
-                ts = TestStats(f"{test_name}[{m}]", 0, 0)
-                for run_index in range(runs):
-                    logger.info(f"Running test iteration {run_index + 1}/{runs}")
-                    failures = await prepare_and_execute_test(
-                        args,
-                        kwargs,
-                        recwarn,
-                        request,
-                        unique_port,
-                        execution_model=m,
-                        test_name=test_name,
-                        test_stats=ts,
-                        run_index=run_index,
-                    )
-                    all_runs_failures.extend(failures)
-                logger.info(ts)
-                report_test_stats(request.config, ts)
+
+
+               # Run the test multiple times according to the runs parameter
+            ts = TestStats(f"{test_name}[{model_to_use}]", 0, 0)
+            for run_index in range(runs):
+                logger.info(f"Running test iteration {run_index + 1}/{runs}")
+                failures = await prepare_and_execute_test(
+                    args,
+                    kwargs,
+                    recwarn,
+                    request,
+                    unique_port,
+                    execution_model=model_to_use,
+                    test_name=test_name,
+                    test_stats=ts,
+                    run_index=run_index,
+                )
+                all_runs_failures.extend(failures)
+            logger.info(ts)
+            report_test_stats(request.config, ts)
 
             # After all runs/models are complete, check if any failures occurred
             TestRunner.check_test_outcome(all_runs_failures)
