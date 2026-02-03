@@ -12,9 +12,9 @@ This folder contains technical documentation for the Quick Apps backend.
 
 Architecture diagrams are stored in `content/svg/` as editable draw.io files. To modify a diagram:
 
-1. Open the `.drawio` or `.drawio.svg` file in [draw.io](https://app.diagrams.net/)
+1. Open the `.drawio` file in [draw.io](https://app.diagrams.net/)
 2. Make your changes
-3. Export as SVG with "Include a copy of my diagram" enabled
+3. Export as SVG with `Appearance -> Light`, `Embed images` & `Embed fonts` checked.
 
 ## Related Documentation
 

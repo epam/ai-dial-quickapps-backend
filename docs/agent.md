@@ -30,7 +30,7 @@ orchestrate tool execution.
 - **DI Container**: Manages component lifecycle and dependencies across request and singleton scopes
 
 <!-- DIAGRAM: High-level architecture showing Application Layer, Orchestrator, Tool System, Message Pipeline, and DI Container with their connections -->
-![High-Level Architecture](content/svg/agent_high_level.drawio.svg)
+![High-Level Architecture](content/svg/agent_high_level.svg)
 
 ---
 
@@ -71,7 +71,7 @@ functionality even when some tools fail to initialize.
 The orchestrator is retrieved from the DI container and its invoke method is called, starting the agent loop.
 
 <!-- DIAGRAM: Request lifecycle sequence showing HTTP Request -> Context Setup -> Config Resolution -> Tool Initialization -> Error Handling -> Orchestrator Invoke -->
-![Request Lifecycle](content/svg/request_lifecycle.drawio.svg)
+![Request Lifecycle](content/svg/agent_request_lifecycle.svg)
 
 ---
 
@@ -110,7 +110,7 @@ calls or the maximum iteration limit is reached.
 - **Error**: An unrecoverable error occurs during execution
 
 <!-- DIAGRAM: Agent loop flowchart showing the recursive flow: Increment Counter -> Check Max -> Call LLM -> Process Response -> Tool Calls? -> Yes: Execute Tools -> Record Results -> Loop Back / No: Finalize -->
-![Agent Loop](content/svg/agent_loop.drawio.svg)
+![Agent Loop](content/svg/agent_loop.svg)
 
 ---
 
@@ -180,7 +180,7 @@ Tools support configurable fallback strategies for error handling:
 Errors can optionally be displayed in the stage for debugging purposes.
 
 <!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
-![Tool Execution](content/svg/tool_execution.drawio.svg)
+![Tool Execution](content/svg/agent_tool_execution.svg)
 
 ---
 
@@ -215,7 +215,7 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> AddSystemPrompt -> AddContextAttachment -> ReduceAttachment -> LLM -> ChunkProcessor -> AssistantCallResult -->
-![Message Processing](content/svg/message_processing.drawio.svg)
+![Message Processing](content/svg/agent_message_processing.svg)
 
 ---
 
