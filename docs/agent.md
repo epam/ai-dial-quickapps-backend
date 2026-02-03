@@ -200,13 +200,14 @@ Before each LLM call, messages pass through a series of transformers that modify
 1. **System Prompt Transformer**: Ensures a system message exists at the start of the conversation, combining the
    configured system prompt with any agent instructions.
 
-2. **Context Attachment Transformer**: Appends configured context files as attachments to the last user message, making
-   them available to the LLM.
+2. **Attachment Reducer**: Filters user attachments to only those supported by the LLM (typically images) so that
+   vision models can process them inline. Non-image attachments are removed from `custom_content`. For all user
+   attachments, text metadata (`Attachment X, of type Y, url Z`) is appended to user message content so the agent
+   knows which files are available.
 
-3. **Attachment Reducer**: Filters attachments to only those supported by the LLM (typically images) so that vision
-   models can process them inline. Non-image attachments are removed from `custom_content`. For all attachments, text
-   metadata (`Attachment X, of type Y, url Z`) is appended to the user message content so the agent knows which files
-   are available.
+3. **Context Attachment Transformer**: Appends configured context files as attachments to the last user message's
+   `custom_content`, making them available to tools. Runs after the reducer so context files are never treated as
+   user-uploaded attachments.
 
 4. **Attachment Notification Injector**: Checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
@@ -225,7 +226,7 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
 
-<!-- DIAGRAM: Message processing pipeline showing Messages -> AddSystemPrompt -> AddContextAttachment -> ReduceAttachment -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
+<!-- DIAGRAM: Message processing pipeline showing Messages -> AddSystemPrompt -> ReduceAttachment -> AddContextAttachment -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
 ![Message Processing](content/svg/message_processing.drawio.svg)
 
 ---

@@ -90,8 +90,8 @@ class AgentModule(Module):
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
             ExtractToolCallsFromStateProcessor(),
-            AddContextAttachmentTransformer(config.contexts),
             ReduceAttachmentTransformer(),
+            AddContextAttachmentTransformer(config.contexts),
             AttachmentNotificationInjector(
                 context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
                 contexts=config.contexts,

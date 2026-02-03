@@ -2,10 +2,12 @@
 
 The pipeline runs transformers sequentially:
 
-    AddContextAttachmentTransformer -> ReduceAttachmentTransformer -> AttachmentNotificationInjector
+    ReduceAttachmentTransformer -> AddContextAttachmentTransformer -> AttachmentNotificationInjector
 
 - ReduceAttachmentTransformer handles user attachments by injecting text metadata
   into user message content and keeping only image attachments inline.
+- AddContextAttachmentTransformer adds context files to custom_content after reduction,
+  so they are never treated as user-uploaded attachments.
 - AttachmentNotificationInjector handles admin-configured context files by injecting
   synthetic tool call/result messages.
 """
@@ -53,8 +55,8 @@ def _run_pipeline(
         contexts=ctx_list,
     )
 
-    messages = context_adder.transform(messages)
     messages = reducer.transform(messages)
+    messages = context_adder.transform(messages)
     messages = injector.transform(messages)
     return messages
 
