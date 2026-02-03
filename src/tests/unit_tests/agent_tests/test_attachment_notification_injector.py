@@ -21,10 +21,16 @@ def _make_injector(
     contexts: list[FileContextConfig] | None = None,
     context_tool_name: str = AVAILABLE_CONTEXT_TOOL_NAME,
 ) -> AttachmentNotificationInjector:
+    """Create a fresh injector, as production does on every orchestrator iteration."""
     return AttachmentNotificationInjector(
         context_tool_name=context_tool_name,
         contexts=contexts or [],
     )
+
+
+def _extract_synthetic(result: list[Message], original_count: int) -> list[Message]:
+    """Return only the synthetic messages appended after the original ones."""
+    return result[original_count:]
 
 
 class TestNoChanges:
@@ -60,32 +66,40 @@ class TestContextInjection:
         assert data[0]["status"] == "new"
 
     def test_second_call_same_contexts_no_injection(self):
+        """Fresh injector with history containing the same URLs produces no new messages."""
         ctx = FileContextConfig(url="files/bucket/ref.csv")
-        injector = _make_injector(contexts=[ctx])
+        contexts = [ctx]
+
+        # Turn 1 — fresh injector, injects synthetic messages
+        injector1 = _make_injector(contexts=contexts)
         messages = [_user_msg("hello")]
-        result1 = injector.transform(messages)
+        result1 = injector1.transform(messages)
         assert len(result1) == 3
 
-        result2 = injector.transform(messages)
-        assert len(result2) == 1
+        # Turn 2 — fresh injector, same contexts, history from turn 1
+        injector2 = _make_injector(contexts=contexts)
+        result2 = injector2.transform(result1)
+        assert len(result2) == 3  # unchanged, no new synthetic messages
 
     def test_context_removal_injects_removed_entry(self):
         ctx = FileContextConfig(url="files/bucket/ref.csv")
         contexts: list[FileContextConfig] = [ctx]
-        injector = _make_injector(contexts=contexts)
         messages = [_user_msg("hello")]
 
-        # First call: context present
-        result1 = injector.transform(messages)
+        # Turn 1: context present
+        injector1 = _make_injector(contexts=contexts)
+        result1 = injector1.transform(messages)
         assert len(result1) == 3
 
         # Remove the context
         contexts.clear()
 
-        # Second call: removal detected, synthetic message with removed entry
-        result2 = injector.transform(messages)
-        assert len(result2) == 3
-        data2 = json.loads(result2[2].content)
+        # Turn 2: fresh injector, empty contexts, history from turn 1
+        injector2 = _make_injector(contexts=contexts)
+        result2 = injector2.transform(result1)
+        assert len(result2) == 5  # 3 original + 2 new synthetic
+        synthetic = _extract_synthetic(result2, 3)
+        data2 = json.loads(synthetic[1].content)
         assert len(data2) == 1
         assert data2[0]["title"] == "ref.csv"
         assert data2[0]["url"] == "files/bucket/ref.csv"
@@ -95,18 +109,17 @@ class TestContextInjection:
         file_a = FileContextConfig(url="files/bucket/a.csv", description="File A")
         file_b = FileContextConfig(url="files/bucket/b.pdf")
         contexts: list[FileContextConfig] = []
-        injector = AttachmentNotificationInjector(
-            context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME, contexts=contexts
-        )
         messages = [_user_msg("hello")]
 
-        # Step 1: no contexts — no injection
-        result1 = injector.transform(messages)
+        # Step 1: no contexts — fresh injector, no injection
+        injector1 = _make_injector(contexts=contexts)
+        result1 = injector1.transform(messages)
         assert len(result1) == 1
 
-        # Step 2: add 2 files — both reported as new
+        # Step 2: add 2 files — fresh injector, both reported as new
         contexts.extend([file_a, file_b])
-        result2 = injector.transform(messages)
+        injector2 = _make_injector(contexts=contexts)
+        result2 = injector2.transform(messages)
         assert len(result2) == 3
         data2 = json.loads(result2[2].content)
         assert len(data2) == 2
@@ -115,25 +128,30 @@ class TestContextInjection:
         assert by_title["a.csv"]["description"] == "File A"
         assert by_title["b.pdf"]["status"] == "new"
 
-        # Step 3: same files, no change — no injection
-        result2b = injector.transform(messages)
-        assert len(result2b) == 1
+        # Step 3: same files, with history — fresh injector, no injection
+        injector3 = _make_injector(contexts=contexts)
+        result2b = injector3.transform(result2)
+        assert len(result2b) == 3  # unchanged
 
-        # Step 4: remove file_b — file_a still present, file_b reported as removed
+        # Step 4: remove file_b — fresh injector, file_a still present, file_b removed
         contexts.remove(file_b)
-        result3 = injector.transform(messages)
-        assert len(result3) == 3
-        data3 = json.loads(result3[2].content)
+        injector4 = _make_injector(contexts=contexts)
+        result3 = injector4.transform(result2)
+        assert len(result3) == 5  # 3 original + 2 new synthetic
+        synthetic3 = _extract_synthetic(result3, 3)
+        data3 = json.loads(synthetic3[1].content)
         assert len(data3) == 2
         by_title3 = {e["title"]: e for e in data3}
         assert "status" not in by_title3["a.csv"]
         assert by_title3["b.pdf"]["status"] == "removed"
 
-        # Step 5: remove file_a — reported as removed
+        # Step 5: remove file_a — fresh injector, reported as removed
         contexts.clear()
-        result4 = injector.transform(messages)
-        assert len(result4) == 3
-        data4 = json.loads(result4[2].content)
+        injector5 = _make_injector(contexts=contexts)
+        result4 = injector5.transform(result3)
+        assert len(result4) == 7  # 5 original + 2 new synthetic
+        synthetic4 = _extract_synthetic(result4, 5)
+        data4 = json.loads(synthetic4[1].content)
         assert len(data4) == 1
         assert data4[0]["title"] == "a.csv"
         assert data4[0]["status"] == "removed"
@@ -141,18 +159,20 @@ class TestContextInjection:
     def test_context_removal_then_no_change(self):
         ctx = FileContextConfig(url="files/bucket/ref.csv")
         contexts: list[FileContextConfig] = [ctx]
-        injector = _make_injector(contexts=contexts)
         messages = [_user_msg("hello")]
 
-        # First call: context present
-        injector.transform(messages)
+        # Turn 1: context present
+        injector1 = _make_injector(contexts=contexts)
+        result1 = injector1.transform(messages)
 
         # Remove the context
         contexts.clear()
 
-        # Second call: removal detected
-        injector.transform(messages)
+        # Turn 2: removal detected
+        injector2 = _make_injector(contexts=contexts)
+        result2 = injector2.transform(result1)
 
-        # Third call: no change (still empty)
-        result3 = injector.transform(messages)
-        assert len(result3) == 1  # no synthetic messages
+        # Turn 3: fresh injector, no change (still empty, last tool result has only removed)
+        injector3 = _make_injector(contexts=contexts)
+        result3 = injector3.transform(result2)
+        assert len(result3) == len(result2)  # no new synthetic messages

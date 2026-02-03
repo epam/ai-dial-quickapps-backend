@@ -1,4 +1,7 @@
+import json
 import mimetypes
+
+from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.base import (
@@ -48,6 +51,39 @@ def build_context_entries(
         entries.append({"title": title, "url": removed_url, "status": "removed"})
 
     return current_urls, entries
+
+
+def extract_seen_urls_from_messages(messages: list[Message], tool_name: str) -> set[str]:
+    """Scan message history for the most recent tool result from *tool_name*
+    and extract the set of non-removed URLs that were previously reported."""
+    context_call_ids: set[str] = set()
+    for msg in messages:
+        if msg.role == Role.ASSISTANT and msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc.function and tc.function.name == tool_name:
+                    context_call_ids.add(tc.id)
+
+    # Walk in reverse to find the most recent matching tool result
+    for msg in reversed(messages):
+        if (
+            msg.role == Role.TOOL
+            and msg.tool_call_id
+            and msg.tool_call_id in context_call_ids
+            and msg.content
+        ):
+            try:
+                data = json.loads(str(msg.content))
+                if isinstance(data, list):
+                    return {
+                        entry["url"]
+                        for entry in data
+                        if isinstance(entry, dict)
+                        and "url" in entry
+                        and entry.get("status") != "removed"
+                    }
+            except (json.JSONDecodeError, KeyError):
+                pass
+    return set()
 
 
 INTERNAL_TOOL_NAME_PREFIX = "quickapps_internal_"

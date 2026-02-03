@@ -8,13 +8,13 @@ from typing import Any, Optional
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
-from pydantic.v1 import StrictStr
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
 from quickapp.common.utils import matches_type, sanitize_toolname
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     build_context_entries,
+    extract_seen_urls_from_messages,
 )
 
 logger = logging.getLogger(__name__)
@@ -37,9 +37,7 @@ class AddSystemPromptTransformer(PreTransformer):
         if not self._combined_system_prompt:
             return messages
         if len(messages) > 0 and messages[0].role != Role.SYSTEM:
-            return [
-                Message(role=Role.SYSTEM, content=StrictStr(self._combined_system_prompt))
-            ] + messages
+            return [Message(role=Role.SYSTEM, content=self._combined_system_prompt)] + messages
 
         return messages
 
@@ -73,7 +71,7 @@ class ReduceAttachmentTransformer(PreTransformer):
     def _transform_item(self, message: Message):
         updated_attachments = []
         if message.content is None:
-            message.content = StrictStr("")
+            message.content = ""
         if message.custom_content is not None and message.custom_content.attachments:
             for attachment in message.custom_content.attachments:
                 if message.role == Role.USER and matches_type(
@@ -115,7 +113,7 @@ class ExtractToolCallsFromStateProcessor(PreTransformer):
                 for history_part in tool_history:
                     executed_tool_call = ExecutedToolCallDTO.validate(history_part)
                     assistant_tool_call = copy.deepcopy(assistant_message)
-                    assistant_tool_call.content = StrictStr("")
+                    assistant_tool_call.content = ""
 
                     if assistant_tool_call.tool_calls is None:
                         assistant_tool_call.tool_calls = []
@@ -173,13 +171,12 @@ class AttachmentNotificationInjector(PreTransformer):
     ):
         self._context_tool_name = sanitize_toolname(context_tool_name)
         self._contexts = contexts
-        self._seen_context_urls: set[str] = set()
 
     def transform(self, messages: list[Message]) -> list[Message]:
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
 
-        synthetic: list[Message] = self._check_contexts()
+        synthetic: list[Message] = self._check_contexts(messages)
 
         if not synthetic:
             return messages
@@ -192,14 +189,13 @@ class AttachmentNotificationInjector(PreTransformer):
 
         return messages + synthetic
 
-    def _check_contexts(self) -> list[Message]:
+    def _check_contexts(self, messages: list[Message]) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""
-        current_urls, entries = build_context_entries(self._contexts, self._seen_context_urls)
+        seen_urls = extract_seen_urls_from_messages(messages, self._context_tool_name)
+        current_urls, entries = build_context_entries(self._contexts, seen_urls)
 
-        if current_urls == self._seen_context_urls:
+        if current_urls == seen_urls:
             return []
-
-        self._seen_context_urls = current_urls
 
         return self._build_synthetic_messages(
             self._context_tool_name, json.dumps(entries, ensure_ascii=False)
@@ -211,10 +207,10 @@ class AttachmentNotificationInjector(PreTransformer):
         call_id = f"synthetic_{uuid.uuid4().hex[:12]}"
         assistant_msg = Message(
             role=Role.ASSISTANT,
-            content=StrictStr(""),
+            content="",
             tool_calls=[
                 ToolCall(
-                    id=StrictStr(call_id),
+                    id=call_id,
                     type="function",
                     function=FunctionCall(name=tool_name, arguments="{}"),
                 )
@@ -222,7 +218,7 @@ class AttachmentNotificationInjector(PreTransformer):
         )
         tool_msg = Message(
             role=Role.TOOL,
-            content=StrictStr(content),
-            tool_call_id=StrictStr(call_id),
+            content=content,
+            tool_call_id=call_id,
         )
         return [assistant_msg, tool_msg]

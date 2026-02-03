@@ -5,6 +5,7 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
@@ -13,6 +14,7 @@ from quickapp.internal_tooling.attachment_notification_tooling._available_contex
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     build_context_entries,
+    extract_seen_urls_from_messages,
 )
 
 
@@ -25,6 +27,8 @@ class _AvailableContextTool(StagedBaseTool):
         contexts: list[Context],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
+        messages_context: MessagesMixin,
+        name: str = "",
         **kwargs: Any,
     ):
         super().__init__(
@@ -34,12 +38,15 @@ class _AvailableContextTool(StagedBaseTool):
             **kwargs,
         )
         self.__contexts: list[Context] = contexts
-        self.__seen_urls: set[str] = set()
+        self.__messages_context: MessagesMixin = messages_context
+        self.__tool_name: str = name
 
     def collect_contexts(self) -> list[dict[str, str]]:
         """Collect context file metadata, flagging new or changed ones."""
-        current_urls, entries = build_context_entries(self.__contexts, self.__seen_urls)
-        self.__seen_urls = current_urls
+        seen_urls = extract_seen_urls_from_messages(
+            self.__messages_context.messages, self.__tool_name
+        )
+        _, entries = build_context_entries(self.__contexts, seen_urls)
         return entries
 
     async def _run_in_stage_async(
