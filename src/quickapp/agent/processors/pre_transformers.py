@@ -191,7 +191,7 @@ class AttachmentNotificationInjector(PreTransformer):
 
     def _check_contexts(self, messages: list[Message]) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""
-        seen_urls = extract_seen_urls_from_messages(messages, self._context_tool_name)
+        seen_urls = extract_seen_urls_from_messages(messages)
         current_urls, entries = build_context_entries(self._contexts, seen_urls)
 
         if current_urls == seen_urls:

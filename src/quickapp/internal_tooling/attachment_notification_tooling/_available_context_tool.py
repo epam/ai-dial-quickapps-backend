@@ -39,13 +39,10 @@ class _AvailableContextTool(StagedBaseTool):
         )
         self.__contexts: list[Context] = contexts
         self.__messages_context: MessagesMixin = messages_context
-        self.__tool_name: str = name
 
     def collect_contexts(self) -> list[dict[str, str]]:
         """Collect context file metadata, flagging new or changed ones."""
-        seen_urls = extract_seen_urls_from_messages(
-            self.__messages_context.messages, self.__tool_name
-        )
+        seen_urls = extract_seen_urls_from_messages(self.__messages_context.messages)
         _, entries = build_context_entries(self.__contexts, seen_urls)
         return entries
 

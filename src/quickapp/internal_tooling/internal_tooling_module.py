@@ -6,6 +6,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
@@ -14,6 +15,7 @@ from quickapp.internal_tooling.attachment_notification_tooling._available_contex
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_CONFIG,
+    should_activate_context_tool,
 )
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
     _ContentDownloadTool,
@@ -49,6 +51,7 @@ class InternalToolModule(Module):
     def _provide_internal_tools(
         self,
         app_config: ApplicationConfig,
+        messages_context: MessagesMixin,
         py_builder: AssistedBuilder[_PyInterpreterTool],
         cd_builder: AssistedBuilder[_ContentDownloadTool],
         ac_builder: AssistedBuilder[_AvailableContextTool],
@@ -87,15 +90,15 @@ class InternalToolModule(Module):
                                 )
                             )
 
-        # Always register context notification tool
-        tools.append(
-            ac_builder.build(
-                tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
-                name=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name,
-                description=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.description,
-                contexts=list(app_config.contexts),
+        if should_activate_context_tool(app_config.contexts, messages_context.messages):
+            tools.append(
+                ac_builder.build(
+                    tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
+                    name=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name,
+                    description=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.description,
+                    contexts=list(app_config.contexts),
+                )
             )
-        )
 
         return tools
 

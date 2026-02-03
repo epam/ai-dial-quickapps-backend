@@ -19,6 +19,7 @@ from quickapp.agent.processors.pre_transformers import (
 )
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
@@ -37,6 +38,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_NAME,
+    should_activate_context_tool,
 )
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
@@ -82,21 +84,28 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_pre_processors(
-        self, config: ApplicationConfig, instructions_provider: AgentInstructionsProvider
+        self,
+        config: ApplicationConfig,
+        messages_context: MessagesMixin,
+        instructions_provider: AgentInstructionsProvider,
     ) -> list[PreTransformer]:
         # Order of Transformers is crucial for correct request processing
-        return [
+        transformers: list[PreTransformer] = [
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
             ExtractToolCallsFromStateProcessor(),
             ReduceAttachmentTransformer(),
             AddContextAttachmentTransformer(config.contexts),
-            AttachmentNotificationInjector(
-                context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
-                contexts=config.contexts,
-            ),
         ]
+        if should_activate_context_tool(config.contexts, messages_context.messages):
+            transformers.append(
+                AttachmentNotificationInjector(
+                    context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
+                    contexts=config.contexts,
+                )
+            )
+        return transformers
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:

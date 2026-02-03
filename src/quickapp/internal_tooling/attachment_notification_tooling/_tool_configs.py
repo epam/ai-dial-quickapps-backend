@@ -1,5 +1,6 @@
 import json
 import mimetypes
+from collections.abc import Sequence
 
 from aidial_sdk.chat_completion import Message, Role
 
@@ -53,14 +54,14 @@ def build_context_entries(
     return current_urls, entries
 
 
-def extract_seen_urls_from_messages(messages: list[Message], tool_name: str) -> set[str]:
-    """Scan message history for the most recent tool result from *tool_name*
+def extract_seen_urls_from_messages(messages: list[Message]) -> set[str]:
+    """Scan message history for the most recent context-tool result
     and extract the set of non-removed URLs that were previously reported."""
     context_call_ids: set[str] = set()
     for msg in messages:
         if msg.role == Role.ASSISTANT and msg.tool_calls:
             for tc in msg.tool_calls:
-                if tc.function and tc.function.name == tool_name:
+                if tc.function and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME:
                     context_call_ids.add(tc.id)
 
     # Walk in reverse to find the most recent matching tool result
@@ -107,3 +108,23 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
 
 # Tool name after hashing by OpenAiToolFunction.set_name validator
 AVAILABLE_CONTEXT_TOOL_NAME = AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name
+
+
+def has_context_tool_history(messages: Sequence[Message]) -> bool:
+    """Check whether message history contains any tool calls for the context tool."""
+    for msg in messages:
+        if msg.role == Role.ASSISTANT and msg.tool_calls:
+            for tc in msg.tool_calls:
+                if tc.function and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME:
+                    return True
+    return False
+
+
+def should_activate_context_tool(
+    contexts: Sequence[Context],
+    messages: Sequence[Message],
+) -> bool:
+    """True when file contexts exist OR the context tool was used in a prior turn."""
+    if any(isinstance(ctx, FileContextConfig) for ctx in contexts):
+        return True
+    return has_context_tool_history(messages)
