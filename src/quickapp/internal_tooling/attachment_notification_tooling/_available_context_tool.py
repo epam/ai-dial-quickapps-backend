@@ -1,5 +1,4 @@
 import json
-import mimetypes
 from typing import Any, Optional
 
 from injector import AssistedBuilder, inject
@@ -7,10 +6,13 @@ from injector import AssistedBuilder, inject
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.config.context import Context, FileContextConfig
+from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.attachment_notification_tooling._available_context_stage_wrapper import (
     _AvailableContextStageWrapper,
+)
+from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+    build_context_entries,
 )
 
 
@@ -36,31 +38,9 @@ class _AvailableContextTool(StagedBaseTool):
 
     def collect_contexts(self) -> list[dict[str, str]]:
         """Collect context file metadata, flagging new or changed ones."""
-        result: list[dict[str, str]] = []
-        current_urls: set[str] = set()
-
-        for ctx in self.__contexts:
-            if not isinstance(ctx, FileContextConfig):
-                continue
-            url = ctx.url
-            if url in current_urls:
-                continue
-            current_urls.add(url)
-            title = url.rsplit("/", 1)[-1]
-            mime_type = mimetypes.guess_type(title)[0] or ""
-            entry: dict[str, str] = {
-                "title": title,
-                "url": url,
-                "type": mime_type,
-            }
-            if ctx.description:
-                entry["description"] = ctx.description
-            if url not in self.__seen_urls:
-                entry["status"] = "new"
-            result.append(entry)
-
+        current_urls, entries = build_context_entries(self.__contexts, self.__seen_urls)
         self.__seen_urls = current_urls
-        return result
+        return entries
 
     async def _run_in_stage_async(
         self,

@@ -68,3 +68,44 @@ class TestContextInjection:
 
         result2 = injector.transform(messages)
         assert len(result2) == 1
+
+    def test_context_removal_injects_removed_entry(self):
+        ctx = FileContextConfig(url="files/bucket/ref.csv")
+        contexts: list[FileContextConfig] = [ctx]
+        injector = _make_injector(contexts=contexts)
+        messages = [_user_msg("hello")]
+
+        # First call: context present
+        result1 = injector.transform(messages)
+        assert len(result1) == 3
+
+        # Remove the context
+        contexts.clear()
+
+        # Second call: removal detected, synthetic message with removed entry
+        result2 = injector.transform(messages)
+        assert len(result2) == 3
+        data2 = json.loads(result2[2].content)
+        assert len(data2) == 1
+        assert data2[0]["title"] == "ref.csv"
+        assert data2[0]["url"] == "files/bucket/ref.csv"
+        assert data2[0]["status"] == "removed"
+
+    def test_context_removal_then_no_change(self):
+        ctx = FileContextConfig(url="files/bucket/ref.csv")
+        contexts: list[FileContextConfig] = [ctx]
+        injector = _make_injector(contexts=contexts)
+        messages = [_user_msg("hello")]
+
+        # First call: context present
+        injector.transform(messages)
+
+        # Remove the context
+        contexts.clear()
+
+        # Second call: removal detected
+        injector.transform(messages)
+
+        # Third call: no change (still empty)
+        result3 = injector.transform(messages)
+        assert len(result3) == 1  # no synthetic messages

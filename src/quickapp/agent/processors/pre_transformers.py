@@ -13,6 +13,9 @@ from pydantic.v1 import StrictStr
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
 from quickapp.common.utils import matches_type, sanitize_toolname
 from quickapp.config.context import Context, FileContextConfig
+from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+    build_context_entries,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -185,35 +188,12 @@ class AttachmentNotificationInjector(PreTransformer):
 
     def _check_contexts(self) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""
-        current_urls: set[str] = set()
-        entries: list[dict[str, str]] = []
-
-        for ctx in self._contexts:
-            if not isinstance(ctx, FileContextConfig):
-                continue
-            url = ctx.url
-            if url in current_urls:
-                continue
-            current_urls.add(url)
-            title = url.rsplit("/", 1)[-1]
-            mime_type = mimetypes.guess_type(title)[0] or ""
-            entry: dict[str, str] = {
-                "title": title,
-                "url": url,
-                "type": mime_type,
-            }
-            if ctx.description:
-                entry["description"] = ctx.description
-            if url not in self._seen_context_urls:
-                entry["status"] = "new"
-            entries.append(entry)
+        current_urls, entries = build_context_entries(self._contexts, self._seen_context_urls)
 
         if current_urls == self._seen_context_urls:
             return []
 
         self._seen_context_urls = current_urls
-        if not entries:
-            return []
 
         return self._build_synthetic_messages(
             self._context_tool_name, json.dumps(entries, ensure_ascii=False)
