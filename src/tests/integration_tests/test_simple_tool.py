@@ -462,35 +462,35 @@ def test_mcp_toolcall(client):
         response_format={
             "type": "json_schema",
             "json_schema": {
-                "name": "city_weather_response",
+                "name": "character_response",
                 "strict": True,
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "city": {
+                        "name": {
                             "type": "string",
-                            "description": "The name of the city"
+                            "description": "The character's name."
                         },
-                        "temperature": {
+                        "age": {
                             "type": "number",
-                            "description": "The temperature in Celsius"
+                            "description": "The character's age."
                         },
-                        "condition": {
+                        "weapon": {
                             "type": "string",
-                            "description": "Weather condition (e.g., sunny, rainy, cloudy)"
+                            "description": "The character's weapon."
                         },
-                        "humidity": {
-                            "type": "integer",
-                            "description": "Humidity percentage"
+                        "friend": {
+                            "type": "boolean",
+                            "description": "Is the character a friend?"
                         }
                     },
-                    "required": ["city", "temperature", "condition", "humidity"],
+                    "required": ["name", "age", "weapon", "friend"],
                     "additionalProperties": False
                 }
             }
         }
     ).add_user_message(
-        user_message="IMPORTANT! DO NOT call any tools, just use information provided in the message to create the response according to the schema. Format weather answer according to provided schema. Use this data: city - TestCity, temperature is 22 degrees Celsius, it's sunny with 65% humidity. ",
+        user_message="DO NOT USE ANY TOOLS. You have enough info in the next message to provide an answer. Use next description and provide info about this character according to response schema: Henry was a 30 years old warrior. He used a sword as his main weapon. He was a friend to all.",
     )
 )
 def test_response_format_json_schema(client):
