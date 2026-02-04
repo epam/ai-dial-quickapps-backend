@@ -63,7 +63,9 @@ def mcp_tool1(tool1, mock_tool_config, mock_stage_wrapper_builder, mock_dial_att
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
-        perf_timer=Mock()
+        perf_timer=Mock(),
+        file_service=MagicMock(),
+        dial_toolset_id=None
     )
 
 @pytest.fixture
@@ -77,7 +79,9 @@ def mcp_tool2(tool2, mock_tool_config, mock_stage_wrapper_builder, mock_dial_att
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
-        perf_timer=Mock()
+        perf_timer=Mock(),
+        file_service=MagicMock(),
+        dial_toolset_id=None
     )
 
 # --- New reusable fixtures to remove duplication ---
@@ -103,7 +107,9 @@ def builder_mock():
             stage_wrapper_builder=MagicMock(),
             dial_attachment_service=MagicMock(),
             state_holder=MagicMock(),
-            perf_timer=Mock()
+            perf_timer=Mock(),
+            file_service=MagicMock(),
+            dial_toolset_id=None
         )
     m = MagicMock()
     m.build.side_effect = side_effect

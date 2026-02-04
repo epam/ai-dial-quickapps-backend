@@ -10,7 +10,6 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
-from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
 
@@ -140,25 +139,6 @@ class TemplateType(str, Enum):
     tool = 'tool'
 
 
-def add_default_content_downloader(raw_config: ApplicationConfig):
-    # Check if any existing tool set already has the `content_downloader` predefined tool
-    for tool_set in raw_config.tool_sets:
-        if not hasattr(tool_set, "tools"):
-            # Some tool set variants do not define `tools`
-            continue
-        for tool in tool_set.tools:  # type: ignore[union-attr]
-            if isinstance(tool, PredefinedTool) and tool.template_name == "content_downloader":
-                return
-
-    # If not found, append a default internal tool set with the content_downloader tool
-    raw_config.tool_sets.append(
-        InternalToolSet(
-            name="Default tools",
-            tools=[PredefinedTool(template_name="content_downloader", enabled=True)],
-        )
-    )
-
-
 class ConfigResolver:
     def __init__(self):
         self.predefined_settings = PredefinedSettings()
@@ -235,7 +215,6 @@ class ConfigResolver:
             spc.content = self.read_template_content(TemplateType.system_prompt, spc.template)
 
         # tool-sets
-        add_default_content_downloader(raw_config)
         resolved_tool_set_list = []
         for tool_set in raw_config.tool_sets:
             if isinstance(tool_set, PredefinedToolSet):

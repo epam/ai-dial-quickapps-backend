@@ -7,11 +7,14 @@ from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.file_downloader_service import DialFileService
+from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 
@@ -30,6 +33,8 @@ class _MCPTool(StagedBaseTool):
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
+        file_service: DialFileService,
+        dial_toolset_id: str | None,
     ):
         super().__init__(
             name=tool.name or "MCP Tool",
@@ -44,15 +49,68 @@ class _MCPTool(StagedBaseTool):
         self.__dial_attachment_service = dial_attachment_service
         self.__state_holder = state_holder
         self.__connection_manager: _MCPConnectionManager = connection_manager
+        self.__file_service: DialFileService = file_service
+        self.__dial_toolset_id = dial_toolset_id
 
-    def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> Any:
+        import re
+
+        # todo for PoC only, will implement nested object handling later
+        file_pattern = re.compile(
+            r'^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$', re.IGNORECASE
+        )
+
         for key, value in list(kwargs.items()):
-            if isinstance(value, str):
-                if value.startswith("BASE64::"):
-                    value = value[8:]
-                if value.startswith("/files/") or value.startswith("files/"):
-                    file_content = self.__state_holder.get_file_content(value)
-                    kwargs[key] = file_content
+            if not isinstance(value, str):
+                continue
+
+            m = file_pattern.match(value)
+            if not m:
+                continue
+
+            detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
+            file_url_part = m.group("file_url")
+
+            files_to_share = []
+            if detected_prefix == "base64":
+                logger.debug(
+                    "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                kwargs[key] = await FilePrefixHandlers.handle_base64(
+                    file_url_part, self.__file_service
+                )
+            elif detected_prefix == "url":
+                logger.debug(
+                    "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                properties = self.__tool.inputSchema.get("properties", {})
+                schema_prop = properties.get(key, {})
+                if schema_prop.get("dial_url"):
+                    files_to_share.append(file_url_part)
+                else:
+                    kwargs[key] = file_url_part
+            elif detected_prefix == "text":
+                logger.debug(
+                    "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                kwargs[key] = await FilePrefixHandlers.handle_text(
+                    file_url_part, self.__file_service, parameter_name=key
+                )
+            else:
+                logger.warning(
+                    "Detected file reference without prefix for key %s (value: %s)", key, value
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name=key,
+                    message="Missing required file prefix (base64::, url::, text::)",
+                )
+
         return kwargs
 
     async def _run_in_stage_async(
