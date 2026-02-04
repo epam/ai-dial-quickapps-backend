@@ -1,5 +1,4 @@
 import logging
-import os
 
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
@@ -29,6 +28,11 @@ from quickapp.internal_tooling.py_interpreter_tooling.handlers.content_sanitizer
     ContentSanitizer,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.session_manager import SessionManager
+from quickapp.internal_tooling.skill_reader_tooling._skill_reader_tool import _SkillReaderTool
+from quickapp.internal_tooling.skill_reader_tooling._tool_configs import (
+    SKILL_READER_TOOL_CONFIG,
+    SKILL_READER_TOOL_NAME,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ class InternalToolModule(Module):
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(_AvailableContextTool, to=_AvailableContextTool, scope=request_scope)
+        binder.bind(_SkillReaderTool, to=_SkillReaderTool, scope=request_scope)
 
         logger.debug("InternalTooling module configuration completed")
 
@@ -50,8 +55,19 @@ class InternalToolModule(Module):
         messages_context: MessagesMixin,
         py_builder: AssistedBuilder[_PyInterpreterTool],
         ac_builder: AssistedBuilder[_AvailableContextTool],
+        skill_reader_builder: AssistedBuilder[_SkillReaderTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
+
+        # Add skill reader tool (always enabled)
+        tools.append(
+            skill_reader_builder.build(
+                tool_config=SKILL_READER_TOOL_CONFIG,
+                name=SKILL_READER_TOOL_NAME,
+                description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
+            )
+        )
+
         for tool_set in app_config.tool_sets:
             if isinstance(tool_set, InternalToolSet):
                 for tool_config in tool_set.tools:

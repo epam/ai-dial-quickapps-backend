@@ -4,7 +4,7 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
-from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.common import AgentSkillsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
@@ -65,7 +65,7 @@ class AgentModule(Module):
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
-        binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
 
     @provider
     def provide_openai_client(
@@ -87,12 +87,12 @@ class AgentModule(Module):
         self,
         config: ApplicationConfig,
         messages_context: MessagesMixin,
-        instructions_provider: AgentInstructionsProvider,
+        agent_skills_provider: AgentSkillsProvider,
     ) -> list[PreTransformer]:
         # Order of Transformers is crucial for correct request processing
         transformers: list[PreTransformer] = [
             AddSystemPromptTransformer(
-                config.orchestrator.system_prompt.content, instructions_provider.get()
+                config.orchestrator.system_prompt.content, agent_skills_provider.get_skills_xml()
             ),
             ExtractToolCallsFromStateProcessor(),
             ReduceAttachmentTransformer(),
