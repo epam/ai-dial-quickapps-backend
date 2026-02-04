@@ -14,7 +14,8 @@ from quickapp.common.utils import matches_type, sanitize_toolname
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     build_context_entries,
-    extract_seen_urls_from_messages,
+    extract_seen_entries_from_messages,
+    should_activate_context_tool,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,13 +26,20 @@ class PreTransformer(ABC):
     def transform(self, input_param: Any): ...
 
 
-class AddSystemPromptTransformer(PreTransformer):
+class MessagesTransformer(PreTransformer):
+    """Typed transformer that operates on a list of Messages."""
+
+    @abstractmethod
+    def transform(self, messages: list[Message]) -> list[Message]: ...
+
+
+class AddSystemPromptTransformer(MessagesTransformer):
 
     def __init__(self, system_prompt: Optional[str], instructions: Optional[str] = None):
         parts = (system_prompt or "", instructions or "")
         self._combined_system_prompt = "\n\n".join(p for p in parts if p)
 
-    def transform(self, messages: list[Message]):
+    def transform(self, messages: list[Message]) -> list[Message]:
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
         if not self._combined_system_prompt:
@@ -42,31 +50,31 @@ class AddSystemPromptTransformer(PreTransformer):
         return messages
 
 
-class RemoveStateTransformer(PreTransformer):
-    def transform(self, input_param: list[Message]):
+class RemoveStateTransformer(MessagesTransformer):
+    def transform(self, messages: list[Message]) -> list[Message]:
         # Validate input is List[Message]
-        if not isinstance(input_param, list):
+        if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
-        for item in input_param:
+        for item in messages:
             if not isinstance(item, Message):
                 raise TypeError("All items must be Message instances")
             if item.custom_content:
                 item.custom_content.state = None  # Remove all state temp data
-        return input_param
+        return messages
 
 
-class ReduceAttachmentTransformer(PreTransformer):
+class ReduceAttachmentTransformer(MessagesTransformer):
     SUPPORTED_ATTACHMENTS = ["image/*"]
 
-    def transform(self, input_param: list[Message]):
+    def transform(self, messages: list[Message]) -> list[Message]:
         # Validate input is List[Message]
-        if not isinstance(input_param, list):
+        if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
-        for item in input_param:
+        for item in messages:
             if not isinstance(item, Message):
                 raise TypeError("All items must be Message instances")
             self._transform_item(item)
-        return input_param
+        return messages
 
     def _transform_item(self, message: Message):
         updated_attachments = []
@@ -89,7 +97,7 @@ class ReduceAttachmentTransformer(PreTransformer):
         return message
 
 
-class ExtractToolCallsFromStateProcessor(PreTransformer):
+class ExtractToolCallsFromStateProcessor(MessagesTransformer):
 
     def transform(self, messages: list[Message]) -> list[Message]:
         """
@@ -132,7 +140,7 @@ class ExtractToolCallsFromStateProcessor(PreTransformer):
         return updated_messages
 
 
-class AddContextAttachmentTransformer(PreTransformer):
+class AddContextAttachmentTransformer(MessagesTransformer):
 
     def __init__(self, contexts: list[Context]):
         self.contexts = contexts
@@ -160,7 +168,7 @@ class AddContextAttachmentTransformer(PreTransformer):
                     logger.debug(f"File {ctx.url} skipped, unsupported mime type: {mime_type}")
 
 
-class AttachmentNotificationInjector(PreTransformer):
+class AttachmentNotificationInjector(MessagesTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 
@@ -175,6 +183,9 @@ class AttachmentNotificationInjector(PreTransformer):
     def transform(self, messages: list[Message]) -> list[Message]:
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
+
+        if not should_activate_context_tool(self._contexts, messages):
+            return messages
 
         synthetic: list[Message] = self._check_contexts(messages)
 
@@ -191,14 +202,15 @@ class AttachmentNotificationInjector(PreTransformer):
 
     def _check_contexts(self, messages: list[Message]) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""
-        seen_urls = extract_seen_urls_from_messages(messages)
-        current_urls, entries = build_context_entries(self._contexts, seen_urls)
+        seen_entries = extract_seen_entries_from_messages(messages)
+        current_urls, entries = build_context_entries(self._contexts, seen_entries)
 
-        if current_urls == seen_urls:
+        if current_urls == set(seen_entries):
             return []
 
         return self._build_synthetic_messages(
-            self._context_tool_name, json.dumps(entries, ensure_ascii=False)
+            self._context_tool_name,
+            json.dumps([e.model_dump(exclude_none=True) for e in entries], ensure_ascii=False),
         )
 
     @staticmethod

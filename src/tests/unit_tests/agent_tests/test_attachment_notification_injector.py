@@ -82,7 +82,7 @@ class TestContextInjection:
         assert len(result2) == 3  # unchanged, no new synthetic messages
 
     def test_context_removal_injects_removed_entry(self):
-        ctx = FileContextConfig(url="files/bucket/ref.csv")
+        ctx = FileContextConfig(url="files/bucket/ref.csv", description="Reference data")
         contexts: list[FileContextConfig] = [ctx]
         messages = [_user_msg("hello")]
 
@@ -103,6 +103,8 @@ class TestContextInjection:
         assert len(data2) == 1
         assert data2[0]["title"] == "ref.csv"
         assert data2[0]["url"] == "files/bucket/ref.csv"
+        assert data2[0]["type"] == "text/csv"
+        assert data2[0]["description"] == "Reference data"
         assert data2[0]["status"] == "removed"
 
     def test_context_lifecycle_add_remove_all(self):
@@ -143,7 +145,9 @@ class TestContextInjection:
         assert len(data3) == 2
         by_title3 = {e["title"]: e for e in data3}
         assert "status" not in by_title3["a.csv"]
+        assert by_title3["a.csv"]["description"] == "File A"
         assert by_title3["b.pdf"]["status"] == "removed"
+        assert by_title3["b.pdf"]["type"] == "application/pdf"
 
         # Step 5: remove file_a — fresh injector, reported as removed
         contexts.clear()
@@ -154,6 +158,7 @@ class TestContextInjection:
         data4 = json.loads(synthetic4[1].content)
         assert len(data4) == 1
         assert data4[0]["title"] == "a.csv"
+        assert data4[0]["description"] == "File A"
         assert data4[0]["status"] == "removed"
 
     def test_context_removal_then_no_change(self):

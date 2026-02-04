@@ -17,11 +17,6 @@ class FakeMessage:
     def dict(self):
         return {"role": "user", "content": self.content}
 
-class FakeTransformer:
-    def transform(self, messages):
-        # no-op transformer
-        return messages
-
 class DummyParams:
     def model_dump(self, exclude_none=True):
         # base config returned before payload update
@@ -59,7 +54,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         messages_context=messages_context,
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
-        pre_process_transformers=[FakeTransformer()],
+
         response_format=None
     )
 
@@ -97,7 +92,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         messages_context=messages_context,
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        pre_process_transformers=[],
+
         response_format=None
     )
 
@@ -148,7 +143,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         messages_context=messages_context,
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        pre_process_transformers=[],
+
         response_format=None
     )
 

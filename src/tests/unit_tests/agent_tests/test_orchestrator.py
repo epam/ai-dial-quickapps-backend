@@ -2,6 +2,8 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, AsyncMock
 
+from aidial_sdk.chat_completion.request import Message, Role
+
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
@@ -11,9 +13,11 @@ from quickapp.common import DeploymentUsage
 async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     # Mocks and simple objects
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
+
+    messages_list: list[Message] = []
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
@@ -59,10 +63,13 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     await orchestrator.invoke()
+
+    # No tool calls means no tool execution history — state_holder.add_state should NOT be called
+    state_holder.add_state.assert_not_called()
 
     # choice.set_state should be called with the state from state_holder
     choice.set_state.assert_called_once_with(initial_state)
@@ -80,19 +87,20 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
 async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messages():
     # Mocks and simple objects
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
+
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
     choice.set_state = Mock()
 
-    # First assistant result contains tool_calls, second has none (to end recursion)
+    # First assistant result contains tool_calls, second has none (to end loop)
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        # Provide full tool call shape expected by pydantic Message validation
         tool_calls=[
             {
                 "id": "tc-1",
@@ -114,21 +122,21 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
     chunk_processor = Mock()
-    # Return with tools first, then without tools to stop recursion
-    chunk_processor.process_chunks = AsyncMock(side_effect=[assistant_result_with_tools, assistant_result_no_tools])
+    # Return with tools first, then without tools to stop loop
+    chunk_processor.process_chunks = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
     chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
 
     state_holder = Mock()
-    # initial execution history empty
-    state_holder.get_state = Mock(return_value={TOOL_EXECUTION_HISTORY: []})
+    state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
     usage_statistics_service = Mock()
     usage_statistics_service.process_usage_statistics = AsyncMock()
 
-    # Prepare tool executor result
-    # Use a dict shaped like a Message so pydantic can validate it
-    tool_message = {"role": "assistant", "content": "tool output"}
+    # Prepare tool executor result — tool message must be a real Message for the helper
+    tool_message = Message(role=Role.TOOL, content="tool output", tool_call_id="tc-1")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
 
@@ -138,13 +146,17 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     tool_result.propagate_to_choice = [attach]
 
     # tool_result.usage is a list compatible with DeploymentUsage instances
-    tool_result.usage = [DeploymentUsage(model_name="test-model", prompt_tokens=3, completion_tokens=4)]
+    tool_result.usage = [
+        DeploymentUsage(model_name="test-model", prompt_tokens=3, completion_tokens=4)
+    ]
 
     tool_executor = Mock()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=10, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=10, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -157,7 +169,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     await orchestrator.invoke()
@@ -174,21 +186,22 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     attach.model_dump.assert_called()
     choice.add_attachment.assert_called_once_with(**attach.model_dump())
 
-    # state_holder.add_state should be called to store TOOL_EXECUTION_HISTORY
-    state_holder.add_state.assert_called()
+    # state_holder.add_state should be called once at the end with the full history
+    state_holder.add_state.assert_called_once()
     key, value = state_holder.add_state.call_args[0]
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
-    assert len(value) >= 1
+    assert len(value) == 1
 
 
 @pytest.mark.asyncio
 async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
 
+    messages_list: list[Message] = []
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
@@ -237,7 +250,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     with pytest.raises(RuntimeError) as excinfo:

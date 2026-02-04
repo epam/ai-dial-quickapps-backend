@@ -1,4 +1,3 @@
-import copy
 import logging
 import os
 from typing import Any
@@ -13,7 +12,6 @@ from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.agent.processors.pre_transformers import PreTransformer
 from quickapp.common import RESPONSE_FORMAT
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
@@ -30,29 +28,18 @@ class AssistantInvoker:
         messages_context: MessagesMixin,
         choice: Choice,
         azure_client: AsyncAzureOpenAI,
-        pre_process_transformers: list[PreTransformer],
         response_format: RESPONSE_FORMAT,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
-        self.__pre_process_transformers = pre_process_transformers or []
         self.__azure_client = azure_client
         self.__response_format = response_format
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        # Pre-process
-        # TODO encapsulate pre-processing into separated class or even move somewhere before we store messages in context
-        # TODO Check do we really need deep copy here or can use self.__messages_context.messages
-        messages_copy = copy.deepcopy(self.__messages_context.messages)
-        for transformer in self.__pre_process_transformers:
-            messages_copy = transformer.transform(messages_copy)
-            logger.debug(f"{type(transformer)}: {{\"result\": {messages_copy}}}")
-
-        # Process
-        self._log_messages(messages_copy)
-        return await self.__create_chat_completion(messages_copy)
+        self._log_messages(self.__messages_context.messages)
+        return await self.__create_chat_completion(self.__messages_context.messages)
 
     async def __create_chat_completion(
         self, messages: list[Message]

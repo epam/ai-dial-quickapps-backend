@@ -1,9 +1,10 @@
 import copy
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
+from quickapp.agent._message_preprocessing_initializer import _MessagePreprocessingInitializer
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
@@ -14,12 +15,12 @@ from quickapp.agent.processors.pre_transformers import (
     AddSystemPromptTransformer,
     AttachmentNotificationInjector,
     ExtractToolCallsFromStateProcessor,
-    PreTransformer,
+    MessagesTransformer,
     ReduceAttachmentTransformer,
 )
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
@@ -38,7 +39,6 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_NAME,
-    should_activate_context_tool,
 )
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
@@ -66,6 +66,11 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(
+            _MessagePreprocessingInitializer,
+            to=_MessagePreprocessingInitializer,
+            scope=request_scope,
+        )
 
     @provider
     def provide_openai_client(
@@ -83,29 +88,30 @@ class AgentModule(Module):
         return azure_client
 
     @multiprovider
-    def provide_pre_processors(
+    def provide_message_transformers(
         self,
         config: ApplicationConfig,
-        messages_context: MessagesMixin,
         instructions_provider: AgentInstructionsProvider,
-    ) -> list[PreTransformer]:
+    ) -> list[MessagesTransformer]:
         # Order of Transformers is crucial for correct request processing
-        transformers: list[PreTransformer] = [
+        return [
             AddSystemPromptTransformer(
                 config.orchestrator.system_prompt.content, instructions_provider.get()
             ),
             ExtractToolCallsFromStateProcessor(),
             ReduceAttachmentTransformer(),
             AddContextAttachmentTransformer(config.contexts),
+            AttachmentNotificationInjector(
+                context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
+                contexts=config.contexts,
+            ),
         ]
-        if should_activate_context_tool(config.contexts, messages_context.messages):
-            transformers.append(
-                AttachmentNotificationInjector(
-                    context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
-                    contexts=config.contexts,
-                )
-            )
-        return transformers
+
+    @multiprovider
+    def provide_completion_initializers(
+        self, preprocessor: ProviderOf[_MessagePreprocessingInitializer]
+    ) -> list[CompletionInitializer]:
+        return [preprocessor.get()]
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
