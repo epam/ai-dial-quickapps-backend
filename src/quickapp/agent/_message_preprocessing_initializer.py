@@ -2,8 +2,8 @@ import logging
 
 from injector import inject
 
-from quickapp.agent.processors.pre_transformers import MessagesTransformer
 from quickapp.common.base_initializer import BaseInitializer
+from quickapp.common.base_transformer import MessagesTransformer
 from quickapp.common.messages_mixin import MessagesMixin
 
 logger = logging.getLogger(__name__)

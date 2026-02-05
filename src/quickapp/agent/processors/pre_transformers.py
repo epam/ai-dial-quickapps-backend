@@ -1,39 +1,16 @@
 import copy
-import json
 import logging
 import mimetypes
-import uuid
-from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Optional
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
+from quickapp.common.base_transformer import MessagesTransformer
 from quickapp.common.utils import matches_type
 from quickapp.config.context import Context, FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
-    build_context_entries,
-    extract_seen_entries_from_messages,
-    should_activate_context_tool,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
 
 logger = logging.getLogger(__name__)
-
-
-class PreTransformer(ABC):
-    @abstractmethod
-    def transform(self, input_param: Any): ...
-
-
-class MessagesTransformer(PreTransformer):
-    """Typed transformer that operates on a list of Messages."""
-
-    @abstractmethod
-    def transform(self, messages: list[Message]) -> list[Message]: ...
 
 
 class AddSystemPromptTransformer(MessagesTransformer):
@@ -169,66 +146,3 @@ class AddContextAttachmentTransformer(MessagesTransformer):
                     logger.debug(f"File {ctx.url} added to the message.")
                 else:
                     logger.debug(f"File {ctx.url} skipped, unsupported mime type: {mime_type}")
-
-
-class AttachmentNotificationInjector(MessagesTransformer):
-    """Injects synthetic tool call/result messages to inform the agent about
-    available contexts when changes are detected."""
-
-    def __init__(self, contexts: list[Context]):
-        self._contexts = contexts
-
-    def transform(self, messages: list[Message]) -> list[Message]:
-        if not isinstance(messages, list):
-            raise TypeError("Data must be a list of Message objects")
-
-        if not should_activate_context_tool(self._contexts, messages):
-            return messages
-
-        synthetic: list[Message] = self._check_contexts(messages)
-
-        if not synthetic:
-            return messages
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Injecting {len(synthetic)} synthetic messages for context notification: "
-                f"{[str(msg) for msg in synthetic]}"
-            )
-
-        return messages + synthetic
-
-    def _check_contexts(self, messages: list[Message]) -> list[Message]:
-        """Collect context file metadata and return synthetic messages if changed."""
-        seen_entries = extract_seen_entries_from_messages(messages)
-        current_urls, entries = build_context_entries(self._contexts, seen_entries)
-
-        if current_urls == set(seen_entries) and not any(e.status for e in entries):
-            return []
-
-        return self._build_synthetic_messages(
-            AVAILABLE_CONTEXT_TOOL_NAME,
-            json.dumps([e.model_dump(exclude_none=True) for e in entries], ensure_ascii=False),
-        )
-
-    @staticmethod
-    def _build_synthetic_messages(tool_name: str, content: str) -> list[Message]:
-        """Build a pair of assistant tool_call + tool result messages."""
-        call_id = f"synthetic_{uuid.uuid4().hex[:12]}"
-        assistant_msg = Message(
-            role=Role.ASSISTANT,
-            content="",
-            tool_calls=[
-                ToolCall(
-                    id=call_id,
-                    type="function",
-                    function=FunctionCall(name=tool_name, arguments="{}"),
-                )
-            ],
-        )
-        tool_msg = Message(
-            role=Role.TOOL,
-            content=content,
-            tool_call_id=call_id,
-        )
-        return [assistant_msg, tool_msg]

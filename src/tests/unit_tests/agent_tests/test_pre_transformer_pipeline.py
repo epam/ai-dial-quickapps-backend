@@ -19,9 +19,9 @@ from pydantic.v1 import StrictStr
 
 from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
-    AttachmentNotificationInjector,
     ReduceAttachmentTransformer,
 )
+from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
 from quickapp.config.context import FileContextConfig
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_NAME,

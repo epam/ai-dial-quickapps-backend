@@ -13,13 +13,12 @@ from quickapp.agent.processors.chunk_processor import ChunkProcessor
 from quickapp.agent.processors.pre_transformers import (
     AddContextAttachmentTransformer,
     AddSystemPromptTransformer,
-    AttachmentNotificationInjector,
     ExtractToolCallsFromStateProcessor,
-    MessagesTransformer,
     ReduceAttachmentTransformer,
 )
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -37,6 +36,7 @@ from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
+from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
