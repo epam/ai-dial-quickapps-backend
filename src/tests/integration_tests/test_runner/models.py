@@ -177,6 +177,7 @@ class TstCase:
         name: str,
         description: str,
         similarity_threshold: float = SimilarityThreshold.DEFAULT.value,
+        response_format: Dict[str, Any] | None = None,
     ):
         self.name = name
         self.description = description
@@ -184,6 +185,7 @@ class TstCase:
         self.mock_date = datetime.date.today()
         self.similarity_threshold = similarity_threshold
         self.py_interpreter_session_flow = False
+        self.response_format = response_format
 
     def add_user_message(
         self,
