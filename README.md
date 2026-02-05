@@ -45,7 +45,6 @@ file:
 |--------------------------------------------|----------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
 | **DIAL Core**                              |                            |          |                                                                                                                                      |
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                                             |
-| `DIAL_API_KEY`                             | —                          | Yes      | Authorization [API key](https://github.com/epam/ai-dial-core/blob/development/docs/dynamic-settings/keys.md) configured in DIAL Core |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                                        |
 | **Logging**                                |                            |          |                                                                                                                                      |
 | `LOG_MODE`                                 | —                          | No       | Set to `dev` for simplified log format                                                                                               |
@@ -85,7 +84,7 @@ file:
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
   `REMOTE_DIAL_*`) are only used when running the full local stack via docker-compose or during testing.
-- For a standalone Quick Apps deployment the essential variables are `DIAL_URL` and `DIAL_API_KEY`.
+- For a standalone Quick Apps deployment the essential variable is only `DIAL_URL`
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
 
