@@ -14,7 +14,7 @@ SKILL_READER_TOOL_CONFIG = InternalTool(
     enabled=True,
     display=ToolDisplayConfig(
         stage=ToolStageConfig(
-            name="Reading Skill: {file_name}",
+            name="Reading Skill: {skill_name}",
             show=True,
         )
     ),
@@ -22,16 +22,16 @@ SKILL_READER_TOOL_CONFIG = InternalTool(
         type="function",
         function=OpenAiToolFunction(
             name=SKILL_READER_TOOL_NAME,
-            description="Read the full content of an agent skill file. Use this tool when you need to learn detailed instructions about a specific skill that is available to you.",
+            description="Read the full content of an agent skill. Use this tool when you need to learn detailed instructions about a specific skill that is available to you.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
                 properties={
-                    "file_name": ConfigurableSchemaSimpleType(
+                    "skill_name": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="The filename of the skill to read (e.g., 'builtin_file_transfer.md'). This should match the file_name from the available_skills list.",
+                        description="The name of the skill to read. This should match the name from the available_skills list.",
                     )
                 },
-                required=["file_name"],
+                required=["skill_name"],
             ),
         ),
     ),

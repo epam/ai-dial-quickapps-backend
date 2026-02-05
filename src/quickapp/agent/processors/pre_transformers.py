@@ -8,6 +8,7 @@ from typing import Any, Optional
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from pydantic import StrictStr
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
 from quickapp.common.utils import matches_type, sanitize_toolname
@@ -27,8 +28,8 @@ class PreTransformer(ABC):
 
 class AddSystemPromptTransformer(PreTransformer):
 
-    def __init__(self, system_prompt: Optional[str], instructions: Optional[str] = None):
-        parts = (system_prompt or "", instructions or "")
+    def __init__(self, system_prompt: Optional[str], skills: Optional[str] = None):
+        parts = (system_prompt or "", skills or "")
         self._combined_system_prompt = "\n\n".join(p for p in parts if p)
 
     def transform(self, messages: list[Message]):
@@ -37,7 +38,7 @@ class AddSystemPromptTransformer(PreTransformer):
         if not self._combined_system_prompt:
             return messages
         if len(messages) > 0 and messages[0].role != Role.SYSTEM:
-            return [Message(role=Role.SYSTEM, content=self._combined_system_prompt)] + messages
+            return [Message(role=Role.SYSTEM, content=StrictStr(self._combined_system_prompt))] + messages
 
         return messages
 

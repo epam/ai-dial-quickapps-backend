@@ -1,8 +1,8 @@
 ---
-name: File Parameter Formatting
+name: file-parameter-formatting
 description: Format file and URL parameters correctly when calling tools
-tags: [files, formatting, tool-calling]
-version: 1.0.0
+metadata:
+  version: "1.0"
 ---
 
 # File Parameter Formatting

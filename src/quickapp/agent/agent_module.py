@@ -4,7 +4,6 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
-from quickapp.common import AgentSkillsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
@@ -40,6 +39,7 @@ from quickapp.internal_tooling.attachment_notification_tooling._tool_configs imp
     AVAILABLE_CONTEXT_TOOL_NAME,
     should_activate_context_tool,
 )
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -65,7 +65,6 @@ class AgentModule(Module):
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
-        binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
 
     @provider
     def provide_openai_client(

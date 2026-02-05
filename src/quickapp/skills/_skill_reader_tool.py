@@ -3,13 +3,14 @@ from typing import Any, Optional
 
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool, AgentSkillsProvider
+from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
-from quickapp.internal_tooling.skill_reader_tooling._skill_reader_stage_wrapper import (
+from quickapp.skills._skill_reader_stage_wrapper import (
     _SkillReaderStageWrapper,
 )
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -37,13 +38,13 @@ class _SkillReaderTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: Optional[BaseStageWrapper] = None,
-        file_name: Optional[str] = None,
+        skill_name: Optional[str] = None,
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
         """Execute the skill reader tool."""
-        if not file_name:
-            error_msg = "Missing required parameter: file_name"
+        if not skill_name:
+            error_msg = "Missing required parameter: skill_name"
             logger.error(error_msg)
             result = CompletionResult(content=error_msg, content_type="text/plain")
             if stage_wrapper:
@@ -51,7 +52,7 @@ class _SkillReaderTool(StagedBaseTool):
             return result
 
         try:
-            content = self.__skills_provider.get_skill_content(file_name)
+            content = self.__skills_provider.get_skill_content(skill_name)
             result = CompletionResult(content=content, content_type="text/markdown")
             if stage_wrapper:
                 stage_wrapper.add_result(result)

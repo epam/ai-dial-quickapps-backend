@@ -13,6 +13,7 @@ from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class AppFactory:
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
+                SkillsModule()
             ]
         )
         app = injector.get(FastAPI)
