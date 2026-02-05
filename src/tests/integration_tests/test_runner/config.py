@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
+    "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"]
 }
 
@@ -47,7 +48,7 @@ class TestConfig:
     DEFAULT_MODEL = os.getenv("MODEL", "gpt4_1")  # "gpt4o", "claude35", "claude37"
     REMOTE_DIAL_API_KEY = SecretStr(os.getenv("REMOTE_DIAL_API_KEY", "dial_api_key"))
 
-    PY_INTERPRETER_URL = "https://dev-dial-core.staging.deltixhub.io"
+    PY_INTERPRETER_URL = os.getenv("PY_INTERPRETER_URL")
     PY_INTERPRETER_API_KEY = SecretStr(os.getenv("PY_INTERPRETER_API_KEY", REMOTE_DIAL_API_KEY))
 
     WARNING_MESSAGE = "No cached value found, this means that something was changed in the logic"

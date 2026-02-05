@@ -47,7 +47,7 @@ E2E_TEST_CASE = TstCase(
 # Individual test for GPT-5
 @pytest.mark.requires_session
 @pytest.mark.e2e
-@e2e_test(test_case=E2E_TEST_CASE, models=["gpt-5-2025-08-07"], runs=1)
+@e2e_test(test_case=E2E_TEST_CASE, model="gpt-5-2025-08-07", runs=1)
 def test_e2e_set_gpt5(client):
     pass
 
@@ -55,7 +55,7 @@ def test_e2e_set_gpt5(client):
 # Individual test for GPT-4 Turbo
 @pytest.mark.requires_session
 @pytest.mark.e2e
-@e2e_test(test_case=E2E_TEST_CASE, models=["gpt-4.1-2025-04-14"], runs=1)
+@e2e_test(test_case=E2E_TEST_CASE, model="gpt-4.1-2025-04-14", runs=1)
 def test_e2e_set_gpt4_1(client):
     pass
 
@@ -63,7 +63,7 @@ def test_e2e_set_gpt4_1(client):
 # Individual test for Claude 4.5
 # @pytest.mark.requires_session
 # @pytest.mark.e2e
-# @e2e_test(test_case=E2E_TEST_CASE, models=["anthropic.claude-v4-5-sonnet-v1"], runs=1)
+# @e2e_test(test_case=E2E_TEST_CASE, model="anthropic.claude-v4-5-sonnet-v1", runs=1)
 # def test_e2e_set_claude45(client):
 #     pass
 
@@ -71,6 +71,6 @@ def test_e2e_set_gpt4_1(client):
 # Individual test for Gemini
 @pytest.mark.requires_session
 @pytest.mark.e2e
-@e2e_test(test_case=E2E_TEST_CASE, models=["gemini-2.5-pro"], runs=1)
+@e2e_test(test_case=E2E_TEST_CASE, model="gemini-2.5-pro", runs=1)
 def test_e2e_set_gemini(client):
     pass 
