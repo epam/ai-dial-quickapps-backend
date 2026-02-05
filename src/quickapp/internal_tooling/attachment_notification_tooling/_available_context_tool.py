@@ -12,7 +12,7 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.attachment_notification_tooling._available_context_stage_wrapper import (
     _AvailableContextStageWrapper,
 )
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
     ContextEntry,
     build_context_entries,
     extract_seen_entries_from_messages,

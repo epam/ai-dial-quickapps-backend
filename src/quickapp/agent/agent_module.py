@@ -37,9 +37,6 @@ from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -100,11 +97,8 @@ class AgentModule(Module):
             ),
             ExtractToolCallsFromStateProcessor(),
             ReduceAttachmentTransformer(),
-            AddContextAttachmentTransformer(config.contexts),
-            AttachmentNotificationInjector(
-                context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
-                contexts=config.contexts,
-            ),
+            AddContextAttachmentTransformer(contexts=config.contexts),
+            AttachmentNotificationInjector(contexts=config.contexts),
         ]
 
     @multiprovider

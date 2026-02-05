@@ -10,12 +10,15 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
-from quickapp.common.utils import matches_type, sanitize_toolname
+from quickapp.common.utils import matches_type
 from quickapp.config.context import Context, FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
     build_context_entries,
     extract_seen_entries_from_messages,
     should_activate_context_tool,
+)
+from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
+    AVAILABLE_CONTEXT_TOOL_NAME,
 )
 
 logger = logging.getLogger(__name__)
@@ -172,12 +175,7 @@ class AttachmentNotificationInjector(MessagesTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 
-    def __init__(
-        self,
-        context_tool_name: str,
-        contexts: list[Context],
-    ):
-        self._context_tool_name = sanitize_toolname(context_tool_name)
+    def __init__(self, contexts: list[Context]):
         self._contexts = contexts
 
     def transform(self, messages: list[Message]) -> list[Message]:
@@ -209,7 +207,7 @@ class AttachmentNotificationInjector(MessagesTransformer):
             return []
 
         return self._build_synthetic_messages(
-            self._context_tool_name,
+            AVAILABLE_CONTEXT_TOOL_NAME,
             json.dumps([e.model_dump(exclude_none=True) for e in entries], ensure_ascii=False),
         )
 

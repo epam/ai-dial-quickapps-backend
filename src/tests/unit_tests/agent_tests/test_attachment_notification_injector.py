@@ -19,11 +19,9 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 def _make_injector(
     contexts: list[FileContextConfig] | None = None,
-    context_tool_name: str = AVAILABLE_CONTEXT_TOOL_NAME,
 ) -> AttachmentNotificationInjector:
     """Create a fresh injector, as production does on every orchestrator iteration."""
     return AttachmentNotificationInjector(
-        context_tool_name=context_tool_name,
         contexts=contexts or [],
     )
 

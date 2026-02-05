@@ -51,7 +51,6 @@ def _run_pipeline(
     context_adder = AddContextAttachmentTransformer(ctx_list)
     reducer = ReduceAttachmentTransformer()
     injector = AttachmentNotificationInjector(
-        context_tool_name=AVAILABLE_CONTEXT_TOOL_NAME,
         contexts=ctx_list,
     )
 

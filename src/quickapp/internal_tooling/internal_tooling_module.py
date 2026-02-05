@@ -13,9 +13,11 @@ from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.internal_tooling.attachment_notification_tooling._available_context_tool import (
     _AvailableContextTool,
 )
+from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
+    should_activate_context_tool,
+)
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_CONFIG,
-    should_activate_context_tool,
 )
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
     _ContentDownloadTool,
