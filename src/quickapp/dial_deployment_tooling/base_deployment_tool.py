@@ -5,11 +5,11 @@ from injector import AssistedBuilder
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
-from ..common.utils import to_plain_dict
 
 
 class BaseDeploymentTool(StagedBaseTool):

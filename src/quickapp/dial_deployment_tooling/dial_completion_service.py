@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional, Iterable, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
@@ -16,8 +16,8 @@ from injector import inject
 from quickapp.common import CompletionResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
-from quickapp.config.tools.deployment import ContentPropagation
 from quickapp.common.utils import to_plain_dict
+from quickapp.config.tools.deployment import ContentPropagation
 
 _CONTENT_PARAM: str = "query"
 _ATTACHMENT_PARAM: str = "attachment_urls"
@@ -74,7 +74,6 @@ class DialCompletionService:
         custom_fields = self._prepare_custom_fields(params.items())
         if custom_fields:
             chat_completion_params[_EXTRA_BODY] = {_CUSTOM_FIELDS: custom_fields}
-
 
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 

@@ -2,7 +2,7 @@ import logging
 import mimetypes
 import re
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -149,8 +149,8 @@ def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:
     # As a last resort, return the object if JSON-serializable, else empty dict
     try:
         import json
+
         json.dumps(obj)
         return obj
     except Exception:
         return {}
-
