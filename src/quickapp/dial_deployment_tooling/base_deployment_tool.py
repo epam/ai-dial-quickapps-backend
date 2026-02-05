@@ -56,10 +56,9 @@ class BaseDeploymentTool(StagedBaseTool):
         if isinstance(self.tool_config, DialDeploymentTool):
             tool_config = cast(DialDeploymentTool, self.tool_config)
             # deployment and parameters are expected to be present on DialDeploymentTool
-            deployment = tool_config.deployment
-            params = deployment.parameters
-            params_dict = to_plain_dict(params)
 
+            params = tool_config.deployment.parameters
+            params_dict = to_plain_dict(params)
             for key, value in params_dict.items():
                 if key == "custom_fields":
                     cf = to_plain_dict(value)

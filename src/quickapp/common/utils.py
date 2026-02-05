@@ -60,58 +60,97 @@ def generate_attachment_filename(mime_type: Optional[str], base_filename: str = 
     filename = f"{base_filename}-{timestamp}{extension if extension is not None else ''}"
     return sanitize_filename(filename)
 
-def to_plain_dict(obj: Any) -> dict:
+
+def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:
     """
-    Convert an object into a plain dict.
+    Recursively convert an object into plain JSON-serializable structures.
 
     Behavior:
-    - Returns an empty dict for None.
-    - If the object exposes a `.dict()` method (e.g. pydantic models), returns
-      obj.dict(exclude_none=True) to avoid including None values; falls back to
-      obj.dict() if exclude_none is not supported.
-    - If the object is already a dict, returns a copy with None-valued entries
-      removed.
-    - Otherwise, attempts to coerce the object to a dict via dict(obj).
-    - On any error, returns an empty dict.
-
-    This helper was moved into quickapp.common.utils to provide a shared,
-    defensive conversion used across the codebase (pydantic models, mapping-like
-    objects, and iterable-of-pairs).
-
-    Args:
-        obj: Any serializable/mapping-like object to convert.
-
-    Returns:
-        A plain dict representation (never None).
-
-    Example:
-        >>> to_plain_dict(None)
-        {}
-        >>> to_plain_dict({"a": 1, "b": None})
-        {"a": 1}
+    - Preserves JSON primitives (str, int, float, bool) as-is.
+    - Returns an empty dict for top-level None (backwards-compatible).
+    - Converts Pydantic v2 (`model_dump`) or v1 (`dict`) using `exclude_none=True`
+      when available, then recurses.
+    - Recursively converts dicts, lists, tuples, sets and mapping-like objects,
+      dropping entries with None or empty dict values.
+    - Attempts `dict(obj)` for iterable-of-pairs fallback.
+    - Avoids infinite recursion using `_seen`.
+    - On failure returns an empty dict.
     """
+    if _seen is None:
+        _seen = set()
 
+    try:
+        obj_id = id(obj)
+    except Exception:
+        obj_id = None
+
+    if obj_id is not None:
+        if obj_id in _seen:
+            return {}
+        _seen.add(obj_id)
+
+    # None -> empty dict (preserve previous top-level behavior)
     if obj is None:
         return {}
-    if hasattr(obj, "dict") and callable(getattr(obj, "dict")):
+
+    # Primitive JSON types are returned unchanged
+    if isinstance(obj, (str, int, float, bool)):
+        return obj
+
+    # Pydantic v2
+    if hasattr(obj, "model_dump") and callable(getattr(obj, "model_dump")):
         try:
-            return obj.dict(exclude_none=True)
+            dumped = obj.model_dump(exclude_none=True)
         except Exception:
             try:
-                return obj.dict()
+                dumped = obj.model_dump()
             except Exception:
                 return {}
+        return to_plain_dict(dumped, _seen)
+
+    # Pydantic v1 or similar .dict() API
+    if hasattr(obj, "dict") and callable(getattr(obj, "dict")):
+        try:
+            dumped = obj.dict(exclude_none=True)
+        except Exception:
+            try:
+                dumped = obj.dict()
+            except Exception:
+                return {}
+        return to_plain_dict(dumped, _seen)
+
+    # Mapping / dict -> recurse and drop None/empty values
     if isinstance(obj, dict):
-        # drop None values for cleanliness
-        return {k: v for k, v in obj.items() if v is not None}
+        result: dict = {}
+        for k, v in obj.items():
+            normalized = to_plain_dict(v, _seen)
+            if normalized is None or normalized == {}:
+                continue
+            result[k] = normalized
+        return result
+
+    # Iterable containers -> normalize elements and return list (drop empty/None)
+    if isinstance(obj, (list, tuple, set)):
+        normalized_list = []
+        for item in obj:
+            n = to_plain_dict(item, _seen)
+            if n is None or n == {}:
+                continue
+            normalized_list.append(n)
+        return normalized_list
+
+    # Try to coerce mapping-like via dict() and recurse
     try:
-        return dict(obj)
+        coerced = dict(obj)
+        return to_plain_dict(coerced, _seen)
+    except Exception:
+        pass
+
+    # As a last resort, return the object if JSON-serializable, else empty dict
+    try:
+        import json
+        json.dumps(obj)
+        return obj
     except Exception:
         return {}
 
-
-
-if __name__ == '__main__':
-    mime_type = "vnd.psn.employees/json"
-    allowed_mime_types = ["image/png", "image/jpeg", "vnd.psn.employees/json"]
-    print(matches_type(mime_type, allowed_mime_types))
