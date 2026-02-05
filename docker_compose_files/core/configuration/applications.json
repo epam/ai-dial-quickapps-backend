@@ -1,5 +1,21 @@
 {
   "applications": {
+    "dial-rag": {
+      "name": "dial-rag",
+      "endpoint": "http://dial-rag:5000/openai/deployments/dial-rag/chat/completions",
+      "display_name": "DialRag App ",
+      "description": "Application that can read files",
+      "forward_auth_token": false,
+      "input_attachment_types": [
+        "*/*"
+      ],
+      "max_input_attachments": 3,
+      "defaults": {},
+      "interceptors": [],
+      "description_keywords": [],
+      "max_retry_attempts": 1,
+      "application_properties": {}
+    },
     "quick_app_2": {
       "displayName": "Quick App 2",
       "description": "The sample of Quick App v2",

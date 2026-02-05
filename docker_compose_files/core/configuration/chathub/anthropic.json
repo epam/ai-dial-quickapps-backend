@@ -1,5 +1,39 @@
 {
   "applications": {
+    "chat_hub_claude45_quickapp": {
+      "displayName": "ChatHub - Claude4.5 Sonnet - (QuickApp)",
+      "description": "Agent with vision, image generation, documents RAG, web search and python code interpretation capabilities.",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "anthropic.claude-v4-5-sonnet-v1",
+            "parameters": {
+              "temperature": 1.0,
+              "seed": 820288
+            }
+          },
+          "system_prompt": {
+            "type": "predefined",
+            "template": "anthropic_prompt"
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "chathub"
+          },
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          }
+        ]
+      },
+      "inputAttachmentTypes": [
+        "*/*"
+      ]
+    },
     "chat_hub_claude4_quickapp": {
       "displayName": "ChatHub - Claude4 (QuickApp)",
       "description": "Agent with vision, image generation, documents RAG, web search and python code interpretation capabilities.",
