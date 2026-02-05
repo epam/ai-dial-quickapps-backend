@@ -22,6 +22,7 @@ INTERNAL_TOOL_NAME_PREFIX = "quickapps_internal_"
 class ContextEntryStatus(str, Enum):
     new = "new"
     removed = "removed"
+    updated = "updated"
 
 
 class ContextEntry(BaseModel):
@@ -74,13 +75,22 @@ def build_context_entries(
         current_urls.add(url)
         title = url.rsplit("/", 1)[-1]
         mime_type = mimetypes.guess_type(title)[0] or ""
+        if url not in seen_entries:
+            status = ContextEntryStatus.new
+        else:
+            prev = seen_entries[url]
+            if prev.description != (ctx.description or None) or prev.type != mime_type:
+                status = ContextEntryStatus.updated
+            else:
+                status = None
+
         entries.append(
             ContextEntry(
                 title=title,
                 url=url,
                 type=mime_type,
                 description=ctx.description or None,
-                status=ContextEntryStatus.new if url not in seen_entries else None,
+                status=status,
             )
         )
 

@@ -205,7 +205,7 @@ class AttachmentNotificationInjector(MessagesTransformer):
         seen_entries = extract_seen_entries_from_messages(messages)
         current_urls, entries = build_context_entries(self._contexts, seen_entries)
 
-        if current_urls == set(seen_entries):
+        if current_urls == set(seen_entries) and not any(e.status for e in entries):
             return []
 
         return self._build_synthetic_messages(

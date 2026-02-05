@@ -278,7 +278,7 @@ application. Each entry contains:
 - **URL**: DIAL-relative file URL
 - **MIME Type**: Content type of the file
 - **Description**: Optional admin-provided description
-- **Change Status**: Whether the file is newly added since the last notification
+- **Change Status**: Whether the file is `new` (added), `updated` (metadata changed), or `removed` since the last notification
 
 Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
 file contents when needed.
@@ -296,7 +296,7 @@ If changes are detected, synthetic message pairs are appended to the message his
 These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
 without requiring it to make the call itself.
 
-If no changes occurred since the last injection, no messages are inserted.
+If no changes occurred since the last injection (same URLs and same metadata), no messages are inserted.
 
 ### On-Demand Access
 

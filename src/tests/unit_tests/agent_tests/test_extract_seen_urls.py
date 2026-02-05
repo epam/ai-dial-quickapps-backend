@@ -124,6 +124,22 @@ class TestExtractSeenEntriesFromMessages:
         result = extract_seen_entries_from_messages(messages)
         assert result == {}
 
+    def test_updated_entries_preserved(self):
+        entries = [
+            {
+                "title": "a.csv",
+                "url": "files/bucket/a.csv",
+                "type": "text/csv",
+                "description": "V2",
+                "status": "updated",
+            },
+        ]
+        messages = _tool_call_pair(TOOL_NAME, entries)
+        result = extract_seen_entries_from_messages(messages)
+        assert "files/bucket/a.csv" in result
+        entry = result["files/bucket/a.csv"]
+        assert entry.description == "V2"
+
     def test_preserves_description(self):
         entries = [
             {

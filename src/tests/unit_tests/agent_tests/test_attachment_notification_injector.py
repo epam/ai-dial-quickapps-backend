@@ -161,6 +161,34 @@ class TestContextInjection:
         assert data4[0]["description"] == "File A"
         assert data4[0]["status"] == "removed"
 
+    def test_description_change_triggers_renotification(self):
+        """When a context description changes but URL stays the same, re-notification occurs."""
+        ctx = FileContextConfig(url="files/bucket/ref.csv", description="V1")
+        messages = [_user_msg("hello")]
+
+        # Turn 1: initial injection — status: new
+        injector1 = _make_injector(contexts=[ctx])
+        result1 = injector1.transform(messages)
+        assert len(result1) == 3
+        data1 = json.loads(result1[2].content)
+        assert data1[0]["status"] == "new"
+        assert data1[0]["description"] == "V1"
+
+        # Turn 2: same URL, description changed to V2 — status: updated
+        ctx_v2 = FileContextConfig(url="files/bucket/ref.csv", description="V2")
+        injector2 = _make_injector(contexts=[ctx_v2])
+        result2 = injector2.transform(result1)
+        assert len(result2) == 5  # 3 original + 2 new synthetic
+        synthetic2 = _extract_synthetic(result2, 3)
+        data2 = json.loads(synthetic2[1].content)
+        assert data2[0]["status"] == "updated"
+        assert data2[0]["description"] == "V2"
+
+        # Turn 3: same URL, same description V2 — no injection (stable)
+        injector3 = _make_injector(contexts=[ctx_v2])
+        result3 = injector3.transform(result2)
+        assert len(result3) == 5  # unchanged
+
     def test_context_removal_then_no_change(self):
         ctx = FileContextConfig(url="files/bucket/ref.csv")
         contexts: list[FileContextConfig] = [ctx]
