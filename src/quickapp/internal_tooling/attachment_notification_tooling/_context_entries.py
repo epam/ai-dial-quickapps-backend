@@ -1,4 +1,3 @@
-import datetime
 import json
 import mimetypes
 from collections.abc import Sequence
@@ -29,10 +28,6 @@ class ContextEntry(BaseModel):
 
 class AvailableContextToolResponse(BaseModel):
     entries: list[ContextEntry] = Field()
-    timestamp: str = Field(
-        description="ISO format timestamp of when the context entries were collected.",
-        default_factory=lambda: datetime.datetime.now().isoformat(),
-    )
 
 
 def build_context_entries(
