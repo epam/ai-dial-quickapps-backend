@@ -1,12 +1,12 @@
 import logging
 
-from aidial_sdk.chat_completion import Choice, ToolCall
+from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 from pydantic.v1 import StrictStr
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
+from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.agent.processors.chunk_processor import ChunkProcessor
 from quickapp.agent.processors.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
@@ -123,27 +123,17 @@ class Orchestrator:
         logger.debug(f"State holder: {self.__state_holder.get_state()}")
 
     def _build_tool_execution_history(self) -> list[dict[str, object]]:
-        messages = self.__messages_context.messages
+        """Build tool execution history by extracting ASSISTANT and TOOL messages.
+
+        Stores messages directly to preserve parallel tool call grouping.
+        Only includes ASSISTANT messages with tool_calls and TOOL messages.
+        """
         history: list[dict[str, object]] = []
-        pending_tool_calls: dict[str, ToolCall] = {}
-        last_user_message_index = -1
-        for i in range(len(messages) - 1, -1, -1):
-            if messages[i].role == Role.USER:
-                last_user_message_index = i
+
+        for msg in reversed(self.__messages_context.messages):
+            if msg.role == Role.USER:
                 break
+            if msg.role == Role.TOOL or (msg.role == Role.ASSISTANT and msg.tool_calls):
+                history.append(msg.model_dump(mode="json", exclude_none=True))
 
-        for msg in messages[last_user_message_index:]:
-            if msg.role == Role.ASSISTANT and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    pending_tool_calls[tc.id] = tc
-            elif msg.role == Role.TOOL and msg.tool_call_id:
-                tc = pending_tool_calls.get(msg.tool_call_id)
-                if tc is not None:
-                    history.append(
-                        ExecutedToolCallDTO(
-                            tool_call=tc,
-                            tool_execution_result=msg,
-                        ).model_dump(mode="json", exclude_none=True)
-                    )
-
-        return history
+        return history[::-1]

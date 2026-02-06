@@ -191,7 +191,10 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     key, value = state_holder.add_state.call_args[0]
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
-    assert len(value) == 1
+    # New format stores messages directly: ASSISTANT + TOOL = 2 messages
+    assert len(value) == 2
+    assert value[0]["role"] == "assistant"
+    assert value[1]["role"] == "tool"
 
 
 @pytest.mark.asyncio
