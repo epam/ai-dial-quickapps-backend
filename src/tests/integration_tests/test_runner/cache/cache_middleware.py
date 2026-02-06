@@ -3,7 +3,6 @@ import gzip
 import json
 import logging
 import warnings
-from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 from urllib.parse import urlparse
@@ -31,6 +30,7 @@ logger = logging.getLogger("__name__")
 AGENT_MODELS = [
     "gpt-4.1-2025-04-14",
     "gpt-5-2025-08-07",
+    "gpt-5-mini-2025-08-07",
     "gpt-5.2-2025-12-11",
     "claude-opus-4@20250514",
     "gemini-2.5-pro",
@@ -62,7 +62,6 @@ def _extract_host_port(url: str) -> str:
 
 class CacheMiddlewareApp(FastAPI):
     llm_cache: LlmCache
-    _background_tasks: List[asyncio.Task] = []
 
     def __init__(self, app_config: CacheMiddlewareConfig):
         self.target_url = app_config.dial_core_url
@@ -78,7 +77,7 @@ class CacheMiddlewareApp(FastAPI):
             enable_cache=True,
         )
         self.used_cache_responses = set()
-        self._background_tasks = []
+        self._background_tasks: List[asyncio.Task] = []
 
         super().__init__()
         self.router = APIRouter()
@@ -123,8 +122,26 @@ class CacheMiddlewareApp(FastAPI):
                 logger.warning(f"Error waiting for tasks: {e}")
 
         if not self.http_client.is_closed:
-            await self.http_client.aclose()
-            logger.debug("HTTP client closed")
+            try:
+                # Check if event loop is still running before attempting to close
+                loop = asyncio.get_event_loop()
+                if loop.is_closed():
+                    logger.debug("HTTP client close skipped - event loop is already closed")
+                else:
+                    await self.http_client.aclose()
+                    logger.debug("HTTP client closed")
+
+                    # Wait a bit for any cleanup tasks to complete
+                    await asyncio.sleep(0.1)
+
+            except RuntimeError as e:
+                # Event loop may already be closing
+                if "Event loop is closed" in str(e):
+                    logger.debug("HTTP client close skipped - event loop is closing")
+                else:
+                    logger.warning(f"Error closing HTTP client: {e}")
+            except Exception as e:
+                logger.warning(f"Unexpected error closing HTTP client: {e}")
 
         logger.debug("CacheMiddlewareApp resources closed")
 
