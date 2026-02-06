@@ -13,7 +13,7 @@ from quickapp.internal_tooling.attachment_notification_tooling._available_contex
     _AvailableContextStageWrapper,
 )
 from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
-    ContextEntry,
+    AvailableContextToolResponse,
     build_context_entries,
     extract_seen_entries_from_messages,
 )
@@ -29,7 +29,6 @@ class _AvailableContextTool(StagedBaseTool):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         messages_context: MessagesMixin,
-        name: str = "",
         **kwargs: Any,
     ):
         super().__init__(
@@ -41,11 +40,11 @@ class _AvailableContextTool(StagedBaseTool):
         self.__contexts: list[Context] = contexts
         self.__messages_context: MessagesMixin = messages_context
 
-    def collect_contexts(self) -> list[ContextEntry]:
+    def _get_response(self) -> AvailableContextToolResponse:
         """Collect context file metadata, flagging new or changed ones."""
         seen_entries = extract_seen_entries_from_messages(self.__messages_context.messages)
         _, entries = build_context_entries(self.__contexts, seen_entries)
-        return entries
+        return AvailableContextToolResponse(entries=entries)
 
     async def _run_in_stage_async(
         self,
@@ -53,10 +52,8 @@ class _AvailableContextTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
-        contexts = self.collect_contexts()
-        content = json.dumps(
-            [e.model_dump(exclude_none=True) for e in contexts], ensure_ascii=False
-        )
+        response = self._get_response()
+        content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
         result = CompletionResult(content=content, content_type="application/json")
         if stage_wrapper:
             stage_wrapper.add_result(result)

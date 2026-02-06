@@ -1,10 +1,11 @@
+import datetime
 import json
 import mimetypes
 from collections.abc import Sequence
 from enum import Enum
 
 from aidial_sdk.chat_completion import Message, Role
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
@@ -24,6 +25,14 @@ class ContextEntry(BaseModel):
     type: str = ""
     description: str | None = None
     status: ContextEntryStatus | None = None
+
+
+class AvailableContextToolResponse(BaseModel):
+    entries: list[ContextEntry] = Field()
+    timestamp: str = Field(
+        description="ISO format timestamp of when the context entries were collected.",
+        default_factory=lambda: datetime.datetime.now().isoformat(),
+    )
 
 
 def build_context_entries(
@@ -81,21 +90,17 @@ def build_context_entries(
     return current_urls, entries
 
 
-def _parse_context_entries(content: str) -> dict[str, ContextEntry] | None:
-    """Parse a JSON tool result into a URL → ContextEntry mapping.
+def _parse_tool_response(content: str) -> dict[str, ContextEntry] | None:
+    """Parse a JSON tool response into a URL → ContextEntry mapping, ignoring removed entries.
 
-    Returns None if the content is not a valid context-tool result.
+    Returns None if the content is not a valid context-tool response.
     """
     try:
-        data = json.loads(content)
-        if not isinstance(data, list):
-            return None
+        response = AvailableContextToolResponse.model_validate_json(content)
         result: dict[str, ContextEntry] = {}
-        for raw in data:
-            if isinstance(raw, dict) and "url" in raw:
-                entry = ContextEntry.model_validate(raw)
-                if entry.status != ContextEntryStatus.removed:
-                    result[entry.url] = entry
+        for entry in response.entries:
+            if entry.status != ContextEntryStatus.removed:
+                result[entry.url] = entry
         return result
     except (json.JSONDecodeError, KeyError, ValidationError):
         return None
@@ -117,7 +122,7 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
                     and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME
                     and tc.id in tool_contents
                 ):
-                    result = _parse_context_entries(tool_contents[tc.id])
+                    result = _parse_tool_response(tool_contents[tc.id])
                     if result is not None:
                         return result
     return {}

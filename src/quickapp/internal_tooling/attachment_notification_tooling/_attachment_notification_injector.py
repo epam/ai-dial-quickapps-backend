@@ -8,6 +8,7 @@ from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from quickapp.common.base_transformer import MessagesTransformer
 from quickapp.config.context import Context
 from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
+    AvailableContextToolResponse,
     build_context_entries,
     extract_seen_entries_from_messages,
     should_activate_context_tool,
@@ -50,13 +51,14 @@ class AttachmentNotificationInjector(MessagesTransformer):
         """Collect context file metadata and return synthetic messages if changed."""
         seen_entries = extract_seen_entries_from_messages(messages)
         current_urls, entries = build_context_entries(self._contexts, seen_entries)
+        tool_response = AvailableContextToolResponse(entries=entries)
 
         if current_urls == set(seen_entries) and not any(e.status for e in entries):
             return []
 
         return self._build_synthetic_messages(
             AVAILABLE_CONTEXT_TOOL_NAME,
-            json.dumps([e.model_dump(exclude_none=True) for e in entries], ensure_ascii=False),
+            json.dumps(tool_response.model_dump(exclude_none=True), ensure_ascii=False),
         )
 
     @staticmethod

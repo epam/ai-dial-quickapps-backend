@@ -106,10 +106,10 @@ class TestContextPipeline:
         assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
 
         data = json.loads(result[2].content)
-        assert len(data) == 1
-        assert data[0]["title"] == "reference.pdf"
-        assert data[0]["url"] == "files/bucket/reference.pdf"
-        assert data[0]["status"] == "new"
+        assert len(data["entries"]) == 1
+        assert data["entries"][0]["title"] == "reference.pdf"
+        assert data["entries"][0]["url"] == "files/bucket/reference.pdf"
+        assert data["entries"][0]["status"] == "new"
 
 
 class TestCombinedPipeline:
@@ -134,4 +134,4 @@ class TestCombinedPipeline:
         # Context notified via synthetic tool call
         assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
         data = json.loads(result[2].content)
-        assert data[0]["title"] == "ref.csv"
+        assert data["entries"][0]["title"] == "ref.csv"

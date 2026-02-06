@@ -32,9 +32,11 @@ def _tool_call_pair(
             )
         ],
     )
+    # Wrap entries in the AvailableContextToolResponse format
+    response = {"entries": entries, "timestamp": "2024-01-01T00:00:00"}
     tool_msg = Message(
         role=Role.TOOL,
-        content=json.dumps(entries, ensure_ascii=False),
+        content=json.dumps(response, ensure_ascii=False),
         tool_call_id=call_id,
     )
     return [assistant_msg, tool_msg]
