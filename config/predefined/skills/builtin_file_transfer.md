@@ -1,6 +1,6 @@
 ---
-name: file-parameter-formatting
-description: Format file and URL parameters correctly when calling tools
+name: tool-call-file-parameter-formatting
+description: Describes the required format for file parameters when calling tools that accept file or URL inputs, ensuring proper handling and encoding. Use this skill to learn how to format file parameters correctly when interacting with tools that require file or URL inputs.
 metadata:
   version: "1.0"
 ---

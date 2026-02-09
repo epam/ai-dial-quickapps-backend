@@ -5,7 +5,7 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton, Assis
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import StartupInitializer
-from quickapp.skills._initializer import _Initializer
+from quickapp.skills.skills_initializer import _SkillsInitializer
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
@@ -21,7 +21,7 @@ class SkillsModule(Module):
 
     @multiprovider
     def __provide_initializers(
-        self, initializer_provider: ProviderOf[_Initializer]
+        self, initializer_provider: ProviderOf[_SkillsInitializer]
     ) -> list[StartupInitializer]:
         return [initializer_provider.get()]
 

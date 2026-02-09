@@ -5,7 +5,7 @@ from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 
 @inject
-class _Initializer(StartupInitializer):
+class _SkillsInitializer(StartupInitializer):
 
     def __init__(self, skills_provider: AgentSkillsProvider):
         self._skills_provider = skills_provider
