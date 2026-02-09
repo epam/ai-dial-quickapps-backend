@@ -2,22 +2,29 @@ import copy
 import logging
 import mimetypes
 import warnings
-from typing import Optional
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+from injector import inject
 
+from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
-from quickapp.common.base_transformer import MessagesTransformer
+from quickapp.common.base_transformer import MessagesTransformer, ordered
 from quickapp.common.utils import matches_type
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import Context, FileContextConfig
 
 logger = logging.getLogger(__name__)
 
 
+@ordered(10)
 class AddSystemPromptTransformer(MessagesTransformer):
-
-    def __init__(self, system_prompt: Optional[str], instructions: Optional[str] = None):
-        parts = (system_prompt or "", instructions or "")
+    @inject
+    def __init__(
+        self,
+        config: ApplicationConfig,
+        instructions_provider: AgentInstructionsProvider,
+    ):
+        parts = (config.orchestrator.system_prompt.content or "", instructions_provider.get() or "")
         self._combined_system_prompt = "\n\n".join(p for p in parts if p)
 
     def transform(self, messages: list[Message]) -> list[Message]:
@@ -31,6 +38,7 @@ class AddSystemPromptTransformer(MessagesTransformer):
         return messages
 
 
+@ordered(35)
 class RemoveStateTransformer(MessagesTransformer):
     def transform(self, messages: list[Message]) -> list[Message]:
         # Validate input is List[Message]
@@ -44,6 +52,7 @@ class RemoveStateTransformer(MessagesTransformer):
         return messages
 
 
+@ordered(30)
 class ReduceAttachmentTransformer(MessagesTransformer):
     SUPPORTED_ATTACHMENTS = ["image/*"]
 
@@ -78,6 +87,7 @@ class ReduceAttachmentTransformer(MessagesTransformer):
         return message
 
 
+@ordered(20)
 class ExtractToolCallsFromStateProcessor(MessagesTransformer):
     """Extracts tool execution history from state and inserts as messages.
 
@@ -166,10 +176,11 @@ class ExtractToolCallsFromStateProcessor(MessagesTransformer):
         return updated_messages
 
 
+@ordered(40)
 class AddContextAttachmentTransformer(MessagesTransformer):
-
-    def __init__(self, contexts: list[Context]):
-        self.contexts = contexts
+    @inject
+    def __init__(self, config: ApplicationConfig):
+        self.contexts = list(config.contexts)
 
     def transform(self, messages: list[Message]) -> list[Message]:
         if messages and messages[-1].role == Role.USER:

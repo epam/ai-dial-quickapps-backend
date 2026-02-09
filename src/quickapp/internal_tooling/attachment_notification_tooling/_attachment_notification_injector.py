@@ -4,9 +4,10 @@ import uuid
 
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from injector import inject
 
-from quickapp.common.base_transformer import MessagesTransformer
-from quickapp.config.context import Context
+from quickapp.common.base_transformer import MessagesTransformer, ordered
+from quickapp.config.application import ApplicationConfig
 from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
     AvailableContextToolResponse,
     build_context_entries,
@@ -20,12 +21,14 @@ from quickapp.internal_tooling.attachment_notification_tooling._tool_configs imp
 logger = logging.getLogger(__name__)
 
 
+@ordered(50)
 class AttachmentNotificationInjector(MessagesTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 
-    def __init__(self, contexts: list[Context]):
-        self._contexts = contexts
+    @inject
+    def __init__(self, config: ApplicationConfig):
+        self._contexts = list(config.contexts)
 
     def transform(self, messages: list[Message]) -> list[Message]:
         if not isinstance(messages, list):

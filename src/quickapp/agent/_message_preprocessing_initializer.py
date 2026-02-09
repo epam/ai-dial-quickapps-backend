@@ -21,7 +21,11 @@ class _MessagePreprocessingInitializer(BaseInitializer):
 
     async def initialize(self) -> None:
         messages = list(self.__messages_context.messages)
-        for transformer in self.__transformers:
+        ordered = sorted(
+            self.__transformers,
+            key=lambda transformer: (transformer.ORDER, type(transformer).__name__),
+        )
+        for transformer in ordered:
             messages = transformer.transform(messages)
             logger.debug(f"{type(transformer).__name__}: {{\"result\": {messages}}}")
         actual_messages = self.__messages_context.messages

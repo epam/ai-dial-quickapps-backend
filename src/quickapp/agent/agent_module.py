@@ -36,7 +36,6 @@ from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
-from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -63,6 +62,18 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(AddSystemPromptTransformer, to=AddSystemPromptTransformer, scope=request_scope)
+        binder.bind(
+            ExtractToolCallsFromStateProcessor,
+            to=ExtractToolCallsFromStateProcessor,
+            scope=request_scope,
+        )
+        binder.bind(ReduceAttachmentTransformer, to=ReduceAttachmentTransformer, scope=request_scope)
+        binder.bind(
+            AddContextAttachmentTransformer,
+            to=AddContextAttachmentTransformer,
+            scope=request_scope,
+        )
         binder.bind(
             _MessagePreprocessingInitializer,
             to=_MessagePreprocessingInitializer,
@@ -87,18 +98,16 @@ class AgentModule(Module):
     @multiprovider
     def provide_message_transformers(
         self,
-        config: ApplicationConfig,
-        instructions_provider: AgentInstructionsProvider,
+        add_system_prompt: AddSystemPromptTransformer,
+        extract_tool_calls: ExtractToolCallsFromStateProcessor,
+        reduce_attachments: ReduceAttachmentTransformer,
+        add_context_attachments: AddContextAttachmentTransformer,
     ) -> list[MessagesTransformer]:
-        # Order of Transformers is crucial for correct request processing
         return [
-            AddSystemPromptTransformer(
-                config.orchestrator.system_prompt.content, instructions_provider.get()
-            ),
-            ExtractToolCallsFromStateProcessor(),
-            ReduceAttachmentTransformer(),
-            AddContextAttachmentTransformer(contexts=config.contexts),
-            AttachmentNotificationInjector(contexts=config.contexts),
+            add_system_prompt,
+            extract_tool_calls,
+            reduce_attachments,
+            add_context_attachments,
         ]
 
     @multiprovider
