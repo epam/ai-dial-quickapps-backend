@@ -8,7 +8,6 @@
   "deployment": {
     "name": "dial-rag",
     "parameters": {
-      "seed": 820288,
       "custom_fields": {
         "configuration": {}
       }
