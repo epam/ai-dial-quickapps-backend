@@ -13,7 +13,6 @@ from openai.types.chat import ChatCompletionChunk
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -25,12 +24,12 @@ class AssistantInvoker:
         self,
         tools: list[OpenAiToolConfigDict],
         config: ApplicationConfig,
-        messages_context: MessagesMixin,
+        messages: list[Message],
         choice: Choice,
         azure_client: AsyncAzureOpenAI,
         response_format: RESPONSE_FORMAT,
     ) -> None:
-        self.__messages_context: MessagesMixin = messages_context
+        self.__messages: list[Message] = messages
         self.__choice: Choice = choice
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
@@ -38,17 +37,15 @@ class AssistantInvoker:
         self.__response_format = response_format
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        self._log_messages(self.__messages_context.messages)
-        return await self.__create_chat_completion(self.__messages_context.messages)
+        completion_config = self.__prepare_chat_completion_config()
+        return await self.__create_chat_completion(completion_config)
 
-    async def __create_chat_completion(
-        self, messages: list[Message]
-    ) -> AsyncStream[ChatCompletionChunk]:
+    def __prepare_chat_completion_config(self) -> dict[str, Any]:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
         serialized_messages = [
-            message.model_dump(exclude_none=True, mode="json") for message in messages
+            message.model_dump(exclude_none=True, mode="json") for message in self.__messages
         ]
         payload: dict[str, Any] = {
             "messages": serialized_messages,
@@ -79,9 +76,14 @@ class AssistantInvoker:
 
         chat_completion_config.update(payload)
         logger.debug(f"Chat completion config: {chat_completion_config}")
+        return chat_completion_config
+
+    async def __create_chat_completion(
+        self, completion_config: dict[str, Any]
+    ) -> AsyncStream[ChatCompletionChunk]:
         try:
             chat_completion = await self.__azure_client.chat.completions.create(
-                **chat_completion_config
+                **completion_config
             )
         except (BadRequestError, RateLimitError) as e:
             raise InvalidRequestError(

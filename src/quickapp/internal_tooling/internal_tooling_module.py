@@ -1,13 +1,13 @@
 import logging
 import os
 
+from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
@@ -69,7 +69,7 @@ class InternalToolModule(Module):
     def _provide_internal_tools(
         self,
         app_config: ApplicationConfig,
-        messages_context: MessagesMixin,
+        messages: list[Message],
         py_builder: AssistedBuilder[_PyInterpreterTool],
         cd_builder: AssistedBuilder[_ContentDownloadTool],
         ac_builder: AssistedBuilder[_AvailableContextTool],
@@ -108,7 +108,7 @@ class InternalToolModule(Module):
                                 )
                             )
 
-        if should_activate_context_tool(app_config.contexts, messages_context.messages):
+        if should_activate_context_tool(app_config.contexts, messages):
             tools.append(
                 ac_builder.build(
                     tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
