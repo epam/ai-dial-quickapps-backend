@@ -26,8 +26,17 @@ FAILURE_MESSAGE = (
 
 logger = logging.getLogger("__name__")
 
-
-AGENT_MODELS = ["gpt-4.1-2025-04-14", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "claude-opus-4@20250514", "us.anthropic.claude-3-7-sonnet-20250219-v1", "anthropic.claude-v4-5-sonnet-v1", "gemini-2.5-pro"]  # Specify all models that should be not cached.
+# Specify all models that should be not cached.
+AGENT_MODELS = [
+    "gpt-4.1-2025-04-14",
+    "gpt-5-2025-08-07",
+    "gpt-5-mini-2025-08-07",
+    "gpt-5.2-2025-12-11",
+    "claude-opus-4@20250514",
+    "gemini-2.5-pro",
+    "us.anthropic.claude-3-7-sonnet-20250219-v1",
+    "anthropic.claude-v4-5-sonnet-v1"
+]
 
 
 @dataclass

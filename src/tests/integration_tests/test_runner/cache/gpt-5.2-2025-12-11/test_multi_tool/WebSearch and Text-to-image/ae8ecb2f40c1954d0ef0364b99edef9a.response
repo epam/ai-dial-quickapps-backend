@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "Kyiv, Ukraine cityscape in current winter weather: cloudy sky with light to moderate snowfall, cold atmosphere, wind-blown snow, muted daylight. View featuring iconic Kyiv architecture and skyline along the Dnipro River, with pedestrians in winter coats, snow collecting on rooftops and streets, soft natural lighting, realistic documentary photo style, high detail, sharp focus, natural colors, no text, no watermark."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Thu, 05 Feb 2026 12:04:34 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-9d75e102-5f64-48ea-9bf3-3e6833c53285\",\"created\":1770293058,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-9d75e102-5f64-48ea-9bf3-3e6833c53285\",\"created\":1770293058,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"title\":\"Revised prompt\",\"data\":\"A realistic, detailed cityscape of Kyiv, Ukraine, in current winter weather. The scene includes a cloudy sky with light to moderate snowfall, a cold atmosphere, and wind-blown snow. The muted daylight illuminates the iconic Kyiv skyline along the Dnipro River. Iconic architecture is visible with rooftops and streets covered in a layer of snow. Pedestrians wearing winter coats are walking through the city, their presence captured naturally. The soft natural lighting creates a tranquil, cold winter ambiance. Rendered in a highly detailed documentary photo style with sharp focus and natural colors. No text or watermark included.\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-9d75e102-5f64-48ea-9bf3-3e6833c53285\",\"created\":1770293058,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":1,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/dall-e-3/images/83f8b6c2c14a52c94ee7e70ba4889b0f93db6265ae296e8d52a74e812511559e.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-9d75e102-5f64-48ea-9bf3-3e6833c53285\",\"created\":1770293058,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-9d75e102-5f64-48ea-9bf3-3e6833c53285\",\"created\":1770293058,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
