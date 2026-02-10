@@ -4,7 +4,7 @@ This document describes how the application is structured and how to add or chan
 
 ## 1. Dependency Injection (injector)
 
-**All interactions between modules should go through Dependency Injection.** We use the [injector](https://github.com/python-injector/injector) library (with [fastapi-injector](https://github.com/abstractkitchen/fastapi-injector) for FastAPI).
+**All interactions between modules should go through Dependency Injection.** We use the [injector](https://github.com/python-injector/injector) library.
 
 ### Rules
 
