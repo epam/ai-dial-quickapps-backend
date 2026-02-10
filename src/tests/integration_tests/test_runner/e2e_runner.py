@@ -91,12 +91,21 @@ class TestRunner:
 
     @staticmethod
     async def stop_server(server, cache_middleware_app):
-
-        await cache_middleware_app.close_resources()
-
+        # Signal server to shut down first
         server.should_exit = True
-        logger.debug("Shutting down server...")
-        await asyncio.sleep(1)
+        logger.debug("Signaling server shutdown...")
+
+        # Give server a moment to start shutting down
+        await asyncio.sleep(0.5)
+
+        # Then close app resources
+        try:
+            await cache_middleware_app.close_resources()
+        except Exception as e:
+            logger.warning(f"Error during resource cleanup: {e}")
+
+        # Give more time for cleanup to complete
+        await asyncio.sleep(1.5)
 
     @staticmethod
     async def get_attachment_url(dial_url: str, headers, attachment: Path):
@@ -140,13 +149,22 @@ class TestRunner:
                 message["custom_content"] = {"attachments": attachment_objects}
             messages.append(message)
             logger.debug(f"send {message} to {client.base_url}")
+
+            # Prepare request payload
+            request_payload = {
+                "model": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
+                "messages": messages,
+            }
+
+            # Add response_format if specified in test case
+            if test_case.response_format:
+                request_payload["response_format"] = test_case.response_format
+                logger.debug(f"Using response_format: {test_case.response_format}")
+
             response = client.post(
                 TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
                 headers=headers,
-                json={
-                    "model": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
-                    "messages": messages,
-                },
+                json=request_payload,
                 timeout=100.0,
             )
 
@@ -176,6 +194,16 @@ class TestRunner:
                 break
 
             logger.info(f"content:{response_message.content}")
+
+            # Validate response format if specified
+            if test_case.response_format:
+                format_failures = ResponseValidator.validate_json_schema_response(
+                    response_message.content, test_case.response_format, ts
+                )
+                if format_failures:
+                    ts.increment_failure(FailureReason.ANSWER)
+                    all_failures.extend(format_failures)
+
             # Check message answer if expected
             if test_message_data.answer:
                 failures = check_multiple_alternatives(
@@ -256,13 +284,18 @@ def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
     model: str = None,
-    models: List[str] = None,
+    models_applicable_for_test: List[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
+    no_cache: bool = False,
 ):
     """
     Decorator for end-to-end tests.
+
+    Args:
+        no_cache: If True, bypass cache for this test. Can also be set globally via --no-cache CLI flag.
+                  CLI flag takes precedence over decorator parameter.
     """
 
     if refresh is None:
@@ -281,35 +314,44 @@ def e2e_test(
                 f"{test_case.name if test_case else request.node.name}"
             )
 
-            execution_model_list = models if models else []
-
-            if len(execution_model_list) == 0:
-                if execution_model_list:
-                    execution_model_list.append(model)
-                elif request.config.getoption("--model"):
-                    execution_model_list.append(request.config.getoption("--model"))
+            model_to_use: str
+            if model:
+                model_to_use = model
+                logger.debug(f"Using model from parameter defined in test: {model_to_use}")
+            elif request.config.getoption("--model"):
+                cli_model = request.config.getoption("--model")
+                if models_applicable_for_test is None or len(
+                        models_applicable_for_test) == 0 or cli_model in models_applicable_for_test:
+                    model_to_use = cli_model
+                    logger.debug(f"Using model from CLI option: {model_to_use}")
                 else:
-                    execution_model_list.append(TestConfig.DEFAULT_MODEL)
+                    logger.debug(
+                        f"Model '{cli_model}' is not in the applicable models list: {models_applicable_for_test}")
+                    pytest.skip(f"Model '{cli_model}' is not applicable for this test")
+            else:
+                logger.debug("No model specified")
+                pytest.fail("No model specified for test")
 
-            for m in execution_model_list:
-                # Run the test multiple times according to the runs parameter
-                ts = TestStats(f"{test_name}[{m}]", 0, 0)
-                for run_index in range(runs):
-                    logger.info(f"Running test iteration {run_index + 1}/{runs}")
-                    failures = await prepare_and_execute_test(
-                        args,
-                        kwargs,
-                        recwarn,
-                        request,
-                        unique_port,
-                        execution_model=m,
-                        test_name=test_name,
-                        test_stats=ts,
-                        run_index=run_index,
-                    )
-                    all_runs_failures.extend(failures)
-                logger.info(ts)
-                report_test_stats(request.config, ts)
+
+
+               # Run the test multiple times according to the runs parameter
+            ts = TestStats(f"{test_name}[{model_to_use}]", 0, 0)
+            for run_index in range(runs):
+                logger.info(f"Running test iteration {run_index + 1}/{runs}")
+                failures = await prepare_and_execute_test(
+                    args,
+                    kwargs,
+                    recwarn,
+                    request,
+                    unique_port,
+                    execution_model=model_to_use,
+                    test_name=test_name,
+                    test_stats=ts,
+                    run_index=run_index,
+                )
+                all_runs_failures.extend(failures)
+            logger.info(ts)
+            report_test_stats(request.config, ts)
 
             # After all runs/models are complete, check if any failures occurred
             TestRunner.check_test_outcome(all_runs_failures)
@@ -334,13 +376,16 @@ def e2e_test(
 
             client = TestClient(app)
 
-            no_cache = bool(request.config.getoption("--no-cache", default=False))
+            # Combine CLI flag with decorator parameter - CLI takes precedence
+            cli_no_cache = bool(request.config.getoption("--no-cache", default=False))
+            effective_no_cache = cli_no_cache or no_cache
+
             task, server, middleware = await TestRunner.start_server(
                 model=execution_model,
                 test_name=test_name,
                 refresh=refresh,
                 port=unique_port,
-                no_cache=no_cache
+                no_cache=effective_no_cache
             )
             try:
                 run_failures, test_result = await execute_single_test_run(
@@ -362,13 +407,8 @@ def e2e_test(
 
             finally:
                 await TestRunner.stop_server(server, middleware)
-                # Properly close the client
-                if hasattr(client, "aclose"):
-                    await client.aclose()
-                # Shutdown async generators
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    await loop.shutdown_asyncgens()
+                # TestClient is synchronous and doesn't need async close
+                # Don't shutdown async generators while loop is running
 
         return wrapper
 

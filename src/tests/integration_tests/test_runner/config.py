@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 
 file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
+    "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"]
 }
 

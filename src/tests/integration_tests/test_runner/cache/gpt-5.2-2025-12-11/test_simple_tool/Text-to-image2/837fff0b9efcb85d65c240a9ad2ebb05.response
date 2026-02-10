@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A beautiful winter evening scene in Vilnius, Lithuania: snow-covered Baroque old town architecture and narrow streets blanketed in fresh white snow. Warm golden lights glow from windows of historic buildings; street lamps cast a cozy amber light with soft snowfall in the air. In the background, the iconic Gediminas Tower stands on the hill, partially misty. Cathedral Square is partially visible with the bell tower covered in pristine snow. Colorful building facades show traditional Lithuanian architectural details beneath snow caps. Cinematic composition, natural look, high detail, realistic painting style."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Thu, 05 Feb 2026 12:04:24 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-9fb8a531-edab-4d7f-90c0-fbaacdd28ebe\",\"created\":1770293049,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-9fb8a531-edab-4d7f-90c0-fbaacdd28ebe\",\"created\":1770293049,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"title\":\"Revised prompt\",\"data\":\"A beautiful winter evening scene in Vilnius, Lithuania featuring snow-covered Baroque old town architecture and narrow streets blanketed in fresh white snow. Warm golden lights glow from the windows of historic buildings, while street lamps emit a cozy amber light. Soft snowfall is in the air, creating a serene winter atmosphere. In the background, the iconic Gediminas Tower is visible on a misty hill. Cathedral Square is partially in view, with the bell tower covered in pristine snow. The colorful facades of traditional Lithuanian architecture are topped with snow caps. The composition is cinematic with a natural feel, high detail, and realistic painting style.\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-9fb8a531-edab-4d7f-90c0-fbaacdd28ebe\",\"created\":1770293049,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":1,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/dall-e-3/images/15061dbb2c1216bc3d3cebc752eb5b4c9c5a32ba3f5d1da5104198e4530b3d83.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-9fb8a531-edab-4d7f-90c0-fbaacdd28ebe\",\"created\":1770293049,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-9fb8a531-edab-4d7f-90c0-fbaacdd28ebe\",\"created\":1770293049,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
