@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class AgentSettings(BaseSettings):
     """Settings for the agent module. Loaded from env with aliases below."""
 
-    model_config = SettingsConfigDict(env_ignore_extra=True)
+    model_config = SettingsConfigDict()
 
     show_usage_statistics: bool = Field(
         default=False,
