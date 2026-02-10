@@ -432,7 +432,7 @@ def test_rest_api_toolcall(client):
                     "abrakadabra"
                 ],
             ),
-            ToolCall(ToolNames.LIST_FROM_WORD.value).add_soft_argument_check("incoming", ["arbadakarba"]),
+            ToolCall(ToolNames.LIST_FROM_WORD.value, max_calls=3).add_soft_argument_check("incoming", ["arbadakarba"]),
         ],
         answer=[
             """Here are the results using the available tools:

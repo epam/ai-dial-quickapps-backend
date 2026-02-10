@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
@@ -16,6 +16,7 @@ from injector import inject
 from quickapp.common import CompletionResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
+from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation
 
 _CONTENT_PARAM: str = "query"
@@ -33,9 +34,23 @@ class DialCompletionService:
         self.__dial_client: AsyncDial = dial_client
         self.__history: list[Message] = messages[:-1] if messages and len(messages) > 0 else []
 
+    @staticmethod
+    def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Optional[Dict[str, Any]]:
+        normalized: dict[str, Any] = {}
+        for k, v in items:
+            if k == _CONTENT_PARAM or k == _ATTACHMENT_PARAM:
+                continue
+            n = to_plain_dict(v)
+            if n == {}:
+                continue
+            normalized[k] = n
+        if normalized:
+            return {"configuration": normalized}
+        return None
+
     async def complete_request_async(
         self,
-        params: Dict[str, str],
+        params: Dict[str, Any],
         deployment_id: str,
         deployment_name: str,
         content_propagation: Optional[ContentPropagation],
@@ -47,26 +62,22 @@ class DialCompletionService:
             logger.warning(
                 "Tool call content is empty. Check the tool configuration, it should use `query` parameter"
             )
-        custom_args = {
-            "configuration": {
-                k: v for k, v in params.items() if k != _CONTENT_PARAM and k != _ATTACHMENT_PARAM
-            }
-        }
-
         messages = await self.__build_request_messages(
             content, content_propagation, relative_attachment_urls
         )
-        chat_completion_params = {
+        chat_completion_params: dict[str, Any] = {
             "deployment_name": deployment_id,
             "stream": True,
             "messages": messages,
         }
-        if custom_args:
-            chat_completion_params[_EXTRA_BODY] = {_CUSTOM_FIELDS: custom_args}
+
+        custom_fields = self._prepare_custom_fields(params.items())
+        if custom_fields:
+            chat_completion_params[_EXTRA_BODY] = {_CUSTOM_FIELDS: custom_fields}
 
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 
-        content = ''
+        content_parts = []
         custom_content: CustomContent = CustomContent(attachments=[])
         usage: Optional[CompletionUsage] = None
         statistics: dict[str, Any] = {}
@@ -80,7 +91,7 @@ class DialCompletionService:
                     if delta.content:
                         if stage_wrapper:
                             stage_wrapper.append_stage_content(delta.content)
-                        content += delta.content
+                        content_parts.append(delta.content)
                     if delta.custom_content and delta.custom_content.attachments:
                         attachments = delta.custom_content.attachments
                         custom_content.attachments.extend(attachments)
@@ -107,7 +118,7 @@ class DialCompletionService:
                 statistics = chunk.model_extra.get("statistics", {}).get("usage_per_model", {})
 
         return CompletionResult(
-            content=content,
+            content="".join(content_parts),
             content_type="text/markdown",
             attachments=custom_content.attachments,
             usage=self.__get_deployment_usage(usage, statistics, deployment_id, deployment_name),
@@ -206,7 +217,6 @@ class DialCompletionService:
         )
 
     def _build_result_message(self, content, attachments, deployment_usage):
-
         m = Message(
             role=Role.TOOL,
             content=content,
