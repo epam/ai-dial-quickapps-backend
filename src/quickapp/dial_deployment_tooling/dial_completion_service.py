@@ -18,11 +18,13 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation
-
-_CONTENT_PARAM: str = "query"
-_ATTACHMENT_PARAM: str = "attachment_urls"
-_EXTRA_BODY: str = "extra_body"
-_CUSTOM_FIELDS: str = "custom_fields"
+from quickapp.dial_deployment_tooling.constants import (
+    ATTACHMENT_PARAM,
+    CONFIGURATION,
+    CONTENT_PARAM,
+    CUSTOM_CONTENT,
+    USAGE_PARAM,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,16 +38,17 @@ class DialCompletionService:
 
     @staticmethod
     def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Optional[Dict[str, Any]]:
+        # kept for backward compatibility in rare cases
         normalized: dict[str, Any] = {}
         for k, v in items:
-            if k == _CONTENT_PARAM or k == _ATTACHMENT_PARAM:
+            if k == CONTENT_PARAM or k == ATTACHMENT_PARAM:
                 continue
             n = to_plain_dict(v)
             if n == {}:
                 continue
             normalized[k] = n
         if normalized:
-            return {"configuration": normalized}
+            return {CONFIGURATION: normalized}
         return None
 
     async def complete_request_async(
@@ -57,7 +60,8 @@ class DialCompletionService:
         stage_wrapper: Optional[BaseStageWrapper],
         relative_attachment_urls: Optional[list[str]] = None,
     ) -> CompletionResult:
-        content = params.get(_CONTENT_PARAM, "")
+        # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
+        content = params.get(CONTENT_PARAM, "")
         if not content:
             logger.warning(
                 "Tool call content is empty. Check the tool configuration, it should use `query` parameter"
@@ -65,15 +69,21 @@ class DialCompletionService:
         messages = await self.__build_request_messages(
             content, content_propagation, relative_attachment_urls
         )
+
         chat_completion_params: dict[str, Any] = {
             "deployment_name": deployment_id,
             "stream": True,
             "messages": messages,
         }
 
-        custom_fields = self._prepare_custom_fields(params.items())
-        if custom_fields:
-            chat_completion_params[_EXTRA_BODY] = {_CUSTOM_FIELDS: custom_fields}
+        # params are already filtered & normalized; merge them directly, excluding handled keys
+        for k, v in params.items():
+            if k == CONTENT_PARAM or k == ATTACHMENT_PARAM:
+                continue
+            # skip empty values (defensive)
+            if v is None or v == {}:
+                continue
+            chat_completion_params[k] = v
 
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 
@@ -199,7 +209,7 @@ class DialCompletionService:
         message = UserMessageParam(role="user", content=content)
         attachments = await self.__attachment_params_from_urls(relative_attachment_urls)
         if attachments and len(attachments) > 0:
-            message["custom_content"] = CustomContentParam(attachments=attachments)
+            message[CUSTOM_CONTENT] = CustomContentParam(attachments=attachments)
         return message
 
     async def __attachment_params_from_urls(
@@ -221,7 +231,7 @@ class DialCompletionService:
             role=Role.TOOL,
             content=content,
             custom_content=CustomContent(
-                attachments=attachments, state={"usage": deployment_usage}
+                attachments=attachments, state={USAGE_PARAM: deployment_usage}
             ),
         )
         return m

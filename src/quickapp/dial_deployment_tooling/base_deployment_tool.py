@@ -7,6 +7,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
+from quickapp.dial_deployment_tooling.constants import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -53,21 +54,43 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def _pre_process_params(self, **kwargs: Any) -> Any:
 
+        prepared: dict[str, Any] = {}
+
+        def _merge_configuration_into(target: dict[str, Any], source: Any) -> None:
+            """If source is a mapping with a 'configuration' key that is a dict, merge its items
+            into target (overwriting target keys if present)."""
+            if not isinstance(source, dict):
+                return
+            cfg = source.get(CONFIGURATION)
+            if isinstance(cfg, dict):
+                for k, v in cfg.items():
+                    target[k] = v
+
+        # If tool config defines defaults, normalize them first
         if isinstance(self.tool_config, DialDeploymentTool):
             tool_config = cast(DialDeploymentTool, self.tool_config)
-            # deployment and parameters are expected to be present on DialDeploymentTool
-
             params = tool_config.deployment.parameters
             params_dict = to_plain_dict(params)
-            for key, value in params_dict.items():
-                if key == "custom_fields":
-                    cf = to_plain_dict(value)
-                    if cf:
-                        kwargs["custom_fields"] = cf
+            if isinstance(params_dict, dict):
+                for key, value in params_dict.items():
+                    # skip empty values
+                    if value is None or value == {}:
+                        continue
+                    if key == CUSTOM_FIELDS:
+                        _merge_configuration_into(prepared, value)
                     else:
-                        # if custom_fields exists but is empty, set as empty dict to be explicit
-                        kwargs["custom_fields"] = {}
-                else:
-                    kwargs[key] = value
+                        prepared[key] = value
 
-        return kwargs
+        # Now process runtime kwargs - these should override defaults
+        for key, value in kwargs.items():
+            # Normalize each runtime value (Pydantic models/dataclasses -> plain dicts)
+            normalized = to_plain_dict(value)
+            # Skip empty values (None or empty dict/list)
+            if normalized is None or normalized == {}:
+                continue
+            if key == CUSTOM_FIELDS and isinstance(normalized, dict):
+                _merge_configuration_into(prepared, normalized)
+            else:
+                prepared[key] = normalized
+
+        return prepared
