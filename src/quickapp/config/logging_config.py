@@ -12,7 +12,9 @@ class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
         return res
 
 
-DEFAULT_LOG_FORMAT = "%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s"
+DEFAULT_LOG_FORMAT = (
+    "%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s"
+)
 DEFAULT_LOG_LEVEL = "INFO"
 
 

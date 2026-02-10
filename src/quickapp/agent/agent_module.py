@@ -5,7 +5,6 @@ from injector import Binder, InstanceProvider, Module, NoScope, multiprovider, p
 from openai import AsyncAzureOpenAI
 
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
-from quickapp.config.settings import AgentRuntimeSettings, load_agent_runtime_settings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
@@ -22,6 +21,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.settings import AgentRuntimeSettings, load_agent_runtime_settings
 from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,

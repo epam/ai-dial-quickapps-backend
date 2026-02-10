@@ -1,7 +1,15 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, InstanceProvider, Module, multiprovider, provider, singleton
+from injector import (
+    AssistedBuilder,
+    Binder,
+    InstanceProvider,
+    Module,
+    multiprovider,
+    provider,
+    singleton,
+)
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
