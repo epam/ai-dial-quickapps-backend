@@ -1,12 +1,9 @@
 import logging
 import logging.config
-import os
 from typing import Any
 
 import uvicorn.logging
 from pydantic import BaseModel, Field
-
-from quickapp.config.utils import bool_env_var
 
 
 class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
@@ -15,23 +12,16 @@ class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
         return res
 
 
-DEFAULT_LOG_FORMAT = (
-    "%(message)s"
-    if os.environ.get("LOG_MODE") == "dev"
-    else "%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s"
-)
+DEFAULT_LOG_FORMAT = "%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s"
 DEFAULT_LOG_LEVEL = "INFO"
 
 
 class LoggingConfig(BaseModel):
-    log_format: str = Field(default=os.getenv("LOG_FORMAT", DEFAULT_LOG_FORMAT))
-    log_level: str = Field(default=os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL))
-    quickapp_log_level: str = Field(default=os.getenv("QUICKAPP_LOG_LEVEL", DEFAULT_LOG_LEVEL))
-    # by default kaleido and choreographer log a lot of unnecessary information on INFO level
-    plotly_image_conversion_log_level: str = Field(
-        default=os.getenv("PLOTLY_IMAGE_CONVERSION_LOG_LEVEL", "WARN")
-    )
-    log_multiline_mode_enabled: bool = bool_env_var("LOG_MULTILINE_LOG_ENABLED", False)
+    log_format: str = Field(default=DEFAULT_LOG_FORMAT)
+    log_level: str = Field(default=DEFAULT_LOG_LEVEL)
+    quickapp_log_level: str = Field(default=DEFAULT_LOG_LEVEL)
+    plotly_image_conversion_log_level: str = Field(default="WARN")
+    log_multiline_mode_enabled: bool = Field(default=False)
 
     def __init__(self, /, **data: Any) -> None:
         super().__init__(**data)
