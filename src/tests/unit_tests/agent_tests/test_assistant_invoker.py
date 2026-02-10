@@ -11,7 +11,7 @@ def _presentation_settings(show_usage: bool):
     return SimpleNamespace(show_usage_statistics=show_usage)
 
 
-def _agent_runtime_settings(chat_message_log_length=None):
+def _agent_settings(chat_message_log_length=None):
     return SimpleNamespace(chat_message_log_length=chat_message_log_length)
 
 
@@ -67,7 +67,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         pre_process_transformers=[FakeTransformer()],
         response_format=None,
         presentation_settings=_presentation_settings(False),
-        agent_runtime_settings=_agent_runtime_settings(),
+        agent_settings=_agent_settings(),
     )
 
     result = await invoker.invoke()
@@ -105,7 +105,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         pre_process_transformers=[],
         response_format=None,
         presentation_settings=_presentation_settings(True),
-        agent_runtime_settings=_agent_runtime_settings(),
+        agent_settings=_agent_settings(),
     )
 
     result = await invoker.invoke()
@@ -158,7 +158,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         pre_process_transformers=[],
         response_format=None,
         presentation_settings=_presentation_settings(False),
-        agent_runtime_settings=_agent_runtime_settings(),
+        agent_settings=_agent_settings(),
     )
 
     from aidial_sdk.exceptions import InvalidRequestError

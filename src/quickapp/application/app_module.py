@@ -2,7 +2,7 @@ from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import ChatCompletion, Choice, Message, Stage
 from fastapi import FastAPI
 from fastapi_injector import request_scope
-from injector import Binder, InstanceProvider, Module, multiprovider, provider, singleton
+from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
 from quickapp.common.dial_settings import DialSettings
@@ -11,7 +11,6 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
-from quickapp.config.settings import load_presentation_settings
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._otel_settings import _OtelSettings
@@ -37,11 +36,7 @@ class AppModule(Module):
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
-        binder.bind(
-            PresentationSettings,
-            to=InstanceProvider(load_presentation_settings()),
-            scope=singleton,
-        )
+        binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(
