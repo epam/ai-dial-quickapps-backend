@@ -22,6 +22,7 @@ from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
+    USAGE_PARAM, CUSTOM_CONTENT,
 )
 
 logger = logging.getLogger(__name__)
@@ -207,7 +208,7 @@ class DialCompletionService:
         message = UserMessageParam(role="user", content=content)
         attachments = await self.__attachment_params_from_urls(relative_attachment_urls)
         if attachments and len(attachments) > 0:
-            message["custom_content"] = CustomContentParam(attachments=attachments)
+            message[CUSTOM_CONTENT] = CustomContentParam(attachments=attachments)
         return message
 
     async def __attachment_params_from_urls(
@@ -229,7 +230,7 @@ class DialCompletionService:
             role=Role.TOOL,
             content=content,
             custom_content=CustomContent(
-                attachments=attachments, state={CONFIGURATION: deployment_usage}
+                attachments=attachments, state={USAGE_PARAM: deployment_usage}
             ),
         )
         return m

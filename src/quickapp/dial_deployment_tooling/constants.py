@@ -8,3 +8,7 @@ ATTACHMENT_PARAM = "attachment_urls"
 EXTRA_BODY = "extra_body"
 CUSTOM_FIELDS = "custom_fields"
 CONFIGURATION = "configuration"
+
+CUSTOM_CONTENT = "custom_content"
+
+USAGE_PARAM = "usage"
