@@ -6,7 +6,7 @@ from injector import Injector
 from quickapp.agent.agent_module import AgentModule
 from quickapp.application import AppModule
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
-from quickapp.config.logging_config import LoggingConfig
+from quickapp.config.settings import load_logging_config
 from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
@@ -31,7 +31,7 @@ class AppFactory:
         Returns:
             FastAPI: The configured FastAPI application instance.
         """
-        LoggingConfig()
+        load_logging_config()
         injector = Injector(
             [
                 AppModule(),

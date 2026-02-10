@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -14,6 +13,7 @@ def format_openai_message_pipe_tree(
     include_tools: bool = True,
     include_attachments: bool = True,
     include_stages: bool = True,
+    preview_len: Optional[int] = None,
 ):
     """Produce a human-readable 'pipe-tree' log of OpenAI Chat messages.
     - Header: "{idx} {role} (model=...): {content_preview}"
@@ -29,14 +29,12 @@ def format_openai_message_pipe_tree(
         include_tools: include assistant tool calls.
         include_attachments: include attachment lines.
         include_stages: include stage lines.
+        preview_len: max length for content preview (-1 or None = no truncation).
 
     Returns:
         Multiline string with the formatted log.
     """
-    env_val = os.getenv("CHAT_MESSAGE_LOG_LEN")
-    try:
-        preview_len: int = int(env_val) if env_val is not None else -1
-    except ValueError:
+    if preview_len is None:
         preview_len = -1
     role = msg.get("role", "?")
     content_preview, was_truncated = _preview_text(

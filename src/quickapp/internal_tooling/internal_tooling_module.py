@@ -1,12 +1,12 @@
 import logging
-import os
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
+from injector import AssistedBuilder, Binder, InstanceProvider, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.settings import ContentDownloaderSettings, load_content_downloader_settings
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
@@ -35,6 +35,11 @@ class InternalToolModule(Module):
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
+        binder.bind(
+            ContentDownloaderSettings,
+            to=InstanceProvider(load_content_downloader_settings()),
+            scope=singleton,
+        )
 
         logger.debug("InternalTooling module configuration completed")
 
@@ -44,6 +49,7 @@ class InternalToolModule(Module):
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
         cd_builder: AssistedBuilder[_ContentDownloadTool],
+        content_downloader_settings: ContentDownloaderSettings,
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
         for tool_set in app_config.tool_sets:
@@ -73,9 +79,7 @@ class InternalToolModule(Module):
                                     tool_config=tool_config,
                                     name=tool_config.open_ai_tool.function.name,
                                     description=tool_config.open_ai_tool.function.description,
-                                    content_size_limit=int(
-                                        os.getenv("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", "20971520")
-                                    ),  # 20Mb
+                                    content_size_limit=content_downloader_settings.file_size_limit,
                                 )
                             )
         return tools
