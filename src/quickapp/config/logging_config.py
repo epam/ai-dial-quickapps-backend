@@ -1,9 +1,10 @@
 import logging
 import logging.config
-from typing import Any
 
 import uvicorn.logging
 from pydantic import BaseModel, Field
+
+from quickapp.config.logging_settings import LoggingSettings
 
 
 class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
@@ -25,8 +26,8 @@ class LoggingConfig(BaseModel):
     plotly_image_conversion_log_level: str = Field(default="WARN")
     log_multiline_mode_enabled: bool = Field(default=False)
 
-    def __init__(self, /, **data: Any) -> None:
-        super().__init__(**data)
+    def __init__(self, settings: LoggingSettings) -> None:
+        super().__init__(**settings.model_dump())
         self.configure_logging()
         self.override_aidial_sdk_logger(self.log_format)
 
@@ -89,6 +90,15 @@ class LoggingConfig(BaseModel):
 
     def configure_logging(self):
         logging.config.dictConfig(self.get_logging_config())
+
+        # Ensure quickapp logger level is applied (e.g. QUICKAPP_LOG_LEVEL=DEBUG)
+        quickapp_logger = logging.getLogger("quickapp")
+        level = getattr(
+            logging,
+            self.quickapp_log_level.upper(),
+            logging.INFO,
+        )
+        quickapp_logger.setLevel(level)
 
         # Override "aidial_sdk" logger to meet same logging format
         from aidial_sdk import logger as aidial_sdk_logger

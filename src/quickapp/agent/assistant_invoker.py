@@ -10,6 +10,7 @@ from openai import AsyncStream, BadRequestError, RateLimitError
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.processors.pre_transformers import PreTransformer
@@ -17,7 +18,6 @@ from quickapp.common import RESPONSE_FORMAT
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.settings import AgentRuntimeSettings
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,7 @@ class AssistantInvoker:
         pre_process_transformers: list[PreTransformer],
         response_format: RESPONSE_FORMAT,
         presentation_settings: PresentationSettings,
-        agent_runtime_settings: AgentRuntimeSettings,
+        agent_settings: AgentSettings,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -44,7 +44,7 @@ class AssistantInvoker:
         self.__azure_client = azure_client
         self.__response_format = response_format
         self.__presentation_settings = presentation_settings
-        self.__agent_runtime_settings = agent_runtime_settings
+        self.__agent_settings = agent_settings
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         # Pre-process
@@ -109,6 +109,6 @@ class AssistantInvoker:
         return chat_completion
 
     def _log_messages(self, messages: list[Message]):
-        preview_len = self.__agent_runtime_settings.chat_message_log_length
+        preview_len = self.__agent_settings.chat_message_log_length
         for idx, msg in enumerate(messages, start=1):
             format_openai_message_pipe_tree(msg.dict(), idx, preview_len=preview_len)

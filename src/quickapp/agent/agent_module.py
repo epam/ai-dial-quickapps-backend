@@ -1,10 +1,11 @@
 import copy
 
 from fastapi_injector import request_scope
-from injector import Binder, InstanceProvider, Module, NoScope, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
@@ -21,7 +22,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.settings import AgentRuntimeSettings, load_agent_runtime_settings
 from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,
@@ -61,11 +61,7 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
-        binder.bind(
-            AgentRuntimeSettings,
-            to=InstanceProvider(load_agent_runtime_settings()),
-            scope=singleton,
-        )
+        binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
 
     @provider
     def provide_openai_client(
