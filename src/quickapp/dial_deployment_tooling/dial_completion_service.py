@@ -22,7 +22,8 @@ from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
-    USAGE_PARAM, CUSTOM_CONTENT,
+    CUSTOM_CONTENT,
+    USAGE_PARAM,
 )
 
 logger = logging.getLogger(__name__)
