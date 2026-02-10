@@ -53,21 +53,41 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def _pre_process_params(self, **kwargs: Any) -> Any:
 
+        prepared: dict[str, Any] = {}
+
+        # If tool config defines defaults, normalize them first
         if isinstance(self.tool_config, DialDeploymentTool):
             tool_config = cast(DialDeploymentTool, self.tool_config)
-            # deployment and parameters are expected to be present on DialDeploymentTool
-
             params = tool_config.deployment.parameters
             params_dict = to_plain_dict(params)
-            for key, value in params_dict.items():
-                if key == "custom_fields":
-                    cf = to_plain_dict(value)
-                    if cf:
-                        kwargs["custom_fields"] = cf
+            if isinstance(params_dict, dict):
+                for key, value in params_dict.items():
+                    # skip empty values
+                    if value is None or value == {}:
+                        continue
+                    if key == "custom_fields":
+                        if isinstance(value, dict):
+                            configuration = value.get("configuration")
+                            if isinstance(configuration, dict) and configuration:
+                                for ck, cv in configuration.items():
+                                    prepared[ck] = cv
+                            # else ignore explicit empty custom_fields
                     else:
-                        # if custom_fields exists but is empty, set as empty dict to be explicit
-                        kwargs["custom_fields"] = {}
-                else:
-                    kwargs[key] = value
+                        prepared[key] = value
 
-        return kwargs
+        for key, value in kwargs.items():
+            # Normalize each runtime value (Pydantic models -> plain dicts)
+            normalized = to_plain_dict(value)
+            # Skip empty values (None or empty dict/list)
+            if normalized is None or normalized == {}:
+                continue
+            # unpack custom_fields.configuration if present, they should be merged into top-level parameters
+            if key == "custom_fields" and isinstance(normalized, dict):
+                configuration = normalized.get("configuration")
+                if isinstance(configuration, dict) and configuration:
+                    for ck, cv in configuration.items():
+                        prepared[ck] = cv
+            else:
+                prepared[key] = normalized
+
+        return prepared

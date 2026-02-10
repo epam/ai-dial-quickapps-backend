@@ -57,6 +57,7 @@ class DialCompletionService:
         stage_wrapper: Optional[BaseStageWrapper],
         relative_attachment_urls: Optional[list[str]] = None,
     ) -> CompletionResult:
+        # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(_CONTENT_PARAM, "")
         if not content:
             logger.warning(
@@ -65,6 +66,7 @@ class DialCompletionService:
         messages = await self.__build_request_messages(
             content, content_propagation, relative_attachment_urls
         )
+
         chat_completion_params: dict[str, Any] = {
             "deployment_name": deployment_id,
             "stream": True,
