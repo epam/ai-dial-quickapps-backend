@@ -7,7 +7,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class InternalToolingSettings(BaseSettings):
     """Settings for internal tools (content downloader, etc.)."""
 
-    model_config = SettingsConfigDict(env_ignore_extra=True)
+    model_config = SettingsConfigDict()
 
     content_downloader_file_size_limit: int = Field(
         default=20 * 1024 * 1024,  # 20 MiB

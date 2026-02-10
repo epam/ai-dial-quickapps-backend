@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 
-from pydantic import Field, computed_field
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -14,7 +14,7 @@ _DEFAULT_LOG_FORMAT = (
 class LoggingSettings(BaseSettings):
     """Settings for logging. Use from_env() to load from os.environ (avoids pydantic-settings env quirks)."""
 
-    model_config = SettingsConfigDict(env_ignore_extra=True)
+    model_config = SettingsConfigDict()
 
     log_mode: Optional[str] = Field(default=None, alias="LOG_MODE")
     log_format: str = Field(default=_DEFAULT_LOG_FORMAT, alias="LOG_FORMAT")
@@ -29,9 +29,8 @@ class LoggingSettings(BaseSettings):
         alias="LOG_MULTILINE_LOG_ENABLED",
     )
 
-    @computed_field
-    @property
-    def resolved_log_format(self) -> str:
+    def get_resolved_log_format(self) -> str:
+        """Use dev format when LOG_MODE=dev, else log_format."""
         if self.log_mode == "dev":
             return "%(filename)s:%(lineno)d - %(message)s"
         return self.log_format
