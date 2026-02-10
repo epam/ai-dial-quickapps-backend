@@ -3,6 +3,7 @@ Single place for reading environment variables. All env names and defaults live 
 Domain configs (LoggingConfig, AgentRuntimeSettings, etc.) are built from this module
 and can be bound in the injector for DI.
 """
+
 import logging
 import os
 from dataclasses import dataclass
@@ -27,13 +28,16 @@ def _get_int_env(key: str, default: int) -> int:
     try:
         return int(raw)
     except ValueError:
-        logger.warning("Env variable `%s` has invalid int value `%s`, using default %s", key, raw, default)
+        logger.warning(
+            "Env variable `%s` has invalid int value `%s`, using default %s", key, raw, default
+        )
         return default
 
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
+
 
 def _default_log_format() -> str:
     if os.getenv("LOG_MODE") == "dev":
@@ -43,6 +47,7 @@ def _default_log_format() -> str:
 
 def load_logging_config():  # -> LoggingConfig (imported locally to avoid circular import)
     from quickapp.config.logging_config import LoggingConfig
+
     return LoggingConfig(
         log_format=_get_env("LOG_FORMAT") or _default_log_format(),
         log_level=_get_env("LOG_LEVEL") or "INFO",
@@ -55,6 +60,7 @@ def load_logging_config():  # -> LoggingConfig (imported locally to avoid circul
 # ---------------------------------------------------------------------------
 # Agent / runtime
 # ---------------------------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class AgentRuntimeSettings:
@@ -80,6 +86,7 @@ def load_agent_runtime_settings() -> AgentRuntimeSettings:
 # Presentation (usage stats, execution time stage)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class PresentationSettings:
     show_usage_statistics: bool
@@ -97,6 +104,7 @@ def load_presentation_settings() -> PresentationSettings:
 # Content downloader
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True)
 class ContentDownloaderSettings:
     file_size_limit: int
@@ -104,5 +112,7 @@ class ContentDownloaderSettings:
 
 def load_content_downloader_settings() -> ContentDownloaderSettings:
     return ContentDownloaderSettings(
-        file_size_limit=_get_int_env("CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", 20 * 1024 * 1024),  # 20 MiB
+        file_size_limit=_get_int_env(
+            "CONTENT_DOWNLOADER_FILE_SIZE_LIMIT", 20 * 1024 * 1024
+        ),  # 20 MiB
     )
