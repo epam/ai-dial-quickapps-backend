@@ -3,16 +3,11 @@ import json
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
+from quickapp.attachment_processing._context_entries import extract_seen_entries_from_messages, \
+    has_context_tool_history, should_activate_context_tool
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.context import FileContextConfig, UserDefinedContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
-    ContextEntry,
-    extract_seen_entries_from_messages,
-    has_context_tool_history,
-    should_activate_context_tool,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+
 
 TOOL_NAME = AVAILABLE_CONTEXT_TOOL_NAME
 

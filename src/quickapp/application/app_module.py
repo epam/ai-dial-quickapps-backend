@@ -13,10 +13,14 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
 from ._initialization_error_handler import _InitializationErrorHandler
+from ._messages_setup import _MessagesSetup
+from ._messages_transformers import AddSystemPromptTransformer, ExtractToolCallsFromStateProcessor
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
 from ._request_context import _RequestContext
+from ._request_context_setup import _RequestContextSetup
+from ..common.abstract.base_transformer import MessagesTransformer
 
 
 class AppModule(Module):
@@ -36,11 +40,19 @@ class AppModule(Module):
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
+        binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)
+        binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
+        )
+        binder.bind(AddSystemPromptTransformer, to=AddSystemPromptTransformer, scope=request_scope)
+        binder.bind(
+            ExtractToolCallsFromStateProcessor,
+            to=ExtractToolCallsFromStateProcessor,
+            scope=request_scope,
         )
 
     @provider
@@ -85,3 +97,14 @@ class AppModule(Module):
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
         return context.messages
+
+    @multiprovider
+    def provide_message_transformers(
+            self,
+            add_system_prompt: AddSystemPromptTransformer,
+            extract_tool_calls: ExtractToolCallsFromStateProcessor,
+    ) -> list[MessagesTransformer]:
+        return [
+            add_system_prompt,
+            extract_tool_calls,
+        ]

@@ -10,7 +10,7 @@ from quickapp.config.tools.display.paramenter import (
     ParameterDisplayConfig,
 )
 
-from . import CompletionResult
+from quickapp.common import CompletionResult
 
 
 class BaseStageWrapper(ABC):

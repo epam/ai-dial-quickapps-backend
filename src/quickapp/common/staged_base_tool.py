@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 
-from .base_stage_wrapper import BaseStageWrapper
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from .completion_result import CompletionResult
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor

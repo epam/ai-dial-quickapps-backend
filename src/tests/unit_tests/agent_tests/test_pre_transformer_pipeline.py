@@ -17,15 +17,12 @@ import json
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from pydantic.v1 import StrictStr
 
-from quickapp.agent.processors.pre_transformers import (
-    AddContextAttachmentTransformer,
-    ReduceAttachmentTransformer,
-)
-from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
+from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
+from quickapp.attachment_processing._message_transformers import _AddContextAttachmentTransformer, \
+    _ReduceAttachmentTransformer
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.context import FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -48,9 +45,9 @@ def _run_pipeline(
 ) -> list[Message]:
     """Run transformers in the production pipeline order."""
     ctx_list = contexts or []
-    context_adder = AddContextAttachmentTransformer(ctx_list)
-    reducer = ReduceAttachmentTransformer()
-    injector = AttachmentNotificationInjector(
+    context_adder = _AddContextAttachmentTransformer(ctx_list)
+    reducer = _ReduceAttachmentTransformer()
+    injector = _AttachmentNotificationInjector(
         contexts=ctx_list,
     )
 

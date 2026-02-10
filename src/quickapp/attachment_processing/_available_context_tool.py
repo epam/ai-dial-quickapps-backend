@@ -4,19 +4,15 @@ from typing import Any, Optional
 from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 
+from quickapp.attachment_processing._available_context_stage_wrapper import _AvailableContextStageWrapper
+from quickapp.attachment_processing._context_entries import AvailableContextToolResponse, \
+    extract_seen_entries_from_messages, build_context_entries
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
-from quickapp.internal_tooling.attachment_notification_tooling._available_context_stage_wrapper import (
-    _AvailableContextStageWrapper,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
-    AvailableContextToolResponse,
-    build_context_entries,
-    extract_seen_entries_from_messages,
-)
+
 
 
 @inject

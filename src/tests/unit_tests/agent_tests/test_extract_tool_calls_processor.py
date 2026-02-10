@@ -1,11 +1,10 @@
-import pytest
 import warnings
 
 from aidial_sdk.chat_completion import CustomContent, FunctionCall, ToolCall
 from aidial_sdk.chat_completion.request import Message, Role
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
-from quickapp.agent.processors.pre_transformers import ExtractToolCallsFromStateProcessor
+from quickapp.application._messages_transformers import ExtractToolCallsFromStateProcessor
 
 
 def make_tool_call(id: str, name: str = "test_tool", arguments: str = "{}") -> ToolCall:

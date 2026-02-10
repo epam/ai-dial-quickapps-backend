@@ -7,7 +7,7 @@ from aidial_sdk.chat_completion import Stage
 
 from quickapp.config.tools.base import BaseTool
 
-from .base_stage_wrapper import BaseStageWrapper
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
 
 
 class TimedStageWrapper(BaseStageWrapper, ABC):

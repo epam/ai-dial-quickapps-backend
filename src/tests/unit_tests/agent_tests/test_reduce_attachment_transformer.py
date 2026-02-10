@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from pydantic.v1 import StrictStr
 
-from quickapp.agent.processors.pre_transformers import ReduceAttachmentTransformer
+from quickapp.attachment_processing._message_transformers import _ReduceAttachmentTransformer
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -19,9 +19,9 @@ def _attachment(title: str, url: str, mime_type: str) -> Attachment:
     )
 
 
-class TestReduceAttachmentTransformer:
+class Test_ReduceAttachmentTransformer:
     def test_image_attachments_kept_inline(self):
-        transformer = ReduceAttachmentTransformer()
+        transformer = _ReduceAttachmentTransformer()
         msg = _user_msg(
             "look at this",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
@@ -31,7 +31,7 @@ class TestReduceAttachmentTransformer:
         assert result[0].custom_content.attachments[0].type == "image/png"
 
     def test_non_image_attachments_removed(self):
-        transformer = ReduceAttachmentTransformer()
+        transformer = _ReduceAttachmentTransformer()
         msg = _user_msg(
             "check this",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
@@ -40,7 +40,7 @@ class TestReduceAttachmentTransformer:
         assert len(result[0].custom_content.attachments) == 0
 
     def test_text_metadata_injected_for_attachments(self):
-        transformer = ReduceAttachmentTransformer()
+        transformer = _ReduceAttachmentTransformer()
         msg = _user_msg(
             "original content",
             [
@@ -56,7 +56,7 @@ class TestReduceAttachmentTransformer:
         assert "image/png" in content
 
     def test_mixed_attachments_only_images_kept(self):
-        transformer = ReduceAttachmentTransformer()
+        transformer = _ReduceAttachmentTransformer()
         msg = _user_msg(
             "",
             [

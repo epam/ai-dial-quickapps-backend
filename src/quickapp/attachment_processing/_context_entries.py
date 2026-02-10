@@ -6,10 +6,9 @@ from enum import Enum
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, Field, ValidationError
 
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.context import Context, FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+
 
 
 class ContextEntryStatus(str, Enum):
