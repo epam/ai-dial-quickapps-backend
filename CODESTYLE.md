@@ -2,9 +2,11 @@
 
 This document describes how the application is structured and how to add or change code in a consistent way. It is aimed at newcomers and contributors.
 
+---
+
 ## 1. Dependency Injection (injector)
 
-**All interactions between modules should go through Dependency Injection.** We use the [injector](https://github.com/python-injector/injector) library.
+**All interactions between modules should go through Dependency Injection.** We use the [injector](https://github.com/python-injector/injector) library (with [fastapi-injector](https://github.com/abstractkitchen/fastapi-injector) for FastAPI).
 
 ### Rules
 
@@ -60,16 +62,7 @@ class AgentModule(Module):
 - Use **pydantic-settings** (`BaseSettings`) for the class. Use `Field(..., alias="ENV_VAR_NAME")` so existing env var names (often with different prefixes) are supported.
 - **Bind the settings class in that module’s `configure()`** (e.g. `binder.bind(AgentSettings, to=AgentSettings, scope=singleton)`). Consumers receive the same instance via constructor injection.
 - **Do not** add `os.getenv` / `os.environ` in application or tooling code. The only place that should read env for app config is inside the settings classes (or a dedicated loader like `LoggingSettings.from_env()` when you need guaranteed env reads).
-
-### Where settings live
-
-| Area              | Settings class           | Typical env vars (examples)        |
-|-------------------|--------------------------|------------------------------------|
-| Agent             | `AgentSettings`          | `SHOW_USAGE_STATISTICS`, `CHAT_MESSAGE_LOG_LEN`, `DEFAULT_AGENT_MAX_ITERATIONS` |
-| Application / UI  | `PresentationSettings`   | `SHOW_USAGE_STATISTICS`, `SHOW_EXECUTION_TIME_STAGE` |
-| Internal tooling  | `InternalToolingSettings` | `CONTENT_DOWNLOADER_FILE_SIZE_LIMIT` |
-| Logging           | `LoggingSettings`        | `LOG_LEVEL`, `QUICKAPP_LOG_LEVEL`, `LOG_FORMAT`, … |
-| DIAL / runtime    | `DialSettings`           | `dial_*` prefix                    |
+- **Document** the purpose and default of each env variable (e.g. in the settings class docstring or the table below).
 
 ### Example (settings class)
 
@@ -79,7 +72,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class AgentSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_ignore_extra=True)
+    model_config = SettingsConfigDict()
 
     show_usage_statistics: bool = Field(default=False, alias="SHOW_USAGE_STATISTICS")
     chat_message_log_length: Optional[int] = Field(default=None, alias="CHAT_MESSAGE_LOG_LEN")
@@ -100,18 +93,91 @@ In a class that needs these settings:
 @inject
 def __init__(self, ..., agent_settings: AgentSettings) -> None:
     self.__agent_settings = agent_settings
-    # use agent_settings.quickapp_log_level, etc.
 ```
 
 ### Shared / cross-cutting settings
 
-- Settings used by more than one module (e.g. presentation, DIAL URL) live in **`common/`** (e.g. `PresentationSettings`, `DialSettings`) so that no circular imports are introduced (no module imports another feature module just for settings).
+- Settings used by more than one module (e.g. presentation, DIAL URL) live in **`common/`** (e.g. `PresentationSettings`, `DialSettings`) so that no circular imports are introduced.
 - Logging is special: `LoggingSettings` lives under `config/` and is used to build `LoggingConfig` at startup (e.g. in `app_factory`), not via injector.
 
 ---
 
-## 3. Summary checklist
+## 3. Encapsulation and visibility
 
-- **DI:** New services or config used across modules are requested in constructors and bound in a module’s `configure()`; no direct instantiation of other modules’ types in business code.
-- **Env:** Any dependency on env vars is encapsulated in a pydantic-settings class owned by (or shared for) that module, bound in the injector and injected; no `os.getenv` in application/tooling code.
-- **Naming:** Module class `XxxModule`, settings class `XxxSettings` (or a shared name like `PresentationSettings`), env names preserved via `Field(alias="ENV_VAR_NAME")`.
+- **Protected by default**: Use a single leading underscore (`_`) for class attributes and methods that are internal to the class or module.
+- **Public only when needed**: Expose public attributes (no underscore) only when they are part of the intended external API.
+- This keeps the public surface small and makes refactoring safer.
+
+---
+
+## 4. Types and clarity
+
+- **Type hints**: Use type hints on function and method signatures (parameters and return types) so readers and tools (IDEs, linters) understand expected types.
+- **Modern built-in generics**: Prefer built-in generics over `typing` aliases where possible:
+  - `list[str]`, `dict[str, int]`, `tuple[str, float]` instead of `List`, `Dict`, `Tuple`.
+  - For unions in Python 3.10+, use `str | None` instead of `Optional[str]`.
+- **Complex or ambiguous cases**: Add a short docstring to clarify meaning or constraints.
+- **Factory methods**: For a `@classmethod` that acts as a factory, use `typing.Self` as the return type.
+
+---
+
+## 5. Naming
+
+- **Functions and methods**: `snake_case`.
+- **Classes**: `PascalCase` (e.g. `AgentSettings`, `AssistantInvoker`).
+- **Constants**: `UPPER_SNAKE_CASE` (e.g. `DEFAULT_LOG_LEVEL`).
+- **Modules**: `snake_case` filenames (e.g. `agent_settings.py`, `app_module.py`).
+
+---
+
+## 6. Code organization and imports
+
+- **Logical separation**: Group related classes and functions into modules. Each module should have a clear purpose or feature.
+- **Explicit imports**: Avoid `from module import *`. Import only what you use.
+- **Import order**: Standard library → third-party → local/project modules, with a blank line between each group.
+
+---
+
+## 7. Class bodies and global state
+
+- **No conditional or complex logic in class bodies**: Do not put conditionals or non-trivial logic at class level (e.g. `if condition: x = ...`). Use constants, `__init__`, factory functions, or helper functions instead.
+- **Avoid mutable global state**: Prefer passing mutable objects as parameters. If global or shared state is necessary, document it and ensure thread-safe access where relevant.
+
+---
+
+## 8. Pydantic: validation and complex arguments
+
+- **Validation**: Use Pydantic models for structured data validation instead of ad-hoc checks. Prefer `MyModel.model_validate(data)` over manual validation of dicts.
+- **Complex arguments**: Prefer Pydantic models (or typed structures) for complex function arguments instead of `dict[str, Any]` or nested dicts when the shape is fixed. Using `dict` is fine when keys and values are homogeneous (e.g. a mapping from id to a known type).
+- **Mutable defaults in Pydantic**: Do not use mutable default values (e.g. `items: list[str] = []`). Use `Field(default_factory=list)` (or similar) instead.
+
+---
+
+## 9. Logging and error handling
+
+- **Use the logging module**: Use Python’s `logging` (e.g. `logger.info`, `logger.debug`, `logger.exception`) instead of `print()` for production behavior. Configure log levels appropriately (e.g. via `LoggingSettings` / `QUICKAPP_LOG_LEVEL`).
+- **Graceful error handling**: Use exceptions where appropriate. Avoid silent failures; log or re-raise with clear messages so issues are visible and debuggable.
+
+---
+
+## 10. Linters and formatters
+
+- **Linting**: Use the project’s linter (e.g. mypy, ruff) to catch style and type issues early. Fix or address reported issues before submitting changes.
+- **Formatting**: Use the project’s formatter (e.g. ruff format, black) to keep style consistent. Run it before committing (e.g. via a `make format` or equivalent if the project provides it).
+
+---
+
+## 11. Dependencies
+
+- **Declare direct dependencies**: Any package that is directly imported in the codebase must be declared as a dependency (e.g. in `pyproject.toml` or `requirements.txt`). Do not rely on transitive dependencies for direct imports.
+
+---
+
+## 12. Summary checklist
+
+- **DI**: Cross-module use of services or config goes through constructor injection; types are bound in a module’s `configure()`; no direct instantiation of other modules’ types in business code.
+- **Env**: Env-based config lives in a pydantic-settings class per module (or shared in `common/`), bound in the injector and injected; no `os.getenv` in application/tooling code.
+- **Naming**: Module class `XxxModule`, settings class `XxxSettings`, env names preserved via `Field(alias="ENV_VAR_NAME")`.
+- **Visibility**: Prefer protected (`_`) for internals; public only for the intended API.
+- **Types**: Use type hints and modern generics; use Pydantic for validation and complex arguments; avoid mutable defaults in Pydantic fields.
+- **Structure**: Clear module boundaries, explicit imports, no complex logic in class bodies, logging instead of print, declared dependencies.
