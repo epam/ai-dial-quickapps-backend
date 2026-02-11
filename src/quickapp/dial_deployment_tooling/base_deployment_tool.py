@@ -8,7 +8,6 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
-from quickapp.dial_deployment_tooling.constants import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
