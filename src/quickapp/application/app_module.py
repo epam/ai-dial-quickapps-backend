@@ -14,7 +14,7 @@ from quickapp.config.config_template_resolver import ConfigResolver
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
-from ._messages_transformers import AddSystemPromptTransformer, ExtractToolCallsFromStateProcessor
+from ._messages_transformers import AddSystemPromptTransformer
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
@@ -49,11 +49,7 @@ class AppModule(Module):
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
         binder.bind(AddSystemPromptTransformer, to=AddSystemPromptTransformer, scope=request_scope)
-        binder.bind(
-            ExtractToolCallsFromStateProcessor,
-            to=ExtractToolCallsFromStateProcessor,
-            scope=request_scope,
-        )
+
 
     @provider
     def __provide_bearer(self, context: _RequestContext) -> DIAL_BEARER:
@@ -102,9 +98,7 @@ class AppModule(Module):
     def provide_message_transformers(
             self,
             add_system_prompt: AddSystemPromptTransformer,
-            extract_tool_calls: ExtractToolCallsFromStateProcessor,
     ) -> list[MessagesTransformer]:
         return [
             add_system_prompt,
-            extract_tool_calls,
         ]

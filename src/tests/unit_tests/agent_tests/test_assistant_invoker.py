@@ -46,12 +46,12 @@ async def test_invoke_without_show_usage(monkeypatch):
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("hello")])
+
     tools = [{"name": "t1"}]
     invoker = AssistantInvoker(
         tools=tools,
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("hello")],
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
 
@@ -84,12 +84,11 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("hello2")])
     tools = [{"name": "t2"}]
     invoker = AssistantInvoker(
         tools=tools,
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
 
@@ -136,11 +135,10 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("oops")])
     invoker = AssistantInvoker(
         tools=[{"name": "t"}],
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
 

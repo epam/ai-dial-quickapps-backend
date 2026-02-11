@@ -13,8 +13,10 @@ The pipeline runs transformers sequentially:
 """
 
 import json
+from types import SimpleNamespace
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+from injector import InstanceProvider
 from pydantic.v1 import StrictStr
 
 from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
@@ -22,6 +24,7 @@ from quickapp.attachment_processing._message_transformers import _AddContextAtta
     _ReduceAttachmentTransformer
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.context import FileContextConfig
+from tests.unit_tests.common.common import create_app_configuration
 
 
 
@@ -45,11 +48,12 @@ def _run_pipeline(
 ) -> list[Message]:
     """Run transformers in the production pipeline order."""
     ctx_list = contexts or []
-    context_adder = _AddContextAttachmentTransformer(ctx_list)
+    app_config = create_app_configuration([])
+    app_config.contexts = ctx_list
+    config_provider = SimpleNamespace(get=lambda: app_config)
+    context_adder = _AddContextAttachmentTransformer(config_provider)
     reducer = _ReduceAttachmentTransformer()
-    injector = _AttachmentNotificationInjector(
-        contexts=ctx_list,
-    )
+    injector = _AttachmentNotificationInjector(config_provider)
 
     messages = reducer.transform(messages)
     messages = context_adder.transform(messages)

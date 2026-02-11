@@ -4,7 +4,7 @@ from aidial_sdk.chat_completion import CustomContent, FunctionCall, ToolCall
 from aidial_sdk.chat_completion.request import Message, Role
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
-from quickapp.application._messages_transformers import ExtractToolCallsFromStateProcessor
+from quickapp.application._messages_setup import _MessagesSetup
 
 
 def make_tool_call(id: str, name: str = "test_tool", arguments: str = "{}") -> ToolCall:
@@ -15,25 +15,25 @@ class TestExtractToolCallsFromStateProcessor:
     """Tests for ExtractToolCallsFromStateProcessor."""
 
     def test_empty_messages_returns_empty(self):
-        processor = ExtractToolCallsFromStateProcessor()
-        result = processor.transform([])
+        msgs_setup = _MessagesSetup([])
+        result = msgs_setup.setup([])
         assert result == []
 
     def test_messages_without_state_unchanged(self):
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         messages = [
             Message(role=Role.USER, content="hello"),
             Message(role=Role.ASSISTANT, content="hi there"),
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         assert len(result) == 2
         assert result[0].role == Role.USER
         assert result[1].role == Role.ASSISTANT
 
     def test_message_without_tool_history_unchanged(self):
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         messages = [
             Message(
                 role=Role.ASSISTANT,
@@ -42,14 +42,14 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         assert len(result) == 1
         assert result[0].content == "response"
 
     def test_new_format_single_tool_call(self):
         """Test extraction of new message-based format with single tool call."""
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
 
         tool_history = [
@@ -65,7 +65,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         # Should have: ASSISTANT (from history), TOOL (from history), ASSISTANT (final)
         assert len(result) == 3
@@ -80,7 +80,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     def test_new_format_parallel_tool_calls_preserved(self):
         """Key test: parallel tool calls should remain in ONE assistant message."""
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         tc1 = make_tool_call("tc-1", "tool_a")
         tc2 = make_tool_call("tc-2", "tool_b")
 
@@ -105,7 +105,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         # Should have: ASSISTANT (with 2 tool_calls), TOOL, TOOL, ASSISTANT (final)
         assert len(result) == 4
@@ -122,7 +122,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     def test_new_format_multiple_iterations(self):
         """Test multiple sequential tool call iterations."""
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         tc1 = make_tool_call("tc-1", "tool_a")
         tc2 = make_tool_call("tc-2", "tool_b")
 
@@ -141,7 +141,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         # 4 from history + 1 final = 5 messages
         assert len(result) == 5
@@ -156,7 +156,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     def test_legacy_format_backward_compatibility(self):
         """Test that legacy ExecutedToolCallDTO format still works with deprecation warning."""
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
 
         # Legacy format: list of ExecutedToolCallDTO dicts
@@ -177,7 +177,7 @@ class TestExtractToolCallsFromStateProcessor:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = processor.transform(messages)
+            result = msgs_setup.setup(messages)
 
             # Should emit deprecation warning
             assert len(w) == 1
@@ -193,7 +193,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     def test_tool_history_removed_from_final_message_state(self):
         """Verify that tool_execution_history is removed from the final message's state."""
-        processor = ExtractToolCallsFromStateProcessor()
+        msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
 
         tool_history = [
@@ -211,7 +211,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = processor.transform(messages)
+        result = msgs_setup.setup(messages)
 
         # Final message should not have tool_execution_history but keep other state
         final_msg = result[-1]
@@ -224,11 +224,11 @@ class TestExtractToolCallsFromStateProcessor:
         """Test format detection helper."""
         # Legacy format has "tool_call" key
         legacy = [{"tool_call": {}, "tool_execution_result": {}}]
-        assert ExtractToolCallsFromStateProcessor._is_legacy_format(legacy) is True
+        assert _MessagesSetup._is_legacy_format(legacy) is True
 
         # New format has "role" key
         new = [{"role": "assistant", "content": ""}]
-        assert ExtractToolCallsFromStateProcessor._is_legacy_format(new) is False
+        assert _MessagesSetup._is_legacy_format(new) is False
 
         # Empty list
-        assert ExtractToolCallsFromStateProcessor._is_legacy_format([]) is False
+        assert _MessagesSetup._is_legacy_format([]) is False
