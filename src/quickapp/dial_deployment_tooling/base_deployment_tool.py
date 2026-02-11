@@ -8,7 +8,6 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
-from quickapp.dial_deployment_tooling.constants import CONFIGURATION, CUSTOM_FIELDS, EXTRA_BODY
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -73,12 +72,10 @@ class BaseDeploymentTool(StagedBaseTool):
         return prepared
 
     def merge_to_prepared_params(self, params: Any, prepared: dict[str, Any]):
+        """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
         params_dict = to_plain_dict(params)
         if isinstance(params_dict, dict):
             for key, value in params_dict.items():
                 if value is None or value == {}:
                     continue
-                if key == CUSTOM_FIELDS:
-                    prepared[EXTRA_BODY] = {key: value}
-                else:
-                    prepared[key] = value
+                prepared[key] = value
