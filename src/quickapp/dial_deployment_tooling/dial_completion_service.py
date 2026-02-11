@@ -23,6 +23,7 @@ from quickapp.dial_deployment_tooling.constants import (
     CONFIGURATION,
     CONTENT_PARAM,
     CUSTOM_CONTENT,
+    EXTRA_BODY,
     USAGE_PARAM,
 )
 
@@ -76,14 +77,16 @@ class DialCompletionService:
             "messages": messages,
         }
 
-        # params are already filtered & normalized; merge them directly, excluding handled keys
+        # query and attachment_urls are used only for messages; all other params go in extra_body
+        extra_body: dict[str, Any] = dict(params.get(EXTRA_BODY) or {})
         for k, v in params.items():
-            if k == CONTENT_PARAM or k == ATTACHMENT_PARAM:
+            if k in (CONTENT_PARAM, ATTACHMENT_PARAM, EXTRA_BODY):
                 continue
-            # skip empty values (defensive)
             if v is None or v == {}:
                 continue
-            chat_completion_params[k] = v
+            extra_body[k] = v
+        if extra_body:
+            chat_completion_params[EXTRA_BODY] = extra_body
 
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 
