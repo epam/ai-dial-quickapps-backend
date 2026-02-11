@@ -1,12 +1,16 @@
 import json
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from pydantic.v1 import StrictStr
+from pydantic import StrictStr
 
 from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
-
+from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -17,11 +21,13 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 
 def _make_injector(
-    contexts: list[FileContextConfig] | None = None,
+    contexts: list[FileContextConfig] = [],
 ) -> _AttachmentNotificationInjector:
     """Create a fresh injector, as production does on every orchestrator iteration."""
+    config = ApplicationConfig(contexts=contexts, orchestrator=OrchestratorConfig(deployment=DialDeploymentConfig(name="gpt-4"), system_prompt=CustomSystemPromptConfig(content="", variables={})), tool_sets=[])
+    provider = SimpleNamespace(get=lambda: config)
     return _AttachmentNotificationInjector(
-        contexts=contexts or [],
+        config_provider=provider,
     )
 
 
