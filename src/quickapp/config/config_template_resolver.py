@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
 from injector import inject
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
@@ -167,7 +167,7 @@ class ConfigResolver:
             self.base_path = Path(predefined_settings.base_path)
         else:
             self.base_path = project_root_path / "config/predefined"
-        self.cache = {}  # avoid re-reading files
+        self.cache: dict[str, Any] = {}  # avoid re-reading files
         self.prompt_mapping = PromptMapping()
         self.template_map = self._scan_templates()
 
