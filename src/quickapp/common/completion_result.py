@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from aidial_client.types.chat.response import Attachment
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
@@ -11,6 +11,7 @@ class CompletionResult(BaseModel):
     tool_call_id: Optional[str] = None
     content: Any
     content_type: str
+    state: Optional[Dict] = None
     attachments: Optional[list[Attachment]] = None
     usage: Optional[list[DeploymentUsage]] = None
 
@@ -23,9 +24,6 @@ class CompletionResult(BaseModel):
         return Message(
             role=Role.TOOL,
             content=self.content,
-            custom_content=CustomContent(
-                attachments=self.attachments,
-                # state={"usage": self.deployment_usage}
-            ),
+            custom_content=CustomContent(attachments=self.attachments, state=self.state),
             tool_call_id=self.tool_call_id,
         )

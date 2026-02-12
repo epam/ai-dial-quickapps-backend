@@ -1,10 +1,11 @@
-from typing import Any, Optional
+from typing import Any, Optional, cast
 
 from injector import AssistedBuilder
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.config.tools.base import BaseOpenAITool
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
@@ -41,11 +42,15 @@ class BaseDeploymentTool(StagedBaseTool):
         attachment_urls: Optional[list[str]] = None,
         **kwargs,
     ) -> CompletionResult:
+        if not issubclass(type(self._tool_config), BaseOpenAITool):
+            raise TypeError("Tool config must be of type BaseOpenAITool")
+        openai_config = cast(BaseOpenAITool, self._tool_config)
         return await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
             self.__application_name,
             self.__content_propagation,
             stage_wrapper,
+            openai_config.open_ai_tool.function.name,
             attachment_urls,
         )

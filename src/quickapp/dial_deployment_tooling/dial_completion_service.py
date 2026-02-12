@@ -40,6 +40,7 @@ class DialCompletionService:
         deployment_name: str,
         content_propagation: Optional[ContentPropagation],
         stage_wrapper: Optional[BaseStageWrapper],
+        tool_name: Optional[str] = None,
         relative_attachment_urls: Optional[list[str]] = None,
     ) -> CompletionResult:
         content = params.get(_CONTENT_PARAM, "")
@@ -54,7 +55,7 @@ class DialCompletionService:
         }
 
         messages = await self.__build_request_messages(
-            content, content_propagation, relative_attachment_urls
+            content, tool_name, content_propagation, relative_attachment_urls
         )
         chat_completion_params = {
             "deployment_name": deployment_id,
@@ -67,7 +68,7 @@ class DialCompletionService:
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 
         content = ''
-        custom_content: CustomContent = CustomContent(attachments=[])
+        custom_content: CustomContent = CustomContent(attachments=[], state={})
         usage: Optional[CompletionUsage] = None
         statistics: dict[str, Any] = {}
 
@@ -81,6 +82,20 @@ class DialCompletionService:
                         if stage_wrapper:
                             stage_wrapper.append_stage_content(delta.content)
                         content += delta.content
+
+                    if delta.custom_content and delta.custom_content.state:
+                        custom_content.state = custom_content.state or {}
+
+                        delta_state = delta.custom_content.state
+
+                        if "tool_execution_history" in delta_state:
+                            existing_history = custom_content.state.get(
+                                "tool_execution_history", []
+                            )
+                            existing_history.extend(delta_state.get("tool_execution_history", []))
+                            custom_content.state["tool_execution_history"] = existing_history
+
+                        custom_content.state.update(delta_state)
                     if delta.custom_content and delta.custom_content.attachments:
                         attachments = delta.custom_content.attachments
                         custom_content.attachments.extend(attachments)
@@ -110,6 +125,7 @@ class DialCompletionService:
             content=content,
             content_type="text/markdown",
             attachments=custom_content.attachments,
+            state=custom_content.state,
             usage=self.__get_deployment_usage(usage, statistics, deployment_id, deployment_name),
         )
 
@@ -149,12 +165,13 @@ class DialCompletionService:
     async def __build_request_messages(
         self,
         content: str,
+        tool_name: Optional[str],
         content_propagation: Optional[ContentPropagation],
         relative_attachment_urls: Optional[list[str]] = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         messages: list[UserMessageParam | AssistantMessageParam] = []
         if content_propagation and content_propagation.propagate_history:
-            messages.extend(self.__build_message_params_from_history())
+            messages.extend(self.__build_message_params_from_history(tool_name))
         messages.append(
             await self.__user_message_from_content_and_attachments(
                 content, relative_attachment_urls
@@ -163,17 +180,49 @@ class DialCompletionService:
         return messages
 
     def __build_message_params_from_history(
-        self,
+        self, tool_name: Optional[str]
     ) -> list[UserMessageParam | AssistantMessageParam]:
         return [
             (
                 UserMessageParam(role="user", content=message.content)
                 if message.role == Role.USER
-                else AssistantMessageParam(role="assistant", content=message.content)
+                else AssistantMessageParam(
+                    role="assistant",
+                    content=message.content,
+                    custom_content=(
+                        {
+                            "state": self.__extract_routed_agent_tool_calls(
+                                message.custom_content.state, tool_name
+                            )
+                        }
+                        if tool_name and message.custom_content and message.custom_content.state
+                        else None
+                    ),
+                )
             )
             for message in self.__history
             if message.content
         ]
+
+    @staticmethod
+    def __extract_routed_agent_tool_calls(state: Dict, tool_name: str) -> Optional[dict]:
+        if not state or "tool_execution_history" not in state:
+            return None
+
+        filtered_history = [
+            nested_item
+            for item in state.get("tool_execution_history", [])
+            if isinstance(item, dict)
+            and item.get("tool_call", {}).get("function", {}).get("name") == tool_name
+            and item.get("tool_execution_result")
+            for nested_item in item["tool_execution_result"]
+            .get("custom_content", {})
+            .get("state", {})
+            .get("tool_execution_history", [])
+            if isinstance(nested_item, dict)
+        ]
+
+        return {"tool_execution_history": filtered_history} if filtered_history else None
 
     @staticmethod
     def __get_attachments_from_response(
