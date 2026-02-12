@@ -259,7 +259,8 @@ def test_rag_search2(client):
         answer=[
             "Elephant",
             "African Elephant",
-            "Elephant."
+            "Elephant.",
+            "Elephant!"
         ],
     )
 )
@@ -453,7 +454,7 @@ def test_mcp_toolcall(client):
 @e2e_test(
     runs=1,
     config_file_set="integration_simple",
-    models_applicable_for_test=["gemini-2.5-pro", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4.1-2025-04-14"],
+    models_applicable_for_test=["gemini-2.5-pro", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4.1-2025-04-14", "gemini-3-flash-preview"],
     no_cache=True,
     test_case=TstCase(
         "Response format JSON schema",

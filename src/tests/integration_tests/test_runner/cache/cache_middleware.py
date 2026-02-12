@@ -34,6 +34,7 @@ AGENT_MODELS = [
     "gpt-5.2-2025-12-11",
     "claude-opus-4@20250514",
     "gemini-2.5-pro",
+    "gemini-3-flash-preview",
     "us.anthropic.claude-3-7-sonnet-20250219-v1",
     "anthropic.claude-v4-5-sonnet-v1"
 ]
