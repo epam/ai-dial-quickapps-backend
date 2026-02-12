@@ -91,7 +91,6 @@ class DialCompletionService:
 
         chunks = await self.__dial_client.chat.completions.create(**chat_completion_params)
 
-
         content_parts = []
         custom_content: CustomContent = CustomContent(attachments=[], state={})
         usage: Optional[CompletionUsage] = None
