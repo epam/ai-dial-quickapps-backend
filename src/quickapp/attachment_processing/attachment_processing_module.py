@@ -34,13 +34,6 @@ class AttachmentProcessingModule(Module):
         logger.debug("AttachmentProcessingModule module configuration completed")
 
     @multiprovider
-    def _provide_attachment_notification_transformer(
-            self,
-            notification_injector: _AttachmentNotificationInjector,
-    ) -> list[MessagesTransformer]:
-        return [notification_injector]
-
-    @multiprovider
     def _provide_internal_tools(
             self,
             app_config: ApplicationConfig,

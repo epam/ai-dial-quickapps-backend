@@ -85,7 +85,7 @@ class TestContextInjection:
         assert len(result2) == 3  # unchanged, no new synthetic messages
 
     def test_context_removal_injects_removed_entry(self):
-        ctx = FileContextConfig(url="files/bucket/ref.csv", description="Reference data")
+        ctx = FileContextConfig(url="files/bucket/ref.pdf", description="Reference data")
         contexts: list[FileContextConfig] = [ctx]
         messages = [_user_msg("hello")]
 
@@ -104,9 +104,9 @@ class TestContextInjection:
         synthetic = _extract_synthetic(result2, 3)
         data2 = json.loads(synthetic[1].content)
         assert len(data2["entries"]) == 1
-        assert data2["entries"][0]["title"] == "ref.csv"
-        assert data2["entries"][0]["url"] == "files/bucket/ref.csv"
-        assert data2["entries"][0]["type"] == "text/csv"
+        assert data2["entries"][0]["title"] == "ref.pdf"
+        assert data2["entries"][0]["url"] == "files/bucket/ref.pdf"
+        assert data2["entries"][0]["type"] == "application/pdf"
         assert data2["entries"][0]["description"] == "Reference data"
         assert data2["entries"][0]["status"] == "removed"
 
