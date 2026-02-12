@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A realistic dinosaur in a jungle."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Thu, 12 Feb 2026 11:45:45 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-76b8d783-7889-48fd-9bdc-e6144f86f809\",\"created\":1770896729,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-76b8d783-7889-48fd-9bdc-e6144f86f809\",\"created\":1770896729,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"title\":\"Revised prompt\",\"data\":\"A highly detailed and realistic depiction of a large dinosaur walking through a dense, lush jungle. The dinosaur has a textured, scaly skin with various shades of green and brown blending seamlessly. The background is a vibrant rainforest filled with towering trees, ferns, and creeping vines. Sunlight streams through the canopy, casting dappled light on the dinosaur and surrounding foliage. Environmental details include moss-covered rocks, small butterflies, and the sound of tropical birds. The atmosphere is humid, emphasizing the prehistoric setting.\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-76b8d783-7889-48fd-9bdc-e6144f86f809\",\"created\":1770896729,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":1,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/dall-e-3/images/43d741ddeebd84c0392510fddb1ef9a483d288d4012936c9ab6ccf2ac87d406a.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-76b8d783-7889-48fd-9bdc-e6144f86f809\",\"created\":1770896729,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-76b8d783-7889-48fd-9bdc-e6144f86f809\",\"created\":1770896729,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

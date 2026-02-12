@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A high-quality, natural style photograph of Kyiv, Ukraine, under a heavy overcast sky. The atmosphere is cold and foggy, reflecting the current weather of 2\u00b0C. The city's architecture, such as the golden domes of the Pechersk Lavra or the Maidan Nezalezhnosti, is partially shrouded in a thick, grey mist. The ground is damp, and there's a hint of a light winter chill in the air with 100% cloud cover. The scene captures the somber, wintry mood of a cloudy day in the city."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Thu, 12 Feb 2026 11:27:53 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-60490092-f715-4e23-994f-825ea7dfabef\",\"created\":1770895660,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-60490092-f715-4e23-994f-825ea7dfabef\",\"created\":1770895660,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"title\":\"Revised prompt\",\"data\":\"A high-quality, natural style photograph of Kyiv, Ukraine, under a heavy overcast sky with cold and foggy weather at 2\\u00b0C. The golden domes of the Pechersk Lavra and Maidan Nezalezhnosti square are partially obscured by thick grey mist. The atmosphere reflects the somber wintry mood of the cloudy day. The ground is damp from the humidity and clouds cover 100% of the sky, while a light winter chill is evident in the air.\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-60490092-f715-4e23-994f-825ea7dfabef\",\"created\":1770895660,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":1,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/dall-e-3/images/58ab415cc69bfaa558ab05f112310f85c45a12f68dfa98997f3456dc56508182.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-60490092-f715-4e23-994f-825ea7dfabef\",\"created\":1770895660,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-60490092-f715-4e23-994f-825ea7dfabef\",\"created\":1770895660,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
