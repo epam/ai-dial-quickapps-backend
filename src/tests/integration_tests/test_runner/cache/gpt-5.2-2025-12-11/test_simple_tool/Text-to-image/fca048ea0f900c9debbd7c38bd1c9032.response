@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "dall-e-3",
+    "temperature": null,
+    "user_message": [
+      "A super-realistic dinosaur in a cinematic natural environment, highly detailed skin texture, accurate lighting and shadows, ultra high quality, photorealistic, sharp focus, 8k detail look. Full-body dinosaur standing in a misty prehistoric forest with ferns and rocks, dramatic sunlight rays through trees, shallow depth of field, natural colors, no text, no watermark."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Thu, 05 Feb 2026 12:13:17 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-afa7e8c0-e2c5-40ba-a78c-36a1ec83c606\",\"created\":1770293567,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-afa7e8c0-e2c5-40ba-a78c-36a1ec83c606\",\"created\":1770293567,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"title\":\"Revised prompt\",\"data\":\"A photorealistic full-body dinosaur standing in a misty prehistoric forest. The environment contains ferns and rocks with dramatic sunlight rays filtering through tall trees. The dinosaur has highly detailed skin textures, accurately lit with realistic shadows for a cinematic effect. The scene is in ultra-high definition with sharp focus and an 8k detail look. It uses natural colors to emphasize its realism, and the mood is immersive. The shallow depth of field enhances the dinosaur and its surroundings, creating a super-realistic depiction with no text or watermark.\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-afa7e8c0-e2c5-40ba-a78c-36a1ec83c606\",\"created\":1770293567,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":1,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/dall-e-3/images/c9b797afbd88de062e4c4b80fcd8a9f1fe9d5e444895502c8d8eae86f4e5d8b4.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-afa7e8c0-e2c5-40ba-a78c-36a1ec83c606\",\"created\":1770293567,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-afa7e8c0-e2c5-40ba-a78c-36a1ec83c606\",\"created\":1770293567,\"object\":\"chat.completion.chunk\",\"model\":\"dall-e-3\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
