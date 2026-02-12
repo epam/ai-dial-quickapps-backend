@@ -1,14 +1,18 @@
-from typing import Any, Optional
+import logging
+from typing import Any, Optional, cast
 
 from injector import AssistedBuilder
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.utils import to_plain_dict
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDeploymentTool(StagedBaseTool):
@@ -49,3 +53,29 @@ class BaseDeploymentTool(StagedBaseTool):
             stage_wrapper,
             attachment_urls,
         )
+
+    def _pre_process_params(self, **kwargs: Any) -> Any:
+
+        prepared: dict[str, Any] = {}
+
+        # If tool config defines defaults, normalize them first
+        if isinstance(self.tool_config, DialDeploymentTool):
+            tool_config = cast(DialDeploymentTool, self.tool_config)
+            params = tool_config.deployment.parameters
+            self.merge_to_prepared_params(params, prepared)
+
+        # Now process runtime kwargs - these should override defaults
+        prepared.update(kwargs)
+
+        logger.debug(f"Pre-processed tool parameters: {prepared}")
+
+        return prepared
+
+    def merge_to_prepared_params(self, params: Any, prepared: dict[str, Any]):
+        """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
+        params_dict = to_plain_dict(params)
+        if isinstance(params_dict, dict):
+            for key, value in params_dict.items():
+                if value is None or value == {}:
+                    continue
+                prepared[key] = value
