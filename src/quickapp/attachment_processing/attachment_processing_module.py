@@ -7,8 +7,7 @@ from injector import Module, Binder, multiprovider, AssistedBuilder
 from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
 from quickapp.attachment_processing._available_context_tool import _AvailableContextTool
 from quickapp.attachment_processing._context_entries import should_activate_context_tool
-from quickapp.attachment_processing._message_transformers import _AddContextAttachmentTransformer, \
-    _ReduceAttachmentTransformer
+
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -22,12 +21,6 @@ class AttachmentProcessingModule(Module):
         binder.bind(
             _AttachmentNotificationInjector,
             to=_AttachmentNotificationInjector,
-            scope=request_scope,
-        )
-        binder.bind(_ReduceAttachmentTransformer, to=_ReduceAttachmentTransformer, scope=request_scope)
-        binder.bind(
-            _AddContextAttachmentTransformer,
-            to=_AddContextAttachmentTransformer,
             scope=request_scope,
         )
 
@@ -57,12 +50,8 @@ class AttachmentProcessingModule(Module):
     @multiprovider
     def provide_message_transformers(
             self,
-            reduce_attachments: _ReduceAttachmentTransformer,
-            add_context_attachments: _AddContextAttachmentTransformer,
             attachment_notification_injector: _AttachmentNotificationInjector,
     ) -> list[MessagesTransformer]:
         return [
-            reduce_attachments,
-            add_context_attachments,
             attachment_notification_injector
         ]

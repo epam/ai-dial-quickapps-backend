@@ -8,6 +8,7 @@ from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
+from quickapp.agent.processors._attachment_filter import _AttachmentFilter
 from quickapp.agent.processors.chunk_processor import ChunkProcessor
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
@@ -54,6 +55,7 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
 
 
     @provider

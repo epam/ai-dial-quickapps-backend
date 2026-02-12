@@ -1,9 +1,10 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.agent.processors._attachment_filter import _AttachmentFilter
 
 
 # Minimal test helpers
@@ -35,6 +36,9 @@ class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
+mock_filter = Mock()
+mock_filter.filter_attachments.side_effect = lambda messages: messages
+
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
     # Ensure env var is not set
@@ -54,8 +58,8 @@ async def test_invoke_without_show_usage(monkeypatch):
         messages=[FakeMessage("hello")],
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
-
-        response_format=None
+        response_format=None,
+        attachment_filter=mock_filter
     )
 
     result = await invoker.invoke()
@@ -91,7 +95,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-
+        attachment_filter=mock_filter,
         response_format=None
     )
 
@@ -141,7 +145,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-
+        attachment_filter=mock_filter,
         response_format=None
     )
 
