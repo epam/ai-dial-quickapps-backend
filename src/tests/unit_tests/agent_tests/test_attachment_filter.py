@@ -18,7 +18,7 @@ def _attachment(title: str, url: str, mime_type: str) -> Attachment:
         type=StrictStr(mime_type),
     )
 
-class Test_ReduceAttachmentTransformer:
+class Test_AttachmentFilter:
     def test_image_attachments_kept_inline(self):
         transformer = _AttachmentFilter()
         msg = _user_msg(
