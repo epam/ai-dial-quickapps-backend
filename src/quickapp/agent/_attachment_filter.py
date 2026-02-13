@@ -1,3 +1,4 @@
+import copy
 import logging
 
 from aidial_sdk.chat_completion import Message, Role
@@ -12,14 +13,10 @@ class _AttachmentFilter:
     SUPPORTED_ATTACHMENTS = ["image/*"]
 
     def filter_attachments(self, messages: list[Message]) -> list[Message]:
-        # Validate input is List[Message]
-        if not isinstance(messages, list):
-            raise TypeError("Data must be a list of Message objects")
         for item in messages:
             if not isinstance(item, Message):
                 raise TypeError("All items must be Message instances")
-            self._filter(item)
-        return messages
+        return [self._filter(copy.deepcopy(item)) for item in messages]
 
     def _filter(self, message: Message):
         updated_attachments = []
@@ -35,8 +32,8 @@ class _AttachmentFilter:
                     # Inform agent that message had contained some attachment.
                     # As adapter would resolve the actual bytes and URL would be lost.
                     message.content += (
-                        f"\n\rAttachment {attachment.title}, of type {attachment.type}, "
-                        f"url {attachment.url}, reference_url {attachment.reference_url}\n\r"
+                        f"\r\nAttachment {attachment.title}, of type {attachment.type}, "
+                        f"url {attachment.url}, reference_url {attachment.reference_url}\r\n"
                     )
             message.custom_content.attachments = updated_attachments
 

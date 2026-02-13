@@ -28,8 +28,6 @@ class _AddSystemPromptTransformer(MessagesTransformer):
         )
         combined_system_prompt = "\n\n".join(p for p in parts if p)
 
-        if not isinstance(messages, list):
-            raise TypeError("Data must be a list of Message objects")
         if not combined_system_prompt:
             return messages
         if len(messages) > 0 and messages[0].role != Role.SYSTEM:

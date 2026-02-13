@@ -74,3 +74,35 @@ class Test_AttachmentFilter:
         assert len(attachments) == 2
         types = {str(a.type) for a in attachments}
         assert types == {"image/png", "image/jpeg"}
+
+    def test_filter_does_not_mutate_original_messages(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "hello",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        original_content = str(msg.content)
+        original_attachment_count = len(msg.custom_content.attachments)
+
+        transformer.filter_attachments([msg])
+
+        assert str(msg.content) == original_content
+        assert len(msg.custom_content.attachments) == original_attachment_count
+
+    def test_filter_idempotent_on_repeated_calls(self):
+        """Calling filter_attachments twice on the same list produces identical output."""
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "hello",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        messages = [msg]
+
+        first_pass = transformer.filter_attachments(messages)
+        first_content = str(first_pass[0].content)
+
+        second_pass = transformer.filter_attachments(messages)
+        second_content = str(second_pass[0].content)
+
+        assert first_content == second_content
+        assert first_content.count("Attachment doc.pdf") == 1
