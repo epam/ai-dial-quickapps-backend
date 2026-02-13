@@ -10,9 +10,9 @@ from openai import AsyncStream, BadRequestError, RateLimitError
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
+from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.common import RESPONSE_FORMAT
 from quickapp.config.application import ApplicationConfig
 
@@ -22,14 +22,14 @@ logger = logging.getLogger(__name__)
 @inject
 class AssistantInvoker:
     def __init__(
-            self,
-            tools: list[OpenAiToolConfigDict],
-            config: ApplicationConfig,
-            messages: list[Message],
-            choice: Choice,
-            azure_client: AsyncAzureOpenAI,
-            response_format: RESPONSE_FORMAT,
-            attachment_filter: _AttachmentFilter
+        self,
+        tools: list[OpenAiToolConfigDict],
+        config: ApplicationConfig,
+        messages: list[Message],
+        choice: Choice,
+        azure_client: AsyncAzureOpenAI,
+        response_format: RESPONSE_FORMAT,
+        attachment_filter: _AttachmentFilter,
     ) -> None:
         self.__attachment_filter = attachment_filter
         self.__messages: list[Message] = messages
@@ -81,12 +81,10 @@ class AssistantInvoker:
         return chat_completion_config
 
     async def __create_chat_completion(
-            self, completion_config: dict[str, Any]
+        self, completion_config: dict[str, Any]
     ) -> AsyncStream[ChatCompletionChunk]:
         try:
-            chat_completion = await self.__azure_client.chat.completions.create(
-                **completion_config
-            )
+            chat_completion = await self.__azure_client.chat.completions.create(**completion_config)
         except (BadRequestError, RateLimitError) as e:
             raise InvalidRequestError(
                 message=e.code,
@@ -99,9 +97,7 @@ class AssistantInvoker:
 
     def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         filtered_messages = self.__attachment_filter.filter_attachments(messages)
-        return [
-            message.model_dump(exclude_none=True, mode="json") for message in filtered_messages
-        ]
+        return [message.model_dump(exclude_none=True, mode="json") for message in filtered_messages]
 
     @staticmethod
     def _log_messages(messages: list[Message]):

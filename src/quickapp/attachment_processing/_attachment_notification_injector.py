@@ -4,18 +4,20 @@ import uuid
 
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
-from injector import inject, ProviderOf
+from injector import ProviderOf, inject
 
-from quickapp.attachment_processing._context_entries import should_activate_context_tool, \
-    extract_seen_entries_from_messages, build_context_entries, AvailableContextToolResponse
+from quickapp.attachment_processing._context_entries import (
+    AvailableContextToolResponse,
+    build_context_entries,
+    extract_seen_entries_from_messages,
+    should_activate_context_tool,
+)
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import Context
 
-
 logger = logging.getLogger(__name__)
-
 
 
 class _AttachmentNotificationInjector(MessagesTransformer):

@@ -3,7 +3,6 @@ from typing import TypeVar
 
 from aidial_sdk.chat_completion import Message
 
-
 _TransformerType = TypeVar("_TransformerType", bound=type)
 
 

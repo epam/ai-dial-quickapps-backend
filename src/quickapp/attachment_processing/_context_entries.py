@@ -10,7 +10,6 @@ from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_
 from quickapp.config.context import Context, FileContextConfig
 
 
-
 class ContextEntryStatus(str, Enum):
     new = "new"
     removed = "removed"

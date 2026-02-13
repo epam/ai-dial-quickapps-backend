@@ -1,7 +1,7 @@
 import logging
 
 from aidial_sdk.chat_completion import Message, Role
-from injector import inject, ProviderOf
+from injector import ProviderOf, inject
 from pydantic import StrictStr
 
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
@@ -22,7 +22,10 @@ class _AddSystemPromptTransformer(MessagesTransformer):
         self.__instructions_provider = instructions_provider
 
     def transform(self, messages: list[Message]) -> list[Message]:
-        parts = (self.__config_provider.get().orchestrator.system_prompt.content or "", self.__instructions_provider.get() or "")
+        parts = (
+            self.__config_provider.get().orchestrator.system_prompt.content or "",
+            self.__instructions_provider.get() or "",
+        )
         combined_system_prompt = "\n\n".join(p for p in parts if p)
 
         if not isinstance(messages, list):

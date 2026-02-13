@@ -1,10 +1,10 @@
-from aidial_sdk.chat_completion import Message, ToolCall, Role
-from aidial_sdk.utils.pydantic import ExtraAllowModel
-from injector import inject
 import copy
 import logging
 import warnings
 
+from aidial_sdk.chat_completion import Message, Role, ToolCall
+from aidial_sdk.utils.pydantic import ExtraAllowModel
+from injector import inject
 from pydantic import StrictStr
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
@@ -12,16 +12,18 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer
 
 logger = logging.getLogger(__name__)
 
+
 class ExecutedToolCallDTO(ExtraAllowModel):
     tool_call: ToolCall
     tool_execution_result: Message
+
 
 @inject
 class _MessagesSetup:
 
     def __init__(
-            self,
-            transformers: list[MessagesTransformer],
+        self,
+        transformers: list[MessagesTransformer],
     ):
         self.__transformers = transformers
         logger.debug(f"Messages transformers: {transformers}")
@@ -88,10 +90,10 @@ class _MessagesSetup:
         for message in messages:
             custom_content = message.custom_content
             if (
-                    message.role == Role.ASSISTANT
-                    and custom_content
-                    and custom_content.state
-                    and (tool_history := custom_content.state.get(TOOL_EXECUTION_HISTORY)) is not None
+                message.role == Role.ASSISTANT
+                and custom_content
+                and custom_content.state
+                and (tool_history := custom_content.state.get(TOOL_EXECUTION_HISTORY)) is not None
             ):
                 # Prepare the final assistant message (without tool_execution_history)
                 assistant_message = copy.deepcopy(message)
@@ -110,5 +112,3 @@ class _MessagesSetup:
                 updated_messages.append(message)
 
         return updated_messages
-
-

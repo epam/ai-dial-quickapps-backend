@@ -4,11 +4,12 @@ from typing import Optional
 from aidial_sdk.chat_completion import Request
 from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest
-from injector import inject, ProviderOf
+from injector import ProviderOf, inject
 from pydantic import SecretStr
 
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+
 from ._messages_setup import _MessagesSetup
 from ._request_context import _RequestContext
 

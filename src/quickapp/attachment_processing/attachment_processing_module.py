@@ -2,18 +2,20 @@ import logging
 
 from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
-from injector import Module, Binder, multiprovider, AssistedBuilder
+from injector import AssistedBuilder, Binder, Module, multiprovider
 
-from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
+from quickapp.attachment_processing._attachment_notification_injector import (
+    _AttachmentNotificationInjector,
+)
 from quickapp.attachment_processing._available_context_tool import _AvailableContextTool
 from quickapp.attachment_processing._context_entries import should_activate_context_tool
-
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
+
 
 class AttachmentProcessingModule(Module):
     def configure(self, binder: Binder) -> None:
@@ -28,10 +30,10 @@ class AttachmentProcessingModule(Module):
 
     @multiprovider
     def _provide_internal_tools(
-            self,
-            app_config: ApplicationConfig,
-            messages: list[Message],
-            ac_builder: AssistedBuilder[_AvailableContextTool],
+        self,
+        app_config: ApplicationConfig,
+        messages: list[Message],
+        ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
 
@@ -49,9 +51,7 @@ class AttachmentProcessingModule(Module):
 
     @multiprovider
     def provide_message_transformers(
-            self,
-            attachment_notification_injector: _AttachmentNotificationInjector,
+        self,
+        attachment_notification_injector: _AttachmentNotificationInjector,
     ) -> list[MessagesTransformer]:
-        return [
-            attachment_notification_injector
-        ]
+        return [attachment_notification_injector]

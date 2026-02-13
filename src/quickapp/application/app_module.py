@@ -19,7 +19,6 @@ from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
 from ._request_context import _RequestContext
 from ._request_context_setup import _RequestContextSetup
-from ..common.abstract.base_transformer import MessagesTransformer
 
 
 class AppModule(Module):
@@ -47,8 +46,6 @@ class AppModule(Module):
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
-
-
 
     @provider
     def __provide_bearer(self, context: _RequestContext) -> DIAL_BEARER:
@@ -92,5 +89,3 @@ class AppModule(Module):
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
         return context.messages
-
-

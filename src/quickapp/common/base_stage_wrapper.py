@@ -4,13 +4,12 @@ from typing import Any, Optional, Type, cast
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
+from quickapp.common import CompletionResult
 from quickapp.config.tools.base import BaseOpenAITool, BaseTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
-
-from quickapp.common import CompletionResult
 
 
 class BaseStageWrapper(ABC):

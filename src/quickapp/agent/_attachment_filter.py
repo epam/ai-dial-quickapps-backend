@@ -1,14 +1,9 @@
 import logging
-import mimetypes
 
-from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from injector import inject, ProviderOf
+from aidial_sdk.chat_completion import Message, Role
 from pydantic import StrictStr
 
-from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.utils import matches_type
-from quickapp.config.application import ApplicationConfig
-from quickapp.config.context import FileContextConfig
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +28,7 @@ class _AttachmentFilter:
         if message.custom_content is not None and message.custom_content.attachments:
             for attachment in message.custom_content.attachments:
                 if message.role == Role.USER and matches_type(
-                        attachment.type, self.SUPPORTED_ATTACHMENTS
+                    attachment.type, self.SUPPORTED_ATTACHMENTS
                 ):
                     updated_attachments.append(attachment)
                 else:

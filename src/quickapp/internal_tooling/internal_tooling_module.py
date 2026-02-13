@@ -36,8 +36,6 @@ class InternalToolModule(Module):
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
 
-
-
     @multiprovider
     def _provide_internal_tools(
         self,

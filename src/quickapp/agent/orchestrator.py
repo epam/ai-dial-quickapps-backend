@@ -6,8 +6,8 @@ from injector import ProviderOf, inject
 from pydantic.v1 import StrictStr
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.agent.chunk_processor import ChunkProcessor
+from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException

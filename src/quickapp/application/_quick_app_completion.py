@@ -65,7 +65,6 @@ class _QuickAppCompletion(ChatCompletion):
         configurations = self.__injector.get(list[Configuration])
         return Configuration.from_list_of_configurations(configurations).to_configuration_response()
 
-
     @staticmethod
     def __handle_exception(choice: Choice, e: Exception):
         # TODO: exception stage?
