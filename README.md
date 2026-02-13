@@ -233,6 +233,7 @@ How to add instructions
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Migration Guide: QuickApps 1 → Quick Apps 2.0](./MIGRATION_QUICKAPPS1_TO_QUICKAPPS2.md) - Migrating user applications from old QuickApps to Quick Apps 2.0
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## More
