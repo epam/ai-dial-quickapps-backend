@@ -1,21 +1,22 @@
 import json
 from typing import Any, Optional
 
+from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 
+from quickapp.attachment_processing._available_context_stage_wrapper import (
+    _AvailableContextStageWrapper,
+)
+from quickapp.attachment_processing._context_entries import (
+    AvailableContextToolResponse,
+    build_context_entries,
+    extract_seen_entries_from_messages,
+)
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
-from quickapp.internal_tooling.attachment_notification_tooling._available_context_stage_wrapper import (
-    _AvailableContextStageWrapper,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    build_context_entries,
-    extract_seen_urls_from_messages,
-)
 
 
 @inject
@@ -27,8 +28,7 @@ class _AvailableContextTool(StagedBaseTool):
         contexts: list[Context],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        messages_context: MessagesMixin,
-        name: str = "",
+        messages: list[Message],
         **kwargs: Any,
     ):
         super().__init__(
@@ -38,13 +38,13 @@ class _AvailableContextTool(StagedBaseTool):
             **kwargs,
         )
         self.__contexts: list[Context] = contexts
-        self.__messages_context: MessagesMixin = messages_context
+        self.__messages: list[Message] = messages
 
-    def collect_contexts(self) -> list[dict[str, str]]:
+    def _get_response(self) -> AvailableContextToolResponse:
         """Collect context file metadata, flagging new or changed ones."""
-        seen_urls = extract_seen_urls_from_messages(self.__messages_context.messages)
-        _, entries = build_context_entries(self.__contexts, seen_urls)
-        return entries
+        seen_entries = extract_seen_entries_from_messages(self.__messages)
+        _, entries = build_context_entries(self.__contexts, seen_entries)
+        return AvailableContextToolResponse(entries=entries)
 
     async def _run_in_stage_async(
         self,
@@ -52,8 +52,8 @@ class _AvailableContextTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
-        contexts = self.collect_contexts()
-        content = json.dumps(contexts, ensure_ascii=False)
+        response = self._get_response()
+        content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
         result = CompletionResult(content=content, content_type="application/json")
         if stage_wrapper:
             stage_wrapper.add_result(result)

@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
@@ -16,11 +16,6 @@ class FakeMessage:
 
     def dict(self):
         return {"role": "user", "content": self.content}
-
-class FakeTransformer:
-    def transform(self, messages):
-        # no-op transformer
-        return messages
 
 class DummyParams:
     def model_dump(self, exclude_none=True):
@@ -40,6 +35,9 @@ class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
+mock_filter = Mock()
+mock_filter.filter_attachments.side_effect = lambda messages: messages
+
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
     # Ensure env var is not set
@@ -51,16 +49,16 @@ async def test_invoke_without_show_usage(monkeypatch):
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("hello")])
+
     tools = [{"name": "t1"}]
     invoker = AssistantInvoker(
         tools=tools,
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("hello")],
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
-        pre_process_transformers=[FakeTransformer()],
-        response_format=None
+        response_format=None,
+        attachment_filter=mock_filter
     )
 
     result = await invoker.invoke()
@@ -89,15 +87,14 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("hello2")])
     tools = [{"name": "t2"}]
     invoker = AssistantInvoker(
         tools=tools,
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        pre_process_transformers=[],
+        attachment_filter=mock_filter,
         response_format=None
     )
 
@@ -141,14 +138,13 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
 
-    messages_context = SimpleNamespace(messages=[FakeMessage("oops")])
     invoker = AssistantInvoker(
         tools=[{"name": "t"}],
         config=DummyConfig(),
-        messages_context=messages_context,
+        messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        pre_process_transformers=[],
+        attachment_filter=mock_filter,
         response_format=None
     )
 

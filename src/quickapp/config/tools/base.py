@@ -1,9 +1,11 @@
+import json
 from enum import Enum
+from hashlib import sha256
 from typing import Annotated, Any, Generic, List, Literal, Optional, TypeVar, Union
 
 from pydantic import BaseModel, Field, model_validator
 
-from quickapp.common.utils import ALL_MIME_TYPES
+from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.tools.display.paramenter import ParameterDisplayConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
@@ -138,23 +140,24 @@ class OpenAiToolFunction(
     description: str
     name: str
 
+    # ToDo: move to before sending to LLM, and only if collision detected
     # Preventing name collisions for tools with same name but different parameters
     @model_validator(mode='after')
     def set_name(self):
-        import json
-        from hashlib import sha256
-
-        if self.name is None:
-            return self
-
         base = self.name.strip()
         # compute stable hash of the model excluding the name field
         payload = self.model_dump(exclude={'name'})
         json_str = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
         h = sha256(json_str.encode('utf-8')).hexdigest()[:4]
-        self.name = (
-            f"{base}_{h}"[:64] if (len(base) < 60 and not base.endswith(h)) else base
-        )  # making hash shorter to fit name limits
+        suffix = f"_{h}"
+
+        if base.endswith(suffix):
+            # Already hashed — idempotent
+            self.name = base
+        else:
+            # Truncate base if needed to ensure total length ≤ 64
+            max_base_len = 64 - len(suffix)
+            self.name = f"{base[:max_base_len]}{suffix}"
         return self
 
 

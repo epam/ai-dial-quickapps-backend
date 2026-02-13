@@ -4,6 +4,7 @@ from aidial_sdk.chat_completion import Message, Role
 from pydantic import StrictStr
 
 from quickapp.config.tools.deployment import ContentPropagation
+from quickapp.dial_deployment_tooling.constants import EXTRA_BODY
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 
@@ -132,3 +133,60 @@ async def test_stage_wrapper_content_streaming(completion_service, dial_client, 
         call("Test response")
     ]
     mock_stage_wrapper.append_stage_content.assert_has_calls(expected_calls)
+
+
+@pytest.mark.asyncio
+async def test_extra_params_go_to_extra_body_not_top_level(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """Params other than query and attachment_urls must be in extra_body, not top-level."""
+    await completion_service.complete_request_async(
+        params={
+            "query": "Test query",
+            "attachment_urls": ["file/123"],
+            "temperature": 0.7,
+            "max_tokens": 100,
+            "custom_key": "custom_value",
+        },
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        content_propagation=None,
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    # Only deployment_name, stream, messages (and extra_body) at top level
+    assert set(call_args.keys()) == {"deployment_name", "stream", "messages", EXTRA_BODY}
+    assert call_args["messages"][0]["content"] == "Test query"
+
+    extra_body = call_args[EXTRA_BODY]
+    assert extra_body["temperature"] == 0.7
+    assert extra_body["max_tokens"] == 100
+    assert extra_body["custom_key"] == "custom_value"
+    # query and attachment_urls must not be in extra_body
+    assert "query" not in extra_body
+    assert "attachment_urls" not in extra_body
+
+
+@pytest.mark.asyncio
+async def test_extra_body_from_params_merged_with_other_params(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """If params already contain extra_body (e.g. from deployment), it is merged with other params."""
+    await completion_service.complete_request_async(
+        params={
+            "query": "Test query",
+            EXTRA_BODY: {"custom_fields": {"key": "from_deployment"}},
+            "temperature": 0.5,
+        },
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        content_propagation=None,
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    extra_body = call_args[EXTRA_BODY]
+    assert extra_body["custom_fields"] == {"key": "from_deployment"}
+    assert extra_body["temperature"] == 0.5
+    assert "query" not in extra_body

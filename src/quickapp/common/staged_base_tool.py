@@ -5,10 +5,10 @@ from typing import Any, Optional
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
-from .base_stage_wrapper import BaseStageWrapper
 from .completion_result import CompletionResult
 from .exceptions import InvalidToolCallParameterException
 from .perf_timer.perf_timer import PerformanceTimer

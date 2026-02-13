@@ -1,13 +1,16 @@
 import json
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from pydantic.v1 import StrictStr
+from pydantic import StrictStr
 
-from quickapp.agent.processors.pre_transformers import AttachmentNotificationInjector
+from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -18,13 +21,13 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 
 def _make_injector(
-    contexts: list[FileContextConfig] | None = None,
-    context_tool_name: str = AVAILABLE_CONTEXT_TOOL_NAME,
-) -> AttachmentNotificationInjector:
+    contexts: list[FileContextConfig] = [],
+) -> _AttachmentNotificationInjector:
     """Create a fresh injector, as production does on every orchestrator iteration."""
-    return AttachmentNotificationInjector(
-        context_tool_name=context_tool_name,
-        contexts=contexts or [],
+    config = ApplicationConfig(contexts=contexts, orchestrator=OrchestratorConfig(deployment=DialDeploymentConfig(name="gpt-4"), system_prompt=CustomSystemPromptConfig(content="", variables={})), tool_sets=[])
+    provider = SimpleNamespace(get=lambda: config)
+    return _AttachmentNotificationInjector(
+        config_provider=provider,
     )
 
 
@@ -59,11 +62,11 @@ class TestContextInjection:
         assert result[1].role == Role.ASSISTANT
         assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
         data = json.loads(result[2].content)
-        assert len(data) == 1
-        assert data[0]["title"] == "ref.csv"
-        assert data[0]["url"] == "files/bucket/ref.csv"
-        assert data[0]["description"] == "Reference data"
-        assert data[0]["status"] == "new"
+        assert len(data["entries"]) == 1
+        assert data["entries"][0]["title"] == "ref.csv"
+        assert data["entries"][0]["url"] == "files/bucket/ref.csv"
+        assert data["entries"][0]["description"] == "Reference data"
+        assert data["entries"][0]["status"] == "new"
 
     def test_second_call_same_contexts_no_injection(self):
         """Fresh injector with history containing the same URLs produces no new messages."""
@@ -82,7 +85,7 @@ class TestContextInjection:
         assert len(result2) == 3  # unchanged, no new synthetic messages
 
     def test_context_removal_injects_removed_entry(self):
-        ctx = FileContextConfig(url="files/bucket/ref.csv")
+        ctx = FileContextConfig(url="files/bucket/ref.pdf", description="Reference data")
         contexts: list[FileContextConfig] = [ctx]
         messages = [_user_msg("hello")]
 
@@ -100,10 +103,12 @@ class TestContextInjection:
         assert len(result2) == 5  # 3 original + 2 new synthetic
         synthetic = _extract_synthetic(result2, 3)
         data2 = json.loads(synthetic[1].content)
-        assert len(data2) == 1
-        assert data2[0]["title"] == "ref.csv"
-        assert data2[0]["url"] == "files/bucket/ref.csv"
-        assert data2[0]["status"] == "removed"
+        assert len(data2["entries"]) == 1
+        assert data2["entries"][0]["title"] == "ref.pdf"
+        assert data2["entries"][0]["url"] == "files/bucket/ref.pdf"
+        assert data2["entries"][0]["type"] == "application/pdf"
+        assert data2["entries"][0]["description"] == "Reference data"
+        assert data2["entries"][0]["status"] == "removed"
 
     def test_context_lifecycle_add_remove_all(self):
         file_a = FileContextConfig(url="files/bucket/a.csv", description="File A")
@@ -122,8 +127,8 @@ class TestContextInjection:
         result2 = injector2.transform(messages)
         assert len(result2) == 3
         data2 = json.loads(result2[2].content)
-        assert len(data2) == 2
-        by_title = {e["title"]: e for e in data2}
+        assert len(data2["entries"]) == 2
+        by_title = {e["title"]: e for e in data2["entries"]}
         assert by_title["a.csv"]["status"] == "new"
         assert by_title["a.csv"]["description"] == "File A"
         assert by_title["b.pdf"]["status"] == "new"
@@ -140,10 +145,12 @@ class TestContextInjection:
         assert len(result3) == 5  # 3 original + 2 new synthetic
         synthetic3 = _extract_synthetic(result3, 3)
         data3 = json.loads(synthetic3[1].content)
-        assert len(data3) == 2
-        by_title3 = {e["title"]: e for e in data3}
+        assert len(data3["entries"]) == 2
+        by_title3 = {e["title"]: e for e in data3["entries"]}
         assert "status" not in by_title3["a.csv"]
+        assert by_title3["a.csv"]["description"] == "File A"
         assert by_title3["b.pdf"]["status"] == "removed"
+        assert by_title3["b.pdf"]["type"] == "application/pdf"
 
         # Step 5: remove file_a — fresh injector, reported as removed
         contexts.clear()
@@ -152,9 +159,38 @@ class TestContextInjection:
         assert len(result4) == 7  # 5 original + 2 new synthetic
         synthetic4 = _extract_synthetic(result4, 5)
         data4 = json.loads(synthetic4[1].content)
-        assert len(data4) == 1
-        assert data4[0]["title"] == "a.csv"
-        assert data4[0]["status"] == "removed"
+        assert len(data4["entries"]) == 1
+        assert data4["entries"][0]["title"] == "a.csv"
+        assert data4["entries"][0]["description"] == "File A"
+        assert data4["entries"][0]["status"] == "removed"
+
+    def test_description_change_triggers_renotification(self):
+        """When a context description changes but URL stays the same, re-notification occurs."""
+        ctx = FileContextConfig(url="files/bucket/ref.csv", description="V1")
+        messages = [_user_msg("hello")]
+
+        # Turn 1: initial injection — status: new
+        injector1 = _make_injector(contexts=[ctx])
+        result1 = injector1.transform(messages)
+        assert len(result1) == 3
+        data1 = json.loads(result1[2].content)
+        assert data1["entries"][0]["status"] == "new"
+        assert data1["entries"][0]["description"] == "V1"
+
+        # Turn 2: same URL, description changed to V2 — status: updated
+        ctx_v2 = FileContextConfig(url="files/bucket/ref.csv", description="V2")
+        injector2 = _make_injector(contexts=[ctx_v2])
+        result2 = injector2.transform(result1)
+        assert len(result2) == 5  # 3 original + 2 new synthetic
+        synthetic2 = _extract_synthetic(result2, 3)
+        data2 = json.loads(synthetic2[1].content)
+        assert data2["entries"][0]["status"] == "updated"
+        assert data2["entries"][0]["description"] == "V2"
+
+        # Turn 3: same URL, same description V2 — no injection (stable)
+        injector3 = _make_injector(contexts=[ctx_v2])
+        result3 = injector3.transform(result2)
+        assert len(result3) == 5  # unchanged
 
     def test_context_removal_then_no_change(self):
         ctx = FileContextConfig(url="files/bucket/ref.csv")

@@ -1,5 +1,4 @@
 import logging
-import os
 from datetime import date
 from pathlib import Path
 
@@ -433,7 +432,7 @@ def test_rest_api_toolcall(client):
                     "abrakadabra"
                 ],
             ),
-            ToolCall(ToolNames.LIST_FROM_WORD.value).add_soft_argument_check("incoming", ["arbadakarba"]),
+            ToolCall(ToolNames.LIST_FROM_WORD.value, max_calls=3).add_soft_argument_check("incoming", ["arbadakarba"]),
         ],
         answer=[
             """Here are the results using the available tools:
@@ -447,4 +446,52 @@ def test_rest_api_toolcall(client):
     )
 )
 def test_mcp_toolcall(client):
+    pass
+
+
+@pytest.mark.integration
+@e2e_test(
+    runs=1,
+    config_file_set="integration_simple",
+    models_applicable_for_test=["gemini-2.5-pro", "gpt-5-2025-08-07", "gpt-5-mini-2025-08-07", "gpt-4.1-2025-04-14"],
+    no_cache=True,
+    test_case=TstCase(
+        "Response format JSON schema",
+        "Test response format with JSON schema for structured output",
+        similarity_threshold=0.7,
+        response_format={
+            "type": "json_schema",
+            "json_schema": {
+                "name": "character_response",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "name": {
+                            "type": "string",
+                            "description": "The character's name."
+                        },
+                        "age": {
+                            "type": "number",
+                            "description": "The character's age."
+                        },
+                        "weapon": {
+                            "type": "string",
+                            "description": "The character's weapon."
+                        },
+                        "friend": {
+                            "type": "boolean",
+                            "description": "Is the character a friend?"
+                        }
+                    },
+                    "required": ["name", "age", "weapon", "friend"],
+                    "additionalProperties": False
+                }
+            }
+        }
+    ).add_user_message(
+        user_message="DO NOT USE ANY TOOLS. You have enough info in the next message to provide an answer. Use next description and provide info about this character according to response schema: Henry was a 30 years old warrior. He used a sword as his main weapon. He was a friend to all.",
+    )
+)
+def test_response_format_json_schema(client):
     pass

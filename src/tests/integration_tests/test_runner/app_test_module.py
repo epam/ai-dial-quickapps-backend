@@ -5,6 +5,7 @@ from fastapi import FastAPI
 
 from quickapp.agent.agent_module import AgentModule
 from quickapp.application import AppModule
+from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
@@ -63,6 +64,7 @@ class TestApp(FastAPI):
                 DialDeploymentToolingModule(),
                 MCPToolingModule(),
                 PyInterpreterTestModule(),
+                AttachmentProcessingModule(),
             ]
         )
         dial_settings = DialSettings(

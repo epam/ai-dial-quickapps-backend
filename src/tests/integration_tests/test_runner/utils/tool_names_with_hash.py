@@ -10,7 +10,7 @@ class ToolNames(Enum):
     ADD_SHAPE_TO_BOX = "add_shape_to_box_8d57"
     REMOVE_SHAPES_FROM_BOX = "remove_shapes_from_box_1feb"
     GET_SHAPES_FROM_BOX = "get_shapes_from_box_bdc8"
-    INVERT_STRING = "InvertString_a160"
+    INVERT_STRING = "InvertString_4cfe"
     LIST_FROM_WORD = "list_from_word_2309"
 
 

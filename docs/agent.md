@@ -56,10 +56,15 @@ A request-scoped context is created to hold:
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
 definitions from the predefined configuration files.
 
-### 4. Tool Initialization
+### 4. Completion Initialization
 
-Completion initializers from each tool module are invoked to construct tool instances based on the application
-configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+Completion initializers are invoked to prepare the request for orchestration. This includes:
+
+- **Message preprocessing**: The `_MessagePreprocessingInitializer` runs all `MessagesTransformer` instances on the
+  actual message history (expanding packed tool call state, adding system prompts, reducing attachments, injecting
+  context notifications). After this step, messages are fully expanded and ready for the orchestrator.
+- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
+  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
 
 ### 5. Error Handling
 
@@ -77,7 +82,7 @@ The orchestrator is retrieved from the DI container and its invoke method is cal
 
 ## Agent Loop (Orchestrator)
 
-The orchestrator implements a recursive agent loop that continues until the LLM produces a final response without tool
+The orchestrator implements an iterative agent loop that continues until the LLM produces a final response without tool
 calls or the maximum iteration limit is reached.
 
 ### Loop Flow
@@ -85,28 +90,26 @@ calls or the maximum iteration limit is reached.
 1. **Iteration Tracking**: The iteration counter is incremented and checked against the configured maximum. If exceeded,
    the loop terminates with an error message.
 
-2. **Attachment Notification**: When the context tool is active (see [Attachment Notification](#attachment-notification)),
-   the system checks before the LLM call whether admin-configured context files have changed since the last
-   notification. If changes are detected, synthetic tool call and tool result messages are injected into the
-   conversation history to inform the agent.
+2. **LLM Invocation**: The Assistant Invoker sends the already-preprocessed messages to the LLM. The response is
+   streamed back.
 
-3. **LLM Invocation**: The Assistant Invoker prepares the messages (applying pre-transformers) and calls the LLM. The
-   response is streamed back.
-
-4. **Response Processing**: The Chunk Processor accumulates streaming chunks, extracting content, attachments, and tool
+3. **Response Processing**: The Chunk Processor accumulates streaming chunks, extracting content, attachments, and tool
    calls from the response deltas.
 
-5. **Message Recording**: The assistant's response is appended to the conversation history.
+4. **Message Recording**: The assistant's response is appended to the conversation history.
 
-6. **Tool Call Detection**: If the response contains tool calls, they are extracted for execution.
+5. **Tool Call Detection**: If the response contains tool calls, they are extracted for execution.
 
-7. **Tool Execution**: The Tool Executor runs all requested tools in parallel, collecting their results.
+6. **Tool Execution**: The Tool Executor runs all requested tools in parallel, collecting their results.
 
-8. **Result Recording**: Tool results are converted to tool messages and appended to the conversation history. The
-   results are also stored in the state holder for debugging and UI display.
+7. **Result Recording**: Tool results are converted to tool messages and appended to the conversation history.
 
-9. **Loop Continuation**: If tool calls were executed, the loop recurses back to step 1. Otherwise, the loop terminates
-   and the final state is set.
+8. **Loop Continuation**: If tool calls were executed, the loop continues to the next iteration. Otherwise, the loop
+   terminates, the tool execution history is derived from the message history, and the final state is set.
+
+> **Note:** Message preprocessing (system prompt injection, state expansion, attachment reduction, context notification)
+> runs once at request setup via `_MessagePreprocessingInitializer`, not per iteration. The `AssistantInvoker` uses the
+> already-transformed messages directly.
 
 ### Termination Conditions
 
@@ -114,7 +117,7 @@ calls or the maximum iteration limit is reached.
 - **Max Iterations Exceeded**: The configured iteration limit is reached, preventing infinite loops
 - **Error**: An unrecoverable error occurs during execution
 
-<!-- DIAGRAM: Agent loop flowchart showing the recursive flow: Increment Counter -> Check Max -> Call LLM -> Process Response -> Tool Calls? -> Yes: Execute Tools -> Record Results -> Loop Back / No: Finalize -->
+<!-- DIAGRAM: Agent loop flowchart showing the iterative flow: Increment Counter -> Check Max -> Call LLM -> Process Response -> Tool Calls? -> Yes: Execute Tools -> Record Results -> Continue Loop / No: Derive History -> Finalize -->
 ![Agent Loop](content/svg/agent_loop.svg)
 
 ---
@@ -196,26 +199,34 @@ Messages undergo processing both before being sent to the LLM and when receiving
 
 ### Pre-Transformer Pipeline
 
-Before each LLM call, messages pass through a series of transformers that modify the message list:
+All message transformers extend the typed `MessagesTransformer` base class and are registered via the `AgentModule`
+DI provider. They run once at request setup via the `_MessagePreprocessingInitializer` (a `CompletionInitializer`),
+which mutates the actual `MessagesMixin.messages` in-place. The `AssistantInvoker` then uses the transformed messages
+directly without any copying or additional preprocessing.
+
+The pipeline runs the following transformers in order:
 
 1. **System Prompt Transformer**: Ensures a system message exists at the start of the conversation, combining the
    configured system prompt with any agent instructions.
 
-2. **Attachment Reducer**: Filters user attachments to only those supported by the LLM (typically images) so that
+2. **Extract Tool Calls From State Processor**: Expands prior-turn tool calls packed in
+   `custom_content.state[TOOL_EXECUTION_HISTORY]` into proper ASSISTANT + TOOL message pairs. This must run before
+   any component that inspects `msg.tool_calls` on historical messages.
+
+3. **Attachment Reducer**: Filters user attachments to only those supported by the LLM (typically images) so that
    vision models can process them inline. Non-image attachments are removed from `custom_content`. For all user
    attachments, text metadata (`Attachment X, of type Y, url Z`) is appended to user message content so the agent
    knows which files are available.
 
-3. **Context Attachment Transformer**: Appends configured context files as attachments to the last user message's
+4. **Context Attachment Transformer**: Appends configured context files as attachments to the last user message's
    `custom_content`, making them available to tools. Runs after the reducer so context files are never treated as
    user-uploaded attachments.
 
-4. **Attachment Notification Injector** *(conditional)*: Only present when the context tool is active (see
-   [Attachment Notification](#attachment-notification)). Checks whether admin-configured context files have changed
-   since the last notification. If changes are detected, inserts synthetic tool call and tool result message pairs
-   into the history using the `available_context` tool.
-
-The transformers operate on a deep copy of the messages to avoid mutating the conversation history.
+5. **Attachment Notification Injector**: Always included in the pipeline unconditionally. Self-detects whether the
+   context tool should be active (file contexts exist or context tool was used in a prior turn). When active, checks
+   whether admin-configured context files have changed since the last notification. If changes are detected, inserts
+   synthetic tool call and tool result message pairs into the history using the `available_context` tool. Returns
+   messages unchanged when inactive.
 
 ### Streaming Response Processing
 
@@ -244,17 +255,19 @@ The system uses two separate mechanisms to inform the agent about available file
 
 ### Activation Conditions
 
-The context notification tool and the `AttachmentNotificationInjector` pre-transformer are **registered
-conditionally** — only when at least one of the following is true:
+The context notification tool (`InternalToolModule`) is **registered conditionally** — only when at least one of the
+following is true:
 
 1. The application configuration contains at least one `FileContextConfig` context.
 2. The message history already contains tool calls for the context tool (i.e. it was active in a prior chat turn).
 
-When neither condition is met, the tool does not appear in the LLM's tool list and the injector is not part of the
-pre-transformer pipeline. This keeps the tool list clean for applications that never use file contexts.
+When neither condition is met, the tool does not appear in the LLM's tool list. This keeps the tool list clean for
+applications that never use file contexts.
 
-Both the tool provider (`InternalToolModule`) and the pre-transformer provider (`AgentModule`) evaluate the same
-`should_activate_context_tool()` predicate with the same request-scoped inputs, so they are always in sync.
+The `AttachmentNotificationInjector` pre-transformer is always included in the pipeline unconditionally. It evaluates
+`should_activate_context_tool()` internally and returns messages unchanged when inactive. Because messages are
+preprocessed (including state expansion by `ExtractToolCallsFromStateProcessor`) before tool providers are resolved,
+both the tool provider and the injector see fully expanded messages and are always in sync.
 
 ### Context Notification Tool
 
@@ -265,7 +278,7 @@ application. Each entry contains:
 - **URL**: DIAL-relative file URL
 - **MIME Type**: Content type of the file
 - **Description**: Optional admin-provided description
-- **Change Status**: Whether the file is newly added since the last notification
+- **Change Status**: Whether the file is `new` (added), `updated` (metadata changed), or `removed` since the last notification
 
 Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
 file contents when needed.
@@ -275,7 +288,7 @@ file contents when needed.
 Before each LLM call, the `AttachmentNotificationInjector` pre-transformer checks whether admin-configured contexts
 have changed since the last notification was injected.
 
-If changes are detected, synthetic message pairs are inserted into the (deep-copied) message history:
+If changes are detected, synthetic message pairs are appended to the message history:
 
 1. An **assistant message** containing a tool call to `available_context`
 2. A **tool result message** with the current metadata and change indicators
@@ -283,7 +296,7 @@ If changes are detected, synthetic message pairs are inserted into the (deep-cop
 These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
 without requiring it to make the call itself.
 
-If no changes occurred since the last injection, no messages are inserted.
+If no changes occurred since the last injection (same URLs and same metadata), no messages are inserted.
 
 ### On-Demand Access
 
@@ -311,7 +324,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 The application is composed of 9 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
-2. **Agent Module**: Orchestrator, assistant invoker, pre-transformers
+2. **Agent Module**: Orchestrator, assistant invoker, message transformers, message preprocessing initializer
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
 5. **MCP Tooling Module**: MCP server tool construction

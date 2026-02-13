@@ -2,7 +2,9 @@ import json
 import logging
 from typing import Dict, List, NamedTuple, Any
 
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
+from aidial_sdk.chat_completion.request import Message, Role
+
+from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from tests.integration_tests.conftest import FailureReason, TestStats
 from tests.integration_tests.test_runner.models import Argument, AttachmentCheck, Failure, ToolCall
 from tests.integration_tests.test_runner.similarity_checker import get_similarity, get_similarity_alternatives
@@ -24,11 +26,155 @@ class ResponseValidator:
     """
 
     @staticmethod
-    def _parse_intermediate_steps(state: Dict) -> List[ParsedToolCall]:
+    def validate_json_schema_response(
+        content: str, response_format: Dict[str, Any], ts: TestStats
+    ) -> List[Failure]:
         """
-        Parses the 'intermediate_steps' string from the state into a list of ParsedToolCall objects.
-        The new state format is a JSON string of a list of tuples, where each tuple contains
-        (ToolAgentAction, tool_output).
+        Validates that the response content is valid JSON and optionally matches a schema.
+
+        Args:
+            content (str): The response content to validate
+            response_format (Dict): The response format specification with type and optional json_schema
+            ts (TestStats): Test statistics tracker
+
+        Returns:
+            List[Failure]: List of validation failures
+        """
+        logger.debug("validate_json_schema_response called with response_format: %s", response_format)
+        failures = []
+
+        if not content or not content.strip():
+            logger.warning("Response content is empty or only whitespace")
+            ts.increment_failure(FailureReason.ANSWER)
+            failures.append(Failure(content, "non-empty JSON", "Response content is empty"))
+            return failures
+
+        # Check if response is valid JSON
+        try:
+            parsed_json = json.loads(content)
+            logger.debug("Response content parsed as JSON successfully")
+        except json.JSONDecodeError as e:
+            logger.warning("Response is not valid JSON: %s", e)
+            ts.increment_failure(FailureReason.ANSWER)
+            failures.append(
+                Failure(content, "valid JSON", f"Response is not valid JSON: {str(e)}")
+            )
+            return failures
+
+        # If json_schema is provided, validate against it
+        if response_format.get("type") == "json_schema" and "json_schema" in response_format:
+            schema = response_format["json_schema"].get("schema", {})
+            if schema:
+                logger.debug("Starting JSON schema validation; schema: %s", schema)
+                before_count = len(failures)
+                failures.extend(
+                    ResponseValidator._validate_against_schema(parsed_json, schema, ts)
+                )
+                after_count = len(failures)
+                if after_count == before_count:
+                    logger.info("JSON schema validation passed")
+                else:
+                    logger.warning("JSON schema validation failed with %d new failure(s)", after_count - before_count)
+            else:
+                logger.debug("json_schema provided but no 'schema' found; skipping schema validation")
+        else:
+            logger.debug("No json_schema validation requested; JSON parsing succeeded")
+
+        return failures
+
+    @staticmethod
+    def _validate_against_schema(
+        data: Any, schema: Dict[str, Any], ts: TestStats, path: str = "root"
+    ) -> List[Failure]:
+        """
+        Validates data against a JSON schema (basic validation).
+
+        Args:
+            data: The parsed JSON data
+            schema: The JSON schema to validate against
+            ts: Test statistics tracker
+            path: Current path in the data structure (for error messages)
+
+        Returns:
+            List[Failure]: List of validation failures
+        """
+        failures = []
+
+        # Check type
+        schema_type = schema.get("type")
+        if schema_type:
+            if not ResponseValidator._check_type(data, schema_type):
+                ts.increment_failure(FailureReason.ANSWER)
+                failures.append(
+                    Failure(
+                        type(data).__name__,
+                        schema_type,
+                        f"Type mismatch at {path}: expected {schema_type}",
+                    )
+                )
+                return failures
+
+        # Check required properties for objects
+        if schema_type == "object" and isinstance(data, dict):
+            required = schema.get("required", [])
+            for req_field in required:
+                if req_field not in data:
+                    ts.increment_failure(FailureReason.ANSWER)
+                    failures.append(
+                        Failure(
+                            list(data.keys()),
+                            req_field,
+                            f"Required field '{req_field}' missing at {path}",
+                        )
+                    )
+
+            # Validate properties
+            properties = schema.get("properties", {})
+            for prop_name, prop_schema in properties.items():
+                if prop_name in data:
+                    failures.extend(
+                        ResponseValidator._validate_against_schema(
+                            data[prop_name], prop_schema, ts, f"{path}.{prop_name}"
+                        )
+                    )
+
+        # Check array items
+        if schema_type == "array" and isinstance(data, list):
+            items_schema = schema.get("items", {})
+            if items_schema:
+                for idx, item in enumerate(data):
+                    failures.extend(
+                        ResponseValidator._validate_against_schema(
+                            item, items_schema, ts, f"{path}[{idx}]"
+                        )
+                    )
+
+        return failures
+
+    @staticmethod
+    def _check_type(data: Any, schema_type: str) -> bool:
+        """Check if data matches the schema type."""
+        type_mapping = {
+            "string": str,
+            "number": (int, float),
+            "integer": int,
+            "boolean": bool,
+            "array": list,
+            "object": dict,
+            "null": type(None),
+        }
+
+        expected_type = type_mapping.get(schema_type)
+        if expected_type is None:
+            return True
+
+        return isinstance(data, expected_type)
+
+    @staticmethod
+    def _parse_intermediate_steps(state: Dict) -> List[ParsedToolCall]:
+        """Parse tool execution history from state.
+
+        Expects message-based format: list of serialized Message objects.
         """
         if state is None:
             return []
@@ -37,28 +183,36 @@ class ResponseValidator:
             return []
 
         try:
-            # The outer structure is a JSON array
             parsed_calls = []
+            pending_results: dict[str, str] = {}
 
+            # First pass: collect all TOOL results
             for step in steps:
-                tool_call_dto = ExecutedToolCallDTO(**step)
-                tool_name = tool_call_dto.tool_call.function.name
-                tool_input = tool_call_dto.tool_call.function.arguments
+                msg = Message(**step) if isinstance(step, dict) else step
+                if msg.role == Role.TOOL and msg.tool_call_id:
+                    pending_results[msg.tool_call_id] = str(msg.content) if msg.content else ""
 
-                if isinstance(tool_input, str):
-                    try:
-                        args = json.loads(tool_input)
-                    except json.JSONDecodeError:
-                        args = {"input": tool_input}
-                else:
-                    args = tool_input or {}
+            # Second pass: extract tool calls with their results
+            for step in steps:
+                msg = Message(**step) if isinstance(step, dict) else step
+                if msg.role == Role.ASSISTANT and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tool_input = tc.function.arguments
+                        if isinstance(tool_input, str):
+                            try:
+                                args = json.loads(tool_input)
+                            except json.JSONDecodeError:
+                                args = {"input": tool_input}
+                        else:
+                            args = tool_input or {}
 
-                result_content = tool_call_dto.tool_execution_result.content
-
-                if tool_name:
-                    parsed_calls.append(
-                        ParsedToolCall(name=tool_name, args=args, result=result_content)
-                    )
+                        parsed_calls.append(
+                            ParsedToolCall(
+                                name=tc.function.name,
+                                args=args,
+                                result=pending_results.get(tc.id, ""),
+                            )
+                        )
 
             return parsed_calls
         except (json.JSONDecodeError, TypeError, IndexError) as e:

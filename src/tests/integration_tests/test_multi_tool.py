@@ -101,7 +101,7 @@ def test_rag_interpreter(client):
               similarity_threshold=0.85,
           )
           .add_user_message(
-              user_message="Identify the movie on the attached image without any tool calling. Then find information about this movie Budget and Worldwide Gross using web search. Provide the result in the EXACT fromat: \n\rThe movie in the attached image: <movie name>. \n\rBudget: <budget>. \n\rWorldwide Gross: <gross>. \n\r\n\r You may add sources if needed, but it's not required.",
+              user_message="Identify the sci-fi movie on the attached image without any tool calling. Then find information about this movie Budget and Worldwide Gross using web search. Provide the result in the EXACT fromat: \n\rThe movie in the attached image: <movie name>. \n\rBudget: <budget>. \n\rWorldwide Gross: <gross>. \n\r\n\r You may add sources if needed, but it's not required.",
               attachments=[Path(__file__).parent / "test_documents/unknown.png"],
               tool_calls=[
                   ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(

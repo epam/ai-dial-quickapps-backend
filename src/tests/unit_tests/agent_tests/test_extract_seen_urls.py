@@ -3,13 +3,11 @@ import json
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
+from quickapp.attachment_processing._context_entries import extract_seen_entries_from_messages, \
+    has_context_tool_history, should_activate_context_tool
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.context import FileContextConfig, UserDefinedContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-    extract_seen_urls_from_messages,
-    has_context_tool_history,
-    should_activate_context_tool,
-)
+
 
 TOOL_NAME = AVAILABLE_CONTEXT_TOOL_NAME
 
@@ -29,30 +27,41 @@ def _tool_call_pair(
             )
         ],
     )
+    # Wrap entries in the AvailableContextToolResponse format
+    response = {"entries": entries, "timestamp": "2024-01-01T00:00:00"}
     tool_msg = Message(
         role=Role.TOOL,
-        content=json.dumps(entries, ensure_ascii=False),
+        content=json.dumps(response, ensure_ascii=False),
         tool_call_id=call_id,
     )
     return [assistant_msg, tool_msg]
 
 
-class TestExtractSeenUrlsFromMessages:
+class TestExtractSeenEntriesFromMessages:
     def test_empty_messages(self):
-        assert extract_seen_urls_from_messages([]) == set()
+        assert extract_seen_entries_from_messages([]) == {}
 
     def test_no_tool_calls(self):
         messages = [Message(role=Role.USER, content="hello")]
-        assert extract_seen_urls_from_messages(messages) == set()
+        assert extract_seen_entries_from_messages(messages) == {}
 
     def test_single_tool_result(self):
         entries = [
-            {"title": "a.csv", "url": "files/bucket/a.csv", "status": "new"},
-            {"title": "b.pdf", "url": "files/bucket/b.pdf", "status": "new"},
+            {"title": "a.csv", "url": "files/bucket/a.csv", "type": "text/csv", "status": "new"},
+            {
+                "title": "b.pdf",
+                "url": "files/bucket/b.pdf",
+                "type": "application/pdf",
+                "status": "new",
+            },
         ]
         messages = _tool_call_pair(TOOL_NAME, entries)
-        result = extract_seen_urls_from_messages(messages)
-        assert result == {"files/bucket/a.csv", "files/bucket/b.pdf"}
+        result = extract_seen_entries_from_messages(messages)
+        assert set(result.keys()) == {"files/bucket/a.csv", "files/bucket/b.pdf"}
+        assert result["files/bucket/a.csv"].title == "a.csv"
+        assert result["files/bucket/a.csv"].type == "text/csv"
+        assert result["files/bucket/b.pdf"].title == "b.pdf"
+        assert result["files/bucket/b.pdf"].type == "application/pdf"
 
     def test_removed_entries_excluded(self):
         entries = [
@@ -60,8 +69,8 @@ class TestExtractSeenUrlsFromMessages:
             {"title": "b.pdf", "url": "files/bucket/b.pdf", "status": "removed"},
         ]
         messages = _tool_call_pair(TOOL_NAME, entries)
-        result = extract_seen_urls_from_messages(messages)
-        assert result == {"files/bucket/a.csv"}
+        result = extract_seen_entries_from_messages(messages)
+        assert set(result.keys()) == {"files/bucket/a.csv"}
 
     def test_most_recent_result_used(self):
         entries_old = [
@@ -76,14 +85,14 @@ class TestExtractSeenUrlsFromMessages:
             + [Message(role=Role.USER, content="next turn")]
             + _tool_call_pair(TOOL_NAME, entries_new, call_id="call_2")
         )
-        result = extract_seen_urls_from_messages(messages)
-        assert result == {"files/bucket/a.csv", "files/bucket/b.pdf"}
+        result = extract_seen_entries_from_messages(messages)
+        assert set(result.keys()) == {"files/bucket/a.csv", "files/bucket/b.pdf"}
 
     def test_wrong_tool_name_ignored(self):
         entries = [{"title": "a.csv", "url": "files/bucket/a.csv"}]
         messages = _tool_call_pair("other_tool", entries)
-        result = extract_seen_urls_from_messages(messages)
-        assert result == set()
+        result = extract_seen_entries_from_messages(messages)
+        assert result == {}
 
     def test_malformed_json_returns_empty(self):
         assistant_msg = Message(
@@ -103,16 +112,49 @@ class TestExtractSeenUrlsFromMessages:
             tool_call_id="call_bad",
         )
         messages = [assistant_msg, tool_msg]
-        result = extract_seen_urls_from_messages(messages)
-        assert result == set()
+        result = extract_seen_entries_from_messages(messages)
+        assert result == {}
 
     def test_all_removed_returns_empty(self):
         entries = [
             {"title": "a.csv", "url": "files/bucket/a.csv", "status": "removed"},
         ]
         messages = _tool_call_pair(TOOL_NAME, entries)
-        result = extract_seen_urls_from_messages(messages)
-        assert result == set()
+        result = extract_seen_entries_from_messages(messages)
+        assert result == {}
+
+    def test_updated_entries_preserved(self):
+        entries = [
+            {
+                "title": "a.csv",
+                "url": "files/bucket/a.csv",
+                "type": "text/csv",
+                "description": "V2",
+                "status": "updated",
+            },
+        ]
+        messages = _tool_call_pair(TOOL_NAME, entries)
+        result = extract_seen_entries_from_messages(messages)
+        assert "files/bucket/a.csv" in result
+        entry = result["files/bucket/a.csv"]
+        assert entry.description == "V2"
+
+    def test_preserves_description(self):
+        entries = [
+            {
+                "title": "a.csv",
+                "url": "files/bucket/a.csv",
+                "type": "text/csv",
+                "description": "Reference data",
+                "status": "new",
+            },
+        ]
+        messages = _tool_call_pair(TOOL_NAME, entries)
+        result = extract_seen_entries_from_messages(messages)
+        entry = result["files/bucket/a.csv"]
+        assert entry.title == "a.csv"
+        assert entry.type == "text/csv"
+        assert entry.description == "Reference data"
 
 
 class TestHasContextToolHistory:
