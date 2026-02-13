@@ -11,7 +11,6 @@ from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT
 from quickapp.config.application import ApplicationConfig
@@ -98,8 +97,3 @@ class AssistantInvoker:
     def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         filtered_messages = self.__attachment_filter.filter_attachments(messages)
         return [message.model_dump(exclude_none=True, mode="json") for message in filtered_messages]
-
-    @staticmethod
-    def _log_messages(messages: list[Message]):
-        for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg.dict(), idx)

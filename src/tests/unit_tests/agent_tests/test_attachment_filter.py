@@ -52,9 +52,9 @@ class Test_AttachmentFilter:
         assert "Attachment doc.pdf" in content
         assert "application/pdf" in content
 
-        # SUPPORTED_ATTACHMENTS = ["image/*"] so image/png should not be included in content and should be kept as attachment
-        assert "Attachment photo.png" not in content
-        assert "image/png" not in content
+        # Image attachments are kept inline AND get text metadata injected
+        assert "Attachment photo.png" in content
+        assert "image/png" in content
         assert result[0].custom_content.attachments[0].type == "image/png"
         assert result[0].custom_content.attachments[0].title == "photo.png"
 

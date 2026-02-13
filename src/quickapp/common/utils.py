@@ -20,7 +20,7 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
         )
         return False
     if allowed_mime_types is None:
-        return True
+        return False
     for mt in allowed_mime_types:
         if mt == ALL_MIME_TYPES:  # catch-all wildcard
             return True

@@ -28,13 +28,12 @@ class _AttachmentFilter:
                     attachment.type, self.SUPPORTED_ATTACHMENTS
                 ):
                     updated_attachments.append(attachment)
-                else:
-                    # Inform agent that message had contained some attachment.
-                    # As adapter would resolve the actual bytes and URL would be lost.
-                    message.content += (
-                        f"\r\nAttachment {attachment.title}, of type {attachment.type}, "
-                        f"url {attachment.url}, reference_url {attachment.reference_url}\r\n"
-                    )
+                # Inform agent that message had contained some attachment.
+                # As adapter would resolve the actual bytes and URL would be lost.
+                message.content += (
+                    f"\r\nAttachment {attachment.title}, of type {attachment.type}, "
+                    f"url {attachment.url}, reference_url {attachment.reference_url}\r\n"
+                )
             message.custom_content.attachments = updated_attachments
 
         return message

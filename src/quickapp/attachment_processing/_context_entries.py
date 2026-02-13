@@ -1,4 +1,3 @@
-import json
 import mimetypes
 from collections.abc import Sequence
 from enum import Enum
@@ -95,7 +94,7 @@ def _parse_tool_response(content: str) -> dict[str, ContextEntry] | None:
             if entry.status != ContextEntryStatus.removed:
                 result[entry.url] = entry
         return result
-    except (json.JSONDecodeError, KeyError, ValidationError):
+    except ValidationError:
         return None
 
 
