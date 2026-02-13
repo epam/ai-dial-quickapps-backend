@@ -1,7 +1,5 @@
 """Agent module settings. Env vars use aliases to match existing names."""
 
-from typing import Optional
-
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -11,12 +9,7 @@ class AgentSettings(BaseSettings):
 
     model_config = SettingsConfigDict()
 
-    show_usage_statistics: bool = Field(
-        default=False,
-        description="Include usage in stream options",
-        alias="SHOW_USAGE_STATISTICS",
-    )
-    chat_message_log_length: Optional[int] = Field(
+    chat_message_log_length: int | None = Field(
         default=None,
         description="Max length for chat message log preview (-1 or unset = no truncation)",
         alias="CHAT_MESSAGE_LOG_LEN",

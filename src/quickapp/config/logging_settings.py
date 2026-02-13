@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -16,7 +15,6 @@ class LoggingSettings(BaseSettings):
 
     model_config = SettingsConfigDict()
 
-    log_mode: Optional[str] = Field(default=None, alias="LOG_MODE")
     log_format: str = Field(default=_DEFAULT_LOG_FORMAT, alias="LOG_FORMAT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     quickapp_log_level: str = Field(default="INFO", alias="QUICKAPP_LOG_LEVEL")
@@ -28,9 +26,3 @@ class LoggingSettings(BaseSettings):
         default=False,
         alias="LOG_MULTILINE_LOG_ENABLED",
     )
-
-    def get_resolved_log_format(self) -> str:
-        """Use dev format when LOG_MODE=dev, else log_format."""
-        if self.log_mode == "dev":
-            return "%(filename)s:%(lineno)d - %(message)s"
-        return self.log_format
