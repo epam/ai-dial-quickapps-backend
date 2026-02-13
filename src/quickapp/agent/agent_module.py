@@ -1,24 +1,18 @@
 import copy
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
-from quickapp.agent._message_preprocessing_initializer import _MessagePreprocessingInitializer
+from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.processors.chunk_processor import ChunkProcessor
-from quickapp.agent.processors.pre_transformers import (
-    AddContextAttachmentTransformer,
-    AddSystemPromptTransformer,
-    ExtractToolCallsFromStateProcessor,
-    ReduceAttachmentTransformer,
-)
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
-from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -36,7 +30,6 @@ from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
-from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -63,10 +56,9 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
-            _MessagePreprocessingInitializer,
-            to=_MessagePreprocessingInitializer,
-            scope=request_scope,
+            _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
 
     @provider
@@ -83,29 +75,6 @@ class AgentModule(Module):
             api_version=dial_settings.api_version,
         )
         return azure_client
-
-    @multiprovider
-    def provide_message_transformers(
-        self,
-        config: ApplicationConfig,
-        instructions_provider: AgentInstructionsProvider,
-    ) -> list[MessagesTransformer]:
-        # Order of Transformers is crucial for correct request processing
-        return [
-            AddSystemPromptTransformer(
-                config.orchestrator.system_prompt.content, instructions_provider.get()
-            ),
-            ExtractToolCallsFromStateProcessor(),
-            ReduceAttachmentTransformer(),
-            AddContextAttachmentTransformer(contexts=config.contexts),
-            AttachmentNotificationInjector(contexts=config.contexts),
-        ]
-
-    @multiprovider
-    def provide_completion_initializers(
-        self, preprocessor: ProviderOf[_MessagePreprocessingInitializer]
-    ) -> list[CompletionInitializer]:
-        return [preprocessor.get()]
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
@@ -142,3 +111,12 @@ class AgentModule(Module):
                 DEFAULT_ATTACHMENT_URLS_PARAM
             )
         return converted_open_ai_tool
+
+    @multiprovider
+    def provide_message_transformers(
+        self,
+        add_system_prompt: _AddSystemPromptTransformer,
+    ) -> list[MessagesTransformer]:
+        return [
+            add_system_prompt,
+        ]

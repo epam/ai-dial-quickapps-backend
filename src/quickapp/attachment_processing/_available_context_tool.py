@@ -1,22 +1,22 @@
 import json
 from typing import Any, Optional
 
+from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
-from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.messages_mixin import MessagesMixin
-from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.config.context import Context
-from quickapp.config.tools.internal import InternalTool
-from quickapp.internal_tooling.attachment_notification_tooling._available_context_stage_wrapper import (
+from quickapp.attachment_processing._available_context_stage_wrapper import (
     _AvailableContextStageWrapper,
 )
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
+from quickapp.attachment_processing._context_entries import (
     AvailableContextToolResponse,
     build_context_entries,
     extract_seen_entries_from_messages,
 )
+from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.config.context import Context
+from quickapp.config.tools.internal import InternalTool
 
 
 @inject
@@ -28,7 +28,7 @@ class _AvailableContextTool(StagedBaseTool):
         contexts: list[Context],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        messages_context: MessagesMixin,
+        messages: list[Message],
         **kwargs: Any,
     ):
         super().__init__(
@@ -38,11 +38,11 @@ class _AvailableContextTool(StagedBaseTool):
             **kwargs,
         )
         self.__contexts: list[Context] = contexts
-        self.__messages_context: MessagesMixin = messages_context
+        self.__messages: list[Message] = messages
 
     def _get_response(self) -> AvailableContextToolResponse:
         """Collect context file metadata, flagging new or changed ones."""
-        seen_entries = extract_seen_entries_from_messages(self.__messages_context.messages)
+        seen_entries = extract_seen_entries_from_messages(self.__messages)
         _, entries = build_context_entries(self.__contexts, seen_entries)
         return AvailableContextToolResponse(entries=entries)
 

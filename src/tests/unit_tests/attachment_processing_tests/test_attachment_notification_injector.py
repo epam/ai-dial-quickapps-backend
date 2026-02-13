@@ -1,13 +1,16 @@
 import json
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from pydantic.v1 import StrictStr
+from pydantic import StrictStr
 
-from quickapp.internal_tooling.attachment_notification_tooling import AttachmentNotificationInjector
+from quickapp.attachment_processing._attachment_notification_injector import _AttachmentNotificationInjector
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -18,11 +21,13 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 
 def _make_injector(
-    contexts: list[FileContextConfig] | None = None,
-) -> AttachmentNotificationInjector:
+    contexts: list[FileContextConfig] = [],
+) -> _AttachmentNotificationInjector:
     """Create a fresh injector, as production does on every orchestrator iteration."""
-    return AttachmentNotificationInjector(
-        contexts=contexts or [],
+    config = ApplicationConfig(contexts=contexts, orchestrator=OrchestratorConfig(deployment=DialDeploymentConfig(name="gpt-4"), system_prompt=CustomSystemPromptConfig(content="", variables={})), tool_sets=[])
+    provider = SimpleNamespace(get=lambda: config)
+    return _AttachmentNotificationInjector(
+        config_provider=provider,
     )
 
 
@@ -80,7 +85,7 @@ class TestContextInjection:
         assert len(result2) == 3  # unchanged, no new synthetic messages
 
     def test_context_removal_injects_removed_entry(self):
-        ctx = FileContextConfig(url="files/bucket/ref.csv", description="Reference data")
+        ctx = FileContextConfig(url="files/bucket/ref.pdf", description="Reference data")
         contexts: list[FileContextConfig] = [ctx]
         messages = [_user_msg("hello")]
 
@@ -99,9 +104,9 @@ class TestContextInjection:
         synthetic = _extract_synthetic(result2, 3)
         data2 = json.loads(synthetic[1].content)
         assert len(data2["entries"]) == 1
-        assert data2["entries"][0]["title"] == "ref.csv"
-        assert data2["entries"][0]["url"] == "files/bucket/ref.csv"
-        assert data2["entries"][0]["type"] == "text/csv"
+        assert data2["entries"][0]["title"] == "ref.pdf"
+        assert data2["entries"][0]["url"] == "files/bucket/ref.pdf"
+        assert data2["entries"][0]["type"] == "application/pdf"
         assert data2["entries"][0]["description"] == "Reference data"
         assert data2["entries"][0]["status"] == "removed"
 

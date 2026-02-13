@@ -5,7 +5,7 @@ from typing import Annotated, Any, Generic, List, Literal, Optional, TypeVar, Un
 
 from pydantic import BaseModel, Field, model_validator
 
-from quickapp.common.utils import ALL_MIME_TYPES
+from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.tools.display.paramenter import ParameterDisplayConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig

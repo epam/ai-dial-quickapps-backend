@@ -4,37 +4,40 @@ import uuid
 
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from injector import ProviderOf, inject
 
-from quickapp.common.base_transformer import MessagesTransformer
-from quickapp.config.context import Context
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
+from quickapp.attachment_processing._context_entries import (
     AvailableContextToolResponse,
     build_context_entries,
     extract_seen_entries_from_messages,
     should_activate_context_tool,
 )
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-)
+from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import Context
 
 logger = logging.getLogger(__name__)
 
 
-class AttachmentNotificationInjector(MessagesTransformer):
+class _AttachmentNotificationInjector(MessagesTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 
-    def __init__(self, contexts: list[Context]):
-        self._contexts = contexts
+    @inject
+    def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
+        self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
 
     def transform(self, messages: list[Message]) -> list[Message]:
+        contexts = list(self.__config_provider.get().contexts)
+
         if not isinstance(messages, list):
             raise TypeError("Data must be a list of Message objects")
 
-        if not should_activate_context_tool(self._contexts, messages):
+        if not should_activate_context_tool(contexts, messages):
             return messages
 
-        synthetic: list[Message] = self._check_contexts(messages)
+        synthetic: list[Message] = self._check_contexts(messages, contexts)
 
         if not synthetic:
             return messages
@@ -47,10 +50,10 @@ class AttachmentNotificationInjector(MessagesTransformer):
 
         return messages + synthetic
 
-    def _check_contexts(self, messages: list[Message]) -> list[Message]:
+    def _check_contexts(self, messages: list[Message], contexts: list[Context]) -> list[Message]:
         """Collect context file metadata and return synthetic messages if changed."""
         seen_entries = extract_seen_entries_from_messages(messages)
-        current_urls, entries = build_context_entries(self._contexts, seen_entries)
+        current_urls, entries = build_context_entries(contexts, seen_entries)
         tool_response = AvailableContextToolResponse(entries=entries)
 
         if current_urls == set(seen_entries) and not any(e.status for e in entries):

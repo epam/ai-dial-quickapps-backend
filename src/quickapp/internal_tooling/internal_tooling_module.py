@@ -6,19 +6,9 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-from quickapp.internal_tooling.attachment_notification_tooling._available_context_tool import (
-    _AvailableContextTool,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._context_entries import (
-    should_activate_context_tool,
-)
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_CONFIG,
-)
 from quickapp.internal_tooling.content_download_tooling._content_download_tool import (
     _ContentDownloadTool,
 )
@@ -45,18 +35,13 @@ class InternalToolModule(Module):
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
-        binder.bind(_AvailableContextTool, to=_AvailableContextTool, scope=request_scope)
-
-        logger.debug("InternalTooling module configuration completed")
 
     @multiprovider
     def _provide_internal_tools(
         self,
         app_config: ApplicationConfig,
-        messages_context: MessagesMixin,
         py_builder: AssistedBuilder[_PyInterpreterTool],
         cd_builder: AssistedBuilder[_ContentDownloadTool],
-        ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
         for tool_set in app_config.tool_sets:
@@ -91,16 +76,6 @@ class InternalToolModule(Module):
                                     ),  # 20Mb
                                 )
                             )
-
-        if should_activate_context_tool(app_config.contexts, messages_context.messages):
-            tools.append(
-                ac_builder.build(
-                    tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
-                    name=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name,
-                    description=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.description,
-                    contexts=list(app_config.contexts),
-                )
-            )
 
         return tools
 
