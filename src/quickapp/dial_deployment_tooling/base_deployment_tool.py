@@ -1,3 +1,4 @@
+import logging
 from typing import Any, Optional, cast
 
 from injector import AssistedBuilder
@@ -10,6 +11,8 @@ from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentT
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
+
+logger = logging.getLogger(__name__)
 
 
 class BaseDeploymentTool(StagedBaseTool):
@@ -53,21 +56,26 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def _pre_process_params(self, **kwargs: Any) -> Any:
 
+        prepared: dict[str, Any] = {}
+
+        # If tool config defines defaults, normalize them first
         if isinstance(self.tool_config, DialDeploymentTool):
             tool_config = cast(DialDeploymentTool, self.tool_config)
-            # deployment and parameters are expected to be present on DialDeploymentTool
-
             params = tool_config.deployment.parameters
-            params_dict = to_plain_dict(params)
-            for key, value in params_dict.items():
-                if key == "custom_fields":
-                    cf = to_plain_dict(value)
-                    if cf:
-                        kwargs["custom_fields"] = cf
-                    else:
-                        # if custom_fields exists but is empty, set as empty dict to be explicit
-                        kwargs["custom_fields"] = {}
-                else:
-                    kwargs[key] = value
+            self.merge_to_prepared_params(params, prepared)
 
-        return kwargs
+        # Now process runtime kwargs - these should override defaults
+        prepared.update(kwargs)
+
+        logger.debug(f"Pre-processed tool parameters: {prepared}")
+
+        return prepared
+
+    def merge_to_prepared_params(self, params: Any, prepared: dict[str, Any]):
+        """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
+        params_dict = to_plain_dict(params)
+        if isinstance(params_dict, dict):
+            for key, value in params_dict.items():
+                if value is None or value == {}:
+                    continue
+                prepared[key] = value
