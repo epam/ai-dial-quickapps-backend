@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.processors._attachment_filter import _AttachmentFilter
 
 
 # Minimal test helpers

@@ -14,7 +14,6 @@ from quickapp.config.config_template_resolver import ConfigResolver
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
-from ._messages_transformers import AddSystemPromptTransformer
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
@@ -48,7 +47,7 @@ class AppModule(Module):
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
-        binder.bind(AddSystemPromptTransformer, to=AddSystemPromptTransformer, scope=request_scope)
+
 
 
     @provider
@@ -94,11 +93,4 @@ class AppModule(Module):
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
         return context.messages
 
-    @multiprovider
-    def provide_message_transformers(
-            self,
-            add_system_prompt: AddSystemPromptTransformer,
-    ) -> list[MessagesTransformer]:
-        return [
-            add_system_prompt,
-        ]
+

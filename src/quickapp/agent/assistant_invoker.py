@@ -12,7 +12,7 @@ from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.agent.processors._attachment_filter import _AttachmentFilter
+from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.common import RESPONSE_FORMAT
 from quickapp.config.application import ApplicationConfig
 

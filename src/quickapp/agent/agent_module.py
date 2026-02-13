@@ -8,10 +8,12 @@ from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.processors._attachment_filter import _AttachmentFilter
-from quickapp.agent.processors.chunk_processor import ChunkProcessor
+from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.agent.chunk_processor import ChunkProcessor
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -56,7 +58,7 @@ class AgentModule(Module):
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
-
+        binder.bind(_AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope)
 
     @provider
     def provide_openai_client(
@@ -109,3 +111,12 @@ class AgentModule(Module):
                 DEFAULT_ATTACHMENT_URLS_PARAM
             )
         return converted_open_ai_tool
+
+    @multiprovider
+    def provide_message_transformers(
+            self,
+            add_system_prompt: _AddSystemPromptTransformer,
+    ) -> list[MessagesTransformer]:
+        return [
+            add_system_prompt,
+        ]

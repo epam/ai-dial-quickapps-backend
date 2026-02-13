@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from pydantic.v1 import StrictStr
 
-from quickapp.agent.processors._attachment_filter import _AttachmentFilter
+from quickapp.agent._attachment_filter import _AttachmentFilter
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:

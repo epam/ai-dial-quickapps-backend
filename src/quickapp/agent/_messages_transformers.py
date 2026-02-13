@@ -11,7 +11,7 @@ from quickapp.config.application import ApplicationConfig
 logger = logging.getLogger(__name__)
 
 
-class AddSystemPromptTransformer(MessagesTransformer):
+class _AddSystemPromptTransformer(MessagesTransformer):
     @inject
     def __init__(
         self,
