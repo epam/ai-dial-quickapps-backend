@@ -2,7 +2,7 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, AsyncMock
 
-from aidial_sdk.chat_completion.request import Message, Role
+from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
@@ -261,3 +261,165 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
 
     assert "doesn't return any result" in str(excinfo.value)
     tool_executor.execute.assert_awaited_once()
+
+
+def _make_tool_call(call_id: str, name: str = "tool_a") -> ToolCall:
+    return ToolCall(
+        id=call_id,
+        type="function",
+        function=FunctionCall(name=name, arguments="{}"),
+    )
+
+
+def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    return Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=Mock(add_attachment=Mock(), set_state=Mock()),
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=Mock(),
+        chunk_processor_provider=Mock(),
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(max_iterations=10, deployment=SimpleNamespace(name="m"))
+        ),
+        perf_timer=Mock(),
+    )
+
+
+class TestBuildToolExecutionHistory:
+    def test_empty_messages_returns_empty(self):
+        orchestrator = _make_orchestrator([])
+        result = orchestrator._build_tool_execution_history()
+        assert result == []
+
+    def test_only_user_and_final_assistant_returns_empty(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(role=Role.ASSISTANT, content="hi there"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+        assert result == []
+
+    def test_single_tool_call_iteration(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            Message(role=Role.ASSISTANT, content="done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[1]["role"] == "tool"
+
+    def test_multiple_iterations(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            # Iteration 1
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            # Iteration 2
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-2", name="tool_b")],
+            ),
+            Message(role=Role.TOOL, content="result-2", tool_call_id="tc-2"),
+            # Final
+            Message(role=Role.ASSISTANT, content="all done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 4
+        assert result[0]["role"] == "assistant"
+        assert result[1]["role"] == "tool"
+        assert result[2]["role"] == "assistant"
+        assert result[3]["role"] == "tool"
+
+    def test_parallel_tool_calls_preserved(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1"), _make_tool_call("tc-2", name="tool_b")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            Message(role=Role.TOOL, content="result-2", tool_call_id="tc-2"),
+            Message(role=Role.ASSISTANT, content="done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 3
+        # Single ASSISTANT with both tool_calls
+        assert result[0]["role"] == "assistant"
+        assert len(result[0]["tool_calls"]) == 2
+        assert result[1]["role"] == "tool"
+        assert result[2]["role"] == "tool"
+
+    def test_stops_at_last_user_message(self):
+        messages = [
+            # Earlier turn (should be excluded)
+            Message(role=Role.USER, content="first"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-old")],
+            ),
+            Message(role=Role.TOOL, content="old-result", tool_call_id="tc-old"),
+            Message(role=Role.ASSISTANT, content="first answer"),
+            # Current turn
+            Message(role=Role.USER, content="second"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-new")],
+            ),
+            Message(role=Role.TOOL, content="new-result", tool_call_id="tc-new"),
+            Message(role=Role.ASSISTANT, content="second answer"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        # Only current turn's tool call pair
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-new"
+        assert result[1]["role"] == "tool"
+        assert result[1]["content"] == "new-result"
+
+    def test_final_assistant_without_tool_calls_excluded(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result", tool_call_id="tc-1"),
+            Message(role=Role.ASSISTANT, content="final answer"),  # no tool_calls
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        # Final ASSISTANT without tool_calls is excluded
+        assert len(result) == 2
+        assert all(r["role"] != "assistant" or "tool_calls" in r for r in result)
