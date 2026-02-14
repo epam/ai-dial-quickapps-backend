@@ -2,7 +2,6 @@ import copy
 import logging
 
 from aidial_sdk.chat_completion import Message, Role
-from pydantic import StrictStr
 
 from quickapp.common.utils import matches_type
 
@@ -28,7 +27,7 @@ class _AttachmentFilter:
     def _filter(self, message: Message):
         updated_attachments = []
         if message.content is None:
-            message.content = StrictStr("")
+            message.content = ""
         if self._has_attachments(message):
             for attachment in message.custom_content.attachments:
                 if message.role == Role.USER and matches_type(

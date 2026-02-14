@@ -2,10 +2,11 @@ import base64
 import logging
 from io import BytesIO
 
+from aidial_client.types.chat.response import Attachment
 from injector import inject
 
 from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import Attachment, DialCoreClient
+from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.utils import generate_attachment_filename
 
