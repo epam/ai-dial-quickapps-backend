@@ -5,6 +5,7 @@ from injector import Injector
 
 from quickapp.agent.agent_module import AgentModule
 from quickapp.application import AppModule
+from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
@@ -44,6 +45,7 @@ class AppFactory:
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
+                AttachmentProcessingModule(),
             ]
         )
         app = injector.get(FastAPI)

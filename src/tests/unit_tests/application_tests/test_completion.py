@@ -1,13 +1,19 @@
+from types import SimpleNamespace
+from typing import Mapping
 from unittest.mock import Mock
 
+import fastapi
 import pytest
-from types import SimpleNamespace
-
+from aidial_sdk.chat_completion import Request, Message, Role
 from httpx import HTTPError
+from pydantic import StrictStr
 
 import quickapp.application._quick_app_completion as quick_app_completion
+from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.application._request_context import _RequestContext
+from quickapp.application._request_context_setup import _RequestContextSetup
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.config.config_template_resolver import ConfigResolver
 
 
 class FakeChoice:
@@ -88,24 +94,35 @@ async def valid_app_props(*args, **kwargs):
     }
 
 
+
+
+
 @pytest.fixture
 def make_request_completion():
     def _make(orchestrator=None, api_key="k", has_binding=True, extra_mapping=None):
-        request = SimpleNamespace()
-        request.api_key = api_key
+        request = Request(api_key_secret=StrictStr(api_key), messages=[Message(content="123", role=Role.USER), Message(content="456", role=Role.USER)], deployment_id=StrictStr("default-deployment"),
+                          headers={"1":"2"}, original_request=fastapi.Request(scope={"type": "http"}))
         request.request_dial_application_properties = valid_app_props
-        request.messages = ["msg1", "msg2"]
 
-        request_context = _RequestContext()
         init_handler = SimpleNamespace(handle_initialization_errors=lambda: None)
 
-        # Resolver mock with a resolve_config method
+        request_context = _RequestContext()
+        provider = SimpleNamespace(get=lambda: request_context)
+
         config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
+        messages_setup = _MessagesSetup([])
+
+        request_context_setup = _RequestContextSetup(
+            context_provider=provider,
+            config_resolver=config_resolver,
+            messages_setup=messages_setup,
+        )
 
         mapping = {
             quick_app_completion._InitializationErrorHandler: init_handler,
-            quick_app_completion._RequestContext: request_context,
-            quick_app_completion.ConfigResolver: config_resolver,
+            _RequestContext: request_context,
+            _RequestContextSetup: request_context_setup,
+            ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
         }
         if orchestrator is not None:
@@ -120,7 +137,7 @@ def make_request_completion():
 
         injector = FakeInjector(mapping, has_binding=has_binding)
         completion = quick_app_completion._QuickAppCompletion(
-            injector, config_resolver, presentation_settings
+            injector, presentation_settings
         )
         return request, completion, injector
 
@@ -282,5 +299,8 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(mak
     await completion.chat_completion(request, response)
 
     # Assert: inspect the request context from the injector
-    msgs = injector.get(quick_app_completion._RequestContext).messages
-    assert msgs == ["msg1", "msg2"]
+    msgs = list(injector.get(_RequestContext).messages)
+
+    assert len(msgs) == 2
+    assert msgs[0].content == "123"
+    assert msgs[1].content == "456"

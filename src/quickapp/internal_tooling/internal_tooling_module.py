@@ -37,8 +37,6 @@ class InternalToolModule(Module):
         binder.bind(_ContentDownloadTool, to=_ContentDownloadTool, scope=request_scope)
         binder.bind(InternalToolingSettings, to=InternalToolingSettings, scope=singleton)
 
-        logger.debug("InternalTooling module configuration completed")
-
     @multiprovider
     def _provide_internal_tools(
         self,
@@ -78,6 +76,7 @@ class InternalToolModule(Module):
                                     content_size_limit=internal_tooling_settings.content_downloader_file_size_limit,
                                 )
                             )
+
         return tools
 
     @singleton
