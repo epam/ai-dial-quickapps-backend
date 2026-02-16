@@ -5,6 +5,7 @@ from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai import AsyncAzureOpenAI
 
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
@@ -60,6 +61,7 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
 
     @provider
     def provide_openai_client(

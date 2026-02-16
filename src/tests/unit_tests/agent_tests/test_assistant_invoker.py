@@ -7,6 +7,14 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 
 
 # Minimal test helpers
+def _presentation_settings(show_usage: bool):
+    return SimpleNamespace(show_usage_statistics=show_usage)
+
+
+def _agent_settings(chat_message_log_length=None):
+    return SimpleNamespace(chat_message_log_length=chat_message_log_length)
+
+
 class FakeMessage:
     def __init__(self, content: str):
         self.content = content
@@ -42,9 +50,6 @@ class DummyConfig:
 
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
-    # Ensure env var is not set
-    monkeypatch.delenv("SHOW_USAGE_STATISTICS", raising=False)
-
     # Prepare mocked azure client
     create_mock = AsyncMock(return_value="stream-result")
     azure_client = SimpleNamespace(
@@ -60,7 +65,9 @@ async def test_invoke_without_show_usage(monkeypatch):
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
         pre_process_transformers=[FakeTransformer()],
-        response_format=None
+        response_format=None,
+        presentation_settings=_presentation_settings(False),
+        agent_settings=_agent_settings(),
     )
 
     result = await invoker.invoke()
@@ -77,13 +84,11 @@ async def test_invoke_without_show_usage(monkeypatch):
     assert called_kwargs["stream"] is True
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello"}]
     assert called_kwargs["tools"] is tools
-    # stream_options must NOT be present when env var unset
+    # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
 @pytest.mark.asyncio
 async def test_invoke_with_show_usage_true(monkeypatch):
-    monkeypatch.setenv("SHOW_USAGE_STATISTICS", "true")
-
     create_mock = AsyncMock(return_value="stream-result")
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
@@ -98,7 +103,9 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         choice=SimpleNamespace(),
         azure_client=azure_client,
         pre_process_transformers=[],
-        response_format=None
+        response_format=None,
+        presentation_settings=_presentation_settings(True),
+        agent_settings=_agent_settings(),
     )
 
     result = await invoker.invoke()
@@ -149,7 +156,9 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         choice=SimpleNamespace(),
         azure_client=azure_client,
         pre_process_transformers=[],
-        response_format=None
+        response_format=None,
+        presentation_settings=_presentation_settings(False),
+        agent_settings=_agent_settings(),
     )
 
     from aidial_sdk.exceptions import InvalidRequestError

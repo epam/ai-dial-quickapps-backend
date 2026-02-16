@@ -10,7 +10,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.config.config_template_resolver import ConfigResolver, PredefinedSettings
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._otel_settings import _OtelSettings
@@ -37,6 +37,7 @@ class AppModule(Module):
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
+        binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(

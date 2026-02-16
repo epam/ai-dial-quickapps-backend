@@ -113,9 +113,15 @@ def make_request_completion():
         if extra_mapping:
             mapping.update(extra_mapping)
 
+        presentation_settings = SimpleNamespace(
+            show_usage_statistics=False, show_execution_time_stage=False
+        )
+        mapping[quick_app_completion.PresentationSettings] = presentation_settings
+
         injector = FakeInjector(mapping, has_binding=has_binding)
-        # pass resolver as second constructor argument
-        completion = quick_app_completion._QuickAppCompletion(injector, config_resolver)
+        completion = quick_app_completion._QuickAppCompletion(
+            injector, config_resolver, presentation_settings
+        )
         return request, completion, injector
 
     return _make
