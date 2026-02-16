@@ -1,8 +1,9 @@
 import json
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List
+from typing import Any, Dict, List
 
+from injector import inject
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -159,14 +160,14 @@ def add_default_content_downloader(raw_config: ApplicationConfig):
     )
 
 
+@inject
 class ConfigResolver:
-    def __init__(self):
-        self.predefined_settings = PredefinedSettings()
-        if self.predefined_settings.base_path:
-            self.base_path = Path(self.predefined_settings.base_path)
+    def __init__(self, predefined_settings: PredefinedSettings):
+        if predefined_settings.base_path:
+            self.base_path = Path(predefined_settings.base_path)
         else:
             self.base_path = project_root_path / "config/predefined"
-        self.cache = {}  # avoid re-reading files
+        self.cache: dict[str, Any] = {}  # avoid re-reading files
         self.prompt_mapping = PromptMapping()
         self.template_map = self._scan_templates()
 

@@ -8,6 +8,7 @@ from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.config.logging_config import LoggingConfig
+from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
@@ -32,7 +33,7 @@ class AppFactory:
         Returns:
             FastAPI: The configured FastAPI application instance.
         """
-        LoggingConfig()
+        LoggingConfig(settings=LoggingSettings())
         injector = Injector(
             [
                 AppModule(),

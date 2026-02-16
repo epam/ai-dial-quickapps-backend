@@ -7,6 +7,7 @@ from openai import AsyncAzureOpenAI
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
@@ -60,6 +61,7 @@ class AgentModule(Module):
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
+        binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
 
     @provider
     def provide_openai_client(
