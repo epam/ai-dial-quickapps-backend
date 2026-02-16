@@ -137,7 +137,7 @@ def make_request_completion():
 
         injector = FakeInjector(mapping, has_binding=has_binding)
         completion = quick_app_completion._QuickAppCompletion(
-            injector, config_resolver, presentation_settings
+            injector, presentation_settings
         )
         return request, completion, injector
 

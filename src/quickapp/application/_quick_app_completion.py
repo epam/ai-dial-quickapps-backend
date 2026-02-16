@@ -12,8 +12,8 @@ from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.presentation_settings import PresentationSettings
 
-from ..config.utils import bool_env_var
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration

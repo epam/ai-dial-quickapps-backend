@@ -14,7 +14,6 @@ from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT
-from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 
