@@ -12,6 +12,7 @@ class CompletionResult(BaseModel):
     content: Any
     content_type: str
     attachments: Optional[list[Attachment]] = None
+    state: Any | None = None
     usage: Optional[list[DeploymentUsage]] = None
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
@@ -25,7 +26,7 @@ class CompletionResult(BaseModel):
             content=self.content,
             custom_content=CustomContent(
                 attachments=self.attachments,
-                # state={"usage": self.deployment_usage}
+                state=self.state,
             ),
             tool_call_id=self.tool_call_id,
         )
