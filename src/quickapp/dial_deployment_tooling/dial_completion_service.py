@@ -31,10 +31,15 @@ logger = logging.getLogger(__name__)
 @dataclass
 class _StreamResult:
     content: str = ""
-    attachments: list[Any] = field(default_factory=list)
+    attachments: list[Any] | None = None
     state: Any = None
     usage: CompletionUsage | None = None
     statistics: dict[str, Any] = field(default_factory=dict)
+
+    def extend_attachments(self, attachments: list[Any]) -> None:
+        if self.attachments is None:
+            self.attachments = []
+        self.attachments.extend(attachments)
 
 
 @inject
@@ -159,7 +164,7 @@ class DialCompletionService:
 
                 if delta.custom_content and delta.custom_content.attachments:
                     attachments = delta.custom_content.attachments
-                    result.attachments.extend(attachments)
+                    result.extend_attachments(attachments)
                     if stage_wrapper:
                         for attachment in attachments:
                             self._fix_attachment(attachment)
