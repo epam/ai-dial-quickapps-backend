@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Tuple
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
@@ -33,7 +33,7 @@ class _StreamResult:
     content: str = ""
     attachments: list[Any] = field(default_factory=list)
     state: Any = None
-    usage: Optional[CompletionUsage] = None
+    usage: CompletionUsage | None = None
     statistics: dict[str, Any] = field(default_factory=dict)
 
 
@@ -44,7 +44,7 @@ class DialCompletionService:
         self.__dial_client: AsyncDial = dial_client
 
     @staticmethod
-    def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Optional[Dict[str, Any]]:
+    def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Dict[str, Any] | None:
         # kept for backward compatibility in rare cases
         normalized: dict[str, Any] = {}
         for k, v in items:
@@ -63,9 +63,9 @@ class DialCompletionService:
         params: Dict[str, Any],
         deployment_id: str,
         deployment_name: str,
-        stage_wrapper: Optional[BaseStageWrapper],
-        relative_attachment_urls: Optional[list[str]] = None,
-        history: Optional[list[UserMessageParam | AssistantMessageParam]] = None,
+        stage_wrapper: BaseStageWrapper | None,
+        relative_attachment_urls: list[str] | None = None,
+        history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> CompletionResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -138,7 +138,7 @@ class DialCompletionService:
     async def _consume_stream(
         self,
         chunks: Any,
-        stage_wrapper: Optional[BaseStageWrapper],
+        stage_wrapper: BaseStageWrapper | None,
     ) -> _StreamResult:
         result = _StreamResult()
         content_parts: list[str] = []
@@ -178,11 +178,11 @@ class DialCompletionService:
 
     @staticmethod
     def __get_deployment_usage(
-        usage: Optional[CompletionUsage],
-        statistics: Optional[dict],
+        usage: CompletionUsage | None,
+        statistics: dict | None,
         deployment_id: str,
         deployment_name: str,
-    ) -> Optional[List[DeploymentUsage]]:
+    ) -> List[DeploymentUsage] | None:
         if statistics:
             result = []
             for model_usage in statistics:
@@ -212,8 +212,8 @@ class DialCompletionService:
     async def __build_request_messages(
         self,
         content: str,
-        relative_attachment_urls: Optional[list[str]] = None,
-        history: Optional[list[UserMessageParam | AssistantMessageParam]] = None,
+        relative_attachment_urls: list[str] | None = None,
+        history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         messages: list[UserMessageParam | AssistantMessageParam] = []
         if history:
@@ -226,20 +226,20 @@ class DialCompletionService:
         return messages
 
     async def __user_message_from_content_and_attachments(
-        self, content, relative_attachment_urls: Optional[list[str]] = None
+        self, content, relative_attachment_urls: list[str] | None = None
     ) -> UserMessageParam:
         message = UserMessageParam(role="user", content=content)
-        attachments = await self.__attachment_params_from_urls(relative_attachment_urls)
+        attachments = await self.resolve_attachment_urls(relative_attachment_urls)
         if attachments and len(attachments) > 0:
             message[CUSTOM_CONTENT] = CustomContentParam(attachments=attachments)
         return message
 
-    async def __attachment_params_from_urls(
-        self, relative_attachment_urls: Optional[list[str]]
+    async def resolve_attachment_urls(
+        self, relative_attachment_urls: list[str] | None
     ) -> list[AttachmentParam]:
-        return [await self.__attachment_param(url) for url in (relative_attachment_urls or [])]
+        return [await self._resolve_attachment(url) for url in (relative_attachment_urls or [])]
 
-    async def __attachment_param(self, file_relative_url: str) -> AttachmentParam:
+    async def _resolve_attachment(self, file_relative_url: str) -> AttachmentParam:
         metadata: AsyncMetadata = self.__dial_client.metadata
         fileinfo = await metadata.get("files", file_relative_url)
         return AttachmentParam(

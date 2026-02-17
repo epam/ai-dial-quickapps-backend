@@ -1,6 +1,8 @@
 import pytest
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
+    AttachmentParam,
+    CustomContentParam,
     UserMessageParam,
 )
 from unittest.mock import AsyncMock, MagicMock, call
@@ -207,3 +209,58 @@ async def test_extra_body_from_params_merged_with_other_params(
     assert extra_body["custom_fields"] == {"key": "from_deployment"}
     assert extra_body["temperature"] == 0.5
     assert "query" not in extra_body
+
+
+@pytest.mark.asyncio
+async def test_history_with_custom_content_passed_through(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """History entries with custom_content appear unchanged in messages sent to the API."""
+    history = [
+        UserMessageParam(
+            role="user",
+            content="Describe the image",
+            custom_content=CustomContentParam(
+                attachments=[
+                    AttachmentParam(type="image/png", title="img.png", url="files/abc/img.png")
+                ]
+            ),
+        ),
+        AssistantMessageParam(
+            role="assistant",
+            content="It shows a chart",
+            custom_content=CustomContentParam(
+                attachments=[
+                    AttachmentParam(type="image/png", title="annotated.png", url="files/out.png")
+                ],
+                state={"cursor": 10},
+            ),
+        ),
+    ]
+    await completion_service.complete_request_async(
+        params={"query": "Follow up question"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        history=history,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    msgs = call_args["messages"]
+    assert len(msgs) == 3
+
+    # User history message preserves custom_content
+    user_msg = msgs[0]
+    assert user_msg["content"] == "Describe the image"
+    assert user_msg["custom_content"]["attachments"][0]["type"] == "image/png"
+    assert user_msg["custom_content"]["attachments"][0]["url"] == "files/abc/img.png"
+
+    # Assistant history message preserves custom_content
+    assistant_msg = msgs[1]
+    assert assistant_msg["content"] == "It shows a chart"
+    assert assistant_msg["custom_content"]["attachments"][0]["title"] == "annotated.png"
+    assert assistant_msg["custom_content"]["state"] == {"cursor": 10}
+
+    # Current query is the last message
+    assert msgs[2]["content"] == "Follow up question"
+    assert msgs[2]["role"] == "user"
