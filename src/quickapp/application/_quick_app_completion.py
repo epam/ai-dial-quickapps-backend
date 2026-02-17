@@ -12,8 +12,8 @@ from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.presentation_settings import PresentationSettings
 
-from ..config.utils import bool_env_var
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
@@ -30,8 +30,13 @@ logger = logging.getLogger(__name__)
 @inject
 class _QuickAppCompletion(ChatCompletion):
 
-    def __init__(self, injector: Injector):
+    def __init__(
+        self,
+        injector: Injector,
+        presentation_settings: PresentationSettings,
+    ):
         self.__injector: Injector = injector
+        self.__presentation_settings: PresentationSettings = presentation_settings
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
@@ -53,7 +58,7 @@ class _QuickAppCompletion(ChatCompletion):
                 logger.debug(
                     "Chat completion performance report:\n%s", timer_service.get_report_json()
                 )
-                if bool_env_var("SHOW_EXECUTION_TIME_STAGE", False):
+                if self.__presentation_settings.show_execution_time_stage:
                     with choice.create_stage("Execution time") as stage:
                         stage.append_content(timer_service.get_report_md())
 

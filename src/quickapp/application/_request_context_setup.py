@@ -37,11 +37,7 @@ class _RequestContextSetup:
     ) -> None:
         context = self.__context_provider.get()
         context.api_key = SecretStr(request.api_key)
-
-        if getattr(request, "bearer_token", None):
-            context.bearer = SecretStr(request.bearer_token)
-        else:
-            context.bearer = None
+        context.bearer = SecretStr(request.bearer_token) if request.bearer_token else None
 
         context.application_config = self.__resolve_application_config(
             await request.request_dial_application_properties()

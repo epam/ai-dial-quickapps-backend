@@ -7,6 +7,7 @@ from openai import AsyncAzureOpenAI
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
@@ -30,11 +31,6 @@ from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
 )
-from quickapp.internal_tooling.attachment_notification_tooling._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
-    should_activate_context_tool,
-)
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -64,6 +60,7 @@ class AgentModule(Module):
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
+        binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
 
     @provider
     def provide_openai_client(

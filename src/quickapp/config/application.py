@@ -1,9 +1,9 @@
 import logging
-import os
 from typing import Optional
 
 from pydantic import BaseModel, Field
 
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def get_max_iterations() -> int:
-    return int(os.getenv("DEFAULT_AGENT_MAX_ITERATIONS", "15"))
+    return AgentSettings().default_agent_max_iterations
 
 
 class OrchestratorConfig(BaseModel):

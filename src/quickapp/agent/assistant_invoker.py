@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 
 from aidial_sdk.chat_completion import Choice
@@ -11,9 +10,11 @@ from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT
+from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -30,6 +31,8 @@ class AssistantInvoker:
         azure_client: AsyncAzureOpenAI,
         response_format: RESPONSE_FORMAT,
         attachment_filter: _AttachmentFilter,
+        presentation_settings: PresentationSettings,
+        agent_settings: AgentSettings,
     ) -> None:
         self.__attachment_filter = attachment_filter
         self.__messages: list[Message] = messages
@@ -38,6 +41,8 @@ class AssistantInvoker:
         self.__tools: list[OpenAiToolConfigDict] = tools
         self.__azure_client = azure_client
         self.__response_format = response_format
+        self.__presentation_settings = presentation_settings
+        self.__agent_settings = agent_settings
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         completion_config = self.__prepare_chat_completion_config()
@@ -70,11 +75,8 @@ class AssistantInvoker:
                     type(self.__response_format),
                 )
 
-        _env = os.getenv("SHOW_USAGE_STATISTICS")
-        if _env is not None:
-            payload["stream_options"] = {
-                "include_usage": _env.strip().lower() in ("1", "true", "yes", "on")
-            }
+        if self.__presentation_settings.show_usage_statistics:
+            payload["stream_options"] = {"include_usage": True}
 
         chat_completion_config.update(payload)
         logger.debug(f"Chat completion config: {chat_completion_config}")
@@ -95,11 +97,11 @@ class AssistantInvoker:
             raise
         return chat_completion
 
+    def _log_messages(self, messages: list[Message]):
+        preview_len = self.__agent_settings.chat_message_log_length
+        for idx, msg in enumerate(messages, start=1):
+            format_openai_message_pipe_tree(msg.dict(), idx, preview_len=preview_len)
+
     def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         filtered_messages = self.__attachment_filter.filter_attachments(messages)
         return [message.model_dump(exclude_none=True, mode="json") for message in filtered_messages]
-
-    @staticmethod
-    def _log_messages(messages: list[Message]):
-        for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg.dict(), idx)

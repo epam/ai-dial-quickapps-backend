@@ -31,9 +31,6 @@ class _AttachmentNotificationInjector(MessagesTransformer):
     def transform(self, messages: list[Message]) -> list[Message]:
         contexts = list(self.__config_provider.get().contexts)
 
-        if not isinstance(messages, list):
-            raise TypeError("Data must be a list of Message objects")
-
         if not should_activate_context_tool(contexts, messages):
             return messages
 
@@ -54,11 +51,11 @@ class _AttachmentNotificationInjector(MessagesTransformer):
         """Collect context file metadata and return synthetic messages if changed."""
         seen_entries = extract_seen_entries_from_messages(messages)
         current_urls, entries = build_context_entries(contexts, seen_entries)
-        tool_response = AvailableContextToolResponse(entries=entries)
 
         if current_urls == set(seen_entries) and not any(e.status for e in entries):
             return []
 
+        tool_response = AvailableContextToolResponse(entries=entries)
         return self._build_synthetic_messages(
             AVAILABLE_CONTEXT_TOOL_NAME,
             json.dumps(tool_response.model_dump(exclude_none=True), ensure_ascii=False),

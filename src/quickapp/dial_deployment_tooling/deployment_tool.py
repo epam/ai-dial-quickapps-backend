@@ -3,9 +3,9 @@ from typing import Optional
 from injector import AssistedBuilder, inject
 from pydantic import BaseModel, Field
 
+from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 
-from ..common.perf_timer.perf_timer import PerformanceTimer
 from .base_deployment_tool import BaseDeploymentTool
 from .deployment_stage_wrapper import DeploymentStageWrapper
 from .dial_completion_service import DialCompletionService

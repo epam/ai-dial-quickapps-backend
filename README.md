@@ -47,7 +47,6 @@ file:
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                                             |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                                        |
 | **Logging**                                |                            |          |                                                                                                                                      |
-| `LOG_MODE`                                 | —                          | No       | Set to `dev` for simplified log format                                                                                               |
 | `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                                         |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                                                      |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                                                       |
@@ -77,10 +76,7 @@ file:
 | `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                    |
 | `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                |
 
-¹ `LOG_FORMAT` default depends on `LOG_MODE`: when `LOG_MODE=dev` it is `%(message)s`, otherwise
-`%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s`.
-
-**Notes:**
+¹**Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
   `REMOTE_DIAL_*`) are only used when running the full local stack via docker-compose or during testing.

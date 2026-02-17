@@ -1,7 +1,21 @@
-from pydantic_settings import BaseSettings
+"""Presentation/UI-related settings. Lives in common to avoid circular imports with agent/application."""
 
-from quickapp.config.utils import bool_env_var
+from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class PresentationSettings(BaseSettings):
-    show_usage_statistics: bool = bool_env_var("SHOW_USAGE_STATISTICS", False)
+    """Presentation/UI-related settings (usage stats, execution time stage)."""
+
+    model_config = SettingsConfigDict()
+
+    show_usage_statistics: bool = Field(
+        default=False,
+        description="Include usage in stream options",
+        alias="SHOW_USAGE_STATISTICS",
+    )
+    show_execution_time_stage: bool = Field(
+        default=False,
+        description="Show execution time stage in response",
+        alias="SHOW_EXECUTION_TIME_STAGE",
+    )

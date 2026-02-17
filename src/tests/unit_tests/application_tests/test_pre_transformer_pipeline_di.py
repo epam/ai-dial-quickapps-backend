@@ -2,13 +2,10 @@
 
 The pipeline runs transformers sequentially via _MessagesSetup:
 
-    ReduceAttachmentTransformer -> AddContextAttachmentTransformer -> AttachmentNotificationInjector
+    _AddSystemPromptTransformer -> _AttachmentNotificationInjector
 
-- ReduceAttachmentTransformer handles user attachments by injecting text metadata
-  into user message content and keeping only image attachments inline.
-- AddContextAttachmentTransformer adds context files to custom_content after reduction,
-  so they are never treated as user-uploaded attachments.
-- AttachmentNotificationInjector handles admin-configured context files by injecting
+- _AddSystemPromptTransformer ensures a system message exists at the start of the conversation.
+- _AttachmentNotificationInjector handles admin-configured context files by injecting
   synthetic tool call/result messages.
 """
 
