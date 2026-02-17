@@ -4,6 +4,7 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, ProviderOf, multiprovider, singleton, AssistedBuilder
 
 from quickapp.common import StagedBaseTool
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.base_initializer import StartupInitializer
 from quickapp.skills.skills_initializer import _SkillsInitializer
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
@@ -35,3 +36,11 @@ class SkillsModule(Module):
             name=SKILL_READER_TOOL_NAME,
             description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
         )]
+
+    @multiprovider
+    def _provide_prompt_parts(
+        self,
+        skills_provider: AgentSkillsProvider,
+    ) -> list[PromptPartProvider]:
+        return [skills_provider]
+

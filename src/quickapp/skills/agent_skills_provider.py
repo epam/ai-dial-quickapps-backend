@@ -1,10 +1,13 @@
 import logging
-import os
 import re
 from pathlib import Path
 from typing import List, Optional
 
+from injector import inject
 from pydantic import BaseModel
+
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.config.config_template_resolver import PredefinedSettings
 
 logger = logging.getLogger(__name__)
 
@@ -22,18 +25,21 @@ class SkillMetadata(BaseModel):
         allowed_tools: Optional[List[str]] = None  # Space-delimited tools list
 
 
-
-class AgentSkillsProvider:
+@inject
+class AgentSkillsProvider(PromptPartProvider):
     """
     Provider for agent skills. Loads skills from `config/predefined/skills/`,
     parses YAML frontmatter, provides XML metadata, and reads skill file contents.
+
+    Implements PromptPartProvider to contribute skills XML to the system prompt.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, predefined_settings: PredefinedSettings) -> None:
         self._xml_metadata: str = ""
         self._skills_dir: Optional[Path] = None
         self._skills: List[SkillMetadata] = []
         self._skill_name_to_file: dict[str, str] = {}
+        self.__predefined_settings = predefined_settings
         self._load_skills()
 
     def _get_skills_directory(self) -> Path:
@@ -41,7 +47,7 @@ class AgentSkillsProvider:
         if self._skills_dir is not None:
             return self._skills_dir
 
-        predefined_base = os.environ.get("PREDEFINED_BASE_PATH")
+        predefined_base = self.__predefined_settings.base_path
         if predefined_base:
             self._skills_dir = Path(predefined_base) / "skills"
         else:
@@ -262,6 +268,16 @@ class AgentSkillsProvider:
         Use this to inject skill metadata into the agent's system prompt.
         """
         return self._xml_metadata
+
+    def get_prompt_part(self) -> str:
+        """
+        Implementation of PromptPartProvider interface.
+        Returns XML metadata for all available skills to be included in the system prompt.
+
+        Returns:
+            str: XML representation of available skills, or empty string if no skills.
+        """
+        return self.get_skills_xml()
 
     def get_skill_content(self, skill_name: str) -> str:
         """
