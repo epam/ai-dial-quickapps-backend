@@ -15,7 +15,6 @@ import unittest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected
 from injector import Binder
-from pydantic.v1 import StrictStr
 from starlette.testclient import TestClient
 
 from quickapp.application._messages_setup import _MessagesSetup
@@ -27,7 +26,7 @@ from tests.unit_tests.common.common import create_app_configuration, create_test
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
-    msg = Message(role=Role.USER, content=StrictStr(content))
+    msg = Message(role=Role.USER, content=content)
     if attachments:
         msg.custom_content = CustomContent(attachments=attachments)
     return msg
@@ -35,10 +34,11 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 def _attachment(title: str, url: str, mime_type: str) -> Attachment:
     return Attachment(
-        title=StrictStr(title),
-        url=StrictStr(url),
-        type=StrictStr(mime_type),
+        title=title,
+        url=url,
+        type=mime_type,
     )
+
 
 class TestContextPipelineDI(unittest.TestCase):
     def setUp(self):
@@ -47,10 +47,7 @@ class TestContextPipelineDI(unittest.TestCase):
         def configure(binder: Binder):
             app_config = create_app_configuration([])
             app_config.contexts = [ctx]
-            binder.bind(
-                ApplicationConfig,
-                to=app_config
-            )
+            binder.bind(ApplicationConfig, to=app_config)
 
         self.app = create_test_app([AttachmentProcessingModule, configure])
         self.client = TestClient(self.app)
@@ -88,10 +85,7 @@ class TestCombinedPipelineDI(unittest.TestCase):
         def configure(binder: Binder):
             app_config = create_app_configuration([])
             app_config.contexts = [ctx]
-            binder.bind(
-                ApplicationConfig,
-                to=app_config
-            )
+            binder.bind(ApplicationConfig, to=app_config)
 
         self.app = create_test_app([AttachmentProcessingModule, configure])
         self.client = TestClient(self.app)

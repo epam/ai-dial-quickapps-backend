@@ -1,7 +1,6 @@
-from aidial_sdk.pydantic_v1 import SecretStr
 from fastapi import FastAPI, HTTPException, Request, status
 from injector import inject
-from pydantic import TypeAdapter
+from pydantic import SecretStr, TypeAdapter
 
 from quickapp.config.config_template_resolver import ConfigResolver, TemplateType
 from quickapp.config.tools.deployment import DialDeploymentTool

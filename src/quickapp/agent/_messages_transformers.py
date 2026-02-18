@@ -2,7 +2,6 @@ import logging
 
 from aidial_sdk.chat_completion import Message, Role
 from injector import inject
-from pydantic import StrictStr
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -29,6 +28,6 @@ class _AddSystemPromptTransformer(MessagesTransformer):
         if not system_prompt:
             return messages
         if len(messages) > 0 and messages[0].role != Role.SYSTEM:
-            return [Message(role=Role.SYSTEM, content=StrictStr(system_prompt))] + messages
+            return [Message(role=Role.SYSTEM, content=system_prompt)] + messages
 
         return messages

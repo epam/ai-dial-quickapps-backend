@@ -5,6 +5,9 @@ PYTHON ?= python3
 -include .env
 export
 
+# AI DIAL SDK: pydantic v2 mode
+export PYDANTIC_V2=True
+
 init_venv:
 	$(POETRY) env use $(PYTHON)
 

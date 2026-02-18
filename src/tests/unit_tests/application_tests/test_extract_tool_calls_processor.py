@@ -179,10 +179,15 @@ class TestExtractToolCallsFromStateProcessor:
             warnings.simplefilter("always")
             result = msgs_setup.setup(messages)
 
-            # Should emit deprecation warning
-            assert len(w) == 1
-            assert issubclass(w[0].category, DeprecationWarning)
-            assert "deprecated" in str(w[0].message).lower()
+            # Should emit deprecation warning about legacy tool_execution_history format
+            deprecation_warnings = [
+                x
+                for x in w
+                if issubclass(x.category, DeprecationWarning)
+                and "tool_execution_history" in str(x.message).lower()
+            ]
+            assert len(deprecation_warnings) == 1
+            assert "deprecated" in str(deprecation_warnings[0].message).lower()
 
         # Should still produce correct output
         assert len(result) == 3

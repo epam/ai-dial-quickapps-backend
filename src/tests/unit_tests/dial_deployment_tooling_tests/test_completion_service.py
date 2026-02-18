@@ -1,8 +1,6 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock, call
 from aidial_sdk.chat_completion import Message, Role
-from pydantic import StrictStr
-
 from quickapp.config.tools.deployment import ContentPropagation
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
@@ -29,9 +27,9 @@ def dial_client():
 @pytest.fixture
 def history_messages():
     return [
-        Message(role=Role.USER, content=StrictStr("First message")),
-        Message(role=Role.ASSISTANT, content=StrictStr("First response")),
-        Message(role=Role.USER, content=StrictStr("Current message"))
+        Message(role=Role.USER, content="First message"),
+        Message(role=Role.ASSISTANT, content="First response"),
+        Message(role=Role.USER, content="Current message")
     ]
 
 

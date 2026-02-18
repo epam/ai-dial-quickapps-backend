@@ -1,11 +1,10 @@
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from pydantic.v1 import StrictStr
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
-    msg = Message(role=Role.USER, content=StrictStr(content))
+    msg = Message(role=Role.USER, content=content)
     if attachments:
         msg.custom_content = CustomContent(attachments=attachments)
     return msg
@@ -13,10 +12,11 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 def _attachment(title: str, url: str, mime_type: str) -> Attachment:
     return Attachment(
-        title=StrictStr(title),
-        url=StrictStr(url),
-        type=StrictStr(mime_type),
+        title=title,
+        url=url,
+        type=mime_type,
     )
+
 
 class Test_AttachmentFilter:
     def test_image_attachments_kept_inline(self):

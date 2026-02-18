@@ -1,14 +1,13 @@
 import logging
 from typing import Any, Dict, Optional
 
+from aidial_client.types.chat.response import Attachment
 from aidial_sdk.chat_completion import Choice, Stage
 from aidial_sdk.chat_completion.request import ToolCall
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
-
-from quickapp.common.dial_core_client import Attachment
 
 
 class Usage:
@@ -45,7 +44,7 @@ class AssistantCallResult:
 
     def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
         if tool_call_delta.id:
-            tool_call = ToolCall(**tool_call_delta.dict())
+            tool_call = ToolCall(**tool_call_delta.model_dump())
             self.__tool_calls[tool_call_delta.index] = tool_call
         else:
             tool_call = self.__tool_calls[tool_call_delta.index]

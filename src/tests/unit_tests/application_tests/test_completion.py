@@ -6,8 +6,6 @@ import fastapi
 import pytest
 from aidial_sdk.chat_completion import Request, Message, Role
 from httpx import HTTPError
-from pydantic import StrictStr
-
 import quickapp.application._quick_app_completion as quick_app_completion
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.application._request_context import _RequestContext
@@ -100,7 +98,7 @@ async def valid_app_props(*args, **kwargs):
 @pytest.fixture
 def make_request_completion():
     def _make(orchestrator=None, api_key="k", has_binding=True, extra_mapping=None):
-        request = Request(api_key_secret=StrictStr(api_key), messages=[Message(content="123", role=Role.USER), Message(content="456", role=Role.USER)], deployment_id=StrictStr("default-deployment"),
+        request = Request(api_key_secret=api_key, messages=[Message(content="123", role=Role.USER), Message(content="456", role=Role.USER)], deployment_id="default-deployment",
                           headers={"1":"2"}, original_request=fastapi.Request(scope={"type": "http"}))
         request.request_dial_application_properties = valid_app_props
 

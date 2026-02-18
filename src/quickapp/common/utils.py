@@ -72,8 +72,8 @@ def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:
     Behavior:
     - Preserves JSON primitives (str, int, float, bool) as-is.
     - Returns an empty dict for top-level None (backwards-compatible).
-    - Converts Pydantic v2 (`model_dump`) or v1 (`dict`) using `exclude_none=True`
-      when available, then recurses.
+    - Converts Pydantic v2 models using `model_dump(exclude_none=True)`,
+      then recurses.
     - Recursively converts dicts, lists, tuples, sets and mapping-like objects,
       dropping entries with None or empty dict values.
     - Attempts `dict(obj)` for iterable-of-pairs fallback.
@@ -108,17 +108,6 @@ def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:
         except Exception:
             try:
                 dumped = obj.model_dump()
-            except Exception:
-                return {}
-        return to_plain_dict(dumped, _seen)
-
-    # Pydantic v1 or similar .dict() API
-    if hasattr(obj, "dict") and callable(getattr(obj, "dict")):
-        try:
-            dumped = obj.dict(exclude_none=True)
-        except Exception:
-            try:
-                dumped = obj.dict()
             except Exception:
                 return {}
         return to_plain_dict(dumped, _seen)
