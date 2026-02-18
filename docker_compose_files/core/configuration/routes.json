@@ -6,7 +6,7 @@
       "methods": ["GET", "POST", "HEAD"],
       "upstreams": [
         {
-          "endpoint": "http://dial-web-scrapper.dial-web-scrapper.svc.cluster.local"
+          "endpoint": "http://docker.host.internal:5000/quickapps/v1"
         }
       ]
     }
