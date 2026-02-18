@@ -39,6 +39,7 @@ class AgentSkillsProvider(PromptPartProvider):
         self._skills_dir: Optional[Path] = None
         self._skills: List[SkillMetadata] = []
         self._skill_name_to_file: dict[str, str] = {}
+        self._skill_content_cache: dict[str, str] = {}  # Cache skill file contents
         self.__predefined_settings = predefined_settings
         self._load_skills()
 
@@ -223,21 +224,16 @@ class AgentSkillsProvider(PromptPartProvider):
 
         if not skills_dir.exists() or not skills_dir.is_dir():
             logger.debug(f"No skills directory found at `{skills_dir}`")
-            self._xml_metadata = ""
-            self._skills = []
-            self._skill_name_to_file = {}
             return
 
         md_files: List[Path] = sorted(skills_dir.glob("*.md"))
         if not md_files:
             logger.debug(f"No `.md` files found in `{skills_dir}`")
-            self._xml_metadata = ""
-            self._skills = []
-            self._skill_name_to_file = {}
             return
 
         skills: List[SkillMetadata] = []
         skill_name_to_file: dict[str, str] = {}
+        skill_content_cache: dict[str, str] = {}
         for md in md_files:
             try:
                 logger.debug(f"Loading skill file `{md}`")
@@ -247,6 +243,7 @@ class AgentSkillsProvider(PromptPartProvider):
                     skills.append(metadata)
                     if metadata.name not in skill_name_to_file:
                         skill_name_to_file[metadata.name] = md.name
+                        skill_content_cache[metadata.name] = content  # Cache the content
                     else:
                         logger.warning(
                             "Duplicate skill name `%s` in `%s`; keeping first file `%s`",
@@ -259,6 +256,7 @@ class AgentSkillsProvider(PromptPartProvider):
 
         self._skills = skills
         self._skill_name_to_file = skill_name_to_file
+        self._skill_content_cache = skill_content_cache
         self._xml_metadata = self._generate_xml(skills)
         logger.info(f"Loaded {len(skills)} skill(s)")
 
@@ -290,41 +288,12 @@ class AgentSkillsProvider(PromptPartProvider):
             The full content of the skill file
 
         Raises:
-            ValueError: If the filename is invalid or contains path traversal attempts
-            FileNotFoundError: If the skill file or skills directory doesn't exist
+            FileNotFoundError: If the skill is not found
         """
-        file_name = self._skill_name_to_file.get(skill_name)
-        if not file_name:
-            raise FileNotFoundError(f"Skill not found: {skill_name}")
+        # Return cached content if available
+        if skill_name in self._skill_content_cache:
+            logger.debug(f"Returning cached content for skill: {skill_name}")
+            return self._skill_content_cache[skill_name]
 
-        # Validate filename to prevent path traversal attacks
-        if ".." in file_name or "/" in file_name or "\\" in file_name:
-            raise ValueError(f"Invalid filename: {file_name}")
+        raise FileNotFoundError(f"Skill not found: {skill_name}")
 
-        skills_dir = self._get_skills_directory()
-
-        if not skills_dir.exists() or not skills_dir.is_dir():
-            raise FileNotFoundError(f"Skills directory not found: {skills_dir}")
-
-        skill_file = skills_dir / file_name
-
-        if not skill_file.exists():
-            raise FileNotFoundError(f"Skill file not found: {file_name}")
-
-        # Ensure the resolved path is within the skills directory (security check)
-        try:
-            resolved_skill_file = skill_file.resolve()
-            resolved_skills_dir = skills_dir.resolve()
-            if not str(resolved_skill_file).startswith(str(resolved_skills_dir)):
-                raise ValueError(f"Access denied: {file_name}")
-        except Exception as e:
-            logger.error(f"Error resolving path for {file_name}: {e}")
-            raise ValueError(f"Invalid file path: {file_name}")
-
-        try:
-            content = skill_file.read_text(encoding="utf-8")
-            logger.info(f"Successfully read skill file: {file_name}")
-            return content
-        except Exception as e:
-            logger.error(f"Error reading skill file {file_name}: {e}")
-            raise

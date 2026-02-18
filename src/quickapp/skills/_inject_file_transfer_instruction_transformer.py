@@ -80,7 +80,7 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
         # Assistant message with tool call
         assistant_message = Message(
             role=Role.ASSISTANT,
-            content=StrictStr(""),
+            content="",
             tool_calls=[tool_call],
         )
 
@@ -88,7 +88,7 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
         tool_response = Message(
             role=Role.TOOL,
             tool_call_id=SYNTHETIC_TOOL_CALL_ID,
-            content=StrictStr(skill_content),
+            content=skill_content,
         )
 
         return [assistant_message, tool_response]
