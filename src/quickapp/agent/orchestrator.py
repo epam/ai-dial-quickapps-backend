@@ -96,6 +96,8 @@ class Orchestrator:
         assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
             chat_completion=chat_completion_stream, destination=self.__choice
         )
+        if assistant_call_result is None:
+            raise RuntimeError("Assistant invocation returned no result.")
 
         self.__messages_context.append_message(
             Message(
