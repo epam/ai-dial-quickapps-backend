@@ -1,5 +1,6 @@
 from typing import Optional
 
+from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 from pydantic import BaseModel, Field
 
@@ -26,6 +27,7 @@ class DeploymentTool(BaseDeploymentTool):
         tool_config: DialDeploymentTool,
         content_propagation: Optional[ContentPropagation],
         dial_completion_service: DialCompletionService,
+        messages: list[Message],
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
     ):
@@ -34,6 +36,7 @@ class DeploymentTool(BaseDeploymentTool):
             application_name=application_name,
             content_propagation=content_propagation,
             dial_completion_service=dial_completion_service,
+            messages=messages,
             tool_config=tool_config,
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,
