@@ -1,0 +1,94 @@
+import json
+import logging
+
+from aidial_sdk.chat_completion import FunctionCall, Message, Role, ToolCall
+from injector import inject
+from pydantic import StrictStr
+
+from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+
+logger = logging.getLogger(__name__)
+
+# The skill name to inject (file transfer formatting instructions)
+BUILTIN_FILE_TRANSFER_SKILL = "tool-call-file-parameter-formatting"
+SYNTHETIC_TOOL_CALL_ID = "synthetic_file_transfer_instruction"
+
+
+class _InjectFileTransferInstructionTransformer(MessagesTransformer):
+    """
+    Injects a synthetic tool call to read the builtin_file_transfer skill
+    at the beginning of the conversation (only once).
+
+    This ensures the agent learns about file parameter formatting rules
+    before processing any user requests.
+    """
+
+    @inject
+    def __init__(self, skills_provider: AgentSkillsProvider):
+        self.__skills_provider = skills_provider
+
+    def transform(self, messages: list[Message]) -> list[Message]:
+        # Check if synthetic tool call already exists in history
+        if self._has_synthetic_tool_call(messages):
+            logger.debug("Synthetic file transfer instruction already present, skipping injection")
+            return messages
+
+        # Check if the skill exists
+        try:
+            skill_content = self.__skills_provider.get_skill_content(BUILTIN_FILE_TRANSFER_SKILL)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(f"Builtin file transfer skill not found, skipping injection: {e}")
+            return messages
+
+        # Create synthetic tool call and response
+        synthetic_messages = self._create_synthetic_tool_call(skill_content)
+
+        # Inject at the beginning (after system prompt if exists)
+        if messages and messages[0].role == Role.SYSTEM:
+            # Insert after system message
+            result = [messages[0]] + synthetic_messages + messages[1:]
+        else:
+            # Insert at the very beginning
+            result = synthetic_messages + messages
+
+        logger.debug(f"Injected synthetic file transfer instruction tool call")
+        return result
+
+    @staticmethod
+    def _has_synthetic_tool_call(messages: list[Message]) -> bool:
+        """Check if synthetic tool call already exists in message history."""
+        for message in messages:
+            if message.role == Role.TOOL and message.tool_call_id == SYNTHETIC_TOOL_CALL_ID:
+                return True
+        return False
+
+    @staticmethod
+    def _create_synthetic_tool_call(skill_content: str) -> list[Message]:
+        """Create synthetic assistant message with tool call and tool response."""
+        # Create the tool call
+        tool_call = ToolCall(
+            id=SYNTHETIC_TOOL_CALL_ID,
+            type="function",
+            function=FunctionCall(
+                name=SKILL_READER_TOOL_NAME,
+                arguments=json.dumps({"skill_name": BUILTIN_FILE_TRANSFER_SKILL}),
+            ),
+        )
+
+        # Assistant message with tool call
+        assistant_message = Message(
+            role=Role.ASSISTANT,
+            content=StrictStr(""),
+            tool_calls=[tool_call],
+        )
+
+        # Tool response message
+        tool_response = Message(
+            role=Role.TOOL,
+            tool_call_id=SYNTHETIC_TOOL_CALL_ID,
+            content=StrictStr(skill_content),
+        )
+
+        return [assistant_message, tool_response]
