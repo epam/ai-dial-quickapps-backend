@@ -22,7 +22,7 @@ class _Controller:
 
     def register_routes(self, app: FastAPI):
         @app.get(CONFIG_SUPPORT_URI + "/application-schema")
-        async def get_system_prompts():
+        async def get_app_schema():
             return ApplicationConfig.model_json_schema(include_dial_fields=False)
 
         @app.get(CONFIG_SUPPORT_URI + "/system-prompts")

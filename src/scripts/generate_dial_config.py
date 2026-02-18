@@ -13,7 +13,6 @@ if __name__ == '__main__':
     add_src_to_system_path()
     load_env()
 
-from dump_app_schema import get_quickapp_schema
 from utils import replace_env
 
 MODEL_TYPE_TO_PATH = {
@@ -215,12 +214,7 @@ def get_config_template(path: str) -> dict:
         return json.load(fin)
 
 
-def generate_config(
-    models: bool,
-    template_path: str,
-    config_path: str,
-    app_ids: set[str]
-):
+def generate_config(models: bool, template_path: str, config_path: str, app_ids: set[str]):
     config_template = get_config_template(template_path)
     replace_envs(config_template["models"])
     if models:
