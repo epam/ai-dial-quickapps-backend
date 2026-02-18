@@ -13,16 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 class SkillMetadata(BaseModel):
-        """Metadata extracted from a skill file's YAML frontmatter (per spec)."""
-        # Required fields
-        name: str  # Max 64 chars, lowercase letters, numbers, hyphens only
-        description: str  # Max 1024 chars, non-empty
-        
-        # Optional fields
-        license: Optional[str] = None  # License name or reference
-        compatibility: Optional[str] = None  # Max 500 chars
-        metadata: Optional[dict] = None  # Arbitrary key-value mapping
-        allowed_tools: Optional[List[str]] = None  # Space-delimited tools list
+    """Metadata extracted from a skill file's YAML frontmatter (per spec)."""
+
+    # Required fields
+    name: str  # Max 64 chars, lowercase letters, numbers, hyphens only
+    description: str  # Max 1024 chars, non-empty
+
+    # Optional fields
+    license: Optional[str] = None  # License name or reference
+    compatibility: Optional[str] = None  # Max 500 chars
+    metadata: Optional[dict] = None  # Arbitrary key-value mapping
+    allowed_tools: Optional[List[str]] = None  # Space-delimited tools list
 
 
 @inject
@@ -93,7 +94,7 @@ class AgentSkillsProvider(PromptPartProvider):
         frontmatter_text = match.group(1)
 
         # Simple YAML parsing (without external dependency)
-        parsed = {}
+        parsed: dict = {}
         current_dict_key = None
 
         for line in frontmatter_text.split('\n'):
@@ -139,7 +140,9 @@ class AgentSkillsProvider(PromptPartProvider):
             return None
 
         if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', name):
-            logger.warning(f"Invalid skill name format in {file_name}: {name} (must be lowercase letters, numbers, hyphens only; no leading/trailing hyphens)")
+            logger.warning(
+                f"Invalid skill name format in {file_name}: {name} (must be lowercase letters, numbers, hyphens only; no leading/trailing hyphens)"
+            )
             return None
 
         # Validate description: max 1024 chars, non-empty
@@ -148,25 +151,22 @@ class AgentSkillsProvider(PromptPartProvider):
             return None
 
         # Build SkillMetadata with only fields present in frontmatter (per spec)
-        skill_data = {
-            'name': name,
-            'description': description
-        }
-        
+        skill_data = {'name': name, 'description': description}
+
         # Add optional fields only if they exist in frontmatter
         if 'license' in parsed:
             skill_data['license'] = parsed['license']
-        
+
         if 'compatibility' in parsed:
             compat = parsed['compatibility']
             if len(compat) > 500:
                 logger.warning(f"Compatibility exceeds 500 characters in {file_name}, truncating")
                 compat = compat[:500]
             skill_data['compatibility'] = compat
-                
+
         if 'metadata' in parsed and parsed['metadata']:
             skill_data['metadata'] = parsed['metadata']
-            
+
         if 'allowed_tools' in parsed:
             skill_data['allowed_tools'] = parsed['allowed_tools']
 
@@ -174,7 +174,7 @@ class AgentSkillsProvider(PromptPartProvider):
 
     def _generate_xml(self, skills: List[SkillMetadata]) -> str:
         """Generate XML format for available skills.
-        
+
         Args:
             skills: List of SkillMetadata
         """
@@ -186,18 +186,30 @@ class AgentSkillsProvider(PromptPartProvider):
         for skill_metadata in skills:
             xml_parts.append("  <skill>")
             xml_parts.append(f"    <name>{self._escape_xml(skill_metadata.name)}</name>")
-            xml_parts.append(f"    <description>{self._escape_xml(skill_metadata.description)}</description>")
+            xml_parts.append(
+                f"    <description>{self._escape_xml(skill_metadata.description)}</description>"
+            )
             if skill_metadata.license:
-                xml_parts.append(f"    <license>{self._escape_xml(skill_metadata.license)}</license>")
+                xml_parts.append(
+                    f"    <license>{self._escape_xml(skill_metadata.license)}</license>"
+                )
             if skill_metadata.compatibility:
-                xml_parts.append(f"    <compatibility>{self._escape_xml(skill_metadata.compatibility)}</compatibility>")
+                xml_parts.append(
+                    f"    <compatibility>{self._escape_xml(skill_metadata.compatibility)}</compatibility>"
+                )
             if skill_metadata.allowed_tools:
                 allowed_tools = " ".join(skill_metadata.allowed_tools)
-                xml_parts.append(f"    <allowed_tools>{self._escape_xml(allowed_tools)}</allowed_tools>")
+                xml_parts.append(
+                    f"    <allowed_tools>{self._escape_xml(allowed_tools)}</allowed_tools>"
+                )
             if skill_metadata.metadata:
                 xml_parts.append("    <metadata>")
                 for key in sorted(skill_metadata.metadata.keys()):
-                    value = "" if skill_metadata.metadata[key] is None else str(skill_metadata.metadata[key])
+                    value = (
+                        ""
+                        if skill_metadata.metadata[key] is None
+                        else str(skill_metadata.metadata[key])
+                    )
                     xml_parts.append(
                         f"      <entry key=\"{self._escape_xml(str(key))}\">{self._escape_xml(value)}</entry>"
                     )
@@ -211,12 +223,13 @@ class AgentSkillsProvider(PromptPartProvider):
     @staticmethod
     def _escape_xml(text: str) -> str:
         """Escape XML special characters."""
-        return (text
-                .replace("&", "&amp;")
-                .replace("<", "&lt;")
-                .replace(">", "&gt;")
-                .replace('"', "&quot;")
-                .replace("'", "&apos;"))
+        return (
+            text.replace("&", "&amp;")
+            .replace("<", "&lt;")
+            .replace(">", "&gt;")
+            .replace('"', "&quot;")
+            .replace("'", "&apos;")
+        )
 
     def _load_skills(self) -> None:
         """Load all skill files and generate XML metadata."""
@@ -296,4 +309,3 @@ class AgentSkillsProvider(PromptPartProvider):
             return self._skill_content_cache[skill_name]
 
         raise FileNotFoundError(f"Skill not found: {skill_name}")
-

@@ -47,7 +47,7 @@ class AppFactory:
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
                 AttachmentProcessingModule(),
-                SkillsModule()
+                SkillsModule(),
             ]
         )
         app = injector.get(FastAPI)

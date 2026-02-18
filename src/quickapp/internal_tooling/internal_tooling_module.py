@@ -8,7 +8,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-
 from quickapp.internal_tooling.internal_tooling_settings import InternalToolingSettings
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
@@ -64,7 +63,6 @@ class InternalToolModule(Module):
                                     description=tool_config.open_ai_tool.function.description,
                                 )
                             )
-
 
         return tools
 

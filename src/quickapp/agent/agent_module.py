@@ -126,9 +126,7 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_prompt_parts(
-            self,
-            config_prompt: ConfigBasedPromptProvider,
+        self,
+        config_prompt: ConfigBasedPromptProvider,
     ) -> list[PromptPartProvider]:
-        return [
-            config_prompt
-        ]
+        return [config_prompt]

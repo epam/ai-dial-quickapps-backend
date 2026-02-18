@@ -24,4 +24,3 @@ class ConfigBasedPromptProvider(PromptPartProvider):
         prompt = self.__config_provider.get().orchestrator.system_prompt.content or ""
         logger.debug(f"Config-based prompt part length: {len(prompt)}")
         return prompt
-

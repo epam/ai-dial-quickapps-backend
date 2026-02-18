@@ -7,9 +7,7 @@ from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
-from quickapp.skills._skill_reader_stage_wrapper import (
-    _SkillReaderStageWrapper,
-)
+from quickapp.skills._skill_reader_stage_wrapper import _SkillReaderStageWrapper
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 logger = logging.getLogger(__name__)

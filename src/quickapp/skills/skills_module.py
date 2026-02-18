@@ -1,19 +1,19 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider, singleton, AssistedBuilder
+from injector import AssistedBuilder, Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.base_initializer import StartupInitializer
-from quickapp.skills.skills_initializer import _SkillsInitializer
-from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._inject_file_transfer_instruction_transformer import (
     _InjectFileTransferInstructionTransformer,
 )
+from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.skills_initializer import _SkillsInitializer
 
 logger = logging.getLogger(__name__)
 
@@ -40,11 +40,13 @@ class SkillsModule(Module):
         self,
         skill_reader_builder: AssistedBuilder[_SkillReaderTool],
     ) -> list[StagedBaseTool]:
-        return [skill_reader_builder.build(
-            tool_config=SKILL_READER_TOOL_CONFIG,
-            name=SKILL_READER_TOOL_NAME,
-            description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
-        )]
+        return [
+            skill_reader_builder.build(
+                tool_config=SKILL_READER_TOOL_CONFIG,
+                name=SKILL_READER_TOOL_NAME,
+                description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
+            )
+        ]
 
     @multiprovider
     def _provide_prompt_parts(
@@ -59,4 +61,3 @@ class SkillsModule(Module):
         file_transfer_transformer: _InjectFileTransferInstructionTransformer,
     ) -> list[MessagesTransformer]:
         return [file_transfer_transformer]
-

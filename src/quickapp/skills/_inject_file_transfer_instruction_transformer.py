@@ -3,7 +3,6 @@ import logging
 
 from aidial_sdk.chat_completion import FunctionCall, Message, Role, ToolCall
 from injector import inject
-from pydantic import StrictStr
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
@@ -53,7 +52,7 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
             # Insert at the very beginning
             result = synthetic_messages + messages
 
-        logger.debug(f"Injected synthetic file transfer instruction tool call")
+        logger.debug("Injected synthetic file transfer instruction tool call")
         return result
 
     @staticmethod

@@ -12,10 +12,7 @@ logger = logging.getLogger(__name__)
 
 class _AddSystemPromptTransformer(MessagesTransformer):
     @inject
-    def __init__(
-        self,
-        prompt_providers: list[PromptPartProvider]
-    ):
+    def __init__(self, prompt_providers: list[PromptPartProvider]):
         self.__prompt_providers = prompt_providers
         logger.debug(f"Prompt part providers: {prompt_providers}")
 

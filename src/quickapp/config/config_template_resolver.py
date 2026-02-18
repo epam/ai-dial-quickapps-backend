@@ -139,6 +139,7 @@ class TemplateType(str, Enum):
     tool_set = 'toolset'
     tool = 'tool'
 
+
 @inject
 class ConfigResolver:
     def __init__(self, predefined_settings: PredefinedSettings):
