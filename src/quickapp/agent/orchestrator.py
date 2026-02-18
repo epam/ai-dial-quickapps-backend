@@ -1,4 +1,6 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
@@ -52,75 +54,89 @@ class Orchestrator:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
 
+    @asynccontextmanager
+    async def _persisting_state(self) -> AsyncIterator[None]:
+        exc_to_reraise: BaseException | None = None
+        try:
+            yield
+        except BaseException as exc:
+            exc_to_reraise = exc
+            logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
+        finally:
+            tool_execution_history = self._build_tool_execution_history()
+            if tool_execution_history:
+                self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
+
+            self.__choice.set_state(self.__state_holder.get_state())
+            if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
+                await self.__usage_statistics_service.process_usage_statistics(
+                    self.__usage_statistics_list
+                )
+            logger.debug(f"State holder: {self.__state_holder.get_state()}")
+
+        if exc_to_reraise is not None:
+            raise exc_to_reraise
+
     async def invoke(self):
-        while True:
-            self.__iterations_counter += 1
-            if self.__iterations_counter > self.__MAX_ITERATIONS_COUNT:
-                raise OrchestratorExceedMaxIterationsException()
+        async with self._persisting_state():
+            while await self._run_iteration():
+                pass
 
-            self.__perf_timer.start_period(
-                f"{self.__period_name}_{self.__iterations_counter}", level=2
+    async def _run_iteration(self) -> bool:
+        """Run a single orchestrator iteration. Returns True if the loop should continue."""
+        self.__iterations_counter += 1
+        if self.__iterations_counter > self.__MAX_ITERATIONS_COUNT:
+            raise OrchestratorExceedMaxIterationsException()
+
+        period = f"{self.__period_name}_{self.__iterations_counter}"
+        self.__perf_timer.start_period(period, level=2)
+
+        assistant_invoker = self.__assistant_invoker_provider.get()
+        chat_completion_stream = await assistant_invoker.invoke()
+        assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
+            chat_completion=chat_completion_stream, destination=self.__choice
+        )
+
+        self.__messages_context.append_message(
+            Message(
+                role=Role.ASSISTANT,
+                content=assistant_call_result.content or StrictStr(" "),
+                custom_content=CustomContent(attachments=assistant_call_result.attachments),
+                tool_calls=assistant_call_result.tool_calls,
             )
-
-            assistant_invoker = self.__assistant_invoker_provider.get()
-            chat_completion_stream = await assistant_invoker.invoke()
-            assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
-                chat_completion=chat_completion_stream, destination=self.__choice
-            )
-
-            self.__messages_context.append_message(
-                Message(
-                    role=Role.ASSISTANT,
-                    content=assistant_call_result.content or StrictStr(" "),
-                    custom_content=CustomContent(attachments=assistant_call_result.attachments),
-                    tool_calls=assistant_call_result.tool_calls,
+        )
+        if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+            self.__usage_statistics_list.append(
+                DeploymentUsage(
+                    model_name=self.__orchestrator_deployment_name,
+                    prompt_tokens=assistant_call_result.usage.prompt_tokens,
+                    completion_tokens=assistant_call_result.usage.completion_tokens,
                 )
             )
-            if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
-                self.__usage_statistics_list.append(
-                    DeploymentUsage(
-                        model_name=self.__orchestrator_deployment_name,
-                        prompt_tokens=assistant_call_result.usage.prompt_tokens,
-                        completion_tokens=assistant_call_result.usage.completion_tokens,
-                    )
-                )
-            self.__perf_timer.add_milestone(
-                f"{self.__period_name}_{self.__iterations_counter}", "assistant_response_received"
-            )
-            logger.debug(f"Message from agent: {self.__messages_context.messages}")
+        self.__perf_timer.add_milestone(period, "assistant_response_received")
+        logger.debug(f"Message from agent: {self.__messages_context.messages}")
 
-            tool_calls = assistant_call_result.tool_calls
-            if not tool_calls:
-                break
+        tool_calls = assistant_call_result.tool_calls
+        if not tool_calls:
+            return False
 
-            logger.debug(f"Agent requests tool calls: {tool_calls}")
-            tool_call_results = await self.__tool_executor.execute(tool_calls)
-            if not tool_call_results:
-                raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
+        logger.debug(f"Agent requests tool calls: {tool_calls}")
+        tool_call_results = await self.__tool_executor.execute(tool_calls)
+        if not tool_call_results:
+            raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
 
-            logger.debug(f"Tool call results: {tool_call_results}")
-            for tool_call_result in tool_call_results:
-                tool_call_result_message = tool_call_result.to_tool_message()
-                self.__messages_context.append_message(tool_call_result_message)
-                for attachment in tool_call_result.propagate_to_choice:
-                    self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
-                if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
-                    self.__usage_statistics_list.extend(tool_call_result.usage)
+        logger.debug(f"Tool call results: {tool_call_results}")
+        for tool_call_result in tool_call_results:
+            tool_call_result_message = tool_call_result.to_tool_message()
+            self.__messages_context.append_message(tool_call_result_message)
+            for attachment in tool_call_result.propagate_to_choice:
+                self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+                self.__usage_statistics_list.extend(tool_call_result.usage)
 
-            self.__perf_timer.stop_period(f"{self.__period_name}_{self.__iterations_counter}")
-            logger.debug(f"Message from context: {self.__messages_context.messages}")
-
-        # Derive tool execution history from messages and write state once
-        tool_execution_history = self._build_tool_execution_history()
-        if tool_execution_history:
-            self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
-
-        self.__choice.set_state(self.__state_holder.get_state())
-        if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
-            await self.__usage_statistics_service.process_usage_statistics(
-                self.__usage_statistics_list
-            )
-        logger.debug(f"State holder: {self.__state_holder.get_state()}")
+        self.__perf_timer.stop_period(period)
+        logger.debug(f"Message from context: {self.__messages_context.messages}")
+        return True
 
     def _build_tool_execution_history(self) -> list[dict[str, object]]:
         """Build tool execution history by extracting ASSISTANT and TOOL messages.
