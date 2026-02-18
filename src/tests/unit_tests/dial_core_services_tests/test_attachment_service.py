@@ -6,7 +6,7 @@ import pytest
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.dial_core_client import Attachment
+from aidial_client.types.chat.response import Attachment
 from quickapp.dial_core_services.attachment_service import AttachmentService
 
 

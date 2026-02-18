@@ -3,7 +3,6 @@ import logging
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
-from pydantic.v1 import StrictStr
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
@@ -71,7 +70,7 @@ class Orchestrator:
             self.__messages_context.append_message(
                 Message(
                     role=Role.ASSISTANT,
-                    content=assistant_call_result.content or StrictStr(" "),
+                    content=assistant_call_result.content or " ",
                     custom_content=CustomContent(attachments=assistant_call_result.attachments),
                     tool_calls=assistant_call_result.tool_calls,
                 )

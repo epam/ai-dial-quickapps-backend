@@ -50,7 +50,7 @@ class _RestApiStageWrapper(TimedStageWrapper):
         from pydantic import BaseModel
 
         if isinstance(obj, BaseModel):
-            return obj.dict()
+            return obj.model_dump()
         if hasattr(obj, '__dict__'):
             return obj.__dict__
         raise TypeError(f"Object of type {obj.__class__.__name__} isn't JSON serializable")
