@@ -2,8 +2,6 @@ import json
 from types import SimpleNamespace
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from pydantic import StrictStr
-
 from quickapp.attachment_processing._attachment_notification_injector import (
     _AttachmentNotificationInjector,
 )
@@ -15,7 +13,7 @@ from quickapp.config.prompt import CustomSystemPromptConfig
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
-    msg = Message(role=Role.USER, content=StrictStr(content))
+    msg = Message(role=Role.USER, content=content)
     if attachments:
         msg.custom_content = CustomContent(attachments=attachments)
     return msg

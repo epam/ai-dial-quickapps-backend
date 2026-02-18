@@ -5,7 +5,6 @@ import warnings
 from aidial_sdk.chat_completion import Message, Role, ToolCall
 from aidial_sdk.utils.pydantic import ExtraAllowModel
 from injector import inject
-from pydantic import StrictStr
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -61,9 +60,9 @@ class _MessagesSetup:
 
         extracted_messages: list[Message] = []
         for history_part in tool_history:
-            executed_tool_call = ExecutedToolCallDTO.validate(history_part)
+            executed_tool_call = ExecutedToolCallDTO.model_validate(history_part)
             assistant_tool_call = copy.deepcopy(assistant_message)
-            assistant_tool_call.content = StrictStr("")
+            assistant_tool_call.content = ""
 
             if assistant_tool_call.tool_calls is None:
                 assistant_tool_call.tool_calls = []

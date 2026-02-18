@@ -20,14 +20,14 @@ pydantic = ">=1.10,<3"
 
 [[package]]
 name = "aidial-sdk"
-version = "0.31.0"
+version = "0.32.0"
 description = "Framework to create applications and model adapters for AI DIAL"
 optional = false
-python-versions = "<4.0,>=3.9"
+python-versions = "<4.0,>=3.10"
 groups = ["main"]
 files = [
-    {file = "aidial_sdk-0.31.0-py3-none-any.whl", hash = "sha256:40b743f774fe26a1ecbc675a3503bf40ca8dc478e78cd8e90781b2d2962017cf"},
-    {file = "aidial_sdk-0.31.0.tar.gz", hash = "sha256:dc714bc366952057a157db6dde9fe2724390617ba3958772450680919b30b970"},
+    {file = "aidial_sdk-0.32.0-py3-none-any.whl", hash = "sha256:6d6cee07ea4a932a27e0f0fdf69cef5ecd34569fb492c18392c6277c75d7a548"},
+    {file = "aidial_sdk-0.32.0.tar.gz", hash = "sha256:ea952aab6722d4524783d10e5d7379833f8b1f1f2f6c28bfd53375fa746b5764"},
 ]
 
 [package.dependencies]
@@ -5855,4 +5855,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "dc4e15f6fc7b671532efab506bde263f058270621b1fdf7cc26327dbdc6ae0d0"
+content-hash = "321eb4c16febc615532106a929d882c10f88d03ef3b3a25e8dd82f048084b84c"

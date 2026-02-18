@@ -4,19 +4,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 from aidial_client.types.deployment import Features
-from aidial_sdk.pydantic_v1 import SecretStr as SecretStrV1
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic import SecretStr as SecretStrV2
-from pydantic import StrictStr, alias_generators
-
-
-class Attachment(BaseModel):
-    type: Optional[StrictStr] = "text/markdown"
-    title: Optional[StrictStr] = None
-    data: Optional[StrictStr] = None
-    url: Optional[StrictStr] = None
-    reference_type: Optional[StrictStr] = None
-    reference_url: Optional[StrictStr] = None
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, alias_generators
 
 
 class AttachmentResponse(BaseModel):
@@ -53,7 +41,7 @@ class ToolsetInfo(BaseModel, extra='allow'):
 
 
 class DialCoreClient:
-    def __init__(self, api_key: str | SecretStrV1 | SecretStrV2, base_url: str):
+    def __init__(self, api_key: str | SecretStr, base_url: str):
         self.api_key = self._get_api_key(api_key)
         self.base_url = base_url
         self._bucket_id: str | None = None
@@ -66,10 +54,8 @@ class DialCoreClient:
         )
         return self
 
-    def _get_api_key(self, api_key: str | SecretStrV1 | SecretStrV2) -> str:
-        if isinstance(api_key, SecretStrV1):
-            return api_key.get_secret_value()
-        if isinstance(api_key, SecretStrV2):
+    def _get_api_key(self, api_key: str | SecretStr) -> str:
+        if isinstance(api_key, SecretStr):
             return api_key.get_secret_value()
         return api_key
 
