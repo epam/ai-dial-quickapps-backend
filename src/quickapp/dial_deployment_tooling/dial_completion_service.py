@@ -1,16 +1,18 @@
 import logging
+from collections.abc import AsyncIterable, Iterable
 from dataclasses import dataclass, field
-from typing import Any, Dict, Iterable, List, Tuple
+from typing import Any, Dict, List, Tuple
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
+from aidial_client.types.chat import response as dial_client_models
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
     AttachmentParam,
     CustomContentParam,
     UserMessageParam,
 )
-from aidial_client.types.chat.response import Attachment, CompletionUsage
+from aidial_sdk import chat_completion as dial_sdk_models
 from injector import inject
 
 from quickapp.common import CompletionResult
@@ -21,25 +23,28 @@ from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
-    CUSTOM_CONTENT,
     EXTRA_BODY,
 )
 
 logger = logging.getLogger(__name__)
 
 
+def _to_sdk_attachment(attachment: dial_client_models.Attachment) -> dial_sdk_models.Attachment:
+    return dial_sdk_models.Attachment(**attachment.model_dump())
+
+
 @dataclass
 class _StreamResult:
     content: str = ""
-    attachments: list[Any] | None = None
-    state: Any = None
-    usage: CompletionUsage | None = None
+    attachments: list[dial_sdk_models.Attachment] | None = None
+    state: dict[str, Any] | None = None
+    usage: dial_client_models.CompletionUsage | None = None
     statistics: dict[str, Any] = field(default_factory=dict)
 
-    def extend_attachments(self, attachments: list[Any]) -> None:
+    def extend_attachments(self, attachments: list[dial_client_models.Attachment]) -> None:
         if self.attachments is None:
             self.attachments = []
-        self.attachments.extend(attachments)
+        self.attachments.extend(_to_sdk_attachment(a) for a in attachments)
 
 
 @inject
@@ -129,20 +134,9 @@ class DialCompletionService:
             else:
                 attachment.url = attachment.reference_url
 
-    @staticmethod
-    def _to_client_attachment(attachment: Any) -> Attachment:
-        return Attachment(
-            type=attachment.type,
-            title=attachment.title,
-            data=attachment.data,
-            url=attachment.url,
-            reference_url=attachment.reference_url,
-            reference_type=attachment.reference_type,
-        )
-
     async def _consume_stream(
         self,
-        chunks: Any,
+        chunks: AsyncIterable[dial_client_models.ChatCompletionChunk],
         stage_wrapper: BaseStageWrapper | None,
     ) -> _StreamResult:
         result = _StreamResult()
@@ -168,22 +162,22 @@ class DialCompletionService:
                     if stage_wrapper:
                         for attachment in attachments:
                             self._fix_attachment(attachment)
-                            stage_wrapper.add_stage_attachment(
-                                self._to_client_attachment(attachment)
-                            )
+                            stage_wrapper.add_stage_attachment(_to_sdk_attachment(attachment))
                 elif delta.custom_content and delta.custom_content.state:
                     result.state = delta.custom_content.state
 
             if chunk.usage:
                 result.usage = chunk.usage
-            result.statistics = chunk.model_extra.get("statistics", {}).get("usage_per_model", {})
+            result.statistics = (
+                (chunk.model_extra or {}).get("statistics", {}).get("usage_per_model", {})
+            )
 
         result.content = "".join(content_parts)
         return result
 
     @staticmethod
     def __get_deployment_usage(
-        usage: CompletionUsage | None,
+        usage: dial_client_models.CompletionUsage | None,
         statistics: dict | None,
         deployment_id: str,
         deployment_name: str,
@@ -236,7 +230,7 @@ class DialCompletionService:
         message = UserMessageParam(role="user", content=content)
         attachments = await self.resolve_attachment_urls(relative_attachment_urls)
         if attachments and len(attachments) > 0:
-            message[CUSTOM_CONTENT] = CustomContentParam(attachments=attachments)
+            message["custom_content"] = CustomContentParam(attachments=attachments)
         return message
 
     async def resolve_attachment_urls(
@@ -248,7 +242,7 @@ class DialCompletionService:
         metadata: AsyncMetadata = self.__dial_client.metadata
         fileinfo = await metadata.get("files", file_relative_url)
         return AttachmentParam(
-            type=fileinfo.content_type,
+            type=fileinfo.content_type or "",
             title=fileinfo.name,
-            url=fileinfo.url,
+            url=fileinfo.url or "",
         )

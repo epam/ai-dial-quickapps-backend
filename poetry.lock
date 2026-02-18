@@ -2433,7 +2433,7 @@ version = "2.4.1"
 description = "Fundamental package for array computing in Python"
 optional = false
 python-versions = ">=3.11"
-groups = ["main", "integration"]
+groups = ["main", "dev", "integration"]
 files = [
     {file = "numpy-2.4.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:0cce2a669e3c8ba02ee563c7835f92c153cf02edff1ae05e1823f1dde21b16a5"},
     {file = "numpy-2.4.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:899d2c18024984814ac7e83f8f49d8e8180e2fbe1b2e252f2e7f1d06bea92425"},
@@ -3292,6 +3292,21 @@ test = ["hypothesis (>=6.46.1)", "pytest (>=7.3.2)", "pytest-xdist (>=2.2.0)"]
 xml = ["lxml (>=4.9.2)"]
 
 [[package]]
+name = "pandas-stubs"
+version = "3.0.0.260204"
+description = "Type annotations for pandas"
+optional = false
+python-versions = ">=3.11"
+groups = ["dev"]
+files = [
+    {file = "pandas_stubs-3.0.0.260204-py3-none-any.whl", hash = "sha256:5ab9e4d55a6e2752e9720828564af40d48c4f709e6a2c69b743014a6fcb6c241"},
+    {file = "pandas_stubs-3.0.0.260204.tar.gz", hash = "sha256:bf9294b76352effcffa9cb85edf0bed1339a7ec0c30b8e1ac3d66b4228f1fbc3"},
+]
+
+[package.dependencies]
+numpy = ">=1.23.5"
+
+[[package]]
 name = "parameterized"
 version = "0.9.0"
 description = "Parameterized testing with any Python test framework"
@@ -3535,6 +3550,18 @@ dev-core = ["pytest", "requests", "ruff (==0.11.12)"]
 dev-optional = ["anywidget", "colorcet", "fiona (<=1.9.6) ; python_version <= \"3.8\"", "geopandas", "inflect", "numpy", "orjson", "pandas", "pdfrw", "pillow", "plotly-geo", "plotly[dev-build]", "plotly[kaleido]", "polars[timezone]", "pyarrow", "pyshp", "pytz", "scikit-image", "scipy", "shapely", "statsmodels", "vaex ; python_version <= \"3.9\"", "xarray"]
 express = ["numpy"]
 kaleido = ["kaleido (>=1.1.0)"]
+
+[[package]]
+name = "plotly-stubs"
+version = "0.1.2"
+description = "Type stubs for plotly."
+optional = false
+python-versions = "<3.15,>=3.11"
+groups = ["dev"]
+files = [
+    {file = "plotly_stubs-0.1.2-py3-none-any.whl", hash = "sha256:d3ddcc534d19dec93e3f6f94e214a33209a1c20860a0c350b0c3cbdce5232123"},
+    {file = "plotly_stubs-0.1.2.tar.gz", hash = "sha256:23bb0bbb4ac5cbd7dbdae3c4d6b4ea488842a59bad7111980b2b43d6788cdd64"},
+]
 
 [[package]]
 name = "pluggy"
@@ -5547,6 +5574,21 @@ shellingham = ">=1.3.0"
 typing-extensions = ">=3.7.4.3"
 
 [[package]]
+name = "types-authlib"
+version = "1.6.8.20260215"
+description = "Typing stubs for Authlib"
+optional = false
+python-versions = ">=3.10"
+groups = ["dev"]
+files = [
+    {file = "types_authlib-1.6.8.20260215-py3-none-any.whl", hash = "sha256:644e8dbb6d59a5abd9917370c79125d630d1eefaf4a314cdf20f1b3ea982787f"},
+    {file = "types_authlib-1.6.8.20260215.tar.gz", hash = "sha256:06d81c64b11949a052b0621124b21e14881f8adbfebf8319ed8f05db913f20e5"},
+]
+
+[package.dependencies]
+cryptography = "*"
+
+[[package]]
 name = "types-requests"
 version = "2.32.4.20260107"
 description = "Typing stubs for requests"
@@ -5855,4 +5897,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "321eb4c16febc615532106a929d882c10f88d03ef3b3a25e8dd82f048084b84c"
+content-hash = "523023aa9662f16826da1178a330f518b5377a201e0c9606bc2082390f9da9b4"

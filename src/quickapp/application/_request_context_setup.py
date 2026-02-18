@@ -47,5 +47,5 @@ class _RequestContextSetup:
         if choice:
             context.choice = choice
 
-        if getattr(request, "response_format", None):
+        if isinstance(request, Request) and request.response_format:
             context.response_format = request.response_format

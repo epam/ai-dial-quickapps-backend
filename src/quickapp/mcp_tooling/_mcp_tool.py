@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Optional
 
-from aidial_client.types.chat.response import Attachment
+from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
@@ -128,18 +128,19 @@ class _MCPTool(StagedBaseTool):
                     msg = f"Unsupported embedded resource type: {type(resource)}"
                     logger.exception(msg)
                     raise NotImplementedError(msg)
-            if (
-                attachment
-                and self._tool_config
-                and matches_type(attachment.type, self._tool_config.attachment.supported_types)  # type: ignore[arg-type]
-            ):
-                # Store all supported MCP attachments in the core.
-                logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
-                attachment = await self.__dial_attachment_service.upload_attachment_to_core(
-                    attachment
-                )
+            if attachment is not None:
+                if self._tool_config and matches_type(
+                    attachment.type, self._tool_config.attachment.supported_types  # type: ignore[arg-type]
+                ):
+                    # Store all supported MCP attachments in the core.
+                    logger.debug(
+                        f"Attachment: {attachment.title}, Tool Config: {self._tool_config}"
+                    )
+                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                        attachment
+                    )
 
-            attachments.append(attachment)
+                attachments.append(attachment)
 
         result = CompletionResult(
             content=tool_content,
