@@ -2,6 +2,7 @@ import argparse
 import json
 import logging
 import os
+from typing import Any
 
 import requests as rq
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -81,13 +82,17 @@ class DIALModelFeatures(DIALBaseModel):
     url_attachments: bool = False
     folder_attachments: bool = False
 
-    def to_config(self) -> dict:
-        value = {
+    def to_config(self, base_url: str, deployment_id: str) -> dict:
+        value: dict[str, Any] = {
             "systemPromptSupported": self.system_prompt,
             "toolsSupported": self.tools,
             "urlAttachmentsSupported": self.url_attachments,
             "folderAttachmentsSupported": self.folder_attachments,
         }
+        if self.configuration:
+            value["configurationEndpoint"] = (
+                f"{base_url}/openai/deployments/{deployment_id}/configuration"
+            )
         return {key: value for key, value in value.items() if value}
 
 
@@ -109,7 +114,9 @@ def get_dial_models() -> list[dict]:
     headers = {"Api-Key": REMOTE_DIAL_API_KEY}
     response = rq.get(url, headers=headers)
     response.raise_for_status()
-    return response.json()["data"]
+    models = response.json()["data"]
+    models.sort(key=lambda m: m["id"])
+    return models
 
 
 def get_dial_applications() -> list[dict]:
@@ -143,7 +150,7 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
                 f"Skipping model={parsed_model.id}: unsupported deployment type, capabilities: {parsed_model.capabilities}"
             )
             return None
-        model_config = {
+        model_config: dict[str, Any] = {
             "type": type_,
             "endpoint": f"http://adapter-dial:5000/openai/deployments/{parsed_model.id}{MODEL_TYPE_TO_PATH[type_]}",
             "upstreams": [
@@ -172,7 +179,10 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
                 if value:
                     model_config[field] = value
         if parsed_model.features:
-            model_config["features"] = parsed_model.features.to_config()  # type: ignore
+            model_config["features"] = parsed_model.features.to_config(
+                base_url="http://adapter-dial:5000",
+                deployment_id=parsed_model.id,
+            )
         return parsed_model.id, model_config
     except ValidationError:
         logger.exception(f"Validation failed for: {str(model)}")
@@ -242,6 +252,9 @@ def generate_config(models: bool, template_path: str, config_path: str, app_ids:
         }
     )
     # create subfolders for config if not exists
+    os.makedirs(os.path.dirname(config_path), exist_ok=True)
+    with open(config_path, "w") as fout:
+        json.dump(config_template, fout, indent=2, skipkeys=True)
 
 
 if __name__ == "__main__":
