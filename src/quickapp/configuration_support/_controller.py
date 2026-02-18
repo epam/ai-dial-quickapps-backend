@@ -10,7 +10,7 @@ from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
-CONFIG_SUPPORT_URI = "/quickapps/v1/configuration-support"
+CONFIG_SUPPORT_URI = "/v1/configuration-support"
 
 
 @inject

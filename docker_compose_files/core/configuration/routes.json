@@ -6,7 +6,7 @@
       "methods": ["GET", "POST", "HEAD"],
       "upstreams": [
         {
-          "endpoint": "http://docker.host.internal:5000/quickapps/v1"
+          "endpoint": "http://docker.host.internal:5000/v1"
         }
       ]
     }
