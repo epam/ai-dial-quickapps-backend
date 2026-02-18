@@ -1,8 +1,12 @@
+import logging
+
 from fastapi import FastAPI
 from injector import inject
 
 from quickapp.common.base_initializer import StartupInitializer
 from quickapp.configuration_support import _Controller
+
+logger = logging.getLogger(__name__)
 
 
 @inject
@@ -13,4 +17,5 @@ class _Initializer(StartupInitializer):
         self.controller = controller
 
     async def initialize(self) -> None:
+        logger.debug("Initializing Configuration Support API")
         self.controller.register_routes(self.app)

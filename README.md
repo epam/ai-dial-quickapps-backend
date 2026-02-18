@@ -153,8 +153,7 @@ How to add instructions
     ```
 
    This command will generate two files in `docker_compose_files/core/configuration/generated/`:
-    - `models.json` - contains the models configuration for DIAL.
-    - `application-schemas.json` - contains the QuickApps schema.
+    - `models.json` - contains the models configuration for DIAL.    
 
 ### Run
 

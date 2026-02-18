@@ -2,13 +2,14 @@ from fastapi import FastAPI, HTTPException, Request, status
 from injector import inject
 from pydantic import SecretStr, TypeAdapter
 
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver, TemplateType
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
-CONFIG_SUPPORT_URI = "/quickapps/v1/configuration-support"
+CONFIG_SUPPORT_URI = "/v1/configuration-support"
 
 
 @inject
@@ -19,6 +20,10 @@ class _Controller:
         self.__service = service
 
     def register_routes(self, app: FastAPI):
+        @app.get(CONFIG_SUPPORT_URI + "/application-schema")
+        async def get_app_schema():
+            return ApplicationConfig.model_json_schema(include_dial_fields=False)
+
         @app.get(CONFIG_SUPPORT_URI + "/system-prompts")
         async def get_system_prompts():
             return self.__config_resolver.get_prompts()

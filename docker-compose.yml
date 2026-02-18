@@ -39,7 +39,7 @@ services:
       'aidial.config.files': |-
         [
           "/opt/configuration/generated/models.json",
-          "/opt/configuration/generated/application-schemas.json",
+          "/opt/configuration/application-schemas.json",
           "/opt/configuration/applications.json",
           "/opt/configuration/chathub/anthropic.json",
           "/opt/configuration/chathub/gemini.json",
