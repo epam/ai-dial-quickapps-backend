@@ -72,20 +72,12 @@ class BaseDeploymentTool(StagedBaseTool):
 
     @staticmethod
     def _sdk_attachment_to_param(attachment: SdkAttachment) -> AttachmentParam:
-        param = AttachmentParam()
-        if attachment.type is not None:
-            param["type"] = attachment.type
-        if attachment.title is not None:
-            param["title"] = attachment.title
-        if attachment.data is not None:
-            param["data"] = attachment.data
-        if attachment.url is not None:
-            param["url"] = attachment.url
-        if attachment.reference_url is not None:
-            param["reference_url"] = attachment.reference_url
-        if attachment.reference_type is not None:
-            param["reference_type"] = attachment.reference_type
-        return param
+        return AttachmentParam(
+            **attachment.model_dump(
+                include=set(AttachmentParam.__annotations__),
+                exclude_none=True,
+            )
+        )
 
     async def _extract_tool_history(
         self,
@@ -94,23 +86,23 @@ class BaseDeploymentTool(StagedBaseTool):
         if not tool_name:
             return []
 
-        messages = self.__messages
-
         # Build map: tool_call_id -> (content, custom_content)
         tool_result_by_id: dict[str, tuple[str, Any]] = {}
-        for msg in messages:
+        for msg in self.__messages:
             if msg.role == Role.TOOL and msg.tool_call_id and msg.content:
-                content = msg.content if isinstance(msg.content, str) else str(msg.content)
+                content = str(msg.content) if not isinstance(msg.content, str) else msg.content
                 tool_result_by_id[msg.tool_call_id] = (content, msg.custom_content)
 
-        # Walk ASSISTANT messages, find tool_calls matching tool_name
+        # Walk ASSISTANT messages, find completed tool_calls matching tool_name
         history: list[UserMessageParam | AssistantMessageParam] = []
-        for msg in messages:
+        for msg in self.__messages:
             if msg.role != Role.ASSISTANT or not msg.tool_calls:
                 continue
+
             for tc in msg.tool_calls:
                 if tc.function.name != tool_name:
                     continue
+
                 result_entry = tool_result_by_id.get(tc.id)
                 if result_entry is None:
                     # Current call — its TOOL result hasn't been appended yet
@@ -118,44 +110,52 @@ class BaseDeploymentTool(StagedBaseTool):
 
                 tool_content, tool_custom_content = result_entry
 
-                # --- Request side: build UserMessageParam ---
-                try:
-                    args = json.loads(tc.function.arguments)
-                    query = args.get(CONTENT_PARAM, "")
-                    attachment_urls: list[str] | None = args.get(ATTACHMENT_PARAM)
-                except (json.JSONDecodeError, AttributeError):
-                    query = ""
-                    attachment_urls = None
-
-                if query or attachment_urls:
-                    user_msg = UserMessageParam(role="user", content=query or "")
-                    if attachment_urls:
-                        resolved = await self.__dial_completion_service.resolve_attachment_urls(
-                            attachment_urls
-                        )
-                        if resolved:
-                            user_msg["custom_content"] = CustomContentParam(attachments=resolved)
+                user_msg = await self._build_user_message_from_tool_call(tc.function.arguments)
+                if user_msg is not None:
                     history.append(user_msg)
 
-                # --- Response side: build AssistantMessageParam ---
                 if tool_content:
-                    assistant_msg = AssistantMessageParam(role="assistant", content=tool_content)
-
-                    if tool_custom_content:
-                        cc_param = CustomContentParam()
-                        if tool_custom_content.attachments:
-                            cc_param["attachments"] = [
-                                self._sdk_attachment_to_param(a)
-                                for a in tool_custom_content.attachments
-                            ]
-                        if tool_custom_content.state is not None:
-                            cc_param["state"] = tool_custom_content.state
-                        if cc_param:
-                            assistant_msg["custom_content"] = cc_param
-
+                    assistant_msg = self._build_assistant_message(tool_content, tool_custom_content)
                     history.append(assistant_msg)
 
         return history
+
+    async def _build_user_message_from_tool_call(
+        self, raw_arguments: str
+    ) -> UserMessageParam | None:
+        try:
+            args = json.loads(raw_arguments)
+            query: str = args.get(CONTENT_PARAM, "")
+            attachment_urls: list[str] | None = args.get(ATTACHMENT_PARAM)
+        except (json.JSONDecodeError, AttributeError):
+            return None
+
+        if not query and not attachment_urls:
+            return None
+
+        user_msg = UserMessageParam(role="user", content=query or "")
+        if attachment_urls:
+            resolved = await self.__dial_completion_service.resolve_attachment_urls(attachment_urls)
+            if resolved:
+                user_msg["custom_content"] = CustomContentParam(attachments=resolved)
+        return user_msg
+
+    @classmethod
+    def _build_assistant_message(cls, content: str, custom_content: Any) -> AssistantMessageParam:
+        assistant_msg = AssistantMessageParam(role="assistant", content=content)
+
+        if custom_content:
+            cc_param = CustomContentParam()
+            if custom_content.attachments:
+                cc_param["attachments"] = [
+                    cls._sdk_attachment_to_param(a) for a in custom_content.attachments
+                ]
+            if custom_content.state is not None:
+                cc_param["state"] = custom_content.state
+            if cc_param:
+                assistant_msg["custom_content"] = cc_param
+
+        return assistant_msg
 
     def _pre_process_params(self, **kwargs: Any) -> Any:
 

@@ -12,7 +12,7 @@ class CompletionResult(BaseModel):
     content: Any
     content_type: str
     attachments: Optional[list[Attachment]] = None
-    state: Any | None = None
+    state: dict[str, Any] | None = None
     usage: Optional[list[DeploymentUsage]] = None
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
