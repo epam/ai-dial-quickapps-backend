@@ -41,7 +41,7 @@ class _MCPStageWrapper(TimedStageWrapper):
     @staticmethod
     def __serialize(obj):
         if isinstance(obj, BaseModel):
-            return obj.dict()
+            return obj.model_dump()
         if hasattr(obj, "__dict__"):
             return obj.__dict__
         raise TypeError(f"Object of type {type(obj).__name__} isn't JSON serializable")

@@ -15,7 +15,6 @@ from aidial_client.types.chat.request_param import (
     UserMessageParam,
 )
 from aidial_client.types.chat.response import Attachment, ChatCompletionResponse
-from aidial_sdk.pydantic_v1 import StrictStr
 from injector import inject
 
 from quickapp.common import DIAL_API_KEY
@@ -125,7 +124,7 @@ class DisplayContentProcessor:
         user_message = await self._generate_attachment_message(attachment)
         if user_message:
             messages = [
-                SystemMessageParam(role='system', content=StrictStr(_NAMING_SYS_PROMPT)),
+                SystemMessageParam(role='system', content=_NAMING_SYS_PROMPT),
                 user_message,
             ]
             try:
