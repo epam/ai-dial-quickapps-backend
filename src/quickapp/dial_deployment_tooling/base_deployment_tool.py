@@ -165,7 +165,7 @@ class BaseDeploymentTool(StagedBaseTool):
         if isinstance(self.tool_config, DialDeploymentTool):
             tool_config = cast(DialDeploymentTool, self.tool_config)
             params = tool_config.deployment.parameters
-            self.merge_to_prepared_params(params, prepared)
+            self._merge_to_prepared_params(params, prepared)
 
         # Now process runtime kwargs - these should override defaults
         prepared.update(kwargs)
@@ -174,7 +174,8 @@ class BaseDeploymentTool(StagedBaseTool):
 
         return prepared
 
-    def merge_to_prepared_params(self, params: Any, prepared: dict[str, Any]):
+    @staticmethod
+    def _merge_to_prepared_params(params: Any, prepared: dict[str, Any]):
         """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
         params_dict = to_plain_dict(params)
         if isinstance(params_dict, dict):
