@@ -221,7 +221,7 @@ class BaseApplicationTypeConfig(BaseModel):
 
     # Overrides schema generation to include "dial:meta" for root properties and flatten them (no $defs usage).
     @classmethod
-    def model_json_schema(cls, *args, **kwargs):
+    def model_json_schema(cls, include_dial_fields=True, *args, **kwargs):
         schema = super().model_json_schema(*args, **kwargs)
         schema = _flatten_root_properties(schema)
 
@@ -243,12 +243,13 @@ class BaseApplicationTypeConfig(BaseModel):
             }
 
         # Add DIAL-specific root properties
-        schema["$id"] = f"{_DIAL_ID_PREFIX}{cls._dial_schema_id}"
-        schema["$schema"] = _DIAL_SCHEMA_URL
-        schema["dial:applicationTypeDisplayName"] = cls._dial_application_type_display_name
-        schema["dial:appendApplicationPropertiesHeader"] = (
-            cls._dial_append_application_properties_header
-        )
+        if include_dial_fields:
+            schema["$id"] = f"{_DIAL_ID_PREFIX}{cls._dial_schema_id}"
+            schema["$schema"] = _DIAL_SCHEMA_URL
+            schema["dial:applicationTypeDisplayName"] = cls._dial_application_type_display_name
+            schema["dial:appendApplicationPropertiesHeader"] = (
+                cls._dial_append_application_properties_header
+            )
 
         # order the schema attributes and append all other attributes
         ordered_schema = {

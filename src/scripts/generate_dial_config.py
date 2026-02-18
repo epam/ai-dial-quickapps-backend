@@ -13,7 +13,6 @@ if __name__ == '__main__':
     add_src_to_system_path()
     load_env()
 
-from dump_app_schema import get_quickapp_schema
 from utils import replace_env
 
 MODEL_TYPE_TO_PATH = {
@@ -215,13 +214,7 @@ def get_config_template(path: str) -> dict:
         return json.load(fin)
 
 
-def generate_config(
-    models: bool,
-    template_path: str,
-    config_path: str,
-    app_ids: set[str],
-    schemas_path: str | None,
-):
+def generate_config(models: bool, template_path: str, config_path: str, app_ids: set[str]):
     config_template = get_config_template(template_path)
     replace_envs(config_template["models"])
     if models:
@@ -249,20 +242,6 @@ def generate_config(
         }
     )
     # create subfolders for config if not exists
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w") as fout:
-        json.dump(config_template, fout, indent=2, skipkeys=True)
-    if schemas_path:
-        schema = get_quickapp_schema()
-        schema.update(
-            {
-                "dial:applicationTypeCompletionEndpoint": "http://quick_apps:5000/openai/deployments/quick_apps2/chat/completions",
-                "dial:applicationTypeConfigurationEndpoint": "http://quick_apps:5000/openai/deployments/quick_apps2/configuration",
-            }
-        )
-        schemas = {"applicationTypeSchemas": [schema]}
-        with open(schemas_path, "w") as fout:
-            json.dump(schemas, fout, indent=2, skipkeys=True)
 
 
 if __name__ == "__main__":
@@ -276,7 +255,6 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--template")
     parser.add_argument("-c", "--config")
     parser.add_argument("-a", "--applications", required=False)
-    parser.add_argument("-s", "--schemas", required=False)
     args = parser.parse_args()
     app_ids = set(args.applications.split(",")) if args.applications else set()
-    generate_config(args.models, args.template, args.config, app_ids, args.schemas)
+    generate_config(args.models, args.template, args.config, app_ids)
