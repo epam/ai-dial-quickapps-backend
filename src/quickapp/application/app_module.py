@@ -34,7 +34,7 @@ class AppModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(FastAPI, to=_QuickAppApplication, scope=singleton)
-        binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)
+        binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)  # type: ignore[type-abstract]
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)

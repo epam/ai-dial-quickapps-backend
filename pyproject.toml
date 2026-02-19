@@ -48,13 +48,16 @@ requires-poetry = '>=2.0.0,<3.0.0'
 [tool.poetry.group.dev.dependencies]
 black = { version = "^24.4.0", extras = ["jupyter"] }
 isort = "^5.13.2"
-mypy = "^1.9.0"
+mypy = "^1.19.1"
 fastmcp = "^2.12.5"
 types-requests = "^2.31.0.20240406"
 pre-commit = "^3.8.0"
 flake8 = "^7.1.2"
 autoflake = "^2.3.1"
 pyright = "^1.1.394"
+pandas-stubs = "^3.0.0.260204"
+types-authlib = "^1.6.8.20260215"
+plotly-stubs = "^0.1.2"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
@@ -133,7 +136,12 @@ exclude = [
 ]
 
 [tool.mypy]
-ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["aidial_sdk.*", "aidial_client.*"]
+follow_untyped_imports = true
 
 [tool.poetry.group.dev]
 optional = true

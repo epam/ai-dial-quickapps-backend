@@ -2,7 +2,7 @@ import base64
 import logging
 from io import BytesIO
 
-from aidial_client.types.chat.response import Attachment
+from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common import DIAL_API_KEY

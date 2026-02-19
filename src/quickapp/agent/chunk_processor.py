@@ -1,9 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from aidial_client.types.chat.response import Attachment
-from aidial_sdk.chat_completion import Choice, Stage
-from aidial_sdk.chat_completion.request import ToolCall
+from aidial_sdk.chat_completion import Attachment, Choice, Stage, ToolCall
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk

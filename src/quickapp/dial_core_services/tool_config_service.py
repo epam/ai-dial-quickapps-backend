@@ -74,9 +74,10 @@ class ToolConfigCoreService:
                 logger.debug(f"Getting application config for {deployment}")
                 config_schema = await dial_core.get_deployment_config(deployment)
 
-            return ToolConfigCoreService._convert_to_openai_tool_format(
-                deployment_model or application_model, config_schema
-            )
+            model = deployment_model or application_model
+            if model is None:
+                raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
+            return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
 
     @staticmethod
     def _convert_to_openai_tool_format(
