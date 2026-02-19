@@ -62,5 +62,5 @@ class DialFileService:
                 logger.debug(f"Granting permissions to files: {files_to_share}")
                 await dial_core.grant_permissions(files_to_share, dial_toolset_id)
             except Exception as e:
-                logger.error(e)
+                logger.error("Failed to grant permissions to the files %s", files_to_share, exc_info=True)
                 raise e
