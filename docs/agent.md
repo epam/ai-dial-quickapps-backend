@@ -145,6 +145,8 @@ Quick Apps supports several tool types:
 - **MCP Tools**: Tools from Model Context Protocol servers
 - **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
   registered conditionally (see [Attachment Notification](#attachment-notification))
+- **Timestamp Tool**: Built-in `current_timestamp` tool that returns the current date and time. Registered via
+  `TimestampModule` as a separate DI module
 
 ### Parallel Execution
 
@@ -177,6 +179,19 @@ Tool results are standardized into a common format containing:
 - Attachments (files, images, etc.)
 - Usage statistics (if the tool calls an LLM internally)
 - Propagation flags (which attachments should be shown in the UI)
+
+### Message Metadata Enrichment
+
+Every tool response is automatically enriched with a `MessageMetadata` object stored in
+`custom_content.state["_message_metadata"]`. Currently this includes:
+
+- **`response_timestamp`**: UTC timestamp of when the tool produced its result
+
+This enrichment happens in `StagedBaseTool._run_in_stage_report_success()` after the tool finishes, so all tool types
+(REST API, deployment, MCP, internal, timestamp) receive it without per-tool changes. The `MessageMetadata` model
+(`src/quickapp/common/message_metadata.py`) provides `from_state()` / `to_state_entry()` helpers for reading and writing
+the metadata. `from_state()` gracefully returns an empty instance when the key is missing, ensuring backward
+compatibility with older conversations.
 
 ### Error Handling
 
@@ -311,7 +326,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 10 specialized DI modules:
+The application is composed of 11 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -319,10 +334,11 @@ The application is composed of 10 specialized DI modules:
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
 5. **MCP Tooling Module**: MCP server tool construction
 6. **Internal Tool Module**: Python interpreter, content downloader
-7. **Starters Module**: UI starter button configuration
-8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration
-10. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+7. **Timestamp Module**: Current timestamp tool
+8. **Starters Module**: UI starter button configuration
+9. **Configuration Support API Module**: Configuration validation endpoints
+10. **DIAL Core Services Module**: DIAL Core integration
+11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 
 ### Scoping
 

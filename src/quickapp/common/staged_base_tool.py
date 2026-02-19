@@ -1,5 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from injector import AssistedBuilder
@@ -9,6 +10,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 
 from .completion_result import CompletionResult
+from .message_metadata import MessageMetadata
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type
@@ -83,6 +85,14 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         # No preprocessing of parameters by default. return parameters "as is"
         return kwargs
 
+    def _enrich_state(self, result: CompletionResult) -> None:
+        if result.state is None:
+            result.state = {}
+        existing = MessageMetadata.from_state(result.state)
+        if existing.response_timestamp is None:
+            existing.response_timestamp = datetime.now(timezone.utc)
+        result.state.update(existing.to_state_entry())
+
     async def _run_in_stage_report_success(
         self,
         tool_call_id: str,
@@ -101,7 +111,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             result: CompletionResult = await self._run_in_stage_async(
                 stage_wrapper, *args, **params
             )
-            result.tool_call_id = tool_call_id  # Set result as response to specific tool call.
+            result.tool_call_id = tool_call_id
+            self._enrich_state(result)
             # filter attachments to fit only supported_attachments
             if result.attachments:
                 filtered_attachments = []

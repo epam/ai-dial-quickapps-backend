@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import Mock
 
@@ -7,6 +8,7 @@ from injector import AssistedBuilder
 
 from quickapp.common import StagedBaseTool, CompletionResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.message_metadata import MESSAGE_METADATA_KEY, MessageMetadata
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
@@ -45,7 +47,7 @@ def mock_stage_wrapper_factory():
 def mock_tool_config():
     mock_config = Mock(spec=AnyTool)
     mock_config.display = None
-    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True) # Add this line
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
     return mock_config
 
 
@@ -61,13 +63,76 @@ async def test_exception_handled_in_staged_base_tool(mock_stage_wrapper_factory,
     except Exception as e:
         ex_caught = True
 
-    assert ex_caught == False
+    assert not ex_caught
 
 
 @pytest.mark.asyncio
 async def test_exception_on_run(mock_stage_wrapper_factory, mock_tool_config):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+    with pytest.raises(NotImplementedError):
+        tool._run("tool_call_id_1", param1="value1")
+
+
+@pytest.mark.asyncio
+async def test_arun_enriches_result_with_metadata(mock_stage_wrapper_factory, mock_tool_config):
+    mock_tool_config.display = Mock()
+    mock_tool_config.display.stage = Mock()
+    mock_tool_config.display.stage.show = False
     tool = CustomTestStagedBaseTool(stage_wrapper_builder=mock_stage_wrapper_factory, tool_config=mock_tool_config, perf_timer=Mock())
-    try:
-        tool._run("tool_call_id_1", **{"param1": "value1"})
-    except Exception as e:
-        assert isinstance(e, NotImplementedError)
+    result = await tool.arun("tool_call_id_1")
+    assert result.state is not None
+    assert MESSAGE_METADATA_KEY in result.state
+    metadata = result.state[MESSAGE_METADATA_KEY]
+    assert "response_timestamp" in metadata
+
+
+class PresetMetadataTool(StagedBaseTool):
+    preset_timestamp: datetime
+
+    def __init__(
+        self,
+        stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
+        tool_config: AnyTool,
+        perf_timer: PerformanceTimer,
+        preset_timestamp: datetime,
+    ):
+        super().__init__(
+            stage_wrapper_builder=stage_wrapper_builder,
+            tool_config=tool_config,
+            name="Preset Metadata Tool",
+            description="A tool that pre-sets metadata",
+            perf_timer=perf_timer,
+            preset_timestamp=preset_timestamp,
+        )
+
+    async def _run_in_stage_async(
+        self, stage_wrapper, *args: Any, **kwargs: Any
+    ) -> CompletionResult:
+        metadata = MessageMetadata(response_timestamp=self.preset_timestamp)
+        return CompletionResult(
+            content="response",
+            content_type="text/plain",
+            state=metadata.to_state_entry(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_arun_preserves_preset_metadata(mock_stage_wrapper_factory, mock_tool_config):
+    mock_tool_config.display = Mock()
+    mock_tool_config.display.stage = Mock()
+    mock_tool_config.display.stage.show = False
+    preset_ts = datetime(2025, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    tool = PresetMetadataTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+        preset_timestamp=preset_ts,
+    )
+    result = await tool.arun("tool_call_id_1")
+    assert result.state is not None
+    restored = MessageMetadata.from_state(result.state)
+    assert restored.response_timestamp == preset_ts

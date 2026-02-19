@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
@@ -35,6 +36,19 @@ class _RequestContext(MessagesMixin):
     __bearer_set: bool = False
     __bearer: DIAL_BEARER = None
     __response_format: Optional[ResponseFormat] = None
+    __timezone: ZoneInfo = ZoneInfo("UTC")
+    __timezone_set: bool = False
+
+    @property
+    def timezone(self) -> ZoneInfo:
+        return self.__timezone
+
+    @timezone.setter
+    def timezone(self, tz: ZoneInfo) -> None:
+        if self.__timezone_set:
+            raise RuntimeError("Timezone is already set")
+        self.__timezone_set = True
+        self.__timezone = tz
 
     @property
     def bearer(self) -> DIAL_BEARER:

@@ -1,3 +1,5 @@
+from zoneinfo import ZoneInfo
+
 from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import ChatCompletion, Choice, Message, Stage
 from fastapi import FastAPI
@@ -90,3 +92,7 @@ class AppModule(Module):
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
         return context.messages
+
+    @provider
+    def __provide_timezone(self, context: _RequestContext) -> ZoneInfo:
+        return context.timezone

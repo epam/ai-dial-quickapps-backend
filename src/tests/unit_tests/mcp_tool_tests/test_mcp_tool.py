@@ -13,6 +13,7 @@ from starlette.testclient import TestClient
 from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.message_metadata import MESSAGE_METADATA_KEY
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.mcp import MCPToolSet, MCPServerInfo, MCPProtocol
@@ -133,88 +134,84 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
             # Use the public async entrypoint `arun(tool_call_id, ...)`
             tool_1_instance = next((t for t in tools if t.name == "test_tool1"), None)
             tool_1_result = await tool_1_instance.arun("call-1")
-            self.assertEqual(
-                tool_1_result,
-                CompletionResult(
-                    tool_call_id="call-1",
-                    content='test_result_1',
-                    content_type='text/markdown',
-                    attachments=None,
-                ),
-            )
+            self.assertEqual(tool_1_result.tool_call_id, "call-1")
+            self.assertEqual(tool_1_result.content, "test_result_1")
+            self.assertEqual(tool_1_result.content_type, "text/markdown")
+            self.assertIsNone(tool_1_result.attachments)
+            self.assertIn(MESSAGE_METADATA_KEY, tool_1_result.state)
 
             tool_2_instance = next((t for t in tools if t.name == "test_tool2"), None)
             tool_2_result = await tool_2_instance.arun("call-2")
+            self.assertEqual(tool_2_result.tool_call_id, "call-2")
+            self.assertEqual(tool_2_result.content, "")
+            self.assertEqual(tool_2_result.content_type, "text/markdown")
             self.assertEqual(
-                tool_2_result,
-                CompletionResult(
-                    tool_call_id="call-2",
-                    content="",
-                    content_type='text/markdown',
-                    attachments=[
-                        Attachment(
-                            type='image/png',
-                            title="Attachment",
-                            data=None,
-                            url="mocked_url",
-                            reference_type=None,
-                            reference_url=None,
-                        )
-                    ],
-                    propagate_to_choice=[
-                        Attachment(
-                            type='image/png',
-                            title='Attachment',
-                            data=None,
-                            url='mocked_url',
-                            reference_type=None,
-                            reference_url=None,
-                        )
-                    ],
-                ),
+                tool_2_result.attachments,
+                [
+                    Attachment(
+                        type='image/png',
+                        title="Attachment",
+                        data=None,
+                        url="mocked_url",
+                        reference_type=None,
+                        reference_url=None,
+                    )
+                ],
             )
+            self.assertEqual(
+                tool_2_result.propagate_to_choice,
+                [
+                    Attachment(
+                        type='image/png',
+                        title='Attachment',
+                        data=None,
+                        url='mocked_url',
+                        reference_type=None,
+                        reference_url=None,
+                    )
+                ],
+            )
+            self.assertIn(MESSAGE_METADATA_KEY, tool_2_result.state)
 
             tool_3_instance = next((t for t in tools if t.name == "test_tool3"), None)
             tool_3_result = await tool_3_instance.arun("call-3")
+            self.assertEqual(tool_3_result.tool_call_id, "call-3")
+            self.assertEqual(tool_3_result.content, "")
+            self.assertEqual(tool_3_result.content_type, "text/markdown")
             self.assertEqual(
-                tool_3_result,
-                CompletionResult(
-                    tool_call_id="call-3",
-                    content="",
-                    content_type='text/markdown',
-                    attachments=[
-                        Attachment(
-                            type='text/plain',
-                            title="Attachment",
-                            data=None,
-                            url="mocked_url",
-                            reference_type=None,
-                            reference_url=None,
-                        )
-                    ],
-                ),
+                tool_3_result.attachments,
+                [
+                    Attachment(
+                        type='text/plain',
+                        title="Attachment",
+                        data=None,
+                        url="mocked_url",
+                        reference_type=None,
+                        reference_url=None,
+                    )
+                ],
             )
+            self.assertIn(MESSAGE_METADATA_KEY, tool_3_result.state)
 
             tool_4_instance = next((t for t in tools if t.name == "test_tool4"), None)
             tool_4_result = await tool_4_instance.arun("call-4")
+            self.assertEqual(tool_4_result.tool_call_id, "call-4")
+            self.assertEqual(tool_4_result.content, "")
+            self.assertEqual(tool_4_result.content_type, "text/markdown")
             self.assertEqual(
-                tool_4_result,
-                CompletionResult(
-                    tool_call_id="call-4",
-                    content="",
-                    content_type='text/markdown',
-                    attachments=[
-                        Attachment(
-                            type='application/octet-stream',
-                            title="Attachment",
-                            data=None,
-                            url="mocked_url",
-                            reference_type=None,
-                            reference_url=None,
-                        )
-                    ],
-                ),
+                tool_4_result.attachments,
+                [
+                    Attachment(
+                        type='application/octet-stream',
+                        title="Attachment",
+                        data=None,
+                        url="mocked_url",
+                        reference_type=None,
+                        reference_url=None,
+                    )
+                ],
             )
+            self.assertIn(MESSAGE_METADATA_KEY, tool_4_result.state)
 
         client = TestClient(app)
         response = client.get("/")

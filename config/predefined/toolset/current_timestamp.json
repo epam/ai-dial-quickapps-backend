@@ -1,0 +1,11 @@
+{
+  "name": "current-timestamp-tool-set",
+  "type": "internal",
+  "description": "Set with current timestamp tool",
+  "tools": [
+    {
+      "type": "predefined-tool",
+      "template_name": "current_timestamp"
+    }
+  ]
+}

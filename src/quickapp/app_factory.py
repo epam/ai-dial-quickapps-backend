@@ -16,6 +16,7 @@ from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.timestamp_tooling import TimestampModule
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,7 @@ class AppFactory:
                 DialDeploymentToolingModule(),
                 MCPToolingModule(),
                 InternalToolModule(),
+                TimestampModule(),
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
