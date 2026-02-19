@@ -1,8 +1,7 @@
 import unittest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from aidial_client.types.chat.response import Attachment
-from aidial_sdk.chat_completion import Stage
+from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
 from injector import Binder, InstanceProvider
@@ -10,12 +9,21 @@ from parameterized import parameterized
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import  StagedBaseTool, DIAL_BEARER, DIAL_API_KEY
+from quickapp.common import StagedBaseTool, DIAL_BEARER, DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.tools.base import OpenAiToolConfig, OpenAiToolFunction, OpenAiToolFunctionParameters
-from quickapp.config.tools.rest_api import RestApiTool, RestApiEndpointMethodInfo, RestApiEndpointSimpleTypeParam, \
-    RestApiEndpointHeaderParamInfo, ToolEndpointParamType
+from quickapp.config.tools.base import (
+    OpenAiToolConfig,
+    OpenAiToolFunction,
+    OpenAiToolFunctionParameters,
+)
+from quickapp.config.tools.rest_api import (
+    RestApiTool,
+    RestApiEndpointMethodInfo,
+    RestApiEndpointSimpleTypeParam,
+    RestApiEndpointHeaderParamInfo,
+    ToolEndpointParamType,
+)
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.rest_api_tooling import RestApiToolingModule
@@ -25,24 +33,19 @@ from tests.unit_tests.common.common import create_app_configuration
 
 class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
 
-    @parameterized.expand([
-        (
-            "get",
-            "https://auth@abc.example.com:2020/index"
-        )
-    ])
+    @parameterized.expand([("get", "https://auth@abc.example.com:2020/index")])
     @patch("httpx.AsyncClient")
-    async def test_web_api_tool_2_make_correct_http_call(self, request_method, url, mock_async_client):
+    async def test_web_api_tool_2_make_correct_http_call(
+        self, request_method, url, mock_async_client
+    ):
         mock_stage = MagicMock(spec=Stage)
         response_data = {
-                    "text": '{"some_key":"some value"}',
-                    "headers": {"Content-Type": "application/json"},
-                }
+            "text": '{"some_key":"some value"}',
+            "headers": {"Content-Type": "application/json"},
+        }
         mock_response = AsyncMock(**response_data)
         mock_response.raise_for_status = MagicMock()
-        mock_async_client.return_value.__aenter__.return_value.request.return_value = (
-            mock_response
-        )
+        mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
         rest_api_toolset = RestApiToolSet(
             name="rest-api",
@@ -50,8 +53,8 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             tools=[
                 RestApiTool(
                     rest_api_method_info=RestApiEndpointMethodInfo(
-                        method_url=url,
-                        method_type=request_method),
+                        method_url=url, method_type=request_method
+                    ),
                     open_ai_tool=OpenAiToolConfig(
                         function=OpenAiToolFunction(
                             name="test_function",
@@ -62,18 +65,17 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
                                         type="string",
                                         description="Query key",
                                         parameter_info=RestApiEndpointHeaderParamInfo(
-                                            type=ToolEndpointParamType.query,
-                                            key="query_key"
-                                        )
+                                            type=ToolEndpointParamType.query, key="query_key"
+                                        ),
                                     )
-
                                 },
-                                type="object")
-                    ))
+                                type="object",
+                            ),
+                        )
+                    ),
                 )
-            ]
+            ],
         )
-
 
         def configure(binder: Binder):
             binder.bind(DialSettings, DialSettings(url="https://core"))
@@ -81,10 +83,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
             # binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
-            binder.bind(
-                ApplicationConfig,
-                to=create_app_configuration([rest_api_toolset])
-            )
+            binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -125,6 +124,8 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(expected_request_data["url"], actual_request_data["url"])
         self.assertEqual(expected_request_data["params"], actual_request_data["params"])
-        self.assertEqual(expected_request_data["method"].lower(), actual_request_data["method"].lower())
+        self.assertEqual(
+            expected_request_data["method"].lower(), actual_request_data["method"].lower()
+        )
         self.assertIn("Authorization", actual_request_data["headers"])
         self.assertEqual("Bearer test_token", actual_request_data["headers"]["Authorization"])

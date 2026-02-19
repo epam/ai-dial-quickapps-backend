@@ -28,18 +28,20 @@ class _AttachmentFilter:
         updated_attachments = []
         if message.content is None:
             message.content = ""
+        content = message.content if isinstance(message.content, str) else str(message.content)
         if self._has_attachments(message):
-            for attachment in message.custom_content.attachments:
+            for attachment in message.custom_content.attachments:  # type: ignore[union-attr]
                 if message.role == Role.USER and matches_type(
                     attachment.type, self.SUPPORTED_ATTACHMENTS
                 ):
                     updated_attachments.append(attachment)
                 # Inform agent that message had contained some attachment.
                 # As adapter would resolve the actual bytes and URL would be lost.
-                message.content += (
+                content += (
                     f"\r\nAttachment {attachment.title}, of type {attachment.type}, "
                     f"url {attachment.url}, reference_url {attachment.reference_url}\r\n"
                 )
-            message.custom_content.attachments = updated_attachments
+            message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
+        message.content = content
 
         return message

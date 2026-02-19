@@ -1,13 +1,14 @@
 {
   "applicationTypeSchemas": [
     {
+      "dial:applicationTypeDisplayName": "Quick App 2.0",
+      "dial:appendApplicationPropertiesHeader": false,
+      "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
       "dial:applicationTypeCompletionEndpoint": "http://host.docker.internal:5000/openai/deployments/quick_apps2/chat/completions",
       "dial:applicationTypeConfigurationEndpoint": "http://host.docker.internal:5000/openai/deployments/quick_apps2/configuration",
       "dial:applicationTypeSchemaEndpoint": "http://host.docker.internal:5000/v1/configuration-support/application-schema",
       "$id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
-      "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-      "dial:applicationTypeDisplayName": "Quick App 2.0",
-      "dial:appendApplicationPropertiesHeader": false
+      "$schema": "https://dial.epam.com/application_type_schemas/schema#"
     }
   ]
 }

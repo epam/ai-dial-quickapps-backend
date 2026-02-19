@@ -3,8 +3,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch, AsyncMock
 
-from aidial_client.types.chat.response import Attachment
-from aidial_sdk.chat_completion import Stage
+from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
 from mcp.types import ImageContent, EmbeddedResource, TextResourceContents, BlobResourceContents
@@ -25,8 +24,14 @@ from tests.unit_tests.common.common import create_app_configuration
 
 class MCPToolTest(unittest.IsolatedAsyncioTestCase):
 
-    @patch("quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool", new_callable=AsyncMock)
-    @patch("quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list", new_callable=AsyncMock)
+    @patch(
+        "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list",
+        new_callable=AsyncMock,
+    )
     async def test_mcp_tool(self, mock_get_tools_list, mock_call_mcp_tool):
         # Prepare tools metadata (no coroutines on the tool objects)
         tool_1 = SimpleNamespace(name="test_tool1", description="A test tool 1", inputSchema={})
@@ -53,23 +58,39 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
         async def _call_side_effect(tool_name, **kwargs):
             if tool_name == "test_tool1":
                 # text-only content
-                return SimpleNamespace(content=[SimpleNamespace(type="text", text="test_result_1")], isError=False)
+                return SimpleNamespace(
+                    content=[SimpleNamespace(type="text", text="test_result_1")], isError=False
+                )
             if tool_name == "test_tool2":
                 # image content
-                return SimpleNamespace(content=[
-                    ImageContent(mimeType="image/png", data=base64.b64encode(b"test_image_data").decode("utf-8"),
-                                 type="image")], isError=False)
+                return SimpleNamespace(
+                    content=[
+                        ImageContent(
+                            mimeType="image/png",
+                            data=base64.b64encode(b"test_image_data").decode("utf-8"),
+                            type="image",
+                        )
+                    ],
+                    isError=False,
+                )
             if tool_name == "test_tool3":
                 # embedded text resource
-                tr = TextResourceContents(mimeType="text/plain", text="test_text_content",
-                                          uri=AnyUrl("https://test_uri"))
-                return SimpleNamespace(content=[EmbeddedResource(resource=tr, type="resource")], isError=False)
+                tr = TextResourceContents(
+                    mimeType="text/plain", text="test_text_content", uri=AnyUrl("https://test_uri")
+                )
+                return SimpleNamespace(
+                    content=[EmbeddedResource(resource=tr, type="resource")], isError=False
+                )
             if tool_name == "test_tool4":
                 # embedded blob resource
-                br = BlobResourceContents(mimeType="application/octet-stream",
-                                          blob=base64.b64encode(b"test_blob_content").decode("utf-8"),
-                                          uri=AnyUrl("https://test_blob_uri"))
-                return SimpleNamespace(content=[EmbeddedResource(resource=br, type="resource")], isError=False)
+                br = BlobResourceContents(
+                    mimeType="application/octet-stream",
+                    blob=base64.b64encode(b"test_blob_content").decode("utf-8"),
+                    uri=AnyUrl("https://test_blob_uri"),
+                )
+                return SimpleNamespace(
+                    content=[EmbeddedResource(resource=br, type="resource")], isError=False
+                )
             return SimpleNamespace(content=[], isError=False)
 
         mock_call_mcp_tool.side_effect = _call_side_effect
@@ -77,9 +98,8 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
         mcp_toolset = MCPToolSet(
             type="mcp",
             mcp_server_info=MCPServerInfo(
-                url="https://test/mcp",
-                authorization=None,
-                protocol=MCPProtocol.streamable_http),
+                url="https://test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+            ),
             name="mcp-toolset",
             description="Set with MCP tools",
         )
@@ -113,8 +133,15 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
             # Use the public async entrypoint `arun(tool_call_id, ...)`
             tool_1_instance = next((t for t in tools if t.name == "test_tool1"), None)
             tool_1_result = await tool_1_instance.arun("call-1")
-            self.assertEqual(tool_1_result, CompletionResult(tool_call_id="call-1", content='test_result_1',
-                                                             content_type='text/markdown', attachments=None))
+            self.assertEqual(
+                tool_1_result,
+                CompletionResult(
+                    tool_call_id="call-1",
+                    content='test_result_1',
+                    content_type='text/markdown',
+                    attachments=None,
+                ),
+            )
 
             tool_2_instance = next((t for t in tools if t.name == "test_tool2"), None)
             tool_2_result = await tool_2_instance.arun("call-2")
@@ -124,30 +151,70 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                     tool_call_id="call-2",
                     content="",
                     content_type='text/markdown',
-                    attachments=[Attachment(type='image/png',
-                                            title="Attachment",
-                                            data=None,
-                                            url="mocked_url", reference_type=None, reference_url=None)],
-                    propagate_to_choice=[Attachment(type='image/png', title='Attachment', data=None, url='mocked_url',
-                                                    reference_type=None, reference_url=None)]))
+                    attachments=[
+                        Attachment(
+                            type='image/png',
+                            title="Attachment",
+                            data=None,
+                            url="mocked_url",
+                            reference_type=None,
+                            reference_url=None,
+                        )
+                    ],
+                    propagate_to_choice=[
+                        Attachment(
+                            type='image/png',
+                            title='Attachment',
+                            data=None,
+                            url='mocked_url',
+                            reference_type=None,
+                            reference_url=None,
+                        )
+                    ],
+                ),
+            )
 
             tool_3_instance = next((t for t in tools if t.name == "test_tool3"), None)
             tool_3_result = await tool_3_instance.arun("call-3")
-            self.assertEqual(tool_3_result,
-                             CompletionResult(tool_call_id="call-3", content="", content_type='text/markdown',
-                                              attachments=[
-                                                  Attachment(type='text/plain', title="Attachment", data=None,
-                                                             url="mocked_url", reference_type=None,
-                                                             reference_url=None)]))
+            self.assertEqual(
+                tool_3_result,
+                CompletionResult(
+                    tool_call_id="call-3",
+                    content="",
+                    content_type='text/markdown',
+                    attachments=[
+                        Attachment(
+                            type='text/plain',
+                            title="Attachment",
+                            data=None,
+                            url="mocked_url",
+                            reference_type=None,
+                            reference_url=None,
+                        )
+                    ],
+                ),
+            )
 
             tool_4_instance = next((t for t in tools if t.name == "test_tool4"), None)
             tool_4_result = await tool_4_instance.arun("call-4")
-            self.assertEqual(tool_4_result,
-                             CompletionResult(tool_call_id="call-4", content="", content_type='text/markdown',
-                                              attachments=[
-                                                  Attachment(type='application/octet-stream', title="Attachment",
-                                                             data=None, url="mocked_url",
-                                                             reference_type=None, reference_url=None)]))
+            self.assertEqual(
+                tool_4_result,
+                CompletionResult(
+                    tool_call_id="call-4",
+                    content="",
+                    content_type='text/markdown',
+                    attachments=[
+                        Attachment(
+                            type='application/octet-stream',
+                            title="Attachment",
+                            data=None,
+                            url="mocked_url",
+                            reference_type=None,
+                            reference_url=None,
+                        )
+                    ],
+                ),
+            )
 
         client = TestClient(app)
         response = client.get("/")

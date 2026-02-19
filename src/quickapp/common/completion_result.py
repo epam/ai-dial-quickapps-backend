@@ -1,7 +1,6 @@
 from typing import Any, Optional
 
-from aidial_client.types.chat.response import Attachment
-from aidial_sdk.chat_completion.request import CustomContent, Message, Role
+from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from pydantic import BaseModel, Field
 
 from quickapp.common.deployment_usage import DeploymentUsage

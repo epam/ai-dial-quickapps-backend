@@ -89,7 +89,7 @@ class AssistantInvoker:
             chat_completion = await self.__azure_client.chat.completions.create(**completion_config)
         except (BadRequestError, RateLimitError) as e:
             raise InvalidRequestError(
-                message=e.code,
+                message=e.code or "Unknown error",
                 display_message=e.body["message"] if isinstance(e.body, dict) else e.body,
             )
         except Exception:

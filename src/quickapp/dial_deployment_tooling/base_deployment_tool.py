@@ -73,7 +73,7 @@ class BaseDeploymentTool(StagedBaseTool):
     @staticmethod
     def _sdk_attachment_to_param(attachment: SdkAttachment) -> AttachmentParam:
         return AttachmentParam(
-            **attachment.model_dump(
+            **attachment.model_dump(  # type: ignore[typeddict-item]
                 include=set(AttachmentParam.__annotations__),
                 exclude_none=True,
             )

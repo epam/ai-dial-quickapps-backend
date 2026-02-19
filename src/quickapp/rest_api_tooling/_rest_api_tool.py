@@ -2,7 +2,7 @@ import logging
 from typing import Any, Optional
 
 import httpx
-from aidial_client.types.chat.response import Attachment
+from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
