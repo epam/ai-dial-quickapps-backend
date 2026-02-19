@@ -66,10 +66,7 @@
       },
       "inputAttachmentTypes": [
         "*/*"
-      ],
-      "features": {
-        "assistant_attachments_in_request_supported": true
-      }
+      ]
     },
     "nested_quick_app": {
       "displayName": "NestedQuickApp",
@@ -78,9 +75,6 @@
       "inputAttachmentTypes": [
         "*/*"
       ],
-      "features": {
-        "assistant_attachments_in_request_supported": true
-      },
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
@@ -119,9 +113,6 @@
       "inputAttachmentTypes": [
         "*/*"
       ],
-      "features": {
-        "assistant_attachments_in_request_supported": true
-      },
       "applicationProperties": {
         "orchestrator": {
           "deployment": {

@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
@@ -55,8 +55,52 @@ class _MCPTool(StagedBaseTool):
                     kwargs[key] = file_content
         return kwargs
 
+    def _content_to_attachment(self, content: Any) -> Attachment | None:
+        ctype = getattr(content, "type", None)
+
+        if ctype == "image":
+            title = generate_attachment_filename(
+                getattr(content, "mimeType", None), base_filename=self.__tool.name
+            )
+            return Attachment(
+                title=title,
+                type=getattr(content, "mimeType", None),
+                data=getattr(content, "data", None),
+            )
+
+        if ctype == "resource":
+            resource = getattr(content, "resource", None)
+            title = generate_attachment_filename(
+                getattr(resource, "mimeType", None), base_filename=self.__tool.name
+            )
+            if isinstance(resource, TextResourceContents):
+                return Attachment(
+                    title=title,
+                    type=getattr(resource, "mimeType", None),
+                    data=getattr(resource, "text", None),
+                )
+            if isinstance(resource, BlobResourceContents):
+                return Attachment(
+                    title=title,
+                    type=getattr(resource, "mimeType", None),
+                    data=getattr(resource, "blob", None),
+                )
+            msg = f"Unsupported embedded resource type: {type(resource)}"
+            logger.exception(msg)
+            raise NotImplementedError(msg)
+
+        return None
+
+    async def _maybe_upload_attachment(self, attachment: Attachment) -> Attachment:
+        if self._tool_config and matches_type(
+            attachment.type, self._tool_config.attachment.supported_types  # type: ignore[arg-type]
+        ):
+            logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
+            return await self.__dial_attachment_service.upload_attachment_to_core(attachment)
+        return attachment
+
     async def _run_in_stage_async(
-        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
     ) -> CompletionResult:
 
         logger.debug(f"MCP tool called with {kwargs}")
@@ -94,52 +138,9 @@ class _MCPTool(StagedBaseTool):
 
         attachments = []
         for content in non_text_contents:
-            attachment = None
-            ctype = getattr(content, "type", None)
-
-            if ctype == "image":
-                title = generate_attachment_filename(
-                    getattr(content, "mimeType", None), base_filename=self.__tool.name
-                )
-                attachment = Attachment(
-                    title=title,
-                    type=getattr(content, "mimeType", None),
-                    data=getattr(content, "data", None),
-                )
-
-            elif ctype == "resource":
-                resource = getattr(content, "resource", None)
-                title = generate_attachment_filename(
-                    getattr(resource, "mimeType", None), base_filename=self.__tool.name
-                )
-                if isinstance(resource, TextResourceContents):
-                    attachment = Attachment(
-                        title=title,
-                        type=getattr(resource, "mimeType", None),
-                        data=getattr(resource, "text", None),
-                    )
-                elif isinstance(resource, BlobResourceContents):
-                    attachment = Attachment(
-                        title=title,
-                        type=getattr(resource, "mimeType", None),
-                        data=getattr(resource, "blob", None),
-                    )
-                else:
-                    msg = f"Unsupported embedded resource type: {type(resource)}"
-                    logger.exception(msg)
-                    raise NotImplementedError(msg)
+            attachment = self._content_to_attachment(content)
             if attachment is not None:
-                if self._tool_config and matches_type(
-                    attachment.type, self._tool_config.attachment.supported_types  # type: ignore[arg-type]
-                ):
-                    # Store all supported MCP attachments in the core.
-                    logger.debug(
-                        f"Attachment: {attachment.title}, Tool Config: {self._tool_config}"
-                    )
-                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
-                        attachment
-                    )
-
+                attachment = await self._maybe_upload_attachment(attachment)
                 attachments.append(attachment)
 
         result = CompletionResult(
