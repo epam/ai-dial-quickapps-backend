@@ -28,7 +28,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PREDEFINED_BASE_PATH="/app/predefined" \
     CHROME_BIN=/home/appuser/.cache/kaleido/chrome
-ENV PYDANTIC_V2=True
+#ENV PYDANTIC_V2=True
 
 # Copy the sources and virtual env. No poetry.
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
