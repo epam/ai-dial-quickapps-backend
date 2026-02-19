@@ -94,7 +94,7 @@ class ToolConfigCoreService:
             A dictionary representing the final tool configuration.
         """
         output_tool = DialDeploymentTool(
-            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"**Call {deployment.id}:** ")),
+            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment.id}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
             attachment=AttachmentConfig(
                 propagate_types_to_choice=[],
