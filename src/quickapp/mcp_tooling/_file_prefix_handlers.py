@@ -2,7 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_core_services.file_downloader_service import DialFileService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 

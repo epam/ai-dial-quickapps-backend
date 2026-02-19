@@ -4,7 +4,7 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, singleton
 
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.dial_core_services.file_downloader_service import DialFileService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 logger = logging.getLogger(__name__)

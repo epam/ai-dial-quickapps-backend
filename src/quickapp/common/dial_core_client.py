@@ -1,4 +1,5 @@
 import json
+import logging
 from io import BytesIO
 from typing import Any, Dict, Optional
 
@@ -6,6 +7,7 @@ import httpx
 from aidial_client.types.deployment import Features
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, alias_generators
 
+logger = logging.getLogger(__name__)
 
 class AttachmentResponse(BaseModel):
     name: str = Field(description="The name of the attachment")
@@ -157,7 +159,9 @@ class DialCoreClient:
             "receiver": deployment_id,
             # "receiver": "curiously-manual",
         }
-        print(json.dumps(payload, indent=2))
+
+        logger.debug("Granting permissions to %s; payload:\n%s", deployment_id, json.dumps(payload, indent=2))
+
         response = await self._client.post(
             "/v1/ops/resource/per-request-permissions/grant", json=payload
         )

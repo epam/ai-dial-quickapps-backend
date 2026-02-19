@@ -10,8 +10,8 @@ class _SkillReaderStageWrapper(TimedStageWrapper):
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         """Format the parameters for display in the stage."""
-        if file_name := parameters.get("file_name"):
-            return f"**File:** {file_name}"
+        if skill_name := parameters.get("skill_name"):
+            return f"Skill: {skill_name}"
         return ""
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:

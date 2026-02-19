@@ -30,8 +30,8 @@ class DialFileService:
     async def download_file(self, file_url: str) -> bytes:
         # Check state holder for the file content:
         logger.debug(f"File url to download url:{file_url}")
-        file_bytes = self.__state_holder.get_file_content(url=file_url)
-        if file_bytes is None:
+        file_data = self.__state_holder.get_file_data(url=file_url)
+        if file_data is None:
             try:
                 logger.debug(f"Downloading file:{file_url}")
                 async with DialCoreClient(
@@ -44,13 +44,13 @@ class DialFileService:
                             f"File size {size} exceeds the limit of {self.__content_size_limit} bytes."
                         )
 
-                    content_bytes = await dial_core.get_file(file_url)
-                    self.__state_holder.store_file_content(file_url, content_bytes)
+                    file_data = await dial_core.get_file(file_url)
+                    self.__state_holder.store_file_data(file_url, file_data)
             except Exception as e:
-                logger.error(e)
+                logger.error("Failed to download: %s", file_url, exc_info=True)
                 raise e
+        return file_data
 
-        return content_bytes
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str

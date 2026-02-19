@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -13,7 +14,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.dial_core_services.file_downloader_service import DialFileService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
@@ -33,7 +34,7 @@ class _MCPTool(StagedBaseTool):
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
-        file_service: DialFileService,
+        file_service: DialFileService, # todo combine DialFileService and AttachmentService.
         dial_toolset_id: str | None,
     ):
         super().__init__(
@@ -53,13 +54,14 @@ class _MCPTool(StagedBaseTool):
         self.__dial_toolset_id = dial_toolset_id
 
     async def _pre_process_params(self, **kwargs: Any) -> Any:
-        import re
+
 
         # todo for PoC only, will implement nested object handling later
         file_pattern = re.compile(
             r'^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$', re.IGNORECASE
         )
 
+        files_to_share = []
         for key, value in list(kwargs.items()):
             if not isinstance(value, str):
                 continue
@@ -71,7 +73,6 @@ class _MCPTool(StagedBaseTool):
             detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
             file_url_part = m.group("file_url")
 
-            files_to_share = []
             if detected_prefix == "base64":
                 logger.debug(
                     "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
@@ -110,7 +111,8 @@ class _MCPTool(StagedBaseTool):
                     parameter_name=key,
                     message="Missing required file prefix (base64::, url::, text::)",
                 )
-
+        if len(files_to_share) > 0:
+            await self.__file_service.grant_permissions_to_files(files_to_share, self.__dial_toolset_id)
         return kwargs
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:
