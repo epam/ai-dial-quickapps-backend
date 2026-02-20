@@ -22,13 +22,13 @@ class TestBuildContextEntries:
     def test_mixed_context_types_only_file_included(self):
         contexts: list[Context] = [
             UserDefinedContextConfig(content="text"),
-            FileContextConfig(url="files/bucket/a.csv"),
+            FileContextConfig(url="files/bucket/a.pdf"),
             UserDefinedContextConfig(content="more text"),
         ]
         urls, entries = build_context_entries(contexts, {})
-        assert urls == {"files/bucket/a.csv"}
+        assert urls == {"files/bucket/a.pdf"}
         assert len(entries) == 1
-        assert entries[0].url == "files/bucket/a.csv"
+        assert entries[0].url == "files/bucket/a.pdf"
 
     def test_new_entry_when_not_seen(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/data.pdf")]
@@ -39,10 +39,10 @@ class TestBuildContextEntries:
         assert entries[0].url == "files/bucket/data.pdf"
 
     def test_unchanged_entry_has_no_status(self):
-        contexts: list[Context] = [FileContextConfig(url="files/bucket/data.csv")]
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/data.pdf")]
         seen = {
-            "files/bucket/data.csv": ContextEntry(
-                title="data.csv", url="files/bucket/data.csv", type="text/csv"
+            "files/bucket/data.pdf": ContextEntry(
+                title="data.pdf", url="files/bucket/data.pdf", type="application/pdf"
             )
         }
         _, entries = build_context_entries(contexts, seen)
@@ -50,13 +50,13 @@ class TestBuildContextEntries:
 
     def test_updated_when_description_changes(self):
         contexts: list[Context] = [
-            FileContextConfig(url="files/bucket/data.csv", description="V2 description")
+            FileContextConfig(url="files/bucket/data.pdf", description="V2 description")
         ]
         seen = {
-            "files/bucket/data.csv": ContextEntry(
-                title="data.csv",
-                url="files/bucket/data.csv",
-                type="text/csv",
+            "files/bucket/data.pdf": ContextEntry(
+                title="data.pdf",
+                url="files/bucket/data.pdf",
+                type="application/pdf",
                 description="V1 description",
             )
         }
@@ -79,10 +79,10 @@ class TestBuildContextEntries:
     def test_removed_entry_for_missing_url(self):
         contexts: list[Context] = []
         seen = {
-            "files/bucket/old.csv": ContextEntry(
-                title="old.csv",
-                url="files/bucket/old.csv",
-                type="text/csv",
+            "files/bucket/old.pdf": ContextEntry(
+                title="old.pdf",
+                url="files/bucket/old.pdf",
+                type="application/pdf",
                 description="old desc",
             )
         }
@@ -90,17 +90,17 @@ class TestBuildContextEntries:
         assert urls == set()
         assert len(entries) == 1
         assert entries[0].status == ContextEntryStatus.removed
-        assert entries[0].url == "files/bucket/old.csv"
-        assert entries[0].title == "old.csv"
+        assert entries[0].url == "files/bucket/old.pdf"
+        assert entries[0].title == "old.pdf"
         assert entries[0].description == "old desc"
 
     def test_duplicate_urls_deduplicated(self):
         contexts: list[Context] = [
-            FileContextConfig(url="files/bucket/a.csv"),
-            FileContextConfig(url="files/bucket/a.csv"),
+            FileContextConfig(url="files/bucket/a.pdf"),
+            FileContextConfig(url="files/bucket/a.pdf"),
         ]
         urls, entries = build_context_entries(contexts, {})
-        assert urls == {"files/bucket/a.csv"}
+        assert urls == {"files/bucket/a.pdf"}
         assert len(entries) == 1
 
     def test_mime_type_guessed_from_filename(self):
@@ -123,34 +123,34 @@ class TestBuildContextEntries:
         assert entries[0].title == "report.pdf"
 
     def test_description_none_when_not_set(self):
-        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.csv")]
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
         _, entries = build_context_entries(contexts, {})
         assert entries[0].description is None
 
     def test_description_preserved_when_set(self):
         contexts: list[Context] = [
-            FileContextConfig(url="files/bucket/a.csv", description="Reference data")
+            FileContextConfig(url="files/bucket/a.pdf", description="Reference data")
         ]
         _, entries = build_context_entries(contexts, {})
         assert entries[0].description == "Reference data"
 
     def test_mixed_new_unchanged_and_removed(self):
         contexts: list[Context] = [
-            FileContextConfig(url="files/bucket/kept.csv"),
+            FileContextConfig(url="files/bucket/kept.pdf"),
             FileContextConfig(url="files/bucket/new.pdf"),
         ]
         seen = {
-            "files/bucket/kept.csv": ContextEntry(
-                title="kept.csv", url="files/bucket/kept.csv", type="text/csv"
+            "files/bucket/kept.pdf": ContextEntry(
+                title="kept.pdf", url="files/bucket/kept.pdf", type="application/pdf"
             ),
             "files/bucket/gone.txt": ContextEntry(
                 title="gone.txt", url="files/bucket/gone.txt", type="text/plain"
             ),
         }
         urls, entries = build_context_entries(contexts, seen)
-        assert urls == {"files/bucket/kept.csv", "files/bucket/new.pdf"}
+        assert urls == {"files/bucket/kept.pdf", "files/bucket/new.pdf"}
 
         by_url = {e.url: e for e in entries}
-        assert by_url["files/bucket/kept.csv"].status is None
+        assert by_url["files/bucket/kept.pdf"].status is None
         assert by_url["files/bucket/new.pdf"].status == ContextEntryStatus.new
         assert by_url["files/bucket/gone.txt"].status == ContextEntryStatus.removed
