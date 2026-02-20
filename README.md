@@ -65,8 +65,6 @@ file:
 | `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                                          |
 | `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                                     |
 | `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                           |
-| **Content Downloader**                     |                            |          |                                                                                                                         |
-| `CONTENT_DOWNLOADER_FILE_SIZE_LIMIT`       | `20971520` (20 MB)         | No       | Max file size in bytes for the content downloader tool                                                                  |
 | **Templates**                              |                            |          |                                                                                                                         |
 | `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | Colon-separated list of directories layered on top of built-in predefined content (later entries override earlier ones) |
 | `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                                      |
@@ -91,85 +89,6 @@ These variables still work but will be removed in a future major version.
 - For a standalone Quick Apps deployment the essential variable is only `DIAL_URL`
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
-
-### Agent Skills
-
-Agent skills are reusable instruction modules that enhance agent capabilities. Skills are defined as Markdown files with
-YAML frontmatter and are automatically loaded and made available to the agent at runtime.
-
-#### How Skills Work
-
-- Skills are loaded from `config/predefined/skills/` directory at startup
-- Each skill is presented to the agent as XML metadata in the system prompt
-- The agent can read detailed skill instructions on-demand using the internal `read_skill` tool
-- Skills support metadata including name, description, license, compatibility, and allowed tools
-
-#### Creating a Skill
-
-Create a `.md` file in `config/predefined/skills/` with the following structure:
-
-```markdown
----
-name: skill-name
-description: Brief description of what this skill does
-license: MIT
-compatibility: Requires specific tools or environment
-metadata:
-  version: "1.0"
-  author: "Your Name"
-allowed-tools: tool1 tool2 tool3
----
-
-# Skill Title
-
-Detailed instructions and guidelines for the agent...
-```
-
-#### Skill Metadata Fields
-
-| Field           | Required | Description                                          | Constraints                                                                       |
-|-----------------|----------|------------------------------------------------------|-----------------------------------------------------------------------------------|
-| `name`          | Yes      | Unique skill identifier                              | Max 64 chars, lowercase letters/numbers/hyphens only, no leading/trailing hyphens |
-| `description`   | Yes      | Brief skill description                              | Max 1024 chars, non-empty                                                         |
-| `license`       | No       | License name or reference                            | Any string                                                                        |
-| `compatibility` | No       | Environment or tool requirements                     | Max 500 chars                                                                     |
-| `metadata`      | No       | Arbitrary key-value mappings                         | Dictionary of strings                                                             |
-| `allowed-tools` | No       | Space-delimited list of tool names the skill can use | List or space-delimited string                                                    |
-
-#### Example Skill
-
-```markdown
----
-name: data-analysis-helper
-description: Provides guidelines for analyzing and visualizing data using available tools
-compatibility: Requires Python interpreter and plotting libraries
-metadata:
-  version: "1.0"
-  category: data-science
-allowed-tools: py_interpreter plot_generator
----
-
-# Data Analysis Helper
-
-## Purpose
-
-Guide the agent through systematic data analysis workflows.
-
-## Instructions
-
-1. First examine the data structure
-2. Identify patterns and outliers
-3. Create visualizations when appropriate
-4. Provide statistical summaries
-```
-
-#### Notes
-
-- Skills are validated at startup; invalid skills are logged and skipped
-- The agent receives skill metadata automatically but must explicitly call `read_skill` to access full content
-- Skills can reference specific tools via the `allowed-tools` field
-- Built-in skills (e.g., `tool-call-file-parameter-formatting`) are included by default
-- Restart the service after adding or modifying skills to reload them
 
 ## Local Development
 
@@ -299,6 +218,7 @@ Guide the agent through systematic data analysis workflows.
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Agent Skills](./docs/skills.md) - How to create and manage reusable agent skills
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## More
