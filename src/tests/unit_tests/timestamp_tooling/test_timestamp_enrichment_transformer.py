@@ -5,6 +5,7 @@ from aidial_sdk.chat_completion import CustomContent, Message, Role
 from quickapp.common.message_metadata import (
     USER_TIMEZONE_STATE_KEY,
     MessageMetadata,
+    TimestampMetadata,
     TimestampSource,
 )
 from quickapp.timestamp_tooling._timestamp_enrichment_transformer import (
@@ -18,11 +19,15 @@ def _tool_msg_with_metadata(
     source: TimestampSource = TimestampSource.SERVER,
     tz_name: str = "UTC",
     content_type: str | None = None,
+    skip_time_annotation: bool = False,
 ) -> Message:
     metadata = MessageMetadata(
-        response_timestamp=ts or datetime(2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc),
-        timestamp_source=source,
-        timezone_name=tz_name,
+        timestamp=TimestampMetadata(
+            response_timestamp=ts or datetime(2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc),
+            timestamp_source=source,
+            timezone_name=tz_name,
+            skip_time_annotation=skip_time_annotation,
+        ),
         content_type=content_type,
     )
     return Message(
@@ -98,3 +103,11 @@ def test_no_metadata_message_unchanged():
     )
     result = transformer.transform([msg])
     assert str(result[0].content) == "plain result"
+
+
+def test_skip_time_annotation_skips_annotation():
+    transformer = _TimestampEnrichmentTransformer()
+    msg = _tool_msg_with_metadata(skip_time_annotation=True)
+    result = transformer.transform([msg])
+    assert "[Timestamp:" not in str(result[0].content)
+    assert str(result[0].content) == "tool result"

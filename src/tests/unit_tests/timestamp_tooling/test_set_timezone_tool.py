@@ -3,7 +3,11 @@ from unittest.mock import Mock
 import pytest
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.message_metadata import USER_TIMEZONE_STATE_KEY
+from quickapp.common.message_metadata import (
+    MESSAGE_METADATA_KEY,
+    MessageMetadata,
+    USER_TIMEZONE_STATE_KEY,
+)
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.tool import AnyTool
 from quickapp.timestamp_tooling._set_timezone_tool import _SetTimezoneTool
@@ -65,3 +69,23 @@ async def test_invalid_timezone_returns_error(tool):
     result = await tool._run_in_stage_async(None, timezone="Not/A/Timezone")
     assert result.state is None
     assert "Invalid timezone" in result.content
+
+
+@pytest.mark.asyncio
+async def test_valid_timezone_sets_skip_time_annotation(tool):
+    result = await tool._run_in_stage_async(None, timezone="Europe/Warsaw")
+    assert result.state is not None
+    assert MESSAGE_METADATA_KEY in result.state
+    metadata = MessageMetadata.from_state(result.state)
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.skip_time_annotation is True
+
+
+@pytest.mark.asyncio
+async def test_reset_sets_skip_time_annotation(tool):
+    result = await tool._run_in_stage_async(None, timezone="reset")
+    assert result.state is not None
+    assert MESSAGE_METADATA_KEY in result.state
+    metadata = MessageMetadata.from_state(result.state)
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.skip_time_annotation is True

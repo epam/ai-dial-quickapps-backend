@@ -23,7 +23,10 @@ class _TimestampEnrichmentTransformer(PreInvocationTransformer):
                 continue
 
             metadata = MessageMetadata.from_state(msg.custom_content.state)
-            if metadata.response_timestamp is None:
+            if metadata.timestamp is None or metadata.timestamp.response_timestamp is None:
+                continue
+
+            if metadata.timestamp.skip_time_annotation:
                 continue
 
             # Skip non-text content types to avoid corrupting structured output
@@ -54,12 +57,12 @@ class _TimestampEnrichmentTransformer(PreInvocationTransformer):
 
     @staticmethod
     def _build_annotation(metadata: MessageMetadata, user_tz: str | None) -> str:
-        ts = metadata.response_timestamp
-        if ts is None:
+        if metadata.timestamp is None or metadata.timestamp.response_timestamp is None:
             return ""
 
-        tz_name = metadata.timezone_name or "UTC"
-        source = metadata.timestamp_source or TimestampSource.SERVER
+        ts = metadata.timestamp.response_timestamp
+        tz_name = metadata.timestamp.timezone_name or "UTC"
+        source = metadata.timestamp.timestamp_source or TimestampSource.SERVER
 
         if user_tz:
             try:

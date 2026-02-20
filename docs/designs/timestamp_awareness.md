@@ -22,7 +22,7 @@ A timestamp like `2026-01-15T12:30:00+00:00` doesn't tell the agent whether it's
 
 ### Cross-tool consistency
 
-Metadata enrichment was originally embedded in the tool base class (`StagedBaseTool`), forcing every tool subclass to accept a `TimeProvider` dependency through its constructor — pure boilerplate for tools that never use time directly. The design must decouple timestamp enrichment from individual tools so it applies uniformly without touching tool implementations.
+Timestamp metadata must be attached to every tool response uniformly, regardless of tool type. Individual tools should not need to know about timestamp enrichment — it must happen at the infrastructure level, decoupled from tool implementations.
 
 ### Non-destructive annotation
 
@@ -60,17 +60,19 @@ Both tools are packaged as predefined tools and bundled into a single toolset, s
 
 ### 2. Enrichment Pipeline
 
-The `CompletionResultEnricher` abstraction decouples metadata enrichment from individual tools. After `ToolExecutor` runs all tools in parallel via `asyncio.gather`, it passes each result through a chain of enrichers.
+The `CompletionResultEnricher` abstraction handles metadata enrichment at the infrastructure level, outside of individual tools. As each tool completes execution inside `ToolExecutor`, its result is immediately passed through a chain of enrichers before any other tool finishes. This ensures each result's timestamp reflects its actual completion moment, not the moment the slowest parallel tool finishes.
 
-The `_TimestampMetadataEnricher` populates four metadata fields on every tool response: the timestamp of when the response was produced, the provenance source, the timezone name, and the content type. All fields use "fill if absent" semantics — if a tool already set a field (as the current timestamp tool does), the enricher preserves it.
+Timestamp-specific fields are grouped into a nested `TimestampMetadata` object within `MessageMetadata`, keeping them separate from general metadata like `content_type`. `TimestampMetadata` also carries a `skip_time_annotation` flag — tools whose content already contains timestamp information (like `_CurrentTimestampTool` and `_SetTimezoneTool`) set this flag to prevent redundant annotation by the transformer.
 
-This replaced the previous approach where `StagedBaseTool._enrich_state()` handled enrichment, which required every tool subclass to accept and forward a `TimeProvider` through its constructor. The new design removes `TimeProvider` from the base class entirely.
+The `_TimestampMetadataEnricher` populates the timestamp metadata fields on every tool response: the timestamp of when the response was produced, the provenance source, and the timezone name, plus `content_type` at the root level. All fields use "fill if absent" semantics — if a tool already set a field (as the current timestamp tool does), the enricher preserves it.
+
+Tools do not interact with the enrichment pipeline directly. They return a `CompletionResult` and the pipeline takes care of the rest. Only tools that need to override default metadata (like the current timestamp tool) pre-set specific fields in their result state.
 
 ### 3. Annotation Pipeline
 
 Metadata in state is invisible to the LLM. The `_TimestampEnrichmentTransformer` bridges this gap by appending human-readable timestamp annotations to tool message content before each LLM invocation.
 
-The transformer runs as part of the `PreInvocationTransformer` pipeline — a formalization of the per-iteration message preprocessing that previously existed only as an ad-hoc attachment filter. The pipeline operates on deep copies of the message history, so annotations never leak into the persisted history.
+The transformer runs as part of the `PreInvocationTransformer` pipeline — a per-iteration message preprocessing phase that operates on deep copies of the message history, so annotations never leak into the persisted history.
 
 For each tool message with timestamp metadata, the transformer appends an annotation like:
 
@@ -122,10 +124,10 @@ The two levels are complementary: request-level timezone affects tool execution 
 
 ## Message Transformer Hierarchy
 
-This feature formalized an existing architectural pattern into a proper hierarchy. Previously, there were two kinds of message transformers with no shared type:
+Messages go through two preprocessing phases, each with its own transformer type:
 
-- **Setup transformers** that run once at request setup (system prompt injection, attachment notifications)
-- **Per-invocation transformers** that run before every LLM call (attachment filtering)
+- **Setup transformers** run once at request setup (system prompt injection, attachment notifications)
+- **Per-invocation transformers** run before every LLM call (attachment filtering, timestamp annotation)
 
 ```mermaid
 classDiagram
@@ -149,9 +151,9 @@ classDiagram
     PreInvocationTransformer <|-- TimestampEnrichmentTransformer
 ```
 
-The new hierarchy introduces a common base with two marker subclasses that encode *when* the transformer runs. This allows the DI system to aggregate transformers of each type independently and lets new transformers (like the timestamp annotation transformer) plug into the correct phase without modifying existing wiring.
+Both types share a common `MessageTransformer` base with a single `transform()` method. The marker subclasses encode *when* the transformer runs, allowing the DI system to aggregate each type independently. New transformers plug into the correct phase by extending the appropriate subclass — no changes to existing wiring needed.
 
-The per-invocation pipeline performs a single upfront deep copy of the message list before running any transformers, so individual implementations can mutate freely. This replaced the previous approach where each transformer was individually responsible for avoiding mutation of the originals.
+The per-invocation pipeline performs a single upfront deep copy of the message list before running any transformers, so individual implementations can mutate freely without risk of corrupting the orchestrator's history.
 
 ## Provenance Model
 
@@ -160,10 +162,8 @@ Every timestamp in the system carries a provenance label indicating its source:
 - **SERVER** — the timezone was not explicitly provided; the server used its default (UTC). The agent should treat timestamps as potentially not matching the user's local time.
 - **USER_TIMEZONE** — the timezone was explicitly provided (via request headers or conversation). Timestamps can be presented as the user's local time.
 
-This is tracked as a `TimestampSource` enum that flows through the system: from `_RequestContext` to `TimeProvider` to `MessageMetadata` to the annotation transformer. It replaces a previous boolean flag that only tracked whether the timezone had been set, without encoding the semantic meaning.
+This is tracked as a `TimestampSource` enum that flows through the system: from `_RequestContext` to `TimeProvider` to `MessageMetadata` to the annotation transformer.
 
 ## Backward Compatibility
 
-All new metadata fields are optional with `None` defaults. Messages from older conversations that lack provenance fields deserialize cleanly — the enricher treats missing fields as unset and fills them with current defaults. The annotation transformer skips messages without metadata entirely. No migration is needed.
-
-The `MessagesSetupTransformer` class retains a backward-compatible alias under the old `MessagesTransformer` name.
+All metadata fields are optional with `None` defaults. Messages from older conversations that lack provenance fields deserialize cleanly — the enricher treats missing fields as unset and fills them with current defaults. The annotation transformer skips messages without metadata entirely. No migration is needed.

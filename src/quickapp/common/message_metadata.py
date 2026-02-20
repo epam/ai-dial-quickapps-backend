@@ -13,10 +13,15 @@ class TimestampSource(str, Enum):
     USER_TIMEZONE = "user_timezone"
 
 
-class MessageMetadata(BaseModel):
+class TimestampMetadata(BaseModel):
     response_timestamp: datetime | None = None
     timestamp_source: TimestampSource | None = None
     timezone_name: str | None = None
+    skip_time_annotation: bool = False
+
+
+class MessageMetadata(BaseModel):
+    timestamp: TimestampMetadata | None = None
     content_type: str | None = None
 
     @staticmethod

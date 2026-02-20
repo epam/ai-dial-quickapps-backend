@@ -5,6 +5,7 @@ from quickapp.common.completion_result import CompletionResult
 from quickapp.common.message_metadata import (
     MESSAGE_METADATA_KEY,
     MessageMetadata,
+    TimestampMetadata,
     TimestampSource,
 )
 from quickapp.common.time_provider import TimeProvider
@@ -29,9 +30,12 @@ def test_enrichment_sets_all_fields_when_absent():
 
     assert result.state is not None
     metadata = MessageMetadata.from_state(result.state)
-    assert metadata.response_timestamp == datetime(2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc)
-    assert metadata.timestamp_source == TimestampSource.SERVER
-    assert metadata.timezone_name == "UTC"
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.response_timestamp == datetime(
+        2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc
+    )
+    assert metadata.timestamp.timestamp_source == TimestampSource.SERVER
+    assert metadata.timestamp.timezone_name == "UTC"
     assert metadata.content_type == "text/plain"
 
 
@@ -39,9 +43,11 @@ def test_enrichment_preserves_preset_values():
     enricher = _make_enricher()
     preset_ts = datetime(2025, 6, 1, 0, 0, 0, tzinfo=timezone.utc)
     preset_metadata = MessageMetadata(
-        response_timestamp=preset_ts,
-        timestamp_source=TimestampSource.USER_TIMEZONE,
-        timezone_name="Europe/Warsaw",
+        timestamp=TimestampMetadata(
+            response_timestamp=preset_ts,
+            timestamp_source=TimestampSource.USER_TIMEZONE,
+            timezone_name="Europe/Warsaw",
+        ),
         content_type="text/html",
     )
     result = CompletionResult(
@@ -52,9 +58,10 @@ def test_enrichment_preserves_preset_values():
     enricher.enrich(result)
 
     metadata = MessageMetadata.from_state(result.state)
-    assert metadata.response_timestamp == preset_ts
-    assert metadata.timestamp_source == TimestampSource.USER_TIMEZONE
-    assert metadata.timezone_name == "Europe/Warsaw"
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.response_timestamp == preset_ts
+    assert metadata.timestamp.timestamp_source == TimestampSource.USER_TIMEZONE
+    assert metadata.timestamp.timezone_name == "Europe/Warsaw"
     assert metadata.content_type == "text/html"
 
 

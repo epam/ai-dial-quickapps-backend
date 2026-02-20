@@ -5,7 +5,11 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.message_metadata import USER_TIMEZONE_STATE_KEY
+from quickapp.common.message_metadata import (
+    USER_TIMEZONE_STATE_KEY,
+    MessageMetadata,
+    TimestampMetadata,
+)
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
 from quickapp.timestamp_tooling._set_timezone_stage_wrapper import _SetTimezoneStageWrapper
@@ -36,11 +40,15 @@ class _SetTimezoneTool(StagedBaseTool):
     ) -> CompletionResult:
         timezone_input: str = kwargs.get("timezone", "")
 
+        skip_metadata = MessageMetadata(
+            timestamp=TimestampMetadata(skip_time_annotation=True),
+        )
+
         if timezone_input.lower() == "reset":
             result = CompletionResult(
                 content="Timezone has been reset to server default.",
                 content_type="text/plain",
-                state={USER_TIMEZONE_STATE_KEY: None},
+                state={USER_TIMEZONE_STATE_KEY: None, **skip_metadata.to_state_entry()},
             )
         elif not self._is_valid_timezone(timezone_input):
             result = CompletionResult(
@@ -52,7 +60,7 @@ class _SetTimezoneTool(StagedBaseTool):
             result = CompletionResult(
                 content=f"Timezone set to {timezone_input}.",
                 content_type="text/plain",
-                state={USER_TIMEZONE_STATE_KEY: timezone_input},
+                state={USER_TIMEZONE_STATE_KEY: timezone_input, **skip_metadata.to_state_entry()},
             )
 
         if stage_wrapper:

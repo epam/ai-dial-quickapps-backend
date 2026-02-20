@@ -80,6 +80,17 @@ async def test_run_presets_metadata_in_state(tool):
     assert result.state is not None
     assert MESSAGE_METADATA_KEY in result.state
     metadata = MessageMetadata.from_state(result.state)
-    assert metadata.response_timestamp == datetime(2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc)
-    assert metadata.timestamp_source == TimestampSource.SERVER
-    assert metadata.timezone_name == "UTC"
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.response_timestamp == datetime(
+        2026, 1, 15, 12, 30, 0, tzinfo=timezone.utc
+    )
+    assert metadata.timestamp.timestamp_source == TimestampSource.SERVER
+    assert metadata.timestamp.timezone_name == "UTC"
+
+
+@pytest.mark.asyncio
+async def test_run_sets_skip_time_annotation(tool):
+    result = await tool._run_in_stage_async(None)
+    metadata = MessageMetadata.from_state(result.state)
+    assert metadata.timestamp is not None
+    assert metadata.timestamp.skip_time_annotation is True
