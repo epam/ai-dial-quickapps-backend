@@ -51,7 +51,6 @@ class DialFileService:
                 raise e
         return file_data
 
-
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str
     ) -> None:
@@ -62,5 +61,7 @@ class DialFileService:
                 logger.debug(f"Granting permissions to files: {files_to_share}")
                 await dial_core.grant_permissions(files_to_share, dial_toolset_id)
             except Exception as e:
-                logger.error("Failed to grant permissions to the files %s", files_to_share, exc_info=True)
+                logger.error(
+                    "Failed to grant permissions to the files %s", files_to_share, exc_info=True
+                )
                 raise e

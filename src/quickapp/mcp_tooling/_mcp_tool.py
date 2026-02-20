@@ -34,7 +34,7 @@ class _MCPTool(StagedBaseTool):
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
-        file_service: DialFileService, # todo combine DialFileService and AttachmentService.
+        file_service: DialFileService,  # todo combine DialFileService and AttachmentService.
         dial_toolset_id: str | None,
     ):
         super().__init__(
@@ -54,7 +54,6 @@ class _MCPTool(StagedBaseTool):
         self.__dial_toolset_id = dial_toolset_id
 
     async def _pre_process_params(self, **kwargs: Any) -> Any:
-
 
         # todo for PoC only, will implement nested object handling later
         file_pattern = re.compile(
@@ -112,7 +111,17 @@ class _MCPTool(StagedBaseTool):
                     message="Missing required file prefix (base64::, url::, text::)",
                 )
         if len(files_to_share) > 0:
-            await self.__file_service.grant_permissions_to_files(files_to_share, self.__dial_toolset_id)
+            if not self.__dial_toolset_id:
+                logger.error(
+                    "Files with dial_url flag detected but dial_toolset_id is not set.",
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name="file_url",
+                    message="Files cannot be shared because dial_toolset_id is not configured.",
+                )
+            await self.__file_service.grant_permissions_to_files(
+                files_to_share, self.__dial_toolset_id
+            )
         return kwargs
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:
