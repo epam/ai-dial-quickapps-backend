@@ -45,6 +45,16 @@ Not every section will be relevant for every design. Omit sections that don't ap
 - **Scope aggressively.** A focused design that ships is better than an ambitious one that stalls. Use "Out of Scope" to
   defer related work explicitly rather than letting it creep in.
 
+## Diagrams and Code Snippets
+
+- Use **mermaid diagrams** to illustrate component interactions, data flow, or state transitions. They render natively in
+  GitHub and keep the doc self-contained (no external image files to maintain).
+- **Minimize code snippets.** Design docs describe *what* and *why*, not *how* at the implementation level. A snippet is
+  appropriate when it shows a config shape, a public interface signature, or a before/after comparison — not for full
+  method implementations.
+- When referencing existing code, **name the component and method** (e.g., "`StagedBaseTool._run_in_stage_report_success`")
+  rather than inlining the source. This avoids staleness when the code evolves after the doc is written.
+
 ## Lifecycle
 
 Each design doc carries a **Status** field:
