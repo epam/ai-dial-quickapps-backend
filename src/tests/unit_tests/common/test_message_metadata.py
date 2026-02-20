@@ -1,6 +1,10 @@
 from datetime import datetime, timezone
 
-from quickapp.common.message_metadata import MessageMetadata, MESSAGE_METADATA_KEY
+from quickapp.common.message_metadata import (
+    MESSAGE_METADATA_KEY,
+    MessageMetadata,
+    TimestampSource,
+)
 
 
 def test_from_state_none_returns_empty():
@@ -43,3 +47,29 @@ def test_extra_fields_in_state_dont_crash():
     state = {MESSAGE_METADATA_KEY: {"response_timestamp": None, "unknown_field": 42}}
     metadata = MessageMetadata.from_state(state)
     assert metadata.response_timestamp is None
+
+
+def test_round_trip_with_provenance_fields():
+    now = datetime.now(timezone.utc)
+    original = MessageMetadata(
+        response_timestamp=now,
+        timestamp_source=TimestampSource.USER_TIMEZONE,
+        timezone_name="Europe/Warsaw",
+        content_type="text/plain",
+    )
+    state = original.to_state_entry()
+    restored = MessageMetadata.from_state(state)
+    assert restored.response_timestamp == now
+    assert restored.timestamp_source == TimestampSource.USER_TIMEZONE
+    assert restored.timezone_name == "Europe/Warsaw"
+    assert restored.content_type == "text/plain"
+
+
+def test_backward_compat_old_state_without_new_fields():
+    now = datetime.now(timezone.utc)
+    state = {MESSAGE_METADATA_KEY: {"response_timestamp": now.isoformat()}}
+    metadata = MessageMetadata.from_state(state)
+    assert metadata.response_timestamp is not None
+    assert metadata.timestamp_source is None
+    assert metadata.timezone_name is None
+    assert metadata.content_type is None

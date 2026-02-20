@@ -13,7 +13,11 @@ from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import (
+    MessagesSetupTransformer,
+    PreInvocationTransformer,
+)
+from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -57,7 +61,6 @@ class AgentModule(Module):
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
         binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
-        binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
@@ -118,7 +121,15 @@ class AgentModule(Module):
     def provide_message_transformers(
         self,
         add_system_prompt: _AddSystemPromptTransformer,
-    ) -> list[MessagesTransformer]:
+    ) -> list[MessagesSetupTransformer]:
         return [
             add_system_prompt,
         ]
+
+    @multiprovider
+    def provide_pre_invocation_transformers(self) -> list[PreInvocationTransformer]:
+        return [_AttachmentFilter()]
+
+    @multiprovider
+    def provide_completion_result_enrichers(self) -> list[CompletionResultEnricher]:
+        return []

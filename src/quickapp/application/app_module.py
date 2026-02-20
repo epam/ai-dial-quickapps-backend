@@ -1,5 +1,3 @@
-from zoneinfo import ZoneInfo
-
 from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import ChatCompletion, Choice, Message, Stage
 from fastapi import FastAPI
@@ -11,6 +9,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.time_provider import TimeProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver, PredefinedSettings
 
@@ -94,5 +93,5 @@ class AppModule(Module):
         return context.messages
 
     @provider
-    def __provide_timezone(self, context: _RequestContext) -> ZoneInfo:
-        return context.timezone
+    def __provide_time_provider(self, context: _RequestContext) -> TimeProvider:
+        return TimeProvider(context.timezone, source=context.timestamp_source)

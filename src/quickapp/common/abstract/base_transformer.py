@@ -3,8 +3,24 @@ from abc import ABC, abstractmethod
 from aidial_sdk.chat_completion import Message
 
 
-class MessagesTransformer(ABC):
-    """Typed transformer that operates on a list of Messages with explicit ordering."""
+class MessageTransformer(ABC):
+    """Base transformer that operates on a list of Messages."""
 
     @abstractmethod
     def transform(self, messages: list[Message]) -> list[Message]: ...
+
+
+class MessagesSetupTransformer(MessageTransformer):
+    """Runs once at request setup, in _MessagesSetup.setup()."""
+
+    ...
+
+
+class PreInvocationTransformer(MessageTransformer):
+    """Runs every iteration, in AssistantInvoker.__prepare_messages()."""
+
+    ...
+
+
+# Backward-compatible alias
+MessagesTransformer = MessagesSetupTransformer

@@ -182,7 +182,7 @@ class TstCase:
         self.name = name
         self.description = description
         self.messages: List[UserMessage] = []
-        self.mock_date = datetime.date.today()
+        self.mock_date: datetime.datetime | None = None
         self.similarity_threshold = similarity_threshold
         self.py_interpreter_session_flow = False
         self.response_format = response_format

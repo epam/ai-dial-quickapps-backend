@@ -107,8 +107,9 @@ calls or the maximum iteration limit is reached.
 8. **Loop Continuation**: If tool calls were executed, the loop continues to the next iteration. Otherwise, the loop
    terminates, the tool execution history is derived from the message history, and the final state is set.
 
-> **Note:** Message preprocessing (system prompt injection, state expansion, context notification) runs once at request
-> setup via `_MessagesSetup`, not per iteration. The `AssistantInvoker` uses the already-transformed messages directly.
+> **Note:** Setup transformers (system prompt injection, state expansion, context notification) run once at request
+> setup via `_MessagesSetup`, not per iteration. Per-invocation transformers (attachment filtering, timestamp
+> annotation) run every iteration in `AssistantInvoker.__prepare_messages()` on a deep copy of the messages.
 
 ### Termination Conditions
 
@@ -193,6 +194,22 @@ This enrichment happens in `StagedBaseTool._run_in_stage_report_success()` after
 the metadata. `from_state()` gracefully returns an empty instance when the key is missing, ensuring backward
 compatibility with older conversations.
 
+### CompletionResultEnricher
+
+`CompletionResultEnricher` is an ABC defined in `quickapp/common/abstract/completion_result_enricher.py`. Enrichers
+run in `ToolExecutor.execute()` after `asyncio.gather` returns all tool results: each `CompletionResult` is passed
+through every registered enricher in order. Enrichers are registered via `@multiprovider` for
+`list[CompletionResultEnricher]`.
+
+Current implementation:
+
+- **`_TimestampMetadataEnricher`** (from `TimestampModule`): Populates `MessageMetadata` fields on every tool result:
+  `response_timestamp`, `timestamp_source`, `timezone_name`, and `content_type`. Uses `is None` guards so that tools
+  which pre-set their own metadata (e.g. `_CurrentTimestampTool`) are not overwritten.
+
+`AgentModule` provides an empty enricher list by default, allowing other modules to contribute enrichers additively
+via `@multiprovider`.
+
 ### Error Handling
 
 Tools support configurable fallback strategies for error handling:
@@ -211,12 +228,22 @@ Errors can optionally be displayed in the stage for debugging purposes.
 
 Messages undergo processing both before being sent to the LLM and when receiving streaming responses.
 
-### Pre-Transformer Pipeline
+### MessageTransformer Hierarchy
 
-All message transformers extend the typed `MessagesTransformer` base class and are registered via the `AgentModule`
-and `AttachmentProcessingModule` DI providers. They run once at request setup via `_MessagesSetup`, called from
-`_RequestContextSetup.setup()`. `_MessagesSetup` returns a new transformed list of messages. The `AssistantInvoker`
-then uses the transformed messages directly without any copying or additional preprocessing.
+All message transformers extend a typed hierarchy defined in `quickapp/common/abstract/base_transformer.py`:
+
+- **`MessageTransformer`**: Abstract base class with a single `transform(messages) -> messages` method.
+- **`MessagesSetupTransformer`**: Runs once at request setup in `_MessagesSetup.setup()`. Registered via
+  `@multiprovider` for `list[MessagesSetupTransformer]`.
+- **`PreInvocationTransformer`**: Runs every orchestrator iteration in `AssistantInvoker.__prepare_messages()`.
+  Registered via `@multiprovider` for `list[PreInvocationTransformer]`.
+- **Backward-compatible alias**: `MessagesTransformer = MessagesSetupTransformer` is kept for existing code.
+
+### Setup Transformer Pipeline
+
+Setup transformers are registered via the `AgentModule` and `AttachmentProcessingModule` DI providers. They run once
+at request setup via `_MessagesSetup`, called from `_RequestContextSetup.setup()`. `_MessagesSetup` returns a new
+transformed list of messages.
 
 The pipeline runs the following steps in order:
 
@@ -232,6 +259,21 @@ The pipeline runs the following steps in order:
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `available_context` tool. Returns messages unchanged when inactive.
+
+### Per-Invocation Transformer Pipeline
+
+Per-invocation transformers run every iteration inside `AssistantInvoker.__prepare_messages()`, just before messages
+are serialized to the LLM payload. The pipeline performs an upfront `copy.deepcopy(messages)` so transformers can
+mutate messages freely without affecting the canonical message history.
+
+Current implementations:
+
+- **`_AttachmentFilter`** (from `AgentModule`): Appends text metadata to user messages for attachments and keeps only
+  supported types inline in `custom_content`.
+- **`_TimestampEnrichmentTransformer`** (from `TimestampModule`): Annotates TOOL messages with human-readable
+  timestamp strings derived from `MessageMetadata`, so the LLM can reason about when each tool result was produced.
+
+Both are registered via `@multiprovider` for `list[PreInvocationTransformer]`.
 
 ### Streaming Response Processing
 
@@ -312,11 +354,43 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to user messages for all attachments and keeps only supported types
-  inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: A `PreInvocationTransformer` that appends text metadata to user messages for all attachments
+  and keeps only supported types inline in `custom_content` for vision model support. Runs every iteration in
+  `AssistantInvoker.__prepare_messages()`.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
+
+---
+
+## Timestamp Provenance
+
+The timestamp subsystem tracks **when** each tool result was produced and **which timezone** was used to present it.
+
+### TimestampSource
+
+The `TimestampSource` enum (`quickapp/common/message_metadata.py`) has two values:
+
+- **`SERVER`**: Timestamp comes from the server's default timezone (the common case for all tool results).
+- **`USER_TIMEZONE`**: Timestamp was produced using the user's explicitly configured timezone.
+
+### Tools
+
+- **`_CurrentTimestampTool`**: Returns labeled content with the current date/time, timezone name, and provenance
+  source. Pre-sets its own `MessageMetadata` so the `_TimestampMetadataEnricher` does not overwrite it.
+- **`_SetTimezoneTool`**: Accepts an IANA timezone name and stores it in the `_user_timezone` state key on the
+  tool result. Supports `"reset"` to revert to server default. The stored value persists in the conversation state
+  and is picked up by subsequent transformer and enricher runs.
+
+### Enrichment and Annotation Flow
+
+1. **`_TimestampMetadataEnricher`** (runs in `ToolExecutor` post-gather): Stamps every tool result with
+   `response_timestamp`, `timestamp_source`, `timezone_name`, and `content_type` unless already set.
+2. **`_TimestampEnrichmentTransformer`** (runs in `AssistantInvoker` per-iteration): Scans TOOL messages for
+   `MessageMetadata`, converts the stored UTC timestamp to the user's timezone (if set), and appends a human-readable
+   `[Timestamp: ... (source)]` annotation to the message content. Skips non-text content types.
+
+Both components are registered by `TimestampModule`.
 
 ---
 
@@ -334,7 +408,7 @@ The application is composed of 11 specialized DI modules:
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
 5. **MCP Tooling Module**: MCP server tool construction
 6. **Internal Tool Module**: Python interpreter, content downloader
-7. **Timestamp Module**: Current timestamp tool
+7. **Timestamp Module**: Timestamp tools, metadata enricher, per-invocation transformer
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration

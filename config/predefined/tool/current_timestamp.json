@@ -9,7 +9,7 @@
     "type": "function",
     "function": {
       "name": "current_timestamp",
-      "description": "Returns the current date and time. Use this tool when you need to know the current time or today's date.",
+      "description": "Returns the current date and time with timezone provenance. Use this tool when you need to know the current time or today's date.",
       "parameters": {
         "type": "object",
         "properties": {}

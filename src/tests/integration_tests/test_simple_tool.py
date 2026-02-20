@@ -1,5 +1,5 @@
 import logging
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -88,7 +88,7 @@ def test_text_to_image2(client):
 @e2e_test(
     config_file_set="integration",
     test_case=TstCase("Web search", "NBA winner 2025", similarity_threshold=0.7)
-    .add_mock_date(date(2024, 12, 31))
+    .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
     .add_user_message(
         user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations'",
         tool_calls=[
@@ -114,7 +114,7 @@ def test_web_search(client):
 @e2e_test(
     config_file_set="integration",
     test_case=TstCase("Web search2", "How many Tesla cars were sold in 2024", similarity_threshold=0.7)
-    .add_mock_date(date(2024, 12, 31))
+    .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
     .add_user_message(
         user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024",
         tool_calls=[
@@ -138,7 +138,7 @@ def test_web_search2(client):
 @e2e_test(
     config_file_set="integration",
     test_case=TstCase("Web search3", "Search several items in web", similarity_threshold=0.7)
-    .add_mock_date(date(2024, 12, 31))
+    .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
     .add_user_message(
         user_message="Who is Archimedes? Use web search to find information about him.",
         tool_calls=[
@@ -272,7 +272,7 @@ def test_image_recognition(client):
 @e2e_test(
     config_file_set="integration",
     test_case=TstCase("PyInterpreter", "Python code interpreter")
-    .add_mock_date(date(2024, 12, 31))
+    .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
     .add_user_message(
         user_message="25373773, 27273552, 237737373 sinus in radians of what number is the least? Use Python Interpreter tool to calculate. In answer, please provide only the number with the smallest sine value without any other text or explanations",
         tool_calls=[ToolCall(ToolNames.PYTHON_CODE_INTERPRETER.value, max_calls=5)],
@@ -296,7 +296,7 @@ def test_pyinterpreter(client):
         "Python code interpreter",
         similarity_threshold=SimilarityThreshold.STRICT.value,
     )
-    .add_mock_date(date(2024, 12, 31))
+    .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
     .add_user_message(
         user_message="Calculate the exact result using Python: `2^3 + 7!`. In answer, please provide only the exact result without any additional text or explanations.",
         tool_calls=[ToolCall(ToolNames.PYTHON_CODE_INTERPRETER.value, max_calls=5)],
@@ -321,7 +321,7 @@ def test_pyinterpreter2(client):
     test_case=(
             TstCase("PyInterpreter3", "Python code interpreter use same session test",
                     similarity_threshold=SimilarityThreshold.DEFAULT.value)
-            .add_mock_date(date(2024, 12, 31))
+            .add_mock_date(datetime(2024, 12, 31, tzinfo=timezone.utc))
             .add_user_message(
                 user_message="""Use python interpreter tool to write a function called calculate_hypotenuse in NumPy that takes two arguments and calculates the hypotenuse using the Pythagorean theorem.
                             Then, calculate and show me result of the calculate_hypotenuse function for 3 and 4. Don't answer with additional text or explanations, just calculate the result and show it to me.""",

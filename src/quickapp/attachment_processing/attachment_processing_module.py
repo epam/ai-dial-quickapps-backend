@@ -11,7 +11,7 @@ from quickapp.attachment_processing._available_context_tool import _AvailableCon
 from quickapp.attachment_processing._context_entries import should_activate_context_tool
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesSetupTransformer
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -53,5 +53,5 @@ class AttachmentProcessingModule(Module):
     def provide_message_transformers(
         self,
         attachment_notification_injector: _AttachmentNotificationInjector,
-    ) -> list[MessagesTransformer]:
+    ) -> list[MessagesSetupTransformer]:
         return [attachment_notification_injector]

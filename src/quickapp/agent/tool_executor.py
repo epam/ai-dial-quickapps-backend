@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 from typing import Dict, List
 
@@ -6,6 +7,7 @@ from aidial_sdk.chat_completion import ToolCall
 from injector import inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import sanitize_toolname
 
@@ -15,8 +17,14 @@ logger = logging.getLogger(__name__)
 class ToolExecutor:
 
     @inject
-    def __init__(self, tools: list[StagedBaseTool], perf_timer: PerformanceTimer):
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        enrichers: list[CompletionResultEnricher],
+        perf_timer: PerformanceTimer,
+    ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        self.__enrichers = enrichers
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
@@ -25,9 +33,6 @@ class ToolExecutor:
         for tc in tool_call_list:
             tool = self.__tools.get(tc.function.name)
 
-            # tc.function.arguments from agent returns json-like string
-            import json
-
             args = json.loads(tc.function.arguments)
 
             logger.debug(f"Making tool calls: {tc.function.name} with args:{args}")
@@ -35,7 +40,9 @@ class ToolExecutor:
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
 
         results = await asyncio.gather(*tasks, return_exceptions=False)
-
+        for result in results:
+            for enricher in self.__enrichers:
+                enricher.enrich(result)
         return results
 
     @staticmethod

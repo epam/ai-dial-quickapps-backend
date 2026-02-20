@@ -14,6 +14,7 @@ from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings, _PY_INTERPRETER_API_KEY
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -65,6 +66,7 @@ class TestApp(FastAPI):
                 MCPToolingModule(),
                 PyInterpreterTestModule(),
                 AttachmentProcessingModule(),
+                TimestampModule(),
             ]
         )
         dial_settings = DialSettings(

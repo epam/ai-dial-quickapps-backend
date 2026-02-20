@@ -1,22 +1,21 @@
 import base64
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
-from mcp.types import ImageContent, EmbeddedResource, TextResourceContents, BlobResourceContents
+from mcp.types import BlobResourceContents, EmbeddedResource, ImageContent, TextResourceContents
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER, CompletionResult, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.message_metadata import MESSAGE_METADATA_KEY
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.toolsets.mcp import MCPToolSet, MCPServerInfo, MCPProtocol
+from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
@@ -138,7 +137,6 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(tool_1_result.content, "test_result_1")
             self.assertEqual(tool_1_result.content_type, "text/markdown")
             self.assertIsNone(tool_1_result.attachments)
-            self.assertIn(MESSAGE_METADATA_KEY, tool_1_result.state)
 
             tool_2_instance = next((t for t in tools if t.name == "test_tool2"), None)
             tool_2_result = await tool_2_instance.arun("call-2")
@@ -171,7 +169,6 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                     )
                 ],
             )
-            self.assertIn(MESSAGE_METADATA_KEY, tool_2_result.state)
 
             tool_3_instance = next((t for t in tools if t.name == "test_tool3"), None)
             tool_3_result = await tool_3_instance.arun("call-3")
@@ -191,7 +188,6 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                     )
                 ],
             )
-            self.assertIn(MESSAGE_METADATA_KEY, tool_3_result.state)
 
             tool_4_instance = next((t for t in tools if t.name == "test_tool4"), None)
             tool_4_result = await tool_4_instance.arun("call-4")
@@ -211,7 +207,6 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                     )
                 ],
             )
-            self.assertIn(MESSAGE_METADATA_KEY, tool_4_result.state)
 
         client = TestClient(app)
         response = client.get("/")

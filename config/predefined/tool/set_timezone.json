@@ -1,0 +1,26 @@
+{
+  "type": "internal-tool",
+  "display": {
+    "stage": {
+      "show": false,
+      "name": "Set timezone"
+    }
+  },
+  "open_ai_tool": {
+    "type": "function",
+    "function": {
+      "name": "set_user_timezone",
+      "description": "Sets the user's timezone for timestamp display. Use when the user explicitly mentions their timezone. Pass 'reset' to clear.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timezone": {
+            "type": "string",
+            "description": "IANA timezone name (e.g. 'America/New_York', 'Europe/Warsaw') or 'reset' to clear"
+          }
+        },
+        "required": ["timezone"]
+      }
+    }
+  }
+}

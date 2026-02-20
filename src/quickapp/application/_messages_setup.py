@@ -7,7 +7,7 @@ from aidial_sdk.utils.pydantic import ExtraAllowModel
 from injector import inject
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesSetupTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class _MessagesSetup:
 
     def __init__(
         self,
-        transformers: list[MessagesTransformer],
+        transformers: list[MessagesSetupTransformer],
     ):
         self.__transformers = transformers
         logger.debug(f"Messages transformers: {transformers}")

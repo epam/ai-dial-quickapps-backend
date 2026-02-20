@@ -6,6 +6,7 @@ from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER
+from quickapp.common.message_metadata import TimestampSource
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -37,7 +38,7 @@ class _RequestContext(MessagesMixin):
     __bearer: DIAL_BEARER = None
     __response_format: Optional[ResponseFormat] = None
     __timezone: ZoneInfo = ZoneInfo("UTC")
-    __timezone_set: bool = False
+    __timestamp_source: TimestampSource = TimestampSource.SERVER
 
     @property
     def timezone(self) -> ZoneInfo:
@@ -45,10 +46,14 @@ class _RequestContext(MessagesMixin):
 
     @timezone.setter
     def timezone(self, tz: ZoneInfo) -> None:
-        if self.__timezone_set:
+        if self.__timestamp_source != TimestampSource.SERVER:
             raise RuntimeError("Timezone is already set")
-        self.__timezone_set = True
+        self.__timestamp_source = TimestampSource.USER_TIMEZONE
         self.__timezone = tz
+
+    @property
+    def timestamp_source(self) -> TimestampSource:
+        return self.__timestamp_source
 
     @property
     def bearer(self) -> DIAL_BEARER:

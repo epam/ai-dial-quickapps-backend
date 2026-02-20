@@ -43,11 +43,15 @@ class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
-mock_filter = Mock()
-mock_filter.filter_attachments.side_effect = lambda messages: messages
+@pytest.fixture
+def passthrough_filter():
+    f = Mock()
+    f.transform.side_effect = lambda messages: messages
+    return f
+
 
 @pytest.mark.asyncio
-async def test_invoke_without_show_usage(monkeypatch):
+async def test_invoke_without_show_usage(passthrough_filter):
     # Prepare mocked azure client
     create_mock = AsyncMock(return_value="stream-result")
     azure_client = SimpleNamespace(
@@ -63,18 +67,16 @@ async def test_invoke_without_show_usage(monkeypatch):
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
         response_format=None,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[passthrough_filter],
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings()
     )
 
     result = await invoker.invoke()
     assert result == "stream-result"
-    # capture kwargs the create call was invoked with
     assert create_mock.await_count == 1
-    called_kwargs = create_mock.await_args.args
     # create is called with kwargs only (no positional args)
-    assert called_kwargs == ()
+    assert create_mock.await_args.args == ()
     called_kwargs = create_mock.await_args.kwargs
     # base param merged with payload keys
     assert called_kwargs["base_param"] == "value"
@@ -86,7 +88,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     assert "stream_options" not in called_kwargs
 
 @pytest.mark.asyncio
-async def test_invoke_with_show_usage_true(monkeypatch):
+async def test_invoke_with_show_usage_true(passthrough_filter):
     create_mock = AsyncMock(return_value="stream-result")
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
@@ -99,7 +101,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[passthrough_filter],
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
@@ -117,7 +119,6 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
 
-# python
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "exc_body, expected_display",
@@ -126,7 +127,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         ("rate limited", "rate limited"),
     ],
 )
-async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, exc_body, expected_display):
+async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, passthrough_filter, exc_body, expected_display):
     class FakeOpenAIError(Exception):
         def __init__(self, code, body):
             super().__init__(str(body))
@@ -151,7 +152,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[passthrough_filter],
         response_format=None,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),

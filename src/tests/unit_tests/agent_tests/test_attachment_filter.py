@@ -25,7 +25,7 @@ class Test_AttachmentFilter:
             "look at this",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 1
         assert result[0].custom_content.attachments[0].type == "image/png"
 
@@ -35,7 +35,7 @@ class Test_AttachmentFilter:
             "check this",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 0
 
     def test_text_metadata_injected_for_attachments(self):
@@ -47,7 +47,7 @@ class Test_AttachmentFilter:
                 _attachment("photo.png", "/files/photo.png", "image/png"),
             ],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         content = str(result[0].content)
         assert "Attachment doc.pdf" in content
         assert "application/pdf" in content
@@ -69,28 +69,14 @@ class Test_AttachmentFilter:
                 _attachment("chart.jpg", "/files/chart.jpg", "image/jpeg"),
             ],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         attachments = result[0].custom_content.attachments
         assert len(attachments) == 2
         types = {str(a.type) for a in attachments}
         assert types == {"image/png", "image/jpeg"}
 
-    def test_filter_does_not_mutate_original_messages(self):
-        transformer = _AttachmentFilter()
-        msg = _user_msg(
-            "hello",
-            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
-        )
-        original_content = str(msg.content)
-        original_attachment_count = len(msg.custom_content.attachments)
-
-        transformer.filter_attachments([msg])
-
-        assert str(msg.content) == original_content
-        assert len(msg.custom_content.attachments) == original_attachment_count
-
     def test_filter_idempotent_on_repeated_calls(self):
-        """Calling filter_attachments twice on the same list produces identical output."""
+        """Calling transform twice on the same list produces identical output."""
         transformer = _AttachmentFilter()
         msg = _user_msg(
             "hello",
@@ -98,10 +84,10 @@ class Test_AttachmentFilter:
         )
         messages = [msg]
 
-        first_pass = transformer.filter_attachments(messages)
+        first_pass = transformer.transform(messages)
         first_content = str(first_pass[0].content)
 
-        second_pass = transformer.filter_attachments(messages)
+        second_pass = transformer.transform(messages)
         second_content = str(second_pass[0].content)
 
         assert first_content == second_content

@@ -4,13 +4,13 @@ from aidial_sdk.chat_completion import Message, Role
 from injector import ProviderOf, inject
 
 from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesSetupTransformer
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
 
 
-class _AddSystemPromptTransformer(MessagesTransformer):
+class _AddSystemPromptTransformer(MessagesSetupTransformer):
     @inject
     def __init__(
         self,

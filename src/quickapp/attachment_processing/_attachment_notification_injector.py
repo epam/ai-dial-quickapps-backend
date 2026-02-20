@@ -13,14 +13,14 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesSetupTransformer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import Context
 
 logger = logging.getLogger(__name__)
 
 
-class _AttachmentNotificationInjector(MessagesTransformer):
+class _AttachmentNotificationInjector(MessagesSetupTransformer):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 

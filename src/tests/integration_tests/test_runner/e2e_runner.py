@@ -5,16 +5,16 @@ import logging
 import mimetypes
 from pathlib import Path
 from typing import Any, List
+from unittest.mock import patch
 
 import pytest
 import uvicorn
-from aidial_sdk.chat_completion import Role
-from aidial_sdk.chat_completion import Message
+from aidial_sdk.chat_completion import Message, Role
+from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from pydantic import SecretStr
-
 from quickapp.common.dial_core_client import DialCoreClient
+from quickapp.common.time_provider import TimeProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
@@ -266,9 +266,15 @@ async def execute_single_test_run(
     """Executes a single test run and returns failures."""
     run_failures = []
     if test_case:
-    #     with patch('chat_v2.agents.chat_hub_agent.get_today') as mock_date:
-    #         mock_date.return_value = test_case.mock_date
-        run_failures.extend(await TestRunner.execute_test_case(client, test_case, ts, app_config))
+        if test_case.mock_date:
+            with patch.object(TimeProvider, "now", return_value=test_case.mock_date):
+                run_failures.extend(
+                    await TestRunner.execute_test_case(client, test_case, ts, app_config)
+                )
+        else:
+            run_failures.extend(
+                await TestRunner.execute_test_case(client, test_case, ts, app_config)
+            )
 
     # Call the test itself, in most cases it would be empty
     if inspect.iscoroutinefunction(func):
