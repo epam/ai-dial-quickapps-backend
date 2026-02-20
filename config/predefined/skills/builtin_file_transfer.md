@@ -2,7 +2,7 @@
 name: tool-call-file-parameter-formatting
 description: Formats file and URL parameters for tool calls. You must analyze the target tool's parameter names and descriptions to choose the correct format (base64, text, or URL ref).
 metadata:
-  version: "1.3"
+  version: "1.0"
 ---
 
 # File Parameter Formatting
@@ -18,9 +18,10 @@ When a tool parameter requires a file or URL, follow this process:
 Inspect the **Parameter Name** and **Parameter Description** in the tool definition to determine the requirement:
 
 *   **Requirement: Base64 Content**
-    *   *Clues:* Description mentions "content," "base64," "encoded," "file data," or the tool processes media (images/audio).
+    *   *Clues:* Description mentions "content," "base64," "encoded," "file data".
     *   *Action:* Use `base64` prefix.
 *   **Requirement: Plain Text**
+    *   *Purpose:* *   *Purpose:* Use this mode to indicate the tool expects the actual text file content as the parameter. When a file is marked with the `text` prefix, the tool-call processor will read the file's contents and pass that text as the tool call parameter.
     *   *Clues:* Description mentions "text," "string content," "read file," or the file type is code/markdown/logs.
     *   *Action:* Use `text` prefix.
 *   **Requirement: URL/Path Reference**
@@ -30,6 +31,7 @@ Inspect the **Parameter Name** and **Parameter Description** in the tool definit
 ### 2. Format the Value
 Construct the string using the format: `file:{prefix}::{path_or_url}`
 
+*   **Prefix:** One of `base64`, `text`, or `url` (determined from step 1)
 *   **Separator:** Always use `::`
 *   **Path:**
     *   For system files: `files/path/to/file.ext`
@@ -67,6 +69,39 @@ Before executing the tool call, perform this check:
     *   `description`: "The text content of the python script."
 *   **Reasoning:** Description asks for "text content."
 *   **Result:** `file:text::files/scripts/main.py`
+
+### Example 4: Format Hint in Tool Name
+*   **Tool Definition:**
+    *   `name`: `base64_image_processor`
+    *   `parameter`: `image_input`
+    *   `description`: "Image to process."
+*   **Reasoning:** Tool name contains "base64," indicating it expects encoded content.
+*   **Result:** `file:base64::files/photos/portrait.jpg`
+
+### Example 5: Format Hint in Tool Description
+*   **Tool Definition:**
+    *   `name`: `document_analyzer`
+    *   `description`: "Analyzes documents by reading their text content directly."
+    *   `parameter`: `document`
+    *   `description`: "Document to analyze."
+*   **Reasoning:** Tool description mentions "reading text content directly," suggesting text mode optimization.
+*   **Result:** `file:text::files/reports/annual_report.txt`
+
+### Example 6: Format Hint in Argument Name
+*   **Tool Definition:**
+    *   `name`: `fetch_resource`
+    *   `parameter`: `resource_url`
+    *   `description`: "The resource to fetch."
+*   **Reasoning:** Parameter name ends with `_url`, indicating a URL reference is expected.
+*   **Result:** `file:url::https://api.example.com/data.json`
+
+### Example 7: Format Hint in Argument Description
+*   **Tool Definition:**
+    *   `name`: `process_file`
+    *   `parameter`: `input_file`
+    *   `description`: "Pass the base64-encoded file data for processing."
+*   **Reasoning:** Description explicitly states "base64-encoded file data."
+*   **Result:** `file:base64::files/uploads/document.pdf`
 
 ## Common Mistakes
 *   ❌ Ignoring the tool description and defaulting to `url` for local files.
