@@ -1,6 +1,5 @@
 import logging
 import re
-from typing import Any
 
 import yaml
 from injector import inject
@@ -32,7 +31,6 @@ class AgentSkillsProvider(PromptPartProvider):
     def __init__(self, provider: PredefinedContentProvider) -> None:
         self._xml_metadata: str = ""
         self._skills: list[SkillMetadata] = []
-        self._skill_name_to_file: dict[str, str] = {}
         self._skill_content_cache: dict[str, str] = {}
         self._provider = provider
         self._load_skills()
@@ -78,10 +76,11 @@ class AgentSkillsProvider(PromptPartProvider):
             logger.warning(f"Skill name exceeds 64 characters in {file_name}: {name}")
             return None
 
-        if not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', name):
+        if '--' in name or not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', name):
             logger.warning(
                 f"Invalid skill name format in {file_name}: {name}"
-                " (must be lowercase letters, numbers, hyphens; no leading/trailing hyphens)"
+                " (must be lowercase letters, numbers, hyphens;"
+                " no leading/trailing or consecutive hyphens)"
             )
             return None
 
@@ -89,25 +88,19 @@ class AgentSkillsProvider(PromptPartProvider):
             logger.warning(f"Description exceeds 1024 characters in {file_name}")
             return None
 
-        skill_data: dict[str, Any] = {'name': name, 'description': description}
+        compatibility = parsed.get('compatibility')
+        if compatibility is not None and len(compatibility) > 500:
+            logger.warning(f"Compatibility exceeds 500 characters in {file_name}, truncating")
+            compatibility = compatibility[:500]
 
-        if 'license' in parsed:
-            skill_data['license'] = parsed['license']
-
-        if 'compatibility' in parsed:
-            compat = parsed['compatibility']
-            if len(compat) > 500:
-                logger.warning(f"Compatibility exceeds 500 characters in {file_name}, truncating")
-                compat = compat[:500]
-            skill_data['compatibility'] = compat
-
-        if parsed.get('metadata'):
-            skill_data['metadata'] = parsed['metadata']
-
-        if 'allowed_tools' in parsed:
-            skill_data['allowed_tools'] = parsed['allowed_tools']
-
-        return SkillMetadata(**skill_data)
+        return SkillMetadata(
+            name=name,
+            description=description,
+            license=parsed.get('license'),
+            compatibility=compatibility,
+            metadata=parsed.get('metadata') or None,
+            allowed_tools=parsed.get('allowed_tools'),
+        )
 
     def _generate_xml(self, skills: list[SkillMetadata]) -> str:
         """Generate XML representation of available skills for the system prompt."""
@@ -137,12 +130,9 @@ class AgentSkillsProvider(PromptPartProvider):
                 )
             if skill_metadata.metadata:
                 xml_parts.append("    <metadata>")
-                for key in sorted(skill_metadata.metadata.keys()):
-                    value = (
-                        ""
-                        if skill_metadata.metadata[key] is None
-                        else str(skill_metadata.metadata[key])
-                    )
+                for key in sorted(skill_metadata.metadata):
+                    raw_value = skill_metadata.metadata[key]
+                    value = "" if raw_value is None else str(raw_value)
                     xml_parts.append(
                         f"      <entry key=\"{self._escape_xml(str(key))}\">{self._escape_xml(value)}</entry>"
                     )
@@ -173,31 +163,28 @@ class AgentSkillsProvider(PromptPartProvider):
             return
 
         skills: list[SkillMetadata] = []
-        skill_name_to_file: dict[str, str] = {}
-        skill_content_cache: dict[str, str] = {}
+        content_cache: dict[str, str] = {}
         for file_stem in skill_names:
             try:
                 logger.debug(f"Loading skill `{file_stem}`")
                 content = self._provider.read_text(ContentType.SKILL, file_stem)
                 metadata = self._parse_frontmatter(content, file_stem)
-                if metadata:
-                    skills.append(metadata)
-                    if metadata.name not in skill_name_to_file:
-                        skill_name_to_file[metadata.name] = file_stem
-                        skill_content_cache[metadata.name] = content
-                    else:
-                        logger.warning(
-                            "Duplicate skill name `%s` in `%s`; keeping first file `%s`",
-                            metadata.name,
-                            file_stem,
-                            skill_name_to_file[metadata.name],
-                        )
+                if metadata is None:
+                    continue
+                if metadata.name != file_stem:
+                    logger.warning(
+                        "Skill name '%s' does not match directory name '%s'; skipping",
+                        metadata.name,
+                        file_stem,
+                    )
+                    continue
+                skills.append(metadata)
+                content_cache[metadata.name] = content
             except Exception as exc:
                 logger.error(f"Failed to parse skill `{file_stem}`: {exc}")
 
         self._skills = skills
-        self._skill_name_to_file = skill_name_to_file
-        self._skill_content_cache = skill_content_cache
+        self._skill_content_cache = content_cache
         self._xml_metadata = self._generate_xml(skills)
         logger.info(f"Loaded {len(skills)} skill(s)")
 

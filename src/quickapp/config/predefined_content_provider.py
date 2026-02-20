@@ -136,7 +136,6 @@ class PredefinedContentProvider:
                 "PREDEFINED_BASE_PATH is ignored."
             )
 
-        extra_raw: str | None = None
         if settings.extra_paths is not None:
             extra_raw = settings.extra_paths
         elif settings.base_path is not None:
@@ -146,6 +145,8 @@ class PredefinedContentProvider:
                 stacklevel=2,
             )
             extra_raw = settings.base_path
+        else:
+            extra_raw = None
 
         if extra_raw:
             for raw_path in extra_raw.split(":"):
@@ -165,7 +166,6 @@ class PredefinedContentProvider:
 
     def _load_all(self, layers: list[Path]) -> None:
         """Eagerly scan all layers and read all files into memory."""
-        # Track names seen so far for override detection
         seen: dict[ContentType, set[str]] = {ct: set() for ct in ContentType}
 
         for layer_path in layers:
@@ -173,24 +173,18 @@ class PredefinedContentProvider:
             overrides: dict[ContentType, list[str]] = {}
 
             for ct in ContentType:
-                sub_dir = layer_path / ct.value
-                if not sub_dir.is_dir():
+                entries = self._scan_entries(layer_path / ct.value, ct)
+                if not entries:
                     continue
 
                 layer_overrides: list[str] = []
-                count = 0
-                for file_path in sorted(sub_dir.glob(ct.file_glob)):
-                    name = file_path.stem
-                    count += 1
-
+                for name, file_path in entries:
                     if name in seen[ct]:
                         layer_overrides.append(name)
-
-                    self._read_file(ct, file_path, layer_path)
+                    self._read_file(ct, file_path, layer_path, name_override=name)
                     seen[ct].add(name)
 
-                if count:
-                    counts[ct] = count
+                counts[ct] = len(entries)
                 if layer_overrides:
                     overrides[ct] = layer_overrides
 
@@ -198,14 +192,39 @@ class PredefinedContentProvider:
                 LayerInfo(path=layer_path, content_counts=counts, overrides=overrides)
             )
 
-    def _read_file(self, ct: ContentType, file_path: Path, layer_path: Path) -> None:
+    @staticmethod
+    def _scan_entries(sub_dir: Path, ct: ContentType) -> list[tuple[str, Path]]:
+        """Return (name, file_path) pairs for all valid entries in a content-type directory."""
+        if not sub_dir.is_dir():
+            return []
+
+        if ct == ContentType.SKILL:
+            entries: list[tuple[str, Path]] = []
+            for skill_dir in sorted(sub_dir.iterdir()):
+                if not skill_dir.is_dir():
+                    continue
+                skill_file = skill_dir / "SKILL.md"
+                if skill_file.is_file():
+                    entries.append((skill_dir.name, skill_file))
+            return entries
+
+        return [(f.stem, f) for f in sorted(sub_dir.glob(ct.file_glob))]
+
+    def _read_file(
+        self,
+        ct: ContentType,
+        file_path: Path,
+        layer_path: Path,
+        name_override: str | None = None,
+    ) -> None:
         """Read a single file into the appropriate store."""
+        name = name_override or file_path.stem
         try:
             if ct.is_text:
-                self._text_store[ct][file_path.stem] = file_path.read_text(encoding="utf-8")
+                self._text_store[ct][name] = file_path.read_text(encoding="utf-8")
             else:
                 with file_path.open("r", encoding="utf-8") as f:
-                    self._json_store[ct][file_path.stem] = json.load(f)
+                    self._json_store[ct][name] = json.load(f)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to read {ct.value} file {file_path} in layer {layer_path}: {e}"

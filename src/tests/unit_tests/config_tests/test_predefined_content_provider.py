@@ -40,7 +40,7 @@ class TestBuiltinLayer:
 
     def test_lists_builtin_skills(self, builtin_provider: PredefinedContentProvider):
         names = builtin_provider.list_names(ContentType.SKILL)
-        assert "builtin_file_transfer" in names
+        assert "tool-call-file-parameter-formatting" in names
 
 
 class TestReadText:
@@ -52,7 +52,7 @@ class TestReadText:
         assert len(content) > 0
 
     def test_read_skill_returns_string(self, builtin_provider: PredefinedContentProvider):
-        content = builtin_provider.read_text(ContentType.SKILL, "builtin_file_transfer")
+        content = builtin_provider.read_text(ContentType.SKILL, "tool-call-file-parameter-formatting")
         assert isinstance(content, str)
         assert len(content) > 0
 
@@ -94,7 +94,7 @@ class TestReadJson:
         self, builtin_provider: PredefinedContentProvider
     ):
         with pytest.raises(TypeError, match="read_json.*not supported.*skills"):
-            builtin_provider.read_json(ContentType.SKILL, "builtin_file_transfer")
+            builtin_provider.read_json(ContentType.SKILL, "tool-call-file-parameter-formatting")
 
     def test_missing_name_raises_key_error(self, builtin_provider: PredefinedContentProvider):
         with pytest.raises(KeyError, match="not found"):
@@ -163,6 +163,46 @@ class TestExtraLayers:
         settings = PredefinedSettings(extra_paths=str(tmp_path))
         with pytest.raises(RuntimeError, match="Failed to read"):
             PredefinedContentProvider(settings)
+
+    def test_extra_layer_adds_directory_based_skill(self, tmp_path: Path):
+        skill_dir = tmp_path / "skills" / "my-custom-skill"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: my-custom-skill\ndescription: A custom skill\n---\nContent"
+        )
+
+        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        provider = PredefinedContentProvider(settings)
+
+        names = provider.list_names(ContentType.SKILL)
+        assert "my-custom-skill" in names
+        content = provider.read_text(ContentType.SKILL, "my-custom-skill")
+        assert "A custom skill" in content
+
+    def test_flat_md_files_in_skills_dir_are_ignored(self, tmp_path: Path):
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        (skills_dir / "flat_skill.md").write_text("---\nname: flat\n---\nFlat content")
+
+        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        provider = PredefinedContentProvider(settings)
+
+        names = provider.list_names(ContentType.SKILL)
+        assert "flat_skill" not in names
+        assert "flat" not in names
+
+    def test_extra_layer_overrides_builtin_skill(self, tmp_path: Path):
+        skill_dir = tmp_path / "skills" / "tool-call-file-parameter-formatting"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text("Overridden skill content")
+
+        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        provider = PredefinedContentProvider(settings)
+
+        content = provider.read_text(
+            ContentType.SKILL, "tool-call-file-parameter-formatting"
+        )
+        assert content == "Overridden skill content"
 
 
 class TestLayersInfo:

@@ -6,6 +6,14 @@ from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 
+_BINARY_SIGNATURES: list[tuple[bytes, str]] = [
+    (b"\x89PNG\r\n\x1a\n", "PNG image"),
+    (b"\xff\xd8\xff", "JPEG image"),
+    (b"GIF8", "GIF image"),
+    (b"%PDF-", "PDF document"),
+    (b"PK\x03\x04", "ZIP archive"),
+]
+
 
 class FilePrefixHandlers:
     """Static handlers for file:{prefix}::{file_url} processing."""
@@ -47,15 +55,7 @@ class FilePrefixHandlers:
                 )
 
         # Detect common binary signatures and reject for text decoding
-        binary_signatures = [
-            (b"\x89PNG\r\n\x1a\n", "PNG image"),
-            (b"\xff\xd8\xff", "JPEG image"),
-            (b"GIF8", "GIF image"),
-            (b"%PDF-", "PDF document"),
-            (b"PK\x03\x04", "ZIP archive"),
-        ]
-
-        for sig, desc in binary_signatures:
+        for sig, desc in _BINARY_SIGNATURES:
             if content_bytes.startswith(sig):
                 logger.warning(
                     "Downloaded file %s appears to be binary (%s); 'text' prefix is invalid for binary files",
@@ -70,14 +70,10 @@ class FilePrefixHandlers:
                     ),
                 )
 
-        # Decode text: utf-8-sig -> latin-1 -> utf-8 with replacement
+        # Decode text: utf-8-sig -> utf-8 with replacement
         try:
             logger.debug("Trying to decode text content as utf-8-sig")
             return content_bytes.decode("utf-8-sig")
         except UnicodeDecodeError:
-            try:
-                logger.debug("utf-8-sig failed; trying latin-1")
-                return content_bytes.decode("latin-1")
-            except Exception:
-                logger.debug("latin-1 failed; falling back to utf-8 with replacement")
-                return content_bytes.decode("utf-8", errors="replace")
+            logger.debug("utf-8-sig failed; falling back to utf-8 with replacement")
+            return content_bytes.decode("utf-8", errors="replace")
