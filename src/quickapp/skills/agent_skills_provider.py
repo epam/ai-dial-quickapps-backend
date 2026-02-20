@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import List, Optional
 
+import yaml
 from injector import inject
 from pydantic import BaseModel
 
@@ -62,7 +63,7 @@ class AgentSkillsProvider(PromptPartProvider):
     @staticmethod
     def _parse_frontmatter(content: str, file_name: str) -> Optional[SkillMetadata]:
         """
-        Parse YAML frontmatter from markdown content.
+        Parse YAML frontmatter from markdown content using PyYAML.
         Expected format per spec:
         ---
         name: skill-name
@@ -93,38 +94,27 @@ class AgentSkillsProvider(PromptPartProvider):
 
         frontmatter_text = match.group(1)
 
-        # Simple YAML parsing (without external dependency)
-        parsed: dict = {}
-        current_dict_key = None
+        # Parse YAML using PyYAML
+        try:
+            parsed = yaml.safe_load(frontmatter_text)
+        except yaml.YAMLError as exc:
+            logger.error(f"Failed to parse YAML frontmatter in {file_name}: {exc}")
+            return None
 
-        for line in frontmatter_text.split('\n'):
-            stripped = line.strip()
-            if not stripped:
-                continue
+        if not isinstance(parsed, dict):
+            logger.warning(f"YAML frontmatter is not a dictionary in {file_name}")
+            return None
 
-            # Check if this is a nested key-value under a dict (e.g., metadata)
-            if current_dict_key and line.startswith('  ') and ':' in stripped:
-                key, value = stripped.split(':', 1)
-                parsed[current_dict_key][key.strip()] = value.strip()
-                continue
+        # Normalize 'allowed-tools' key to 'allowed_tools'
+        if 'allowed-tools' in parsed:
+            # Convert space-delimited string to list if necessary
+            allowed_tools_value = parsed.pop('allowed-tools')
+            if isinstance(allowed_tools_value, str):
+                parsed['allowed_tools'] = allowed_tools_value.split()
+            elif isinstance(allowed_tools_value, list):
+                parsed['allowed_tools'] = allowed_tools_value
             else:
-                current_dict_key = None
-
-            if ':' in stripped:
-                key, value = stripped.split(':', 1)
-                key = key.strip()
-                value = value.strip()
-
-                # Handle metadata dict (nested structure)
-                if key == 'metadata' and not value:
-                    parsed[key] = {}
-                    current_dict_key = key
-                # Handle allowed-tools as space-delimited list
-                elif key == 'allowed-tools' and value:
-                    parsed['allowed_tools'] = value.split()
-                # Handle other fields if they have values
-                elif value:
-                    parsed[key] = value
+                logger.warning(f"Invalid allowed-tools format in {file_name}")
 
         # Extract and validate required fields
         name = parsed.get('name')

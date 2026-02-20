@@ -36,6 +36,7 @@ dependencies = [
 
     # Utilities
     "common>=0.1.2,<0.2.0",                       # Shared utilities
+    "pyyaml (>=6.0.2,<7.0.0)",                       # YAML parsing
 ]
 homepage = "https://dialx.ai"
 repository = "https://github.com/epam/ai-dial-quickapps-backend"
