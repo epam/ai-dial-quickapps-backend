@@ -10,17 +10,13 @@ class MessageTransformer(ABC):
     def transform(self, messages: list[Message]) -> list[Message]: ...
 
 
-class MessagesSetupTransformer(MessageTransformer):
+class MessagesSetupTransformer(MessageTransformer, ABC):
     """Runs once at request setup, in _MessagesSetup.setup()."""
 
     ...
 
 
-class PreInvocationTransformer(MessageTransformer):
+class PreInvocationTransformer(MessageTransformer, ABC):
     """Runs every iteration, in AssistantInvoker.__prepare_messages()."""
 
     ...
-
-
-# Backward-compatible alias
-MessagesTransformer = MessagesSetupTransformer
