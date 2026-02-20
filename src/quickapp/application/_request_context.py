@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from aidial_sdk.chat_completion import Choice, ResponseFormat
@@ -35,6 +35,7 @@ class _RequestContext(MessagesMixin):
     __bearer_set: bool = False
     __bearer: DIAL_BEARER = None
     __response_format: Optional[ResponseFormat] = None
+    __forwarded_headers: dict[str, str] = field(default_factory=dict)
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -95,3 +96,11 @@ class _RequestContext(MessagesMixin):
             raise RuntimeError("Response format is already set")
         _validate_response_format(response_format)
         self.__response_format = response_format
+
+    @property
+    def forwarded_headers(self) -> dict[str, str]:
+        return self.__forwarded_headers
+
+    @forwarded_headers.setter
+    def forwarded_headers(self, value: dict[str, str]) -> None:
+        self.__forwarded_headers = dict(value) if value else {}

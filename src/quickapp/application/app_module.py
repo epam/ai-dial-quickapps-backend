@@ -6,6 +6,7 @@ from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
@@ -74,19 +75,35 @@ class AppModule(Module):
         return context.response_format
 
     @provider
+    def __provide_forwarded_headers(self, context: _RequestContext) -> ForwardedHeaders:
+        return ForwardedHeaders(context.forwarded_headers)
+
+    @provider
     def __provide_stage(self, choice: Choice) -> Stage:
         return choice.create_stage()
 
     @provider
     def __provide_async_dial(
-        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
+        self,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        bearer: DIAL_BEARER,
+        forwarded_headers: ForwardedHeaders,
     ) -> AsyncDial:
-        return AsyncDial(
-            base_url=dial_settings.url,
-            api_key=api_key.get_secret_value(),
-            api_version=dial_settings.api_version,
-            bearer_token=bearer.get_secret_value() if bearer else None,
-        )
+        kwargs: dict = {
+            "base_url": dial_settings.url,
+            "api_key": api_key.get_secret_value(),
+            "api_version": dial_settings.api_version,
+            "bearer_token": bearer.get_secret_value() if bearer else None,
+        }
+        if forwarded_headers.headers:
+            kwargs["default_headers"] = forwarded_headers.headers
+        try:
+            return AsyncDial(**kwargs)
+        except TypeError:
+            # aidial_client may not support default_headers in older versions
+            kwargs.pop("default_headers", None)
+            return AsyncDial(**kwargs)
 
     @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:

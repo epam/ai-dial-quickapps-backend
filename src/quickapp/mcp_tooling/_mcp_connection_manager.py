@@ -9,6 +9,7 @@ from mcp.types import CallToolResult
 
 from quickapp.common import DIAL_BEARER
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.toolsets.authorization import (
     BasicAuthorization,
@@ -31,11 +32,13 @@ class _MCPConnectionManager:
         oauth_token_fetcher: OAuthTokenFetcher,
         dial_settings: DialSettings,
         bearer: DIAL_BEARER = None,
+        forwarded_headers: ForwardedHeaders | None = None,
     ):
         self.__toolset_info = toolset_info
         self.__oauth_token_fetcher: OAuthTokenFetcher = oauth_token_fetcher
         self.__dial_settings: DialSettings = dial_settings
         self.__bearer: DIAL_BEARER = bearer
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers or ForwardedHeaders()
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
         headers = (
@@ -62,6 +65,7 @@ class _MCPConnectionManager:
             case ClientIdSecretAuthorization() as auth:
                 token = await self.__oauth_token_fetcher.fetch_oauth_token(auth)
                 headers["Authorization"] = f"Bearer {token}"
+        headers.update(self.__forwarded_headers.headers)
         return headers
 
     @asynccontextmanager

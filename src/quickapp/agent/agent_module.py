@@ -16,6 +16,7 @@ from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
@@ -70,14 +71,17 @@ class AgentModule(Module):
         dial_settings: DialSettings,
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
+        forwarded_headers: ForwardedHeaders,
     ) -> AsyncAzureOpenAI:
-        azure_client = AsyncAzureOpenAI(
-            azure_endpoint=dial_settings.url,
-            api_key=api_key.get_secret_value(),
-            azure_deployment=config.orchestrator.deployment.name,
-            api_version=dial_settings.api_version,
-        )
-        return azure_client
+        kwargs: dict = {
+            "azure_endpoint": dial_settings.url,
+            "api_key": api_key.get_secret_value(),
+            "azure_deployment": config.orchestrator.deployment.name,
+            "api_version": dial_settings.api_version,
+        }
+        if forwarded_headers.headers:
+            kwargs["default_headers"] = forwarded_headers.headers
+        return AsyncAzureOpenAI(**kwargs)
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
