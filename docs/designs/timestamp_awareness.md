@@ -38,14 +38,14 @@ The feature is composed of four cooperating subsystems:
 
 ```mermaid
 flowchart TD
-    A["Timestamp Tools\n(CurrentTimestampTool, SetTimezoneTool)"]
-    B["Enrichment Pipeline\n(CompletionResultEnricher)"]
-    C["Annotation Pipeline\n(PreInvocationTransformer)"]
+    A["Timestamp Tools<br>(CurrentTimestampTool, SetTimezoneTool)"]
+    B["Enrichment Pipeline<br>(CompletionResultEnricher)"]
+    C["Annotation Pipeline<br>(PreInvocationTransformer)"]
     D["LLM"]
 
     A -- "CompletionResult" --> B
-    B -- "TOOL messages with\nmetadata in state" --> C
-    C -- "Annotated messages\n(deep copies)" --> D
+    B -- "TOOL messages with<br>metadata in state" --> C
+    C -- "Annotated messages<br>(deep copies)" --> D
 ```
 
 ### 1. Timestamp Tools
