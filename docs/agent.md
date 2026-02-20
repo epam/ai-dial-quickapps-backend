@@ -237,7 +237,6 @@ All message transformers extend a typed hierarchy defined in `quickapp/common/ab
   `@multiprovider` for `list[MessagesSetupTransformer]`.
 - **`PreInvocationTransformer`**: Runs every orchestrator iteration in `AssistantInvoker.__prepare_messages()`.
   Registered via `@multiprovider` for `list[PreInvocationTransformer]`.
-- **Backward-compatible alias**: `MessagesTransformer = MessagesSetupTransformer` is kept for existing code.
 
 ### Setup Transformer Pipeline
 
