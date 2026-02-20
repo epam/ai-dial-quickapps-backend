@@ -31,12 +31,12 @@ class TestBuildContextEntries:
         assert entries[0].url == "files/bucket/a.csv"
 
     def test_new_entry_when_not_seen(self):
-        contexts: list[Context] = [FileContextConfig(url="files/bucket/data.csv")]
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/data.pdf")]
         urls, entries = build_context_entries(contexts, {})
         assert entries[0].status == ContextEntryStatus.new
-        assert entries[0].title == "data.csv"
-        assert entries[0].type == "text/csv"
-        assert entries[0].url == "files/bucket/data.csv"
+        assert entries[0].title == "data.pdf"
+        assert entries[0].type == "application/pdf"
+        assert entries[0].url == "files/bucket/data.pdf"
 
     def test_unchanged_entry_has_no_status(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/data.csv")]
