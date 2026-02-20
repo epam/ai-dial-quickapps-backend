@@ -37,13 +37,17 @@ class ToolExecutor:
 
             logger.debug(f"Making tool calls: {tc.function.name} with args:{args}")
             if tool:
-                tasks.append(tool.arun(tool_call_id=tc.id, **args))
+                tasks.append(self.__run_and_enrich(tool, tc.id, args))
 
-        results = await asyncio.gather(*tasks, return_exceptions=False)
-        for result in results:
-            for enricher in self.__enrichers:
-                enricher.enrich(result)
-        return results
+        return list(await asyncio.gather(*tasks, return_exceptions=False))
+
+    async def __run_and_enrich(
+        self, tool: StagedBaseTool, tool_call_id: str, args: dict
+    ) -> CompletionResult:
+        result = await tool.arun(tool_call_id=tool_call_id, **args)
+        for enricher in self.__enrichers:
+            enricher.enrich(result)
+        return result
 
     @staticmethod
     def __build_tool_dict(tools: List[StagedBaseTool]) -> Dict[str, StagedBaseTool]:
