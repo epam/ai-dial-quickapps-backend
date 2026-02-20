@@ -84,21 +84,81 @@ file:
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
 
-### Agent instructions
+### Agent Skills
 
-You can define instructions for Quick Apps by adding one or more Markdown files to config/predefined/instructions. These
-files are appended after the predefined system prompt (prompt first, instructions after) to form the final system
-message the project uses.
-How to add instructions
+Agent skills are reusable instruction modules that enhance agent capabilities. Skills are defined as Markdown files with YAML frontmatter and are automatically loaded and made available to the agent at runtime.
 
-- Add *.md files to config/predefined/instructions.
-- Name files to control order (for example 01-overview.md, 02-guidelines.md); files are concatenated in filename sort
-  order.
-- Use blank lines between sections inside files; when combined, files are separated by a blank line.
-- Restart the service to apply changes.
-  Notes
-- If no files are present, no extra instructions will be added.
-- Check application logs if expected instructions do not appear.
+#### How Skills Work
+
+- Skills are loaded from `config/predefined/skills/` directory at startup
+- Each skill is presented to the agent as XML metadata in the system prompt
+- The agent can read detailed skill instructions on-demand using the internal `read_skill` tool
+- Skills support metadata including name, description, license, compatibility, and allowed tools
+
+#### Creating a Skill
+
+Create a `.md` file in `config/predefined/skills/` with the following structure:
+
+```markdown
+---
+name: skill-name
+description: Brief description of what this skill does
+license: MIT
+compatibility: Requires specific tools or environment
+metadata:
+  version: "1.0"
+  author: "Your Name"
+allowed-tools: tool1 tool2 tool3
+---
+
+# Skill Title
+
+Detailed instructions and guidelines for the agent...
+```
+
+#### Skill Metadata Fields
+
+| Field | Required | Description | Constraints |
+|-------|----------|-------------|-------------|
+| `name` | Yes | Unique skill identifier | Max 64 chars, lowercase letters/numbers/hyphens only, no leading/trailing hyphens |
+| `description` | Yes | Brief skill description | Max 1024 chars, non-empty |
+| `license` | No | License name or reference | Any string |
+| `compatibility` | No | Environment or tool requirements | Max 500 chars |
+| `metadata` | No | Arbitrary key-value mappings | Dictionary of strings |
+| `allowed-tools` | No | Space-delimited list of tool names the skill can use | List or space-delimited string |
+
+#### Example Skill
+
+```markdown
+---
+name: data-analysis-helper
+description: Provides guidelines for analyzing and visualizing data using available tools
+compatibility: Requires Python interpreter and plotting libraries
+metadata:
+  version: "1.0"
+  category: data-science
+allowed-tools: py_interpreter plot_generator
+---
+
+# Data Analysis Helper
+
+## Purpose
+Guide the agent through systematic data analysis workflows.
+
+## Instructions
+1. First examine the data structure
+2. Identify patterns and outliers
+3. Create visualizations when appropriate
+4. Provide statistical summaries
+```
+
+#### Notes
+
+- Skills are validated at startup; invalid skills are logged and skipped
+- The agent receives skill metadata automatically but must explicitly call `read_skill` to access full content
+- Skills can reference specific tools via the `allowed-tools` field
+- Built-in skills (e.g., `tool-call-file-parameter-formatting`) are included by default
+- Restart the service after adding or modifying skills to reload them
 
 ## Local Development
 
