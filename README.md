@@ -82,6 +82,13 @@ These variables still work but will be removed in a future major version.
 |------------------------|--------------------------|------------------------------------------------------------------------------|
 | `PREDEFINED_BASE_PATH` | `PREDEFINED_EXTRA_PATHS` | If set alone, treated as a single extra layer on top of the built-in content |
 
+#### Deprecated: Agent Instructions
+
+The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
+removed. Instructions are replaced by [Agent Skills](./docs/skills.md), which offer richer metadata, on-demand
+retrieval, and layered overrides. See the
+[migration guide](./docs/skills.md#migrating-from-agent-instructions) for details.
+
 ¹**Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.

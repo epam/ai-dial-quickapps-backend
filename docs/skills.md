@@ -120,3 +120,44 @@ optional features. The table below summarises what is and isn't supported.
 
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
 For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).
+
+## Migrating from Agent Instructions
+
+The `config/predefined/instructions/` directory convention and `AgentInstructionsProvider` have been removed. The skills
+framework is their replacement.
+
+Previously, `.md` files placed in `config/predefined/instructions/` were concatenated in filename order and appended to
+the system prompt. Skills differ in several ways:
+
+- Each skill lives in its own directory with a `SKILL.md` file containing YAML frontmatter.
+- Skills are not concatenated into the system prompt directly. Instead, their metadata (name, description) appears as
+  an `<available_skills>` XML block, and the agent reads full content on demand via the `read_skill` tool.
+- Skills support metadata fields (`license`, `compatibility`, `allowed-tools`) that instructions did not have.
+
+### Migration steps
+
+1. For each `.md` file in `config/predefined/instructions/`, create a skill directory:
+
+   ```
+   # Before
+   config/predefined/instructions/my-guidelines.md
+
+   # After
+   config/predefined/skills/my-guidelines/SKILL.md
+   ```
+
+2. Add YAML frontmatter to the top of each `SKILL.md`:
+
+   ```yaml
+   ---
+   name: my-guidelines
+   description: Brief description of what these guidelines cover
+   ---
+   ```
+
+   The `name` must match the directory name. The `description` should help the agent decide when to read the skill.
+
+3. Remove the `config/predefined/instructions/` directory.
+
+4. If you were using `PREDEFINED_BASE_PATH` to point to a custom instructions directory, switch to
+   `PREDEFINED_EXTRA_PATHS` (see [README](../README.md) for details).
