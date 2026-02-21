@@ -1,6 +1,6 @@
 # Design: Attachment Configuration Redesign
 
-**Status:** Draft
+**Status:** Implemented
 
 ## Problem Statement
 
@@ -23,7 +23,10 @@ mapped to output filtering.
 
 ---
 
-## Core Model: Three Orthogonal Concerns
+## Proposed Design
+
+The design decomposes the current overloaded `supported_types` into three orthogonal concerns, each controlled by
+exactly one config field.
 
 ### Concern 1: Output attachment filtering ("what to keep")
 
@@ -36,10 +39,12 @@ name is clear enough and avoiding a rename eliminates migration cost for all exi
 types matching this list. This is the only place this check runs.
 
 **Change:** Remove the `supported_types` check from `_RestApiTool` (it will no longer create attachments itself — that's
-Concern 3's job). For `_MCPTool`, keep a lightweight pre-upload check as a **performance optimization** — uploading an
-attachment to DIAL Core only to have the base class discard it is wasted I/O. This check should be explicitly framed as
-upload gating (e.g., a `_should_upload(type)` helper), not as filtering logic. The base class remains the single owner
-of the actual filtering decision.
+Concern 3's job). For `_MCPTool`, replace `_maybe_upload_attachment` with a `_should_upload(type)` helper that gates
+**both** the upload and the append. Currently, `_MCPTool` unconditionally appends every attachment to the result list
+even when the upload is skipped — these unuploaded objects linger in memory until the base-class filter discards them.
+The new helper should short-circuit: if the type won't survive `supported_types` filtering, skip both upload and append.
+This is framed as a **performance optimization** — the base class remains the single owner of the actual filtering
+decision.
 
 ### Concern 2: Choice propagation ("what to show in UI")
 
@@ -50,19 +55,30 @@ of the actual filtering decision.
 **Semantics:** Attachments matching this list are forwarded to the response `Choice` for UI rendering (e.g., inline
 images, Plotly charts).
 
-**Change:** Enforce as a logical subset of `supported_types` via **runtime code ordering** — the base class first filters
-by `supported_types`, then checks `propagate_types_to_choice` only on surviving attachments. No config-time validation
-needed (MIME wildcard subset checking is non-trivial and not worth the complexity).
+**Change (bug fix):** The current code in `StagedBaseTool._run_in_stage_report_success` runs the `supported_types` and
+`propagate_types_to_choice` checks as two independent `if` statements in the same loop. An attachment that fails
+`supported_types` but matches `propagate_types_to_choice` is still added to `propagate_to_choice` — it leaks to the UI
+choice despite being filtered from `result.attachments`. This is an existing bug.
+
+Fix: restructure the loop so that `propagate_types_to_choice` is checked **only on surviving attachments** (i.e., those
+that already passed the `supported_types` filter). This enforces propagation as a logical subset of filtering via runtime
+code ordering. No config-time validation is needed (MIME wildcard subset checking is non-trivial and not worth the
+complexity).
 
 ### Concern 3: Response-to-attachment conversion ("whether to create an attachment from the response")
 
 This is **REST-API-specific**. Other tool types (MCP, deployment, internal) produce attachments through their own
 natural mechanisms — they don't need a "should I wrap my text response as a file?" decision.
 
-**New field:** `RestApiTool.response_as_attachment` — a sibling of the existing `attachment` field on `RestApiTool`.
-Defined per-tool. `RestApiToolSet` gets an optional `response_as_attachment` field that serves as the default for all
-tools in the set; individual tools can override it. Override semantics are **full replacement**: if a tool defines
-`response_as_attachment`, the entire toolset default is ignored for that tool (no field-level merging).
+**New field:** `RestApiTool.response_as_attachment` — a new field on `RestApiTool`, alongside the inherited `attachment`
+config from `BaseTool`. Defined per-tool. `RestApiToolSet` gets an optional `response_as_attachment` field that serves as
+the default for all tools in the set; individual tools can override it. Override semantics are **full replacement**: if a
+tool defines `response_as_attachment`, the entire toolset default is ignored for that tool (no field-level merging).
+
+Note: `RestApiToolSet` currently has no toolset-level attachment defaults — this is new plumbing. `MCPToolSet` already has
+a similar pattern (toolset-level `attachment: AttachmentConfig` propagated in `_MCPToolInitializer`). The REST API
+propagation should follow the same approach: resolve the toolset default during tool initialization and copy it to each
+tool that doesn't define its own override.
 
 **Type:** config model with:
 
@@ -81,7 +97,7 @@ This cleanly supports three REST API response modes:
 | 2. Attachment only        | `true`    | `false`                   | Response as attachment, placeholder text content |
 | 3. Both text + attachment | `true`    | `true`                    | Response in both forms                           |
 
-Additional patterns (like "propagation only") emerge from combining `response_as_attachment` with `propagate_types_to_choice` — these are documented in the Configuration Recipes section below.
+Additional patterns (like "propagation only") emerge from combining `response_as_attachment` with `propagate_types_to_choice` — these are documented in the Configuration / Usage Examples section below.
 
 **Default behavior change:** `enabled=False` means REST API tools no longer silently duplicate responses as attachments.
 This is a breaking change for configs that rely on the current implicit behavior — a migration note is needed.
@@ -93,7 +109,10 @@ This is a breaking change for configs that rely on the current implicit behavior
 ### Deployment tool `input_attachment_types` mapping
 
 Currently `deployment.input_attachment_types` (what the deployment accepts as input) is mapped to `supported_types` (
-what the tool outputs). This is a semantic mismatch.
+what the tool outputs). This is a semantic mismatch — and also a **bug**: when a deployment has no
+`input_attachment_types`, `ToolConfigCoreService` sets `supported_types=deployment.input_attachment_types or []`, which
+evaluates to `[]`. Since `matches_type(mime_type, [])` returns `False` for all types, this silently blocks **all** output
+attachments from deployments that don't declare input types.
 
 **Fix:** When building a `DialDeploymentTool` from DIAL Core metadata:
 
@@ -134,9 +153,14 @@ attachment creation path, it's a natural time to fix it — but the fix (detecti
 
 ---
 
-## Configuration Recipes
+## Configuration / Usage Examples
 
 Common patterns that emerge from combining the orthogonal config fields:
+
+**REST API tool returning JSON data (text only — the new default, no config needed):**
+- `response_as_attachment` is omitted (defaults to `enabled = false`)
+- Result: HTTP response body is returned as `CompletionResult.content` text. No attachment is created. This is the most
+  common case for REST API tools that return structured data for the LLM to process.
 
 **REST API tool returning custom Plotly visualization (propagation only):**
 - `response_as_attachment.enabled = true`
@@ -157,28 +181,32 @@ Common patterns that emerge from combining the orthogonal config fields:
 
 ## Migration
 
-### Breaking change: REST API response-to-attachment default
+### Breaking changes
 
-The new default `response_as_attachment.enabled = false` means REST API tools no longer silently create attachments from
-every HTTP response. Configs that relied on this behavior need to explicitly opt in.
+**REST API response-to-attachment default.** The new default `response_as_attachment.enabled = false` means REST API
+tools no longer silently create attachments from every HTTP response. Configs that relied on this behavior need to
+explicitly opt in.
 
-**Backward compatibility strategy:** Log a warning **once at startup** (config load time) for REST API tools that don't
-explicitly set `response_as_attachment`. The message should be: "REST API tool X uses the default
-`response_as_attachment.enabled=false`. If you relied on automatic attachment creation, set `enabled=true` explicitly."
-Per-response warnings would fire on every single API call (since the old `*/*` default matched everything) and produce
-pure noise.
+**Backward compatibility strategy:** Log a warning **once at startup** (config load time) for REST API tools where
+`response_as_attachment` is absent from the config input. Detection uses Pydantic's `model_fields_set`: if
+`"response_as_attachment"` is not in the set, the field was never provided and the warning fires. If a user explicitly
+writes `response_as_attachment: {enabled: false}`, they made a deliberate choice and should **not** see the warning. The
+message should be: "REST API tool X uses the default `response_as_attachment.enabled=false`. If you relied on automatic
+attachment creation, set `enabled=true` explicitly." Per-response warnings would fire on every single API call (since
+the old `*/*` default matched everything) and produce pure noise.
 
-### No change: Deployment tools
+### Non-breaking changes
 
-Deployment tool defaults are preserved (`propagate_types_to_choice = []`). The only change is that `supported_types`
-defaults to `["*/*"]` instead of being derived from `input_attachment_types`, which means deployment output attachments
-are no longer silently filtered when the deployment doesn't declare input types.
+**Deployment tools.** Deployment tool defaults are preserved (`propagate_types_to_choice = []`). The only change is that
+`supported_types` defaults to `["*/*"]` instead of being derived from `input_attachment_types`, which means deployment
+output attachments are no longer silently filtered when the deployment doesn't declare input types.
 
-### No rename
+**Field naming.** `supported_types` field name is kept as-is. No config migration needed for existing users of this
+field.
 
-`supported_types` field name is kept as-is. No config migration needed for existing users of this field.
+---
 
-## Summary of Config Changes
+## Summary of Changes
 
 **`AttachmentConfig`** (all tool types):
 
@@ -196,3 +224,4 @@ are no longer silently filtered when the deployment doesn't declare input types.
 - Stop mapping `input_attachment_types` → `supported_types`; default to `["*/*"]`
 - Keep `propagate_types_to_choice = []` (intentional for deployment tools)
 - Use `input_attachment_types` only for controlling which attachments are forwarded to the deployment
+

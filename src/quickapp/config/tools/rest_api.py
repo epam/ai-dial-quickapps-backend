@@ -10,6 +10,7 @@ from quickapp.config.tools.base import (
     ConfigurableSchemaObject,
     ConfigurableSchemaSimpleType,
 )
+from quickapp.config.tools.const import ALL_MIME_TYPES
 
 
 class ToolEndpointParamType(str, Enum):
@@ -56,6 +57,20 @@ class RestApiEndpointMethodInfo(BaseModel):
     method_type: ToolEndpointInfoMethodType
 
 
+class ResponseAsAttachmentConfig(BaseModel):
+    enabled: bool = Field(
+        default=False, description="Whether to wrap the HTTP response as an attachment."
+    )
+    content_types: list[str] = Field(
+        default_factory=lambda: [ALL_MIME_TYPES],
+        description="Which response Content-Types to convert to attachments.",
+    )
+    include_body_as_content: bool = Field(
+        default=True,
+        description="When an attachment is created, whether to also keep the response body as content.",
+    )
+
+
 class RestApiTool(
     BaseOpenAITool[
         RestApiEndpointObjectParam,
@@ -66,3 +81,7 @@ class RestApiTool(
 ):
     rest_api_method_info: RestApiEndpointMethodInfo
     type: Literal["restapi-tool"] = Field(default="restapi-tool")
+    response_as_attachment: ResponseAsAttachmentConfig | None = Field(
+        default=None,
+        description="Configuration for converting HTTP responses into attachments.",
+    )

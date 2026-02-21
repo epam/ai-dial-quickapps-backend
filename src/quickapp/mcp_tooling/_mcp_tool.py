@@ -86,18 +86,13 @@ class _MCPTool(StagedBaseTool):
                     data=getattr(resource, "blob", None),
                 )
             msg = f"Unsupported embedded resource type: {type(resource)}"
-            logger.exception(msg)
+            logger.error(msg)
             raise NotImplementedError(msg)
 
         return None
 
-    async def _maybe_upload_attachment(self, attachment: Attachment) -> Attachment:
-        if self._tool_config and matches_type(
-            attachment.type, self._tool_config.attachment.supported_types  # type: ignore[arg-type]
-        ):
-            logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
-            return await self.__dial_attachment_service.upload_attachment_to_core(attachment)
-        return attachment
+    def _should_upload(self, mime_type: str | None) -> bool:
+        return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
@@ -128,7 +123,7 @@ class _MCPTool(StagedBaseTool):
                 logger.warning("Unsupported content block type: %s; treating as non-text", btype)
                 non_text_contents.append(block)
 
-        tool_content = "\n\n".join([p for p in text_parts if p]) or ""
+        tool_content = "\n\n".join(p for p in text_parts if p)
 
         logger.debug(
             "Tool returned text length %d and %d non-text content blocks",
@@ -139,8 +134,10 @@ class _MCPTool(StagedBaseTool):
         attachments = []
         for content in non_text_contents:
             attachment = self._content_to_attachment(content)
-            if attachment is not None:
-                attachment = await self._maybe_upload_attachment(attachment)
+            if attachment is not None and self._should_upload(attachment.type):
+                attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                    attachment
+                )
                 attachments.append(attachment)
 
         result = CompletionResult(
