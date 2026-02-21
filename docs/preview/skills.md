@@ -1,11 +1,15 @@
-# Agent Skills
+# Agent Skills `[Preview]`
+
+> [!IMPORTANT]
+> Agent Skills is a **preview** feature. Its API and behavior may change in breaking ways without a major version bump.
+> See [Feature Lifecycle](../../README.md#feature-lifecycle) for details.
 
 Agent skills are reusable instruction modules that enhance agent capabilities. Skills follow the
 [Agent Skills](https://agentskills.io/) open standard and are defined as Markdown files with YAML frontmatter inside
 named directories. They are automatically loaded and made available to the agent at runtime.
 
-> **Partial support.** Quick Apps implements a subset of the
-> [Agent Skills specification](https://agentskills.io/specification). See
+> [!NOTE]
+> Quick Apps implements a subset of the [Agent Skills specification](https://agentskills.io/specification). See
 > [Supported vs unsupported features](#supported-vs-unsupported-features) below for details.
 
 ## How Skills Work
@@ -15,7 +19,7 @@ named directories. They are automatically loaded and made available to the agent
 - Each skill is presented to the agent as XML metadata in the system prompt.
 - The agent can read detailed skill instructions on-demand using the internal `read_skill` tool.
 - Skills support metadata including name, description, license, compatibility, and allowed tools.
-- Extra skill directories can be layered via `PREDEFINED_EXTRA_PATHS` (see [README](../README.md) for env var details).
+- Extra skill directories can be layered via `PREDEFINED_EXTRA_PATHS` (see [README](../../README.md) for env var details).
 
 ## Directory Layout
 
@@ -119,7 +123,7 @@ optional features. The table below summarises what is and isn't supported.
 | Dynamic skill registration | Not supported | Skills are loaded once at startup; adding or modifying skills requires a restart. |
 
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
-For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).
+For design rationale and known limitations, see [the design doc](../designs/skills_and_file_transfer.md).
 
 ## Migrating from Agent Instructions
 
@@ -160,4 +164,4 @@ the system prompt. Skills differ in several ways:
 3. Remove the `config/predefined/instructions/` directory.
 
 4. If you were using `PREDEFINED_BASE_PATH` to point to a custom instructions directory, switch to
-   `PREDEFINED_EXTRA_PATHS` (see [README](../README.md) for details).
+   `PREDEFINED_EXTRA_PATHS` (see [README](../../README.md) for details).

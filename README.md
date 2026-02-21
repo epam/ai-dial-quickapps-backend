@@ -25,6 +25,23 @@ Core.
 - Native DIAL tools plus external REST and MCP integrations.
 - Any LLM available in DIAL Core (Azure OpenAI, Anthropic, Vertex AI, etc.).
 
+## Feature Lifecycle
+
+Some features are released as **Preview** before becoming **Stable**:
+
+| Stage       | Meaning                                                                                              |
+|-------------|------------------------------------------------------------------------------------------------------|
+| **Preview** | Available for use but may change in breaking ways without a major version bump. Feedback is welcome. |
+| **Stable**  | Covered by semantic versioning — breaking changes require a major version bump.                      |
+
+Features in Preview are marked with a `[Preview]` tag in documentation.
+
+## Documentation
+
+- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Agent Skills](./docs/preview/skills.md) `[Preview]` - How to create and manage reusable agent skills
+- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
+
 ## Quick start (general)
 
 - Local development and run instructions, utilities and tests remain in this repository. For detailed setup commands (
@@ -76,7 +93,8 @@ file:
 
 #### Deprecated Environment Variables
 
-These variables still work but will be removed in a future major version.
+> [!CAUTION]
+> These variables still work but will be removed in a future major version.
 
 | Variable               | Replacement              | Description                                                                  |
 |------------------------|--------------------------|------------------------------------------------------------------------------|
@@ -84,10 +102,11 @@ These variables still work but will be removed in a future major version.
 
 #### Deprecated: Agent Instructions
 
-The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-removed. Instructions are replaced by [Agent Skills](./docs/skills.md), which offer richer metadata, on-demand
-retrieval, and layered overrides. See the
-[migration guide](./docs/skills.md#migrating-from-agent-instructions) for details.
+> [!WARNING]
+> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
+> removed. Instructions are replaced by [Agent Skills](./docs/preview/skills.md) `[Preview]`, which offer richer metadata,
+> on-demand retrieval, and layered overrides. See the
+> [migration guide](./docs/preview/skills.md#migrating-from-agent-instructions) for details.
 
 ¹**Notes:**
 
@@ -221,12 +240,6 @@ retrieval, and layered overrides. See the
 ## E2E & Integration tests:
 
     refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
-
-## Documentation
-
-- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
-- [Agent Skills](./docs/skills.md) - How to create and manage reusable agent skills
-- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## More
 

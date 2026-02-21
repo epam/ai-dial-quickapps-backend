@@ -4,10 +4,18 @@ This folder contains technical documentation for the Quick Apps backend.
 
 ## Contents
 
-| Document                   | Description                                                                                                                          |
-|----------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| [Agent Design](./agent.md) | Internal architecture of the Quick Apps agent system, including the orchestrator loop, tool system, and message processing pipeline. |
-| [Agent Skills](./skills.md) | How to create and manage reusable agent skills (directory layout, metadata format, examples).                                       |
+| Document                    | Description                                                                                                                          |
+|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
+| [Agent Design](./agent.md)  | Internal architecture of the Quick Apps agent system, including the orchestrator loop, tool system, and message processing pipeline. |
+
+## Preview Features
+
+Documentation for features in [Preview](../README.md#feature-lifecycle) status lives in [`preview/`](./preview/).
+These features may change in breaking ways without a major version bump.
+
+| Document                                         | Description                                                                   |
+|--------------------------------------------------|-------------------------------------------------------------------------------|
+| [Agent Skills](./preview/skills.md) `[Preview]`  | How to create and manage reusable agent skills (directory layout, metadata).  |
 
 ## Diagrams
 
