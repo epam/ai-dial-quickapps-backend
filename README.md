@@ -100,14 +100,6 @@ file:
 |------------------------|--------------------------|------------------------------------------------------------------------------|
 | `PREDEFINED_BASE_PATH` | `PREDEFINED_EXTRA_PATHS` | If set alone, treated as a single extra layer on top of the built-in content |
 
-#### Deprecated: Agent Instructions
-
-> [!WARNING]
-> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills](./docs/preview/skills.md) `[Preview]`, which offer richer metadata,
-> on-demand retrieval, and layered overrides. See the
-> [migration guide](./docs/preview/skills.md#migrating-from-agent-instructions) for details.
-
 ¹**Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
@@ -115,6 +107,14 @@ file:
 - For a standalone Quick Apps deployment the essential variable is only `DIAL_URL`
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
+
+### Deprecated: Agent Instructions
+
+> [!WARNING]
+> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
+> removed. Instructions are replaced by [Agent Skills \[Preview\]](./docs/preview/skills.md), which offer richer metadata,
+> on-demand retrieval, and layered overrides. See the
+> [migration guide](./docs/preview/skills.md#migrating-from-agent-instructions) for details.
 
 ## Local Development
 
