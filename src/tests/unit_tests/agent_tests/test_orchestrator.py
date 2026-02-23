@@ -102,11 +102,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         content="call tool",
         attachments=[],
         tool_calls=[
-            {
-                "id": "tc-1",
-                "type": "function",
-                "function": {"name": "tool_a", "arguments": "{}"},
-            }
+            SimpleNamespace(id="tc-1", type="function", name="tool_a", arguments="{}")
         ],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )
@@ -215,7 +211,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         content="call tool",
         attachments=[],
         tool_calls=[
-            {"id": "tc-1", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}}
+            SimpleNamespace(id="tc-1", type="function", name="tool_a", arguments="{}")
         ],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )

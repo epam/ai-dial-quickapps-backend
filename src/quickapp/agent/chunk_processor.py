@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from aidial_sdk.chat_completion import Attachment, Choice, FunctionCall, Stage, ToolCall
+from aidial_sdk.chat_completion import Attachment, Choice, Stage
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
@@ -14,11 +14,44 @@ class Usage:
         self.completion_tokens = completion_tokens
 
 
+class AccumulatedToolCall:
+    def __init__(self) -> None:
+        self.id: str = ""
+        self.type: str = "function"
+        self._name: str | None = None
+        self._arguments: str | None = None
+
+    @property
+    def name(self) -> str:
+        if self._name is None:
+            raise ValueError("Tool call name has not been received yet")
+        return self._name
+
+    @property
+    def arguments(self) -> str:
+        if self._arguments is None:
+            raise ValueError("Tool call arguments have not been received yet")
+        return self._arguments
+
+    def append_delta(self, delta: ChoiceDeltaToolCall) -> None:
+        if delta.id:
+            self.id = delta.id
+        if delta.type:
+            self.type = delta.type
+        if delta.function:
+            if delta.function.name:
+                self._name = delta.function.name
+            if delta.function.arguments:
+                if self._arguments is None:
+                    self._arguments = ""
+                self._arguments += delta.function.arguments
+
+
 class AssistantCallResult:
     def __init__(self):
         self.__content = ""
         self.__attachments: list[Attachment] = []
-        self.__tool_calls_data: Dict[int, Dict[str, Any]] = {}
+        self.__accumulated_tool_calls: Dict[int, AccumulatedToolCall] = {}
         self.__usage: Optional[Usage] = None
 
     @property
@@ -36,49 +69,15 @@ class AssistantCallResult:
         self.__attachments.append(attachment)
 
     @property
-    def tool_calls(self):
-        if not self.__tool_calls_data:
-            return None
-
-        # Convert accumulated dict data to ToolCall objects
-        tool_calls = []
-        for data in self.__tool_calls_data.values():
-            tool_calls.append(
-                ToolCall(
-                    id=data['id'],
-                    type=data['type'],
-                    function=FunctionCall(
-                        name=data['function']['name'], arguments=data['function']['arguments']
-                    ),
-                )
-            )
-        return tool_calls
+    def tool_calls(self) -> list[AccumulatedToolCall] | None:
+        values = list(self.__accumulated_tool_calls.values())
+        return values if values else None
 
     def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
         index = tool_call_delta.index
-
-        # Initialize tool call data if this is the first delta (has id)
-        if tool_call_delta.id:
-            self.__tool_calls_data[index] = {
-                'id': tool_call_delta.id,
-                'type': tool_call_delta.type,
-                'function': {
-                    'name': tool_call_delta.function.name if tool_call_delta.function else None,
-                    'arguments': '',
-                },
-            }
-        else:
-            # Update existing tool call data
-            if index in self.__tool_calls_data:
-                if tool_call_delta.function:
-                    if tool_call_delta.function.name:
-                        self.__tool_calls_data[index]['function'][
-                            'name'
-                        ] = tool_call_delta.function.name
-                    if tool_call_delta.function.arguments:
-                        self.__tool_calls_data[index]['function'][
-                            'arguments'
-                        ] += tool_call_delta.function.arguments
+        if index not in self.__accumulated_tool_calls:
+            self.__accumulated_tool_calls[index] = AccumulatedToolCall()
+        self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
 
     @property
     def usage(self):
@@ -158,7 +157,7 @@ class ChunkProcessor:
         if result.tool_calls:
             logger.debug(" ------ tool_calls:")
             for tool in result.tool_calls:
-                logger.debug(f" -------- {tool.function.name} - {tool.function.arguments} - {tool}")
+                logger.debug(f" -------- {tool.name} - {tool.arguments} - {tool}")
 
         if result.attachments:
             logger.debug(f" ------ attachments: {result.attachments}")
