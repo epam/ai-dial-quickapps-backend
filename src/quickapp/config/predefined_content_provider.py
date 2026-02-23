@@ -63,13 +63,13 @@ class PredefinedContentProvider:
     """
 
     def __init__(self, settings: PredefinedSettings) -> None:
-        self._text_store: dict[ContentType, dict[str, str]] = {ct: {} for ct in ContentType}
-        self._json_store: dict[ContentType, dict[str, Any]] = {ct: {} for ct in ContentType}
-        self._layers_info: list[LayerInfo] = []
+        self.__text_store: dict[ContentType, dict[str, str]] = {ct: {} for ct in ContentType}
+        self.__json_store: dict[ContentType, dict[str, Any]] = {ct: {} for ct in ContentType}
+        self.__layers_info: list[LayerInfo] = []
 
-        layers = self._resolve_layers(settings)
-        self._load_all(layers)
-        self._log_summary(layers)
+        layers = self.__resolve_layers(settings)
+        self.__load_all(layers)
+        self.__log_summary(layers)
 
     # ------------------------------------------------------------------
     # Public API
@@ -77,7 +77,7 @@ class PredefinedContentProvider:
 
     def list_names(self, content_type: ContentType) -> list[str]:
         """Return sorted list of available names for the given content type."""
-        store = self._text_store if content_type.is_text else self._json_store
+        store = self.__text_store if content_type.is_text else self.__json_store
         return sorted(store[content_type].keys())
 
     def read_text(self, content_type: ContentType, name: str) -> str:
@@ -88,7 +88,7 @@ class PredefinedContentProvider:
                 f"(use read_json() instead)"
             )
         try:
-            return self._text_store[content_type][name]
+            return self.__text_store[content_type][name]
         except KeyError:
             raise KeyError(f"{content_type.value} '{name}' not found in predefined content")
 
@@ -100,20 +100,20 @@ class PredefinedContentProvider:
                 f"(use read_text() instead)"
             )
         try:
-            return self._json_store[content_type][name]
+            return self.__json_store[content_type][name]
         except KeyError:
             raise KeyError(f"{content_type.value} '{name}' not found in predefined content")
 
     def get_layers_info(self) -> list[LayerInfo]:
         """Return diagnostic info about all resolved layers."""
-        return list(self._layers_info)
+        return list(self.__layers_info)
 
     # ------------------------------------------------------------------
     # Layer resolution
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _resolve_layers(settings: PredefinedSettings) -> list[Path]:
+    def __resolve_layers(settings: PredefinedSettings) -> list[Path]:
         """Resolve the ordered list of layer directories."""
         layers: list[Path] = []
 
@@ -164,7 +164,7 @@ class PredefinedContentProvider:
     # Eager loading
     # ------------------------------------------------------------------
 
-    def _load_all(self, layers: list[Path]) -> None:
+    def __load_all(self, layers: list[Path]) -> None:
         """Eagerly scan all layers and read all files into memory."""
         seen: dict[ContentType, set[str]] = {ct: set() for ct in ContentType}
 
@@ -173,7 +173,7 @@ class PredefinedContentProvider:
             overrides: dict[ContentType, list[str]] = {}
 
             for ct in ContentType:
-                entries = self._scan_entries(layer_path / ct.value, ct)
+                entries = self.__scan_entries(layer_path / ct.value, ct)
                 if not entries:
                     continue
 
@@ -181,19 +181,19 @@ class PredefinedContentProvider:
                 for name, file_path in entries:
                     if name in seen[ct]:
                         layer_overrides.append(name)
-                    self._read_file(ct, file_path, layer_path, name_override=name)
+                    self.__read_file(ct, file_path, layer_path, name_override=name)
                     seen[ct].add(name)
 
                 counts[ct] = len(entries)
                 if layer_overrides:
                     overrides[ct] = layer_overrides
 
-            self._layers_info.append(
+            self.__layers_info.append(
                 LayerInfo(path=layer_path, content_counts=counts, overrides=overrides)
             )
 
     @staticmethod
-    def _scan_entries(sub_dir: Path, ct: ContentType) -> list[tuple[str, Path]]:
+    def __scan_entries(sub_dir: Path, ct: ContentType) -> list[tuple[str, Path]]:
         """Return (name, file_path) pairs for all valid entries in a content-type directory."""
         if not sub_dir.is_dir():
             return []
@@ -210,7 +210,7 @@ class PredefinedContentProvider:
 
         return [(f.stem, f) for f in sorted(sub_dir.glob(ct.file_glob))]
 
-    def _read_file(
+    def __read_file(
         self,
         ct: ContentType,
         file_path: Path,
@@ -221,10 +221,10 @@ class PredefinedContentProvider:
         name = name_override or file_path.stem
         try:
             if ct.is_text:
-                self._text_store[ct][name] = file_path.read_text(encoding="utf-8")
+                self.__text_store[ct][name] = file_path.read_text(encoding="utf-8")
             else:
                 with file_path.open("r", encoding="utf-8") as f:
-                    self._json_store[ct][name] = json.load(f)
+                    self.__json_store[ct][name] = json.load(f)
         except Exception as e:
             raise RuntimeError(
                 f"Failed to read {ct.value} file {file_path} in layer {layer_path}: {e}"
@@ -234,11 +234,11 @@ class PredefinedContentProvider:
     # Logging
     # ------------------------------------------------------------------
 
-    def _log_summary(self, layers: list[Path]) -> None:
+    def __log_summary(self, layers: list[Path]) -> None:
         """Log startup summary of layers and merged totals."""
         logger.info("Predefined content layers: %s", [str(p) for p in layers])
 
-        for info in self._layers_info:
+        for info in self.__layers_info:
             parts: list[str] = []
             for ct in ContentType:
                 count = info.content_counts.get(ct, 0)
@@ -256,7 +256,7 @@ class PredefinedContentProvider:
         # Merged totals
         totals: list[str] = []
         for ct in ContentType:
-            store = self._text_store if ct.is_text else self._json_store
+            store = self.__text_store if ct.is_text else self.__json_store
             n = len(store[ct])
             if n:
                 totals.append(f"{n} {ct.value}(s)")

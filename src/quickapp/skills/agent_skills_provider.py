@@ -31,7 +31,6 @@ class AgentSkillsProvider(PromptPartProvider):
     def __init__(self, provider: PredefinedContentProvider) -> None:
         self._xml_metadata: str = ""
         self._skills: list[SkillMetadata] = []
-        self._skill_content_cache: dict[str, str] = {}
         self._provider = provider
         self._load_skills()
 
@@ -163,7 +162,6 @@ class AgentSkillsProvider(PromptPartProvider):
             return
 
         skills: list[SkillMetadata] = []
-        content_cache: dict[str, str] = {}
         for file_stem in skill_names:
             try:
                 logger.debug(f"Loading skill `{file_stem}`")
@@ -179,12 +177,10 @@ class AgentSkillsProvider(PromptPartProvider):
                     )
                     continue
                 skills.append(metadata)
-                content_cache[metadata.name] = content
             except Exception as exc:
                 logger.error(f"Failed to parse skill `{file_stem}`: {exc}")
 
         self._skills = skills
-        self._skill_content_cache = content_cache
         self._xml_metadata = self._generate_xml(skills)
         logger.info(f"Loaded {len(skills)} skill(s)")
 
@@ -198,6 +194,7 @@ class AgentSkillsProvider(PromptPartProvider):
 
     def get_skill_content(self, skill_name: str) -> str:
         """Return the full content of a skill file. Raises FileNotFoundError if not found."""
-        if skill_name in self._skill_content_cache:
-            return self._skill_content_cache[skill_name]
-        raise FileNotFoundError(f"Skill not found: {skill_name}")
+        try:
+            return self._provider.read_text(ContentType.SKILL, skill_name)
+        except KeyError:
+            raise FileNotFoundError(f"Skill not found: {skill_name}")
