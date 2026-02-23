@@ -15,6 +15,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPToolSet, MCPServerInfo, MCPProtocol
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
@@ -215,6 +216,99 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                     ],
                 ),
             )
+
+        client = TestClient(app)
+        response = client.get("/")
+        self.assertEqual(response.status_code, 200)
+
+    @patch(
+        "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list",
+        new_callable=AsyncMock,
+    )
+    async def test_mcp_tool_narrow_supported_types_skips_non_matching(
+        self, mock_get_tools_list, mock_call_mcp_tool
+    ):
+        """Non-matching attachments are neither uploaded nor appended to the result."""
+        tool_1 = SimpleNamespace(name="img_tool", description="Image tool", inputSchema={})
+        mock_get_tools_list.return_value = [tool_1]
+
+        mock_stage = MagicMock(spec=Stage)
+        mock_dial_attachment_service = MagicMock(spec=AttachmentService)
+        mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
+
+        async def mock_upload(attachment):
+            attachment.url = "mocked_url"
+            attachment.data = None
+            attachment.title = "Attachment"
+            return attachment
+
+        mock_dial_attachment_service.upload_attachment_to_core.side_effect = mock_upload
+
+        # Tool returns both image and text attachments
+        async def _call_side_effect(tool_name, **kwargs):
+            tr = TextResourceContents(
+                mimeType="text/plain", text="some_text", uri=AnyUrl("https://example")
+            )
+            return SimpleNamespace(
+                content=[
+                    ImageContent(
+                        mimeType="image/png",
+                        data=base64.b64encode(b"img").decode("utf-8"),
+                        type="image",
+                    ),
+                    EmbeddedResource(resource=tr, type="resource"),
+                ],
+                isError=False,
+            )
+
+        mock_call_mcp_tool.side_effect = _call_side_effect
+
+        # Only allow image/* — text/plain should be skipped entirely
+        mcp_toolset = MCPToolSet(
+            type="mcp",
+            mcp_server_info=MCPServerInfo(
+                url="https://test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+            ),
+            name="mcp-toolset",
+            description="MCP toolset",
+            attachment=AttachmentConfig(supported_types=["image/*"]),
+        )
+
+        def configure(binder: Binder) -> None:
+            binder.bind(Stage, to=mock_stage)
+            binder.bind(DialSettings, DialSettings(url="https://core"))
+            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+            binder.bind(AttachmentService, mock_dial_attachment_service)
+            binder.bind(
+                ApplicationConfig,
+                to=create_app_configuration([mcp_toolset]),
+            )
+            binder.bind(PerformanceTimer, to=PerformanceTimer)
+
+        app = create_test_app([MCPToolingModule, configure])
+
+        @app.get("/")
+        async def get_method(injector: Injector = Injected(Injector)):
+            initializers = injector.get(list[CompletionInitializer])
+            await initializers[0].initialize()
+
+            tools = injector.get(list[StagedBaseTool])
+            self.assertEqual(len(tools), 1)
+
+            result = await tools[0].arun("call-1")
+
+            # Only image should survive — text/plain is skipped by _should_upload
+            self.assertIsNotNone(result.attachments)
+            self.assertEqual(len(result.attachments), 1)
+            self.assertEqual(result.attachments[0].type, "image/png")
+
+            # Upload should only be called once (for the image)
+            self.assertEqual(mock_dial_attachment_service.upload_attachment_to_core.call_count, 1)
 
         client = TestClient(app)
         response = client.get("/")
