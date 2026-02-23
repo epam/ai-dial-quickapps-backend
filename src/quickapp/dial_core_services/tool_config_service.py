@@ -137,6 +137,7 @@ class ToolConfigCoreService:
             required_params.append("attachment_urls")
 
         if config and config.get("properties"):
+            config_required = set(config.get("required", []))
             for param_name, param_details in config["properties"].items():
                 logger.debug(f"Processing parameter: {param_name} with details: {param_details}")
                 # Extract enum values from the 'anyOf' structure
@@ -150,10 +151,11 @@ class ToolConfigCoreService:
                     type=JsonTypeEnum.string,
                     description=param_details.get("description", ""),
                     enum=enum_values or None,
-                    default=enum_values[0] if enum_values else None,
+                    default=param_details.get("default"),
                     display=ParameterDisplayConfig(stage=FormattedParameterConfig(ignore=True)),
                 )
-                required_params.append(param_name)
+                if param_name in config_required:
+                    required_params.append(param_name)
 
         output_tool.open_ai_tool.function.parameters.properties = properties
         output_tool.open_ai_tool.function.parameters.required = sorted(set(required_params))
