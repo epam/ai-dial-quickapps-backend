@@ -84,26 +84,14 @@ class AppModule(Module):
 
     @provider
     def __provide_async_dial(
-        self,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
-        bearer: DIAL_BEARER,
-        forwarded_headers: ForwardedHeaders,
+        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
     ) -> AsyncDial:
-        kwargs: dict = {
-            "base_url": dial_settings.url,
-            "api_key": api_key.get_secret_value(),
-            "api_version": dial_settings.api_version,
-            "bearer_token": bearer.get_secret_value() if bearer else None,
-        }
-        if forwarded_headers.headers:
-            kwargs["default_headers"] = forwarded_headers.headers
-        try:
-            return AsyncDial(**kwargs)
-        except TypeError:
-            # aidial_client may not support default_headers in older versions
-            kwargs.pop("default_headers", None)
-            return AsyncDial(**kwargs)
+        return AsyncDial(
+            base_url=dial_settings.url,
+            api_key=api_key.get_secret_value(),
+            api_version=dial_settings.api_version,
+            bearer_token=bearer.get_secret_value() if bearer else None,
+        )
 
     @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:

@@ -2,7 +2,7 @@ import copy
 
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
-from openai import AsyncAzureOpenAI
+from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
@@ -73,15 +73,14 @@ class AgentModule(Module):
         config: ApplicationConfig,
         forwarded_headers: ForwardedHeaders,
     ) -> AsyncAzureOpenAI:
-        kwargs: dict = {
-            "azure_endpoint": dial_settings.url,
-            "api_key": api_key.get_secret_value(),
-            "azure_deployment": config.orchestrator.deployment.name,
-            "api_version": dial_settings.api_version,
-        }
-        if forwarded_headers.headers:
-            kwargs["default_headers"] = forwarded_headers.headers
-        return AsyncAzureOpenAI(**kwargs)
+        azure_client = AsyncAzureOpenAI(
+            azure_endpoint=dial_settings.url,
+            api_key=api_key.get_secret_value(),
+            azure_deployment=config.orchestrator.deployment.name,
+            api_version=dial_settings.api_version,
+            default_headers=forwarded_headers.headers or None,
+        )
+        return azure_client
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
