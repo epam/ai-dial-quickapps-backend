@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage, ToolCall
+from aidial_sdk.chat_completion import Attachment, Choice, FunctionCall, Stage, ToolCall
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
@@ -18,7 +18,7 @@ class AssistantCallResult:
     def __init__(self):
         self.__content = ""
         self.__attachments: list[Attachment] = []
-        self.__tool_calls: Dict[int, ToolCall] = {}
+        self.__tool_calls_data: Dict[int, Dict[str, Any]] = {}
         self.__usage: Optional[Usage] = None
 
     @property
@@ -37,18 +37,43 @@ class AssistantCallResult:
 
     @property
     def tool_calls(self):
-        values = list(self.__tool_calls.values())
-        return values if values else None
+        if not self.__tool_calls_data:
+            return None
+
+        # Convert accumulated dict data to ToolCall objects
+        tool_calls = []
+        for data in self.__tool_calls_data.values():
+            tool_calls.append(ToolCall(
+                id=data['id'],
+                type=data['type'],
+                function=FunctionCall(
+                    name=data['function']['name'],
+                    arguments=data['function']['arguments']
+                )
+            ))
+        return tool_calls
 
     def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
+        index = tool_call_delta.index
+
+        # Initialize tool call data if this is the first delta (has id)
         if tool_call_delta.id:
-            tool_call = ToolCall(**tool_call_delta.model_dump())
-            self.__tool_calls[tool_call_delta.index] = tool_call
+            self.__tool_calls_data[index] = {
+                'id': tool_call_delta.id,
+                'type': tool_call_delta.type,
+                'function': {
+                    'name': tool_call_delta.function.name if tool_call_delta.function else None,
+                    'arguments': ''
+                }
+            }
         else:
-            tool_call = self.__tool_calls[tool_call_delta.index]
-            if tool_call_delta.function:
-                argument_chunk = tool_call_delta.function.arguments or ''
-                tool_call.function.arguments += argument_chunk
+            # Update existing tool call data
+            if index in self.__tool_calls_data:
+                if tool_call_delta.function:
+                    if tool_call_delta.function.name:
+                        self.__tool_calls_data[index]['function']['name'] = tool_call_delta.function.name
+                    if tool_call_delta.function.arguments:
+                        self.__tool_calls_data[index]['function']['arguments'] += tool_call_delta.function.arguments
 
     @property
     def usage(self):
