@@ -71,17 +71,13 @@ class _RestApiTool(StagedBaseTool):
             )
             response.raise_for_status()
 
-            raw_mime = response.headers.get('Content-Type', None)
-
+            raw_mime = response.headers.get('Content-Type')
             mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
 
-            attachments = []
+            attachments: list[Attachment] = []
+            rac = self._tool_config.response_as_attachment
 
-            if (
-                self._tool_config
-                and mime_type
-                and matches_type(mime_type, self._tool_config.attachment.supported_types)
-            ):
+            if rac and rac.enabled and mime_type and matches_type(mime_type, rac.content_types):
                 title = generate_attachment_filename(
                     mime_type, base_filename=self._tool_config.open_ai_tool.function.name
                 )
@@ -90,11 +86,14 @@ class _RestApiTool(StagedBaseTool):
                 attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                     attachment
                 )
-
                 attachments.append(attachment)
 
+            content = response.text
+            if attachments and rac and not rac.include_body_as_content:
+                content = f"See attached file: {attachments[0].title}"
+
             result = CompletionResult(
-                content=response.text,
+                content=content,
                 content_type=response.headers.get('Content-Type', ""),
                 attachments=attachments,
             )

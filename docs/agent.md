@@ -133,14 +133,17 @@ All tools inherit from a common base class that defines:
 - A standardized execution interface
 - Lifecycle management with stage wrappers
 - Parameter preprocessing hooks
-- Attachment filtering based on configuration
+- Attachment filtering based on `supported_types` configuration (single canonical filter point)
+- Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
 - Performance timing
 
 ### Tool Types
 
 Quick Apps supports several tool types:
 
-- **REST API Tools**: HTTP endpoints defined declaratively in configuration
+- **REST API Tools**: HTTP endpoints defined declaratively in configuration. Support an optional
+  `response_as_attachment` config (`enabled`, `content_types`, `include_body_as_content`) that controls whether the HTTP
+  response body is wrapped as a file attachment. Defaults to disabled — responses are returned as text only.
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
 - **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
