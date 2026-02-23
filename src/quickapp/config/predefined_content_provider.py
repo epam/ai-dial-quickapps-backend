@@ -39,9 +39,9 @@ class PredefinedSettings(BaseSettings):
         description="Deprecated. Use extra_paths instead. "
         "Base path where predefined templates are stored.",
     )
-    extra_paths: str | None = Field(
+    extra_paths: list[str] | None = Field(
         default=None,
-        description="Colon-separated list of directories layered on top of the built-in "
+        description="JSON list of directories layered on top of the built-in "
         "predefined content. Later entries override earlier ones.",
     )
 
@@ -137,19 +137,19 @@ class PredefinedContentProvider:
             )
 
         if settings.extra_paths is not None:
-            extra_raw = settings.extra_paths
+            extra_list = settings.extra_paths
         elif settings.base_path is not None:
             warnings.warn(
                 "PREDEFINED_BASE_PATH is deprecated. Use PREDEFINED_EXTRA_PATHS instead.",
                 DeprecationWarning,
                 stacklevel=2,
             )
-            extra_raw = settings.base_path
+            extra_list = [settings.base_path]
         else:
-            extra_raw = None
+            extra_list = None
 
-        if extra_raw:
-            for raw_path in extra_raw.split(":"):
+        if extra_list:
+            for raw_path in extra_list:
                 raw_path = raw_path.strip()
                 if not raw_path:
                     continue

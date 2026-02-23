@@ -110,7 +110,7 @@ class TestExtraLayers:
         prompt_dir.mkdir()
         (prompt_dir / "custom_prompt.md").write_text("Custom prompt content")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         names = provider.list_names(ContentType.PROMPT)
@@ -127,7 +127,7 @@ class TestExtraLayers:
         prompt_dir.mkdir()
         (prompt_dir / "gpt_prompt.md").write_text("Overridden GPT prompt")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         content = provider.read_text(ContentType.PROMPT, "gpt_prompt")
@@ -144,14 +144,14 @@ class TestExtraLayers:
         (layer1 / "prompt" / "gpt_prompt.md").write_text("Layer1 GPT")
         (layer2 / "prompt" / "gpt_prompt.md").write_text("Layer2 GPT")
 
-        settings = PredefinedSettings(extra_paths=f"{layer1}:{layer2}")
+        settings = PredefinedSettings(extra_paths=[str(layer1), str(layer2)])
         provider = PredefinedContentProvider(settings)
 
         content = provider.read_text(ContentType.PROMPT, "gpt_prompt")
         assert content == "Layer2 GPT"
 
     def test_missing_extra_path_raises_runtime_error(self):
-        settings = PredefinedSettings(extra_paths="/nonexistent/path")
+        settings = PredefinedSettings(extra_paths=["/nonexistent/path"])
         with pytest.raises(RuntimeError, match="not a directory"):
             PredefinedContentProvider(settings)
 
@@ -160,7 +160,7 @@ class TestExtraLayers:
         tool_dir.mkdir()
         (tool_dir / "bad_tool.json").write_text("{invalid json")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         with pytest.raises(RuntimeError, match="Failed to read"):
             PredefinedContentProvider(settings)
 
@@ -171,7 +171,7 @@ class TestExtraLayers:
             "---\nname: my-custom-skill\ndescription: A custom skill\n---\nContent"
         )
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         names = provider.list_names(ContentType.SKILL)
@@ -184,7 +184,7 @@ class TestExtraLayers:
         skills_dir.mkdir()
         (skills_dir / "flat_skill.md").write_text("---\nname: flat\n---\nFlat content")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         names = provider.list_names(ContentType.SKILL)
@@ -196,7 +196,7 @@ class TestExtraLayers:
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text("Overridden skill content")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         content = provider.read_text(
@@ -223,7 +223,7 @@ class TestLayersInfo:
         prompt_dir.mkdir()
         (prompt_dir / "gpt_prompt.md").write_text("Override")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
         layers = provider.get_layers_info()

@@ -166,7 +166,7 @@ class TestAgentSkillsProviderIntegration:
             "---\nname: my-valid-skill\ndescription: Valid skill\n---\nBody\n"
         )
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
@@ -180,7 +180,7 @@ class TestAgentSkillsProviderIntegration:
             "---\nname: different-name\ndescription: Mismatch\n---\nBody\n"
         )
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
@@ -201,7 +201,7 @@ class TestAgentSkillsProviderIntegration:
         invalid_dir.mkdir(parents=True)
         (invalid_dir / "SKILL.md").write_text("---\nname: bad-skill\n---\nBody\n")
 
-        settings = PredefinedSettings(extra_paths=str(tmp_path))
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 

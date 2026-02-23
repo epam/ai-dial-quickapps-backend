@@ -58,38 +58,38 @@ file:
 
 ### Environment Variables
 
-| Variable                                   | Default                    | Required | Description                                                                                                             |
-|--------------------------------------------|----------------------------|----------|-------------------------------------------------------------------------------------------------------------------------|
-| **DIAL Core**                              |                            |          |                                                                                                                         |
-| `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                                |
-| `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                           |
-| **Logging**                                |                            |          |                                                                                                                         |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                            |
-| `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                                         |
-| `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                                          |
-| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                           |
-| `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                               |
-| **Agent**                                  |                            |          |                                                                                                                         |
-| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                           |
-| `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                                    |
-| `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                                      |
-| `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                                     |
-| **Python Interpreter**                     |                            |          |                                                                                                                         |
-| `PY_INTERPRETER_LOCAL_RUN`                 | `false`                    | No       | Run PyInterpreter locally instead of via DIAL Core API                                                                  |
-| `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                                        |
-| `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                                     |
-| `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                                |
-| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                                          |
-| `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                                     |
-| `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                           |
-| **Templates**                              |                            |          |                                                                                                                         |
-| `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | Colon-separated list of directories layered on top of built-in predefined content (later entries override earlier ones) |
-| `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                                      |
-| **Observability**                          |                            |          |                                                                                                                         |
-| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                                      |
-| **Scripts & Tests**                        |                            |          |                                                                                                                         |
-| `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                       |
-| `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                   |
+| Variable                                   | Default                    | Required | Description                                                                                                  |
+|--------------------------------------------|----------------------------|----------|--------------------------------------------------------------------------------------------------------------|
+| **DIAL Core**                              |                            |          |                                                                                                              |
+| `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
+| `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
+| **Logging**                                |                            |          |                                                                                                              |
+| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                 |
+| `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
+| `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
+| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                |
+| `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
+| **Agent**                                  |                            |          |                                                                                                              |
+| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
+| `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
+| `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
+| **Python Interpreter**                     |                            |          |                                                                                                              |
+| `PY_INTERPRETER_LOCAL_RUN`                 | `false`                    | No       | Run PyInterpreter locally instead of via DIAL Core API                                                       |
+| `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                             |
+| `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                          |
+| `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                     |
+| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                               |
+| `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                          |
+| `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
+| **Templates**                              |                            |          |                                                                                                              |
+| `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
+| `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
+| **Observability**                          |                            |          |                                                                                                              |
+| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                           |
+| **Scripts & Tests**                        |                            |          |                                                                                                              |
+| `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests            |
+| `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests        |
 
 #### Deprecated Environment Variables
 
@@ -112,7 +112,8 @@ file:
 
 > [!WARNING]
 > The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills \[Preview\]](./docs/preview/skills.md), which offer richer metadata,
+> removed. Instructions are replaced by [Agent Skills \[Preview\]](./docs/preview/skills.md), which offer richer
+> metadata,
 > on-demand retrieval, and layered overrides. See the
 > [migration guide](./docs/preview/skills.md#migrating-from-agent-instructions) for details.
 

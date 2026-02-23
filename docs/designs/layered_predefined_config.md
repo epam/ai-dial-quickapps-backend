@@ -120,7 +120,7 @@ removed. The env var `PREDEFINED_EXTRA_PATHS` specifies additional override/exte
     - If neither location is a directory, startup **fails with a fatal error**. The built-in layer is required — running
       without it means the application was deployed incorrectly.
 2. **Extra layers** (from `PREDEFINED_EXTRA_PATHS`, optional):
-    - Colon-separated list of directories, processed left to right
+    - JSON list of directory paths (e.g. `'["/shared/config", "/tenant/config"]'`), processed left to right
     - Later entries override earlier ones and the built-in layer
     - If any path does not exist or is not a directory, startup **fails with a fatal error**. Extra paths are
       operator-configured — a non-existent path is a misconfiguration that should be caught immediately, not silently
@@ -171,12 +171,12 @@ is not, it is treated as a single extra layer and a deprecation warning is logge
 `extra_paths` wins and `base_path` is ignored (with a warning). The built-in layer is no longer configurable — it is
 always auto-detected.
 
-|               | Before                                      | After                                                                   |
-|---------------|---------------------------------------------|-------------------------------------------------------------------------|
-| **Fields**    | `base_path: str \| None`                    | `extra_paths: str \| None` (new), `base_path: str \| None` (deprecated) |
-| **Env vars**  | `PREDEFINED_BASE_PATH`                      | `PREDEFINED_EXTRA_PATHS` (new), `PREDEFINED_BASE_PATH` (deprecated)     |
-| **Default**   | `None` (falls back to `config/predefined/`) | `None` (built-in only, no extras)                                       |
-| **Semantics** | Single directory replacing the default      | Colon-separated list of directories layered on top of the built-in      |
+|               | Before                                      | After                                                                                  |
+|---------------|---------------------------------------------|----------------------------------------------------------------------------------------|
+| **Fields**    | `base_path: str \| None`                    | `extra_paths: list[str] \| None` (new), `base_path: str \| None` (deprecated)         |
+| **Env vars**  | `PREDEFINED_BASE_PATH`                      | `PREDEFINED_EXTRA_PATHS` (new), `PREDEFINED_BASE_PATH` (deprecated)                   |
+| **Default**   | `None` (falls back to `config/predefined/`) | `None` (built-in only, no extras)                                                      |
+| **Semantics** | Single directory replacing the default      | JSON list of directories layered on top of the built-in                                |
 
 `base_path` will be removed in a future major version.
 
@@ -253,8 +253,6 @@ fixing alongside these changes.
 
 - **Partial file merging** (e.g., adding one tool to an existing toolset JSON). "Last wins by name" replaces the entire
   file. Partial merging would be complex and error-prone. Could be revisited if a concrete use case arises.
-- **Windows path support.** The colon separator in `PREDEFINED_EXTRA_PATHS` conflicts with Windows paths (`C:\...`).
-  This project is Linux/container-only, so not a concern today.
 - **Hot-reloading.** Content is scanned once at startup and cached. Runtime changes to layer directories require a
   restart. Hot-reloading could be added later if needed.
 - **`PromptMapping` refactoring.** The hardcoded model-to-prompt mapping in `PromptMapping` is a separate concern and
@@ -274,7 +272,7 @@ Built-in layer is auto-detected. All built-in prompts, tools, toolsets, and skil
 
 ```bash
 # Mount a directory with custom skills, keep all built-in content
-PREDEFINED_EXTRA_PATHS=/custom/config
+PREDEFINED_EXTRA_PATHS='["/custom/config"]'
 ```
 
 Where `/custom/config/skills/` contains additional `.md` skill files.
@@ -282,7 +280,7 @@ Where `/custom/config/skills/` contains additional `.md` skill files.
 ### Customer deployment: override a built-in prompt
 
 ```bash
-PREDEFINED_EXTRA_PATHS=/overrides
+PREDEFINED_EXTRA_PATHS='["/overrides"]'
 ```
 
 Where `/overrides/prompt/gpt_prompt.md` replaces the built-in `gpt_prompt.md`. All other built-in content is still
@@ -292,7 +290,7 @@ available.
 
 ```bash
 # Shared org config, then tenant-specific overrides (tenant wins)
-PREDEFINED_EXTRA_PATHS=/shared/config:/tenant/config
+PREDEFINED_EXTRA_PATHS='["/shared/config", "/tenant/config"]'
 ```
 
 ---
@@ -328,7 +326,7 @@ var (the built-in layer is auto-detected) or, if extra paths are needed, switch 
 | **`PredefinedContentProvider`** (new) | Singleton service owning all predefined content scanning, merging, caching, and retrieval                                                                            |
 | **`ContentType`** (new)               | Enum replacing `TemplateType`, adding `SKILL` variant; `skills/` kept as-is (plural) for backward compatibility                                                      |
 | **`LayerInfo`** (new)                 | Dataclass carrying layer path, per-type content counts, and override names for diagnostics/logging                                                                   |
-| **`PredefinedSettings`**              | New `extra_paths` field added; `base_path` deprecated (treated as single extra layer if `extra_paths` absent)                                                        |
+| **`PredefinedSettings`**              | New `extra_paths: list[str] \| None` field added (JSON list from env var); `base_path` deprecated (treated as single extra layer if `extra_paths` absent)            |
 | **`ConfigResolver`**                  | Removes `_scan_templates()`, `read_template_content()` I/O, and `cache` dict; `template_map` becomes a delegating property; delegates to `PredefinedContentProvider` |
 | **`AgentSkillsProvider`**             | Removes `_get_skills_directory()`, directory scanning in `_load_skills()`, and `_skill_content_cache`; delegates to `PredefinedContentProvider`                      |
 | **`_Controller`**                     | `TemplateType` imports updated to `ContentType`; pre-existing type annotation bug in `_get_template_content()` fixed                                                 |
