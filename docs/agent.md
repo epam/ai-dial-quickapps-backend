@@ -379,13 +379,17 @@ Tools are organized into toolsets that share common configuration:
 
 ### Template Resolution
 
-Configurations can reference predefined templates that are resolved at runtime:
+`PredefinedContentProvider` is the single source of truth for all predefined content (prompts, tools, toolsets, skills). It scans a built-in layer (auto-detected at `/app/predefined` or `config/predefined/`) and optional extra layers (`PREDEFINED_EXTRA_PATHS`), eagerly loads all files, and merges them by filename stem (last wins).
+
+`ConfigResolver` delegates all I/O to `PredefinedContentProvider` and focuses on config resolution logic:
 
 - System prompts are loaded from markdown files
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-This enables reusable configuration building blocks that can be shared across applications.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+
+This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 
 ---
 

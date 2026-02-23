@@ -157,7 +157,7 @@ class BaseDeploymentTool(StagedBaseTool):
 
         return assistant_msg
 
-    def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> Any:
 
         prepared: dict[str, Any] = {}
 
