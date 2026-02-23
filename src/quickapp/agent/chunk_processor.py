@@ -43,14 +43,15 @@ class AssistantCallResult:
         # Convert accumulated dict data to ToolCall objects
         tool_calls = []
         for data in self.__tool_calls_data.values():
-            tool_calls.append(ToolCall(
-                id=data['id'],
-                type=data['type'],
-                function=FunctionCall(
-                    name=data['function']['name'],
-                    arguments=data['function']['arguments']
+            tool_calls.append(
+                ToolCall(
+                    id=data['id'],
+                    type=data['type'],
+                    function=FunctionCall(
+                        name=data['function']['name'], arguments=data['function']['arguments']
+                    ),
                 )
-            ))
+            )
         return tool_calls
 
     def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
@@ -63,17 +64,21 @@ class AssistantCallResult:
                 'type': tool_call_delta.type,
                 'function': {
                     'name': tool_call_delta.function.name if tool_call_delta.function else None,
-                    'arguments': ''
-                }
+                    'arguments': '',
+                },
             }
         else:
             # Update existing tool call data
             if index in self.__tool_calls_data:
                 if tool_call_delta.function:
                     if tool_call_delta.function.name:
-                        self.__tool_calls_data[index]['function']['name'] = tool_call_delta.function.name
+                        self.__tool_calls_data[index]['function'][
+                            'name'
+                        ] = tool_call_delta.function.name
                     if tool_call_delta.function.arguments:
-                        self.__tool_calls_data[index]['function']['arguments'] += tool_call_delta.function.arguments
+                        self.__tool_calls_data[index]['function'][
+                            'arguments'
+                        ] += tool_call_delta.function.arguments
 
     @property
     def usage(self):
