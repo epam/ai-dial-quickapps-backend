@@ -12,5 +12,9 @@
 <!-- [Place an '[X]' (no spaces) in all applicable fields. Please remove unrelated fields.] -->
 
 - [ ] Title of the pull request follows [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/)
+- [ ] Design documented is updated/created and approved by the team (if applicable)
+- [ ] Documentation is updated/created (if applicable)
+- [ ] Changes are tested on review environment
+- [ ] Integration tests pass
 
 By submitting this pull request, I confirm that my contribution is made under the terms of the Apache 2.0 license.
