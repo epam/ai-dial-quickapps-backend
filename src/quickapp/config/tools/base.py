@@ -3,7 +3,7 @@ from enum import Enum
 from hashlib import sha256
 from typing import Annotated, Any, Generic, List, Literal, Optional, TypeVar, Union
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.tools.display.paramenter import ParameterDisplayConfig
@@ -165,7 +165,7 @@ DEFAULT_PROPAGATE_TO_CHOICE = ["image/*", "application/vnd.plotly.v1+json"]
 
 
 class AttachmentConfig(BaseModel):
-    supported_types: Optional[List[str]] = Field(
+    supported_types: list[str] = Field(
         default_factory=lambda: [ALL_MIME_TYPES],
         description="List of supported attachment types.",
     )
@@ -174,12 +174,19 @@ class AttachmentConfig(BaseModel):
         description="List of attachment types to propagate from stage to choice.",
     )
 
-    @model_validator(mode='after')
-    def set_default_values(self):
-        # No need to set supported_types default here anymore
-        if not self.propagate_types_to_choice:
-            self.propagate_types_to_choice = DEFAULT_PROPAGATE_TO_CHOICE
-        return self
+    @field_validator("supported_types", mode="before")
+    @classmethod
+    def coerce_none_supported_types(cls, v: list[str] | None) -> list[str]:
+        if v is None:
+            return [ALL_MIME_TYPES]
+        return v
+
+    @field_validator("propagate_types_to_choice", mode="before")
+    @classmethod
+    def coerce_none_propagate_types(cls, v: list[str] | None) -> list[str]:
+        if v is None:
+            return DEFAULT_PROPAGATE_TO_CHOICE
+        return v
 
 
 class OpenAiToolConfig(

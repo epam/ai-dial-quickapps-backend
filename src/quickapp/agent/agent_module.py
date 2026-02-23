@@ -6,13 +6,14 @@ from openai import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import (
     MessagesSetupTransformer,
     PreInvocationTransformer,
@@ -60,11 +61,11 @@ class AgentModule(Module):
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
-        binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
+        binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
 
     @provider
     def provide_openai_client(
@@ -133,3 +134,10 @@ class AgentModule(Module):
     @multiprovider
     def provide_completion_result_enrichers(self) -> list[CompletionResultEnricher]:
         return []
+
+    @multiprovider
+    def provide_prompt_parts(
+        self,
+        config_prompt: ConfigBasedPromptProvider,
+    ) -> list[PromptPartProvider]:
+        return [config_prompt]

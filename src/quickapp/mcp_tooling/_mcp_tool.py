@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -7,11 +8,14 @@ from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 
@@ -30,6 +34,8 @@ class _MCPTool(StagedBaseTool):
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
+        file_service: DialFileService,  # todo combine DialFileService and AttachmentService.
+        dial_toolset_id: str | None,
     ):
         super().__init__(
             name=tool.name or "MCP Tool",
@@ -44,15 +50,77 @@ class _MCPTool(StagedBaseTool):
         self.__dial_attachment_service = dial_attachment_service
         self.__state_holder = state_holder
         self.__connection_manager: _MCPConnectionManager = connection_manager
+        self.__file_service: DialFileService = file_service
+        self.__dial_toolset_id = dial_toolset_id
 
-    def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> Any:
+
+        # todo for PoC only, will implement nested object handling later
+        file_pattern = re.compile(
+            r'^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$', re.IGNORECASE
+        )
+
+        files_to_share = []
         for key, value in list(kwargs.items()):
-            if isinstance(value, str):
-                if value.startswith("BASE64::"):
-                    value = value[8:]
-                if value.startswith("/files/") or value.startswith("files/"):
-                    file_content = self.__state_holder.get_file_content(value)
-                    kwargs[key] = file_content
+            if not isinstance(value, str):
+                continue
+
+            m = file_pattern.match(value)
+            if not m:
+                continue
+
+            detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
+            file_url_part = m.group("file_url")
+
+            if detected_prefix == "base64":
+                logger.debug(
+                    "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                kwargs[key] = await FilePrefixHandlers.handle_base64(
+                    file_url_part, self.__file_service
+                )
+            elif detected_prefix == "url":
+                logger.debug(
+                    "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                kwargs[key] = file_url_part
+                properties = self.__tool.inputSchema.get("properties", {})
+                schema_prop = properties.get(key, {})
+                if schema_prop.get("dial_url"):
+                    files_to_share.append(file_url_part)
+            elif detected_prefix == "text":
+                logger.debug(
+                    "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
+                    key,
+                    file_url_part,
+                )
+                kwargs[key] = await FilePrefixHandlers.handle_text(
+                    file_url_part, self.__file_service, parameter_name=key
+                )
+            else:
+                logger.warning(
+                    "Detected file reference without prefix for key %s (value: %s)", key, value
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name=key,
+                    message="Missing required file prefix (base64::, url::, text::)",
+                )
+        if files_to_share:
+            if not self.__dial_toolset_id:
+                logger.error(
+                    "Files with dial_url flag detected but dial_toolset_id is not set.",
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name="file_url",
+                    message="Files cannot be shared because dial_toolset_id is not configured.",
+                )
+            await self.__file_service.grant_permissions_to_files(
+                files_to_share, self.__dial_toolset_id
+            )
         return kwargs
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:
@@ -86,18 +154,13 @@ class _MCPTool(StagedBaseTool):
                     data=getattr(resource, "blob", None),
                 )
             msg = f"Unsupported embedded resource type: {type(resource)}"
-            logger.exception(msg)
+            logger.error(msg)
             raise NotImplementedError(msg)
 
         return None
 
-    async def _maybe_upload_attachment(self, attachment: Attachment) -> Attachment:
-        if self._tool_config and matches_type(
-            attachment.type, self._tool_config.attachment.supported_types  # type: ignore[arg-type]
-        ):
-            logger.debug(f"Attachment: {attachment.title}, Tool Config: {self._tool_config}")
-            return await self.__dial_attachment_service.upload_attachment_to_core(attachment)
-        return attachment
+    def _should_upload(self, mime_type: str | None) -> bool:
+        return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
@@ -128,7 +191,7 @@ class _MCPTool(StagedBaseTool):
                 logger.warning("Unsupported content block type: %s; treating as non-text", btype)
                 non_text_contents.append(block)
 
-        tool_content = "\n\n".join([p for p in text_parts if p]) or ""
+        tool_content = "\n\n".join(filter(None, text_parts))
 
         logger.debug(
             "Tool returned text length %d and %d non-text content blocks",
@@ -139,8 +202,10 @@ class _MCPTool(StagedBaseTool):
         attachments = []
         for content in non_text_contents:
             attachment = self._content_to_attachment(content)
-            if attachment is not None:
-                attachment = await self._maybe_upload_attachment(attachment)
+            if attachment is not None and self._should_upload(attachment.type):
+                attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                    attachment
+                )
                 attachments.append(attachment)
 
         result = CompletionResult(

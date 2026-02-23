@@ -134,14 +134,17 @@ All tools inherit from a common base class that defines:
 - A standardized execution interface
 - Lifecycle management with stage wrappers
 - Parameter preprocessing hooks
-- Attachment filtering based on configuration
+- Attachment filtering based on `supported_types` configuration (single canonical filter point)
+- Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
 - Performance timing
 
 ### Tool Types
 
 Quick Apps supports several tool types:
 
-- **REST API Tools**: HTTP endpoints defined declaratively in configuration
+- **REST API Tools**: HTTP endpoints defined declaratively in configuration. Support an optional
+  `response_as_attachment` config (`enabled`, `content_types`, `include_body_as_content`) that controls whether the HTTP
+  response body is wrapped as a file attachment. Defaults to disabled — responses are returned as text only.
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
 - **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
@@ -465,13 +468,17 @@ Tools are organized into toolsets that share common configuration:
 
 ### Template Resolution
 
-Configurations can reference predefined templates that are resolved at runtime:
+`PredefinedContentProvider` is the single source of truth for all predefined content (prompts, tools, toolsets, skills). It scans a built-in layer (auto-detected at `/app/predefined` or `config/predefined/`) and optional extra layers (`PREDEFINED_EXTRA_PATHS`), eagerly loads all files, and merges them by filename stem (last wins).
+
+`ConfigResolver` delegates all I/O to `PredefinedContentProvider` and focuses on config resolution logic:
 
 - System prompts are loaded from markdown files
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-This enables reusable configuration building blocks that can be shared across applications.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+
+This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 
 ---
 

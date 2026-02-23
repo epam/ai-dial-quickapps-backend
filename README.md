@@ -25,6 +25,23 @@ Core.
 - Native DIAL tools plus external REST and MCP integrations.
 - Any LLM available in DIAL Core (Azure OpenAI, Anthropic, Vertex AI, etc.).
 
+## Feature Lifecycle
+
+Some features are released as **Preview** before becoming **Stable**:
+
+| Stage       | Meaning                                                                                              |
+|-------------|------------------------------------------------------------------------------------------------------|
+| **Preview** | Available for use but may change in breaking ways without a major version bump. Feedback is welcome. |
+| **Stable**  | Covered by semantic versioning — breaking changes require a major version bump.                      |
+
+Features in Preview are marked with a `[Preview]` tag in documentation.
+
+## Documentation
+
+- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Agent Skills](docs/skills.md) `[Preview]` - How to create and manage reusable agent skills
+- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
+
 ## Quick start (general)
 
 - Local development and run instructions, utilities and tests remain in this repository. For detailed setup commands (
@@ -41,40 +58,47 @@ file:
 
 ### Environment Variables
 
-| Variable                                   | Default                    | Required | Description                                                                                                                          |
-|--------------------------------------------|----------------------------|----------|--------------------------------------------------------------------------------------------------------------------------------------|
-| **DIAL Core**                              |                            |          |                                                                                                                                      |
-| `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                                             |
-| `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                                        |
-| **Logging**                                |                            |          |                                                                                                                                      |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                                         |
-| `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                                                      |
-| `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                                                       |
-| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                                        |
-| `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                                            |
-| **Agent**                                  |                            |          |                                                                                                                                      |
-| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                                        |
-| `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                                                 |
-| `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                                                   |
-| `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                                                  |
-| **Python Interpreter**                     |                            |          |                                                                                                                                      |
-| `PY_INTERPRETER_LOCAL_RUN`                 | `false`                    | No       | Run PyInterpreter locally instead of via DIAL Core API                                                                               |
-| `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                                                     |
-| `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                                                  |
-| `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                                             |
-| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                                                       |
-| `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                                                  |
-| `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                                        |
-| **Content Downloader**                     |                            |          |                                                                                                                                      |
-| `CONTENT_DOWNLOADER_FILE_SIZE_LIMIT`       | `20971520` (20 MB)         | No       | Max file size in bytes for the content downloader tool                                                                               |
-| **Templates**                              |                            |          |                                                                                                                                      |
-| `PREDEFINED_BASE_PATH`                     | `config/predefined`        | No       | Base path for predefined templates                                                                                                   |
-| `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                                                   |
-| **Observability**                          |                            |          |                                                                                                                                      |
-| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                                                   |
-| **Scripts & Tests**                        |                            |          |                                                                                                                                      |
-| `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                    |
-| `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                |
+| Variable                                   | Default                    | Required | Description                                                                                                  |
+|--------------------------------------------|----------------------------|----------|--------------------------------------------------------------------------------------------------------------|
+| **DIAL Core**                              |                            |          |                                                                                                              |
+| `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
+| `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
+| **Logging**                                |                            |          |                                                                                                              |
+| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                 |
+| `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
+| `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
+| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                |
+| `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
+| **Agent**                                  |                            |          |                                                                                                              |
+| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
+| `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
+| `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
+| **Python Interpreter**                     |                            |          |                                                                                                              |
+| `PY_INTERPRETER_LOCAL_RUN`                 | `false`                    | No       | Run PyInterpreter locally instead of via DIAL Core API                                                       |
+| `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                             |
+| `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                          |
+| `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                     |
+| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                               |
+| `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                          |
+| `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
+| **Templates**                              |                            |          |                                                                                                              |
+| `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
+| `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
+| **Observability**                          |                            |          |                                                                                                              |
+| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                           |
+| **Scripts & Tests**                        |                            |          |                                                                                                              |
+| `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests            |
+| `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests        |
+
+#### Deprecated Environment Variables
+
+> [!CAUTION]
+> These variables still work but will be removed in a future major version.
+
+| Variable               | Replacement              | Description                                                                  |
+|------------------------|--------------------------|------------------------------------------------------------------------------|
+| `PREDEFINED_BASE_PATH` | `PREDEFINED_EXTRA_PATHS` | If set alone, treated as a single extra layer on top of the built-in content |
 
 ¹**Notes:**
 
@@ -84,21 +108,14 @@ file:
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
 
-### Agent instructions
+### Deprecated: Agent Instructions
 
-You can define instructions for Quick Apps by adding one or more Markdown files to config/predefined/instructions. These
-files are appended after the predefined system prompt (prompt first, instructions after) to form the final system
-message the project uses.
-How to add instructions
-
-- Add *.md files to config/predefined/instructions.
-- Name files to control order (for example 01-overview.md, 02-guidelines.md); files are concatenated in filename sort
-  order.
-- Use blank lines between sections inside files; when combined, files are separated by a blank line.
-- Restart the service to apply changes.
-  Notes
-- If no files are present, no extra instructions will be added.
-- Check application logs if expected instructions do not appear.
+> [!WARNING]
+> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
+> removed. Instructions are replaced by [Agent Skills \[Preview\]](docs/skills.md), which offer richer
+> metadata,
+> on-demand retrieval, and layered overrides. See the
+> [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.
 
 ## Local Development
 
@@ -153,7 +170,7 @@ How to add instructions
     ```
 
    This command will generate two files in `docker_compose_files/core/configuration/generated/`:
-    - `models.json` - contains the models configuration for DIAL.    
+    - `models.json` - contains the models configuration for DIAL.
 
 ### Run
 
@@ -183,14 +200,14 @@ How to add instructions
             - DIAL_URL points to your DIAL Core API endpoint (example: https://core.example.com or http://core:8080
               depending on your environment).
             - If required by your DIAL Core instance, set DIAL_API_KEY or other auth variables.
-            - PREDEFINED_BASE_PATH if you rely on predefined templates/toolsets.
+            - PREDEFINED_EXTRA_PATHS if you need to add or override predefined templates/toolsets.
         2. Run the Quick Apps 2 backend. One of:
             1. `python3 ./src/quickapp/app.py`
             2. `docker build -t quickapp:latest -f Dockerfile . && docker run --rm -it quickapp:latest`
         3. Register the application in DIAL Core
             - Add the Quick App schema generated by `make dump_app_schema` to the Core configuration so Core knows the
               Quick App application schema. For Helm create/update a ConfigMap or mount the generated file under the
-              path referenced by PREDEFINED_BASE_PATH so Core can load it.
+              path referenced by PREDEFINED_EXTRA_PATHS so Core can load it.
             - Ensure the chat UI has the Quick Apps feature enabled. Verify the chat service (or your ai-dial-chat
               deployment) includes `quick-apps` in its ENABLED_FEATURES flags so the UI will surface Quick Apps.
     - Notes:
@@ -224,11 +241,6 @@ How to add instructions
 ## E2E & Integration tests:
 
     refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
-
-## Documentation
-
-- [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
-- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## More
 

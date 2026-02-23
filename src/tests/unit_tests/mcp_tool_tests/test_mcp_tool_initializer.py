@@ -77,6 +77,8 @@ def mcp_tool1(
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
         perf_timer=Mock(),
+        file_service=MagicMock(),
+        dial_toolset_id=None,
     )
 
 
@@ -97,6 +99,8 @@ def mcp_tool2(
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
         perf_timer=Mock(),
+        file_service=MagicMock(),
+        dial_toolset_id=None,
     )
 
 
@@ -125,6 +129,8 @@ def builder_mock():
             dial_attachment_service=MagicMock(),
             state_holder=MagicMock(),
             perf_timer=Mock(),
+            file_service=MagicMock(),
+            dial_toolset_id=None,
         )
 
     m = MagicMock()

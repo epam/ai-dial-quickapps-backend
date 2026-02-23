@@ -7,8 +7,10 @@ from pydantic import BaseModel, Field
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
+from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .completion_result import CompletionResult
+from .exceptions import InvalidToolCallParameterException
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type
@@ -44,42 +46,43 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         raise NotImplementedError("Use only async version")
 
     async def arun(self, tool_call_id: str, *args: Any, **kwargs: Any) -> CompletionResult:
-        if (
-            self._tool_config
-            and self._tool_config.display
-            and self._tool_config.display.stage
-            and not self._tool_config.display.stage.show
-        ):
+        display = self._tool_config.display
+        if display and display.stage and not display.stage.show:
             return await self._run_in_stage_report_success(tool_call_id, None, *args, **kwargs)
-        else:
-            stage_wrapper = self.__stage_wrapper_builder.build(
-                tool_config=self._tool_config,
-                stage_name=self.stage_name_component,
-            )
-            with stage_wrapper:
-                try:
-                    return await self._run_in_stage_report_success(
-                        tool_call_id, stage_wrapper, *args, **kwargs
-                    )
-                except Exception as e:
-                    logger.exception("Error occurred while running tool")
-                    if (
-                        self._tool_config
-                        and self._tool_config.fallback_configuration
-                        and self._tool_config.fallback_configuration.display_error_in_stage
-                    ):
-                        stage_wrapper.add_exception(e)
-                    else:
-                        stage_wrapper.add_exception(
-                            Exception("An error occurred while executing the tool.")
-                        )
-                    if self._tool_config and self._tool_config.fallback_configuration:
-                        return FallbackProcessor.process_fallback(
-                            self._tool_config.fallback_configuration.strategies, tool_call_id, e
-                        )
-                    raise e
 
-    def _pre_process_params(self, **kwargs: Any) -> Any:
+        stage_wrapper = self.__stage_wrapper_builder.build(
+            tool_config=self._tool_config,
+            stage_name=self.stage_name_component,
+        )
+        with stage_wrapper:
+            try:
+                return await self._run_in_stage_report_success(
+                    tool_call_id, stage_wrapper, *args, **kwargs
+                )
+            except InvalidToolCallParameterException as e:
+                logger.exception("Invalid parameter detected while running tool")
+                stage_wrapper.add_exception(e)
+                return FallbackProcessor.process_fallback(
+                    [
+                        RetryStrategyModel(
+                            instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
+                        )
+                    ],
+                    tool_call_id,
+                    e,
+                )
+            except Exception as e:
+                logger.exception("Error occurred while running tool")
+                fallback = self._tool_config.fallback_configuration
+                if fallback.display_error_in_stage:
+                    stage_wrapper.add_exception(e)
+                else:
+                    stage_wrapper.add_exception(
+                        Exception("An error occurred while executing the tool.")
+                    )
+                return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
+
+    async def _pre_process_params(self, **kwargs: Any) -> Any:
         # No preprocessing of parameters by default. return parameters "as is"
         return kwargs
 
@@ -90,7 +93,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
-        params = self._pre_process_params(**kwargs)
+        params = await self._pre_process_params(**kwargs)
         timer_name = f"tool_{tool_call_id}"
         if stage_wrapper:
             # TODO: filter params ro remove attachment_urls if it's empty
@@ -102,15 +105,15 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 stage_wrapper, *args, **params
             )
             result.tool_call_id = tool_call_id
-            # filter attachments to fit only supported_attachments
             if result.attachments:
-                filtered_attachments = []
+                attachment_cfg = self._tool_config.attachment
+                filtered: list = []
                 for a in result.attachments:
-                    if matches_type(a.type, self._tool_config.attachment.supported_types):
-                        filtered_attachments.append(a)
-                    if matches_type(a.type, self._tool_config.attachment.propagate_types_to_choice):
-                        result.propagate_to_choice.append(a)
-                result.attachments = filtered_attachments
+                    if matches_type(a.type, attachment_cfg.supported_types):
+                        filtered.append(a)
+                        if matches_type(a.type, attachment_cfg.propagate_types_to_choice):
+                            result.propagate_to_choice.append(a)
+                result.attachments = filtered
             logger.debug(f"Tool call {tool_call_id} finished with result {result}")
 
             return result

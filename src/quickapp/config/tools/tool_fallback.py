@@ -39,8 +39,16 @@ class ContinueStrategyModel(BaseHandleStrategyModel):
     type: Literal["continue"] = Field(default="continue", description="The type of the strategy.")
 
 
+class RetryStrategyModel(BaseHandleStrategyModel):
+    type: Literal["retry"] = Field(default="retry", description="The type of the strategy.")
+    instructions: str = Field(
+        ...,
+        description="Instructions to LLM what to do next. Must be provided for retry strategy.",
+    )
+
+
 ToolFallbackStrategyModel = Annotated[
-    StopStrategyModel | ContinueStrategyModel,
+    StopStrategyModel | ContinueStrategyModel | RetryStrategyModel,
     Field(discriminator="type"),
 ]
 

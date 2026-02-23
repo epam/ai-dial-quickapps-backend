@@ -16,7 +16,7 @@
           "system_prompt": {
             "type": "custom",
             "variables": {},
-            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nWhen using MCP tools with file parameter, always use file url like files/<file_path>/<file_name>\nAlways format your responses in markdown."
+            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nAlways format your responses in markdown."
           }
         },
         "contexts": [],
