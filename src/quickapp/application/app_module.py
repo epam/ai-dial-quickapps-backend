@@ -10,7 +10,11 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver, PredefinedSettings
+from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.config.predefined_content_provider import (
+    PredefinedContentProvider,
+    PredefinedSettings,
+)
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
@@ -42,6 +46,7 @@ class AppModule(Module):
         binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
+        binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(

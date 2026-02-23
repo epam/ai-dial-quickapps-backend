@@ -87,12 +87,11 @@ class _MCPTool(StagedBaseTool):
                     key,
                     file_url_part,
                 )
+                kwargs[key] = file_url_part
                 properties = self.__tool.inputSchema.get("properties", {})
                 schema_prop = properties.get(key, {})
                 if schema_prop.get("dial_url"):
                     files_to_share.append(file_url_part)
-                else:
-                    kwargs[key] = file_url_part
             elif detected_prefix == "text":
                 logger.debug(
                     "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
@@ -110,7 +109,7 @@ class _MCPTool(StagedBaseTool):
                     parameter_name=key,
                     message="Missing required file prefix (base64::, url::, text::)",
                 )
-        if len(files_to_share) > 0:
+        if files_to_share:
             if not self.__dial_toolset_id:
                 logger.error(
                     "Files with dial_url flag detected but dial_toolset_id is not set.",
@@ -197,7 +196,7 @@ class _MCPTool(StagedBaseTool):
                 logger.warning("Unsupported content block type: %s; treating as non-text", btype)
                 non_text_contents.append(block)
 
-        tool_content = "\n\n".join([p for p in text_parts if p]) or ""
+        tool_content = "\n\n".join(filter(None, text_parts))
 
         logger.debug(
             "Tool returned text length %d and %d non-text content blocks",

@@ -8,7 +8,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-from quickapp.internal_tooling.internal_tooling_settings import InternalToolingSettings
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -31,8 +30,6 @@ class InternalToolModule(Module):
         binder.bind(ContentSanitizer, to=ContentSanitizer)
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
-        binder.bind(InternalToolingSettings, to=InternalToolingSettings, scope=singleton)
-
         logger.debug("InternalTooling module configuration completed")
 
     @multiprovider
@@ -40,7 +37,6 @@ class InternalToolModule(Module):
         self,
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
-        internal_tooling_settings: InternalToolingSettings,
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
 
