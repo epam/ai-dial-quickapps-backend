@@ -39,7 +39,7 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
-- [Agent Skills](./docs/preview/skills.md) `[Preview]` - How to create and manage reusable agent skills
+- [Agent Skills](docs/skills.md) `[Preview]` - How to create and manage reusable agent skills
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -112,10 +112,10 @@ file:
 
 > [!WARNING]
 > The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills \[Preview\]](./docs/preview/skills.md), which offer richer
+> removed. Instructions are replaced by [Agent Skills \[Preview\]](docs/skills.md), which offer richer
 > metadata,
 > on-demand retrieval, and layered overrides. See the
-> [migration guide](./docs/preview/skills.md#migrating-from-agent-instructions) for details.
+> [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.
 
 ## Local Development
 
