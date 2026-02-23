@@ -15,6 +15,7 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
+from ..common.forwarded_headers import ForwardedHeaders
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class _RestApiTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
+        forwarded_headers: ForwardedHeaders,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
@@ -43,6 +45,7 @@ class _RestApiTool(StagedBaseTool):
         self.__auth_info: Authorization = auth_info
         self._tool_config: RestApiTool = tool_config
         self.__dial_attachment_service = dial_attachment_service
+        self.__forwarded_headers = forwarded_headers
 
     async def _run_in_stage_async(
         self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
@@ -61,11 +64,15 @@ class _RestApiTool(StagedBaseTool):
         request_details = await request_details.with_auth(self.__auth_info)
         request_details = request_details.build()
 
+        # Merge forwarded X-* headers from the original request into the outgoing request
+        headers = dict(request_details.headers)
+        headers.update(self.__forwarded_headers.headers)
+
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 method=request_details.method,
                 url=request_details.url,
-                headers=request_details.headers,
+                headers=headers,
                 params=request_details.params,
                 json=request_details.data,
             )
