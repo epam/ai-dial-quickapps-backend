@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A photorealistic dinosaur in a natural prehistoric environment. The dinosaur should be highly detailed with realistic skin texture, scales, and coloring. Show a majestic Tyrannosaurus Rex standing in a lush Cretaceous period landscape with ancient ferns, cycads, and conifer trees. The lighting should be natural and dramatic, with sunlight filtering through the atmosphere creating realistic shadows and highlights on the dinosaur's body. Include fine details like muscle definition, weathered skin texture, sharp teeth, and intelligent eyes. The scene should look like a photograph from the actual prehistoric era with cinematic quality and ultra-realistic rendering."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 11:27:29 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-643fcc3f-54b7-475e-b29f-e9e50372346b\",\"created\":1771932447,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-643fcc3f-54b7-475e-b29f-e9e50372346b\",\"created\":1771932447,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/7c9b3b4707cf5bd36625efe1781498eef4e677db08c4dd2deef3adc6016f5266.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-643fcc3f-54b7-475e-b29f-e9e50372346b\",\"created\":1771932447,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-643fcc3f-54b7-475e-b29f-e9e50372346b\",\"created\":1771932447,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

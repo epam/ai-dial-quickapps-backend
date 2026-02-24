@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A super realistic dinosaur"
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 12:23:19 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-93db8e5e-93a5-43a3-bf2b-a99ea63244f2\",\"created\":1771935798,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-93db8e5e-93a5-43a3-bf2b-a99ea63244f2\",\"created\":1771935798,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/35afa6e6ca6896555db098b0448d42f730b8c639bf02c30d09a98fabefad9082.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-93db8e5e-93a5-43a3-bf2b-a99ea63244f2\",\"created\":1771935798,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-93db8e5e-93a5-43a3-bf2b-a99ea63244f2\",\"created\":1771935798,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
