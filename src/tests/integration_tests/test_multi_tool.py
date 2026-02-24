@@ -31,8 +31,7 @@ from tests.integration_tests.test_runner.utils.tool_names_with_hash import ToolN
                       ],
                   )
                   .add_strict_argument_check("size", "1024x1024")
-                  .add_strict_argument_check("style", "natural")
-                  .add_strict_argument_check("quality", "hd"),
+                  .add_strict_argument_check("quality", "high"),
               ],
               answer=[
                   "Here is the image of Kyiv with the current weather. Did you like it?",

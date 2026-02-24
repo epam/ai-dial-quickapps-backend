@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
                     "A dinosaur",
                 ],
             )
-            .add_strict_argument_check("size", "1792x1024")
-            .add_strict_argument_check("quality", "hd"),
+            .add_strict_argument_check("size", "1536x1024")
+            .add_strict_argument_check("quality", "high"),
         ],
         answer=[
             "Here is the image of a dinosaur. Do you like it?",
