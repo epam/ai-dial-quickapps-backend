@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict, Optional
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage
+from aidial_sdk.chat_completion import Attachment, Choice, FunctionCall, Stage, ToolCall
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
@@ -48,6 +48,19 @@ class AccumulatedToolCall:
         if delta.function:
             self._name = append_field(self._name, delta.function.name)
             self._arguments = append_field(self._arguments, delta.function.arguments)
+
+    def to_sdk_tool_call(self):
+        return ToolCall(
+            id=self.id,
+            type="function",
+            function=FunctionCall(name=self.name, arguments=self.arguments),
+        )
+
+    @staticmethod
+    def to_sdk_tool_calls(tool_calls: list["AccumulatedToolCall"] | None) -> list[ToolCall] | None:
+        if tool_calls is None:
+            return None
+        return [tc.to_sdk_tool_call() for tc in tool_calls]
 
 
 class AssistantCallResult:

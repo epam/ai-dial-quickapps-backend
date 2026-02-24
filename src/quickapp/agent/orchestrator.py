@@ -2,12 +2,12 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from aidial_sdk.chat_completion import Choice, FunctionCall, ToolCall
+from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.chunk_processor import ChunkProcessor
+from quickapp.agent.chunk_processor import AccumulatedToolCall, ChunkProcessor
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
@@ -105,7 +105,7 @@ class Orchestrator:
                 role=Role.ASSISTANT,
                 content=assistant_call_result.content or " ",
                 custom_content=CustomContent(attachments=assistant_call_result.attachments),
-                tool_calls=self._to_sdk_tool_calls(tool_calls),
+                tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
@@ -155,16 +155,3 @@ class Orchestrator:
                 history.append(msg.model_dump(mode="json", exclude_none=True))
 
         return history[::-1]
-
-    @staticmethod
-    def _to_sdk_tool_calls(tool_calls: list | None) -> list[ToolCall] | None:
-        if not tool_calls:
-            return None
-        return [
-            ToolCall(
-                id=tc.id,
-                type="function",
-                function=FunctionCall(name=tc.name, arguments=tc.arguments),
-            )
-            for tc in tool_calls
-        ]

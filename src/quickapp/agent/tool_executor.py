@@ -52,12 +52,3 @@ class ToolExecutor:
                 tool_name = sanitize_toolname(function.name)
                 tool_dict[tool_name] = tool
         return tool_dict
-
-    @staticmethod
-    def _find_tool_call_by_id(
-        tool_call_id: str, tool_call_list: List[AccumulatedToolCall]
-    ) -> AccumulatedToolCall:
-        for tc in tool_call_list:
-            if tc.id == tool_call_id:
-                return tc
-        raise RuntimeError(f"The {tool_call_id} is not found in the {tool_call_list}")
