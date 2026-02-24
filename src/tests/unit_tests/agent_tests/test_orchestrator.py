@@ -4,9 +4,18 @@ from unittest.mock import Mock, AsyncMock
 
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
+from quickapp.agent._models import AccumulatedToolCall
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
+
+
+def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
+    tc = AccumulatedToolCall()
+    tc._id = id
+    tc._name = name
+    tc._arguments = arguments
+    return tc
 
 
 @pytest.mark.asyncio
@@ -50,7 +59,9 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     tool_executor = Mock()
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -101,13 +112,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        tool_calls=[
-            {
-                "id": "tc-1",
-                "type": "function",
-                "function": {"name": "tool_a", "arguments": "{}"},
-            }
-        ],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )
     assistant_result_no_tools = SimpleNamespace(
@@ -214,9 +219,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        tool_calls=[
-            {"id": "tc-1", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}}
-        ],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )
 
@@ -240,7 +243,9 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute = AsyncMock(return_value=[])
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
