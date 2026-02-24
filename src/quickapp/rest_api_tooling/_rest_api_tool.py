@@ -7,6 +7,7 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.rest_api import RestApiTool
@@ -15,7 +16,6 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
-from ..common.forwarded_headers import ForwardedHeaders
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,7 @@
 import unittest
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
@@ -27,6 +28,7 @@ from quickapp.config.tools.rest_api import (
 )
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.rest_api_tooling import RestApiToolingModule
 from tests.unit_tests.common import create_test_app
@@ -151,8 +153,8 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             expected_request_data["method"].lower(), actual_request_data["method"].lower()
         )
-        self.assertIn("Authorization", actual_request_data["headers"])
-        self.assertEqual("Bearer test_token", actual_request_data["headers"]["Authorization"])
+        self.assertIn("authorization", actual_request_data["headers"])
+        self.assertEqual("Bearer test_token", actual_request_data["headers"]["authorization"])
 
     @patch("httpx.AsyncClient")
     async def test_response_as_attachment_enabled_creates_attachment(self, mock_async_client):
@@ -326,3 +328,60 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
         client = TestClient(app)
         response = client.get("/")
         self.assertEqual(response.status_code, 200)
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client):
+    """X-* headers from ForwardedHeaders are included in the outgoing HTTP request."""
+    url = "https://example.com/api"
+    mock_stage = MagicMock(spec=Stage)
+    response_data = {
+        "text": '{"ok": true}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = (
+        mock_response
+    )
+
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[_make_rest_api_tool(url, "get")],
+    )
+
+    forwarded = ForwardedHeaders(
+        {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
+    )
+
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+        return {"message": "success"}
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+
+    actual_headers = (
+        mock_async_client.return_value.__aenter__.return_value.request.call_args[1][
+            "headers"
+        ]
+    )
+    assert "X-Request-Id" in actual_headers
+    assert actual_headers["X-Request-Id"] == "req-123"
+    assert "X-Custom-Header" in actual_headers
+    assert actual_headers["X-Custom-Header"] == "custom-value"

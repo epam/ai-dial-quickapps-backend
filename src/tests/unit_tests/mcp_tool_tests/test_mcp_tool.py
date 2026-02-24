@@ -1,8 +1,9 @@
 import base64
 import unittest
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
@@ -13,6 +14,7 @@ from starlette.testclient import TestClient
 from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import AttachmentConfig
@@ -313,3 +315,39 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
         client = TestClient(app)
         response = client.get("/")
         self.assertEqual(response.status_code, 200)
+
+
+@pytest.mark.asyncio
+async def test_forwarded_x_headers_passed_to_mcp_request():
+    """X-* headers from ForwardedHeaders are included in the headers built by _MCPConnectionManager."""
+    from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
+
+    forwarded = ForwardedHeaders({"X-Request-Id": "mcp-req-456", "X-MCP-Custom": "mcp-val"})
+    server_info = MCPServerInfo(
+        url="https://test/mcp",
+        authorization=None,
+        protocol=MCPProtocol.streamable_http,
+    )
+    mock_oauth = MagicMock()
+    mock_oauth.fetch_oauth_token = AsyncMock()
+    dial_settings = DialSettings(url="https://core")
+
+    manager = _MCPConnectionManager(
+        toolset_info=MCPToolSet(
+            type="mcp",
+            mcp_server_info=server_info,
+            name="mcp-toolset",
+            description="MCP toolset",
+        ),
+        oauth_token_fetcher=mock_oauth,
+        dial_settings=dial_settings,
+        bearer=None,
+        forwarded_headers=forwarded,
+    )
+
+    headers = await manager._MCPConnectionManager__build_headers(server_info)
+
+    assert "X-Request-Id" in headers
+    assert headers["X-Request-Id"] == "mcp-req-456"
+    assert "X-MCP-Custom" in headers
+    assert headers["X-MCP-Custom"] == "mcp-val"
