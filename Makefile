@@ -34,6 +34,7 @@ lint: install_dev
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
 	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 
 mypy: install_dev
 	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
@@ -42,6 +43,7 @@ format: install_dev
 	$(POETRY) run autoflake $(SRC_DIRS)
 	$(POETRY) run black $(SRC_DIRS)
 	$(POETRY) run isort $(SRC_DIRS)
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
 install_pre_commit_hooks: poetry-boot
 	pre-commit install
@@ -53,7 +55,7 @@ test: install_dev
 	$(POETRY) run pytest src/tests/unit_tests --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
 
 dump_app_schema: install_dev
-	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
 generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
