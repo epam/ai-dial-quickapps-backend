@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A natural, high-quality, realistic image of Kyiv, Ukraine under current weather: overcast cloudy sky with diffused, soft light; cool ambiance corresponding to about 8\u00b0C. Depict a cityscape with historic architecture and broad avenues, subtle reflections on windows, gentle breeze suggested by lightly moving tree branches, pedestrians in light jackets. Colors are muted and natural, with grays and cool blues, maintaining a photographic, non-stylized look. Composition includes mid-distance urban buildings and streets, avoiding exaggerated effects, emphasizing authenticity and atmosphere of a cloudy day."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 13:21:31 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-38ec2095-bcc0-4c6c-849a-7c84833c5459\",\"created\":1771939288,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-38ec2095-bcc0-4c6c-849a-7c84833c5459\",\"created\":1771939288,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/12dc3cc7bf66e82855a951ea6bb85b01aacb43eb1a15cd02408c6037790583ce.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-38ec2095-bcc0-4c6c-849a-7c84833c5459\",\"created\":1771939288,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-38ec2095-bcc0-4c6c-849a-7c84833c5459\",\"created\":1771939288,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

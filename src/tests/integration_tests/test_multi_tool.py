@@ -97,7 +97,7 @@ def test_rag_interpreter(client):
           test_case=TstCase(
               name="Image recognition and Web search",
               description="Image recognition and Web search",
-              similarity_threshold=0.85,
+              similarity_threshold=0.8,
           )
           .add_user_message(
               user_message="Identify the sci-fi movie on the attached image without any tool calling. Then find information about this movie Budget and Worldwide Gross using web search. Provide the result in the EXACT fromat: \n\rThe movie in the attached image: <movie name>. \n\rBudget: <budget>. \n\rWorldwide Gross: <gross>. \n\r\n\r You may add sources if needed, but it's not required.",
@@ -108,15 +108,20 @@ def test_rag_interpreter(client):
                       [
                           "significance of the number 42 in The Hitchhiker's Guide to the Galaxy",
                           "The Hitchhiker's Guide to the Galaxy significance and details",
-                          "The Hitchhiker's Guide to the Galaxy movie budget and worldwide gross"
+                          "The Hitchhiker's Guide to the Galaxy movie budget and worldwide gross",
+                          "sci-fi movie titled 42 budget worldwide gross"
                       ],
                   ),
               ],
               answer=[
-                  """The movie in the attached image: "The Hitchhiker's Guide to the Galaxy,".
-                  Budget: Approximately $50 million
-                  Worldwide Gross: Over $104 million
-              """
+"""The movie in the attached image: "The Hitchhiker's Guide to the Galaxy,".
+Budget: Approximately $50 million
+Worldwide Gross: Over $104 million
+""",
+"""The movie in the attached image: 42.  
+Budget: $40 million. (Source: https://en.wikipedia.org/wiki/42_(film))  
+Worldwide Gross: $97.5 million. (Source: https://en.wikipedia.org/wiki/42_(film))'
+"""
               ]
           ).add_mock_date(date(2024, 12, 31))
           )

@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A beautiful winter scene in Vilnius, Lithuania. Snow-covered baroque architecture with the iconic Gediminas Tower visible on the hill. The old town streets are blanketed in fresh white snow, with warm golden lights glowing from windows of historic buildings. The Cathedral Square with its bell tower is partially visible, all covered in pristine snow. Street lamps create a warm glow in the winter evening atmosphere. Traditional Lithuanian architectural details are visible on the colorful building facades despite the snow coverage."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 12:51:58 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-506ca55f-0cde-4680-b0f3-059418ea698c\",\"created\":1771937515,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-506ca55f-0cde-4680-b0f3-059418ea698c\",\"created\":1771937515,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/9d7f767c6c5e821d075fa4b9e43be970bf7c0d2ab2049317e6ec72bfda962970.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-506ca55f-0cde-4680-b0f3-059418ea698c\",\"created\":1771937515,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-506ca55f-0cde-4680-b0f3-059418ea698c\",\"created\":1771937515,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
