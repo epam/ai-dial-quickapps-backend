@@ -3,7 +3,7 @@
 import pytest
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 
-from quickapp.agent.chunk_processor import AccumulatedToolCall, AssistantCallResult
+from quickapp.agent._models import AccumulatedToolCall, AssistantCallResult
 
 
 def test_tool_call_accumulation():
@@ -15,28 +15,22 @@ def test_tool_call_accumulation():
         index=0,
         id='chatcmpl-tool-a89453224f0a3994',
         function=ChoiceDeltaToolCallFunction(arguments=None, name='geo_code_de9a'),
-        type='function'
+        type='function',
     )
 
     delta2 = ChoiceDeltaToolCall(
         index=0,
         id=None,
         function=ChoiceDeltaToolCallFunction(arguments='{"q": "', name=None),
-        type=None
+        type=None,
     )
 
     delta3 = ChoiceDeltaToolCall(
-        index=0,
-        id=None,
-        function=ChoiceDeltaToolCallFunction(arguments='NY', name=None),
-        type=None
+        index=0, id=None, function=ChoiceDeltaToolCallFunction(arguments='NY', name=None), type=None
     )
 
     delta4 = ChoiceDeltaToolCall(
-        index=0,
-        id=None,
-        function=ChoiceDeltaToolCallFunction(arguments='"}', name=None),
-        type=None
+        index=0, id=None, function=ChoiceDeltaToolCallFunction(arguments='"}', name=None), type=None
     )
 
     # Apply all deltas
@@ -56,39 +50,46 @@ def test_tool_call_accumulation():
     assert tc.arguments == '{"q": "NY"}'
 
 
-
 def test_multiple_tool_calls_accumulation():
     """Test accumulation of multiple parallel tool calls."""
     result = AssistantCallResult()
 
     # First tool call - delta with id
-    result.append_tool_call_delta(ChoiceDeltaToolCall(
-        index=0,
-        id='call-1',
-        function=ChoiceDeltaToolCallFunction(arguments=None, name='tool_a'),
-        type='function'
-    ))
+    result.append_tool_call_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id='call-1',
+            function=ChoiceDeltaToolCallFunction(arguments=None, name='tool_a'),
+            type='function',
+        )
+    )
     # Second tool call - delta with id
-    result.append_tool_call_delta(ChoiceDeltaToolCall(
-        index=1,
-        id='call-2',
-        function=ChoiceDeltaToolCallFunction(arguments=None, name='tool_b'),
-        type='function'
-    ))
+    result.append_tool_call_delta(
+        ChoiceDeltaToolCall(
+            index=1,
+            id='call-2',
+            function=ChoiceDeltaToolCallFunction(arguments=None, name='tool_b'),
+            type='function',
+        )
+    )
     # Arguments for the first tool call
-    result.append_tool_call_delta(ChoiceDeltaToolCall(
-        index=0,
-        id=None,
-        function=ChoiceDeltaToolCallFunction(arguments='{"x": 1}', name=None),
-        type=None
-    ))
+    result.append_tool_call_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id=None,
+            function=ChoiceDeltaToolCallFunction(arguments='{"x": 1}', name=None),
+            type=None,
+        )
+    )
     # Arguments for the second tool call
-    result.append_tool_call_delta(ChoiceDeltaToolCall(
-        index=1,
-        id=None,
-        function=ChoiceDeltaToolCallFunction(arguments='{"y": 2}', name=None),
-        type=None
-    ))
+    result.append_tool_call_delta(
+        ChoiceDeltaToolCall(
+            index=1,
+            id=None,
+            function=ChoiceDeltaToolCallFunction(arguments='{"y": 2}', name=None),
+            type=None,
+        )
+    )
 
     tool_calls = result.tool_calls
     assert tool_calls is not None
@@ -133,27 +134,34 @@ def test_accessing_arguments_before_set_raises():
 def test_arguments_accumulated_across_deltas():
     """Test that arguments are correctly concatenated across multiple deltas."""
     tc = AccumulatedToolCall()
-    tc.append_delta(ChoiceDeltaToolCall(
-        index=0, id='c1',
-        function=ChoiceDeltaToolCallFunction(arguments=None, name='f'),
-        type='function'
-    ))
+    tc.append_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id='c1',
+            function=ChoiceDeltaToolCallFunction(arguments=None, name='f'),
+            type='function',
+        )
+    )
     # arguments still None at this point
     with pytest.raises(ValueError):
         _ = tc.arguments
 
-    tc.append_delta(ChoiceDeltaToolCall(
-        index=0, id=None,
-        function=ChoiceDeltaToolCallFunction(arguments='{"a":', name=None),
-        type=None
-    ))
+    tc.append_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id=None,
+            function=ChoiceDeltaToolCallFunction(arguments='{"a":', name=None),
+            type=None,
+        )
+    )
     assert tc.arguments == '{"a":'
 
-    tc.append_delta(ChoiceDeltaToolCall(
-        index=0, id=None,
-        function=ChoiceDeltaToolCallFunction(arguments=' 1}', name=None),
-        type=None
-    ))
+    tc.append_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id=None,
+            function=ChoiceDeltaToolCallFunction(arguments=' 1}', name=None),
+            type=None,
+        )
+    )
     assert tc.arguments == '{"a": 1}'
-
-

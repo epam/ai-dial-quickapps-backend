@@ -7,7 +7,7 @@ from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.chunk_processor import AccumulatedToolCall, ChunkProcessor
+from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
@@ -18,6 +18,8 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
+
+from ._models import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
 

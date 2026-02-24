@@ -1,107 +1,12 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
-from aidial_sdk.chat_completion import Attachment, Choice, FunctionCall, Stage, ToolCall
+from aidial_sdk.chat_completion import Choice, Stage
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
-from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-
-class Usage:
-    def __init__(self, prompt_tokens: int, completion_tokens: int):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
-
-
-class AccumulatedToolCall:
-    def __init__(self) -> None:
-        self._id: str | None = None
-        self._name: str | None = None
-        self._arguments: str | None = None
-
-    @property
-    def id(self) -> str:
-        if self._id is None:
-            raise ValueError("Tool call id has not been received yet")
-        return self._id
-
-    @property
-    def name(self) -> str:
-        if self._name is None:
-            raise ValueError("Tool call name has not been received yet")
-        return self._name
-
-    @property
-    def arguments(self) -> str:
-        if self._arguments is None:
-            raise ValueError("Tool call arguments have not been received yet")
-        return self._arguments
-
-    def append_delta(self, delta: ChoiceDeltaToolCall) -> None:
-        def append_field(current: str | None, chunk: str | None) -> str | None:
-            if chunk is None:
-                return current
-            return chunk if current is None else current + chunk
-
-        self._id = append_field(self._id, delta.id)
-        if delta.function:
-            self._name = append_field(self._name, delta.function.name)
-            self._arguments = append_field(self._arguments, delta.function.arguments)
-
-    def to_sdk_tool_call(self):
-        return ToolCall(
-            id=self.id,
-            type="function",
-            function=FunctionCall(name=self.name, arguments=self.arguments),
-        )
-
-    @staticmethod
-    def to_sdk_tool_calls(tool_calls: list["AccumulatedToolCall"] | None) -> list[ToolCall] | None:
-        if tool_calls is None:
-            return None
-        return [tc.to_sdk_tool_call() for tc in tool_calls]
-
-
-class AssistantCallResult:
-    def __init__(self):
-        self.__content = ""
-        self.__attachments: list[Attachment] = []
-        self.__accumulated_tool_calls: Dict[int, AccumulatedToolCall] = {}
-        self.__usage: Optional[Usage] = None
-
-    @property
-    def content(self):
-        return self.__content
-
-    def append_content(self, content: str) -> None:
-        self.__content += content
-
-    @property
-    def attachments(self):
-        return self.__attachments
-
-    def append_attachment(self, attachment: Attachment) -> None:
-        self.__attachments.append(attachment)
-
-    @property
-    def tool_calls(self) -> list[AccumulatedToolCall] | None:
-        values = list(self.__accumulated_tool_calls.values())
-        return values if values else None
-
-    def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
-        index = tool_call_delta.index
-        if index not in self.__accumulated_tool_calls:
-            self.__accumulated_tool_calls[index] = AccumulatedToolCall()
-        self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
-
-    @property
-    def usage(self):
-        return self.__usage
-
-    def set_usage(self, usage: Usage) -> None:
-        self.__usage = usage
-
+from ._models import AssistantCallResult, Usage
 
 logger = logging.getLogger(__name__)
 

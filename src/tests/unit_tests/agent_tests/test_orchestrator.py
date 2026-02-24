@@ -4,15 +4,13 @@ from unittest.mock import Mock, AsyncMock
 
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
-from quickapp.agent.chunk_processor import AccumulatedToolCall
+from quickapp.agent._models import AccumulatedToolCall
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
 
 
-def _make_accumulated_tool_call(
-    id: str, name: str, arguments: str = "{}"
-) -> AccumulatedToolCall:
+def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
     tc = AccumulatedToolCall()
     tc._id = id
     tc._name = name
@@ -61,7 +59,9 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     tool_executor = Mock()
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -243,7 +243,9 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute = AsyncMock(return_value=[])
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
