@@ -52,7 +52,6 @@ def test_tool_call_accumulation():
 
     tc = tool_calls[0]
     assert tc.id == 'chatcmpl-tool-a89453224f0a3994'
-    assert tc.type == 'function'
     assert tc.name == 'geo_code_de9a'
     assert tc.arguments == '{"q": "NY"}'
 
@@ -108,6 +107,13 @@ def test_no_tool_calls_returns_none():
     """Test that tool_calls returns None when no deltas have been appended."""
     result = AssistantCallResult()
     assert result.tool_calls is None
+
+
+def test_accessing_id_before_set_raises():
+    """Test that accessing id before it has been accumulated raises ValueError."""
+    tc = AccumulatedToolCall()
+    with pytest.raises(ValueError, match="id has not been received"):
+        _ = tc.id
 
 
 def test_accessing_name_before_set_raises():

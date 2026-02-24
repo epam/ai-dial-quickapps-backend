@@ -16,10 +16,15 @@ class Usage:
 
 class AccumulatedToolCall:
     def __init__(self) -> None:
-        self.id: str = ""
-        self.type: str = "function"
+        self._id: str | None = None
         self._name: str | None = None
         self._arguments: str | None = None
+
+    @property
+    def id(self) -> str:
+        if self._id is None:
+            raise ValueError("Tool call id has not been received yet")
+        return self._id
 
     @property
     def name(self) -> str:
@@ -34,17 +39,15 @@ class AccumulatedToolCall:
         return self._arguments
 
     def append_delta(self, delta: ChoiceDeltaToolCall) -> None:
-        if delta.id:
-            self.id = delta.id
-        if delta.type:
-            self.type = delta.type
+        def append_field(current: str | None, chunk: str | None) -> str | None:
+            if chunk is None:
+                return current
+            return chunk if current is None else current + chunk
+
+        self._id = append_field(self._id, delta.id)
         if delta.function:
-            if delta.function.name:
-                self._name = delta.function.name
-            if delta.function.arguments:
-                if self._arguments is None:
-                    self._arguments = ""
-                self._arguments += delta.function.arguments
+            self._name = append_field(self._name, delta.function.name)
+            self._arguments = append_field(self._arguments, delta.function.arguments)
 
 
 class AssistantCallResult:
