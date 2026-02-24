@@ -1,6 +1,7 @@
 # CLI Script that dumps application schema to the specified output file.
 # Usage example:
 # python dump_app_schema.py output_schema.json
+# python dump_app_schema.py output_schema.json --check
 
 if __name__ == '__main__':
     from utils import add_src_to_system_path, load_env
@@ -58,8 +59,39 @@ def dump_app_schema(output_file: str) -> None:
 
     with open(output_file, 'w', encoding='utf-8') as f:
         json.dump(schema, f, ensure_ascii=False, indent=2)
+        f.write('\n')
 
     print(f"Application schema dumped to {output_file}")
+
+
+def check_app_schema(output_file: str) -> None:
+    """
+    Checks that the committed schema file matches the current generated schema.
+    Exits with non-zero code if they differ.
+
+    Args:
+        output_file (str): The path to the schema file to check against.
+    """
+    import sys
+
+    schema = get_quickapp_schema()
+    generated = json.dumps(schema, ensure_ascii=False, indent=2) + '\n'
+
+    try:
+        with open(output_file, 'r', encoding='utf-8') as f:
+            existing = f.read()
+    except FileNotFoundError:
+        print(f"ERROR: Schema file '{output_file}' not found. Run 'make format' to generate it.")
+        sys.exit(1)
+
+    if generated != existing:
+        print(
+            f"ERROR: Schema file '{output_file}' is out of date. "
+            f"Run 'make format' to regenerate it."
+        )
+        sys.exit(1)
+
+    print(f"Schema file '{output_file}' is up to date.")
 
 
 if __name__ == "__main__":
@@ -67,6 +99,14 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Dump application schema to a file.")
     parser.add_argument("output_file", type=str, help="The output file path to dump the schema.")
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Check that the schema file is up to date instead of overwriting it.",
+    )
     args = parser.parse_args()
 
-    dump_app_schema(args.output_file)
+    if args.check:
+        check_app_schema(args.output_file)
+    else:
+        dump_app_schema(args.output_file)
