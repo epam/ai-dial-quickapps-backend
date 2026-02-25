@@ -35,7 +35,7 @@ class ChunkProcessor:
                     if custom_content := getattr(ch.delta, 'custom_content', None):
                         self.__process_custom_content(custom_content, destination)
 
-                    if tool_calls_deltas_list := getattr(ch.delta, 'tool_calls', None):
+                    if tool_calls_deltas_list := ch.delta.tool_calls:
                         for delta in tool_calls_deltas_list:
                             self.__assistant_call_result.append_tool_call_delta(delta)
             if chunk.usage:
