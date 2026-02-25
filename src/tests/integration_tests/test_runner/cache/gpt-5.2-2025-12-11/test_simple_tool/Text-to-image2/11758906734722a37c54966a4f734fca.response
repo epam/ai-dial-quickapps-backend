@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A beautiful winter evening scene in Vilnius, Lithuania, illustrated in a realistic painterly style. Snow-covered Baroque Old Town architecture with colorful facades partially visible beneath fresh white snow. Warm golden light glowing from windows of historic buildings. Cobblestone streets blanketed in pristine snow. Street lamps casting warm amber pools of light and soft reflections on snow. In the background, on a hill, the iconic Gediminas Tower visible, softly lit. Cathedral Square partially visible with the bell tower dusted in snow. Gentle falling snowflakes, cozy atmospheric mood, high detail, balanced composition, no text, no people in focus."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 13:35:10 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-38b40299-4fb6-49c0-9992-4797eeaf4251\",\"created\":1771940108,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-38b40299-4fb6-49c0-9992-4797eeaf4251\",\"created\":1771940108,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/2dcdb2f766bd3001aec342d6a41fb7ba0431080ddd20ca0ab1f1b90c9cfd36e1.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-38b40299-4fb6-49c0-9992-4797eeaf4251\",\"created\":1771940108,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-38b40299-4fb6-49c0-9992-4797eeaf4251\",\"created\":1771940108,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

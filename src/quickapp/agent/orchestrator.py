@@ -19,6 +19,8 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
+from ._models import AccumulatedToolCall
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,12 +100,14 @@ class Orchestrator:
         if assistant_call_result is None:
             raise RuntimeError("Assistant invocation returned no result.")
 
+        tool_calls = assistant_call_result.tool_calls
+
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
                 content=assistant_call_result.content or " ",
                 custom_content=CustomContent(attachments=assistant_call_result.attachments),
-                tool_calls=assistant_call_result.tool_calls,
+                tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
@@ -117,7 +121,6 @@ class Orchestrator:
         self.__perf_timer.add_milestone(period, "assistant_response_received")
         logger.debug(f"Message from agent: {self.__messages_context.messages}")
 
-        tool_calls = assistant_call_result.tool_calls
         if not tool_calls:
             return False
 

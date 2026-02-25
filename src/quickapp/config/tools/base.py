@@ -165,7 +165,7 @@ DEFAULT_PROPAGATE_TO_CHOICE = ["image/*", "application/vnd.plotly.v1+json"]
 
 
 class AttachmentConfig(BaseModel):
-    supported_types: list[str] = Field(
+    supported_types: list[str] | None = Field(
         default_factory=lambda: [ALL_MIME_TYPES],
         description="List of supported attachment types.",
     )
