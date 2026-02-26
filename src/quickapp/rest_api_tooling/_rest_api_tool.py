@@ -5,9 +5,8 @@ import httpx
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import CompletionResult, ForwardedHeaders, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.rest_api import RestApiTool
@@ -66,7 +65,8 @@ class _RestApiTool(StagedBaseTool):
 
         # Merge forwarded X-* headers from the original request into the outgoing request
         headers = dict(request_details.headers)
-        headers.update(self.__forwarded_headers.headers)
+        if self.__forwarded_headers:
+            headers.update(self.__forwarded_headers)
 
         async with httpx.AsyncClient() as client:
             response = await client.request(

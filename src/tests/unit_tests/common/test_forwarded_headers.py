@@ -1,14 +1,11 @@
-"""Unit tests for forwarded_headers module (extract_x_headers_from_request and ForwardedHeaders)."""
+"""Unit tests for forwarded_headers module (extract_x_headers_from_request)."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
-from quickapp.common.forwarded_headers import (
-    ForwardedHeaders,
-    extract_x_headers_from_request,
-)
+from quickapp.common.forwarded_headers import extract_x_headers_from_request
 
 
 class TestExtractXHeadersFromRequest:
@@ -71,36 +68,3 @@ class TestExtractXHeadersFromRequest:
         request = SimpleNamespace(headers=None)
         result = extract_x_headers_from_request(request)
         assert result == {}
-
-
-class TestForwardedHeaders:
-    """Tests for ForwardedHeaders class."""
-
-    def test_init_none(self):
-        """Initializing with None gives empty headers."""
-        fh = ForwardedHeaders(None)
-        assert fh.headers == {}
-
-    def test_init_empty_dict(self):
-        """Initializing with empty dict gives empty headers."""
-        fh = ForwardedHeaders({})
-        assert fh.headers == {}
-
-    def test_init_with_headers(self):
-        """Initializing with a dict exposes headers via .headers property."""
-        h = {"X-A": "a", "X-B": "b"}
-        fh = ForwardedHeaders(h)
-        assert fh.headers == {"X-A": "a", "X-B": "b"}
-
-    def test_headers_is_copy(self):
-        """Internal storage is a copy; mutating the passed dict does not change ForwardedHeaders."""
-        h = {"X-A": "a"}
-        fh = ForwardedHeaders(h)
-        h["X-B"] = "b"
-        assert fh.headers == {"X-A": "a"}
-
-    def test_headers_property_returns_dict(self):
-        """.headers returns a dict suitable for merging into requests."""
-        fh = ForwardedHeaders({"X-Test": "value"})
-        assert isinstance(fh.headers, dict)
-        assert fh.headers["X-Test"] == "value"

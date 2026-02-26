@@ -13,11 +13,9 @@ from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.common import RESPONSE_FORMAT
-from quickapp.common.forwarded_headers import ForwardedHeaders
+from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.dial_deployment_tooling.constants import EXTRA_HEADERS
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +80,8 @@ class AssistantInvoker:
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}
 
-        if self.__forwarded_headers.headers:
-            payload[EXTRA_HEADERS] = self.__forwarded_headers.headers
+        if self.__forwarded_headers:
+            payload["extra_headers"] = self.__forwarded_headers
 
         chat_completion_config.update(payload)
         logger.debug(f"Chat completion config: {chat_completion_config}")

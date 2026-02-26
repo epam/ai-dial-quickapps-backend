@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.common.forwarded_headers import ForwardedHeaders
+from quickapp.common import ForwardedHeaders
 
 
 # Minimal test helpers
@@ -67,7 +67,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         attachment_filter=mock_filter,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=ForwardedHeaders()
+        forwarded_headers=None
     )
 
     result = await invoker.invoke()
@@ -105,7 +105,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
-        forwarded_headers=ForwardedHeaders()
+        forwarded_headers=None
     )
 
     result = await invoker.invoke()
@@ -158,7 +158,7 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         response_format=None,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=ForwardedHeaders()
+        forwarded_headers=None
     )
 
     from aidial_sdk.exceptions import InvalidRequestError

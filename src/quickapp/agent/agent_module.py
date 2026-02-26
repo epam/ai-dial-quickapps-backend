@@ -12,11 +12,10 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
@@ -78,7 +77,7 @@ class AgentModule(Module):
             api_key=api_key.get_secret_value(),
             azure_deployment=config.orchestrator.deployment.name,
             api_version=dial_settings.api_version,
-            default_headers=forwarded_headers.headers or None,
+            default_headers=forwarded_headers or None,
         )
         return azure_client
 

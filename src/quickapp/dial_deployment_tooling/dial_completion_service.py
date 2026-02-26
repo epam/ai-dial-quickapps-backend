@@ -15,10 +15,9 @@ from aidial_client.types.chat.request_param import (
 from aidial_sdk import chat_completion as dial_sdk_models
 from injector import inject
 
-from quickapp.common import CompletionResult
+from quickapp.common import CompletionResult, ForwardedHeaders
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
-from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.utils import to_plain_dict
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
@@ -54,7 +53,7 @@ class DialCompletionService:
 
     def __init__(self, dial_client: AsyncDial, forwarded_headers: ForwardedHeaders) -> None:
         self.__dial_client: AsyncDial = dial_client
-        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
+        self.__forwarded_headers: dict[str, str] | None = forwarded_headers
 
     @staticmethod
     def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Dict[str, Any] | None:
@@ -129,8 +128,8 @@ class DialCompletionService:
         if extra_body:
             chat_completion_params[EXTRA_BODY] = extra_body
 
-        if forwarded_headers.headers:
-            chat_completion_params[EXTRA_HEADERS] = forwarded_headers.headers
+        if forwarded_headers:
+            chat_completion_params[EXTRA_HEADERS] = forwarded_headers
             logger.debug("##{}", chat_completion_params)
 
         return chat_completion_params

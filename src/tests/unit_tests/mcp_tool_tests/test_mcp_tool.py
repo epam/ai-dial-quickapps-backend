@@ -11,10 +11,9 @@ from mcp.types import ImageContent, EmbeddedResource, TextResourceContents, Blob
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
+from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.forwarded_headers import ForwardedHeaders
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import AttachmentConfig
@@ -118,6 +117,7 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                 to=create_app_configuration([mcp_toolset]),
             )
             binder.bind(PerformanceTimer, to=PerformanceTimer)
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([MCPToolingModule, configure])
 
@@ -291,6 +291,7 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                 to=create_app_configuration([mcp_toolset]),
             )
             binder.bind(PerformanceTimer, to=PerformanceTimer)
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([MCPToolingModule, configure])
 
@@ -319,10 +320,10 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
 
 @pytest.mark.asyncio
 async def test_forwarded_x_headers_passed_to_mcp_request():
-    """X-* headers from ForwardedHeaders are included in the headers built by _MCPConnectionManager."""
+    """X-* headers from forwarded_headers (dict) are included in the headers built by _MCPConnectionManager."""
     from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 
-    forwarded = ForwardedHeaders({"X-Request-Id": "mcp-req-456", "X-MCP-Custom": "mcp-val"})
+    forwarded = {"X-Request-Id": "mcp-req-456", "X-MCP-Custom": "mcp-val"}
     server_info = MCPServerInfo(
         url="https://test/mcp",
         authorization=None,

@@ -7,7 +7,7 @@ from aidial_client.types.chat.request_param import (
 )
 from unittest.mock import AsyncMock, MagicMock, call
 
-from quickapp.common.forwarded_headers import ForwardedHeaders
+from quickapp.common import ForwardedHeaders
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
@@ -32,7 +32,7 @@ def dial_client():
 
 @pytest.fixture
 def completion_service(dial_client):
-    return DialCompletionService(dial_client, ForwardedHeaders())
+    return DialCompletionService(dial_client, None)
 
 
 @pytest.fixture
@@ -269,10 +269,8 @@ async def test_history_with_custom_content_passed_through(
 
 @pytest.mark.asyncio
 async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_stage_wrapper):
-    """X-* headers from ForwardedHeaders are sent as extra_headers to chat completions."""
-    forwarded = ForwardedHeaders(
-        {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    )
+    """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
+    forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
     service = DialCompletionService(dial_client, forwarded)
 
     await service.complete_request_async(

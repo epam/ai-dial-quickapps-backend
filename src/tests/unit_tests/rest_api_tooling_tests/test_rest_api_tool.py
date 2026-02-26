@@ -28,7 +28,7 @@ from quickapp.config.tools.rest_api import (
 )
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
-from quickapp.common.forwarded_headers import ForwardedHeaders
+from quickapp.common import ForwardedHeaders
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.rest_api_tooling import RestApiToolingModule
 from tests.unit_tests.common import create_test_app
@@ -114,6 +114,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -196,6 +197,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -258,6 +260,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -311,6 +314,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -333,7 +337,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client):
-    """X-* headers from ForwardedHeaders are included in the outgoing HTTP request."""
+    """X-* headers from forwarded_headers (dict) are included in the outgoing HTTP request."""
     url = "https://example.com/api"
     mock_stage = MagicMock(spec=Stage)
     response_data = {
@@ -352,9 +356,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         tools=[_make_rest_api_tool(url, "get")],
     )
 
-    forwarded = ForwardedHeaders(
-        {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
-    )
+    forwarded = {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
 
     def configure(binder: Binder):
         binder.bind(DialSettings, DialSettings(url="https://core"))
