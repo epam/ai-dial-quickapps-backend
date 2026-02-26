@@ -12,10 +12,10 @@ from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import Authorization
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
-from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ class _RestApiTool(StagedBaseTool):
             name=tool_config.open_ai_tool.function.name,
             description=tool_config.open_ai_tool.function.description,
             perf_timer=perf_timer,
-            file_service=file_service
+            file_service=file_service,
         )
         self.__request_details_builder: _RequestDetailsBuilder = request_details_builder
         self.stage_name_component = f"Calling {tool_config.rest_api_method_info.method_url}"

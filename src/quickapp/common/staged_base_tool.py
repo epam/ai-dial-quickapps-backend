@@ -9,14 +9,14 @@ from pydantic import BaseModel, Field
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
-from ._file_prefix_handlers import FilePrefixHandlers
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
+from ._file_prefix_handlers import FilePrefixHandlers
 from .completion_result import CompletionResult
 from .exceptions import InvalidToolCallParameterException
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type
-from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 
@@ -29,18 +29,20 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: Optional[str] = Field(None)
 
     def __init__(
-            self,
-            stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
-            perf_timer: PerformanceTimer,
-            tool_config: _BaseToolConfig,
-            file_service: DialFileService | None = None, # file_service is optional to avoid breaking existing tools that don't need it, but can be used for any tool that needs to handle file parameters
-            **kwargs,
+        self,
+        stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
+        perf_timer: PerformanceTimer,
+        tool_config: _BaseToolConfig,
+        file_service: (
+            DialFileService | None
+        ) = None,  # file_service is optional to avoid breaking existing tools that don't need it, but can be used for any tool that needs to handle file parameters
+        **kwargs,
     ):
         super().__init__(**kwargs)
         self.__stage_wrapper_builder: AssistedBuilder[BaseStageWrapper] = stage_wrapper_builder
         self._tool_config: _BaseToolConfig = tool_config
         self.__perf_timer: PerformanceTimer = perf_timer
-        self.__file_service: DialFileService = file_service
+        self.__file_service: DialFileService | None = file_service
 
     @property
     def tool_config(self):
@@ -48,9 +50,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
-            self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
-    ) -> CompletionResult:
-        ...
+        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+    ) -> CompletionResult: ...
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Use only async version")
@@ -99,9 +100,15 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             key,
             file_url,
         )
-        return await FilePrefixHandlers.handle_base64(
-            file_url, self.__file_service
-        )
+        if self.__file_service is None:
+            logger.error(
+                f"DialFileService is None, cannot process base64 file for key {key} with url {file_url}"
+            )
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=f"DialFileService is None, cannot process base64 file for key {key} with url {file_url}",
+            )
+        return await FilePrefixHandlers.handle_base64(file_url, self.__file_service)
 
     async def _handle_url_prefix(self, key: str, file_url: str) -> str:
         """Handle url prefix for file parameters. Can be overridden in derived classes."""
@@ -119,23 +126,27 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             key,
             file_url,
         )
+        if self.__file_service is None:
+            logger.error(
+                f"DialFileService is None, cannot process text file for key {key} with url {file_url}"
+            )
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message=f"DialFileService is None, cannot process text file for key {key} with url {file_url}",
+            )
         return await FilePrefixHandlers.handle_text(
             file_url, self.__file_service, parameter_name=key
         )
 
     async def _handle_no_prefix(self, key: str, value: str) -> str:
         """Handle file references without prefix. Can be overridden in derived classes."""
-        logger.warning(
-            "Detected file reference without prefix for key %s (value: %s)", key, value
-        )
+        logger.warning("Detected file reference without prefix for key %s (value: %s)", key, value)
         raise InvalidToolCallParameterException(
             parameter_name=key,
             message="Missing required file prefix (base64::, url::, text::)",
         )
 
-    async def _process_file_parameter(
-            self, key: str, value: str
-    ) -> str:
+    async def _process_file_parameter(self, key: str, value: str) -> str:
         """Process a single file parameter value that matches the file pattern."""
         m = FILE_PATTERN.match(value)
         if not m:
@@ -153,18 +164,17 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         else:
             return await self._handle_no_prefix(key, value)
 
-    async def _process_parameter_value(
-            self, key: str, value: Any) -> Any:
+    async def _process_parameter_value(self, key: str, value: Any) -> Any:
         """Process a parameter value - handles both strings and lists of strings."""
         if isinstance(value, str):
             return await self._process_file_parameter(key, value)
         elif isinstance(value, list):
-            processed_list = []  # todo: if first item is not str do we need to process other items in the list?
+            processed_list = (
+                []
+            )  # todo: if first item is not str do we need to process other items in the list?
             for item in value:
                 if isinstance(item, str):
-                    processed_list.append(
-                        await self._process_file_parameter(key, item)
-                    )
+                    processed_list.append(await self._process_file_parameter(key, item))
                 else:
                     processed_list.append(item)
             return processed_list
@@ -180,11 +190,11 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         return kwargs
 
     async def _run_in_stage_report_success(
-            self,
-            tool_call_id: str,
-            stage_wrapper: Optional[BaseStageWrapper],
-            *args: Any,
-            **kwargs: Any,
+        self,
+        tool_call_id: str,
+        stage_wrapper: Optional[BaseStageWrapper],
+        *args: Any,
+        **kwargs: Any,
     ) -> CompletionResult:
         params = await self._pre_process_params(**kwargs)
         timer_name = f"tool_{tool_call_id}"

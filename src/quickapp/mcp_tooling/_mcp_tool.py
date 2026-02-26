@@ -42,7 +42,7 @@ class _MCPTool(StagedBaseTool):
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
-            file_service=file_service
+            file_service=file_service,
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"
         self.__tool: Tool = tool
