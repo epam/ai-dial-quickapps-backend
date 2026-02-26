@@ -10,6 +10,7 @@ from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentT
 from .base_deployment_tool import BaseDeploymentTool
 from .deployment_stage_wrapper import DeploymentStageWrapper
 from .dial_completion_service import DialCompletionService
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
 
 class _DeploymentCompletionRequestInput(BaseModel):
@@ -30,6 +31,7 @@ class DeploymentTool(BaseDeploymentTool):
         messages: list[Message],
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
+        file_service: DialFileService,
     ):
         super().__init__(
             application_id=application_id,
@@ -41,5 +43,6 @@ class DeploymentTool(BaseDeploymentTool):
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,
             perf_timer=perf_timer,
+            file_service=file_service
         )
         self.stage_name_component = f"Calling {application_name} application"

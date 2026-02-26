@@ -62,7 +62,7 @@ class TestPreProcessParams:
         raw = b"binary data"
 
         with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_base64",
+            "quickapp.common._file_prefix_handlers.FilePrefixHandlers.handle_base64",
             new_callable=AsyncMock,
             return_value=base64.b64encode(raw).decode(),
         ) as mock_handler:
@@ -78,7 +78,7 @@ class TestPreProcessParams:
         tool, _ = _make_tool()
 
         with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_text",
+            "quickapp.common._file_prefix_handlers.FilePrefixHandlers.handle_text",
             new_callable=AsyncMock,
             return_value="decoded text",
         ) as mock_handler:
@@ -152,7 +152,7 @@ class TestPreProcessParams:
         tool, _ = _make_tool()
 
         with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_base64",
+            "quickapp.common._file_prefix_handlers.FilePrefixHandlers.handle_base64",
             new_callable=AsyncMock,
             return_value="encoded",
         ):

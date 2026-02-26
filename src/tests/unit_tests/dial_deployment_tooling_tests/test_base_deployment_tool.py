@@ -74,6 +74,7 @@ def _build_tool(
         messages=messages,
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        file_service=MagicMock()
     )
 
 

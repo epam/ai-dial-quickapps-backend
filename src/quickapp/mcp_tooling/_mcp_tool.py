@@ -1,5 +1,4 @@
 import logging
-import re
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -15,7 +14,6 @@ from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 
@@ -44,6 +42,7 @@ class _MCPTool(StagedBaseTool):
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
+            file_service=file_service
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"
         self.__tool: Tool = tool
@@ -52,64 +51,30 @@ class _MCPTool(StagedBaseTool):
         self.__connection_manager: _MCPConnectionManager = connection_manager
         self.__file_service: DialFileService = file_service
         self.__dial_toolset_id = dial_toolset_id
+        self.__files_to_share: list[str] = []
+
+    async def _handle_url_prefix(self, key: str, file_url: str) -> str:
+        """Override URL prefix handler to support files_to_share functionality."""
+        # Call base class implementation first
+        result = await super()._handle_url_prefix(key, file_url)
+
+        # Check if this parameter should share the file based on schema
+        properties = self.__tool.inputSchema.get("properties", {})
+        schema_prop = properties.get(key, {})
+        if schema_prop.get("dial_url"):
+            self.__files_to_share.append(result)
+
+        return result
 
     async def _pre_process_params(self, **kwargs: Any) -> Any:
+        # Reset files_to_share for each call
+        self.__files_to_share = []
 
-        # todo for PoC only, will implement nested object handling later
-        file_pattern = re.compile(
-            r'^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$', re.IGNORECASE
-        )
+        # Use base class processing logic
+        kwargs = await super()._pre_process_params(**kwargs)
 
-        files_to_share = []
-        for key, value in list(kwargs.items()):
-            if not isinstance(value, str):
-                continue
-
-            m = file_pattern.match(value)
-            if not m:
-                continue
-
-            detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
-            file_url_part = m.group("file_url")
-
-            if detected_prefix == "base64":
-                logger.debug(
-                    "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = await FilePrefixHandlers.handle_base64(
-                    file_url_part, self.__file_service
-                )
-            elif detected_prefix == "url":
-                logger.debug(
-                    "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = file_url_part
-                properties = self.__tool.inputSchema.get("properties", {})
-                schema_prop = properties.get(key, {})
-                if schema_prop.get("dial_url"):
-                    files_to_share.append(file_url_part)
-            elif detected_prefix == "text":
-                logger.debug(
-                    "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = await FilePrefixHandlers.handle_text(
-                    file_url_part, self.__file_service, parameter_name=key
-                )
-            else:
-                logger.warning(
-                    "Detected file reference without prefix for key %s (value: %s)", key, value
-                )
-                raise InvalidToolCallParameterException(
-                    parameter_name=key,
-                    message="Missing required file prefix (base64::, url::, text::)",
-                )
-        if files_to_share:
+        # Handle file sharing if needed
+        if self.__files_to_share:
             if not self.__dial_toolset_id:
                 logger.error(
                     "Files with dial_url flag detected but dial_toolset_id is not set.",
@@ -119,8 +84,9 @@ class _MCPTool(StagedBaseTool):
                     message="Files cannot be shared because dial_toolset_id is not configured.",
                 )
             await self.__file_service.grant_permissions_to_files(
-                files_to_share, self.__dial_toolset_id
+                self.__files_to_share, self.__dial_toolset_id
             )
+
         return kwargs
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:

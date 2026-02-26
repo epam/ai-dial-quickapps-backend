@@ -12,6 +12,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
 
 class CustomTestStagedBaseTool(StagedBaseTool):
@@ -22,6 +23,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
         result_to_return: CompletionResult | None = None,
+        file_service: DialFileService = Mock(),
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,
@@ -29,6 +31,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
             name="Test Tool",
             description="A test tool",
             perf_timer=perf_timer,
+            file_service=file_service
         )
         self._result_to_return = result_to_return
 

@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
+from quickapp.common._file_prefix_handlers import FilePrefixHandlers
 
 
 @pytest.fixture

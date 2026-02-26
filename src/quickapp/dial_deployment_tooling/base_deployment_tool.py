@@ -21,6 +21,7 @@ from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
+from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 
@@ -37,12 +38,14 @@ class BaseDeploymentTool(StagedBaseTool):
         messages: list[Message],
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        file_service: DialFileService,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            file_service=file_service,
             **kwargs,
         )
         self.__application_id: str = application_id
@@ -159,6 +162,7 @@ class BaseDeploymentTool(StagedBaseTool):
 
     async def _pre_process_params(self, **kwargs: Any) -> Any:
 
+        pre_processed = await super()._pre_process_params(**kwargs)
         prepared: dict[str, Any] = {}
 
         # If tool config defines defaults, normalize them first
@@ -168,7 +172,7 @@ class BaseDeploymentTool(StagedBaseTool):
             self._merge_to_prepared_params(params, prepared)
 
         # Now process runtime kwargs - these should override defaults
-        prepared.update(kwargs)
+        prepared.update(pre_processed)
 
         logger.debug(f"Pre-processed tool parameters: {prepared}")
 
