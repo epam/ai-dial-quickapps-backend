@@ -10,8 +10,7 @@ from urllib.parse import urlparse
 import httpx
 import pytest
 from fastapi import APIRouter, FastAPI, Request, Response
-from pydantic.dataclasses import dataclass
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
 from tests.integration_tests.test_runner.config import TestConfig
@@ -40,8 +39,7 @@ AGENT_MODELS = [
 ]
 
 
-@dataclass
-class CacheMiddlewareConfig:
+class CacheMiddlewareConfig(BaseModel):
     dial_core_url: str = "http://host.docker.internal:8090"
     dial_core_api_key: SecretStr = SecretStr("dial_api_key")
     base_path: Path = Path(__file__).parent.parent

@@ -1,19 +1,18 @@
 import logging
-from dataclasses import dataclass
 from typing import List, Optional
 
 from aidial_sdk.chat_completion import Message
+from pydantic import BaseModel, PrivateAttr
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MessagesMixin:
+class MessagesMixin(BaseModel):
     """
     Mixin to handle message appending, extending, and access.
     """
 
-    _messages: Optional[list[Message]] = None
+    _messages: Optional[list[Message]] = PrivateAttr(default=None)
 
     def append_message(self, message: Message) -> None:
         if not self._messages:

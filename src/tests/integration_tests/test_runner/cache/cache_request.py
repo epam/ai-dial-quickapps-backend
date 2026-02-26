@@ -2,34 +2,20 @@ import json
 import logging
 from typing import List, Optional, Union, Any
 
-from pydantic.dataclasses import dataclass
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-@dataclass
-class CacheRequest:
-    system_message: Optional[str]
-    model: str
-    temperature: Optional[float]
-    user_message: list
-    assistant_message: Optional[Union[str, List[Union[str, dict]]]]
 
-    def __init__(
-        self,
-        system_message: Optional[str],
-        model: str,
-        temperature: Optional[float],
-        user_message: list,
-        assistant_message: List[str | None],
-    ):
-        self.system_message = system_message
-        self.model = model
-        self.temperature = temperature
-        self.user_message = user_message
-        self.assistant_message = assistant_message
+class CacheRequest(BaseModel):
+    system_message: Optional[str] = None
+    model: str = ""
+    temperature: Optional[float] = None
+    user_message: list = []
+    assistant_message: Optional[Union[str, List[Union[str, dict]]]] = None
 
     @classmethod
-    def from_request_body(cls, body: bytes) -> 'CacheRequest':
+    def from_request_body(cls, body: bytes) -> "CacheRequest":
         """
         Parses the request body (JSON) and creates a CacheRequest object.
         Iterates through the messages list only once to populate user and assistant messages.
@@ -68,7 +54,7 @@ class CacheRequest:
 
         return cls(
             system_message=system_message,
-            model=model,
+            model=model or "",
             temperature=temperature,
             user_message=user_message,
             assistant_message=assistant_message,

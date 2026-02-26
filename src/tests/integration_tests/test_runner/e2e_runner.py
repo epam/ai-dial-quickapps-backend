@@ -173,8 +173,8 @@ class TestRunner:
                 ts.increment_failure(FailureReason.HTTP_STATUS)
                 all_failures.extend(
                     [
-                        Failure(response.status_code, 200, "Status code"),
-                        Failure(response.text, None, "Content"),
+                        Failure(actual=response.status_code, expected=200, comment="Status code"),
+                        Failure(actual=response.text, expected=None, comment="Content"),
                     ]
                 )
                 break
@@ -187,9 +187,9 @@ class TestRunner:
                 ts.increment_failure(FailureReason.ROLE)
                 all_failures.append(
                     Failure(
-                        response_message.role,
-                        Role.ASSISTANT,
-                        "Message role differs from expected",
+                        actual=response_message.role,
+                        expected=Role.ASSISTANT,
+                        comment="Message role differs from expected",
                     )
                 )
                 break
@@ -250,7 +250,7 @@ class TestRunner:
         ]
         if specific_warnings:
             ts.increment_failure(FailureReason.LLM_CACHE_MISSING)
-            failures.append(Failure("", "", TestConfig.FAILURE_MESSAGE))
+            failures.append(Failure(actual="", expected="", comment=TestConfig.FAILURE_MESSAGE))
         return failures
 
     @staticmethod
@@ -336,7 +336,7 @@ def e2e_test(
 
 
                # Run the test multiple times according to the runs parameter
-            ts = TestStats(f"{test_name}[{model_to_use}]", 0, 0)
+            ts = TestStats(name=f"{test_name}[{model_to_use}]", passed=0, failed=0)
             for run_index in range(runs):
                 logger.info(f"Running test iteration {run_index + 1}/{runs}")
                 failures = await prepare_and_execute_test(
@@ -396,10 +396,10 @@ def e2e_test(
                     test_stats.failed += 1
                     run_failures_with_index = [
                         Failure(
-                            f"{test_stats.name}[{run_index+1}]: {failure.actual}",
-                            failure.expected,
-                            failure.comment,
-                        )  # Using comment instead of message
+                            actual=f"{test_stats.name}[{run_index+1}]: {failure.actual}",
+                            expected=failure.expected,
+                            comment=failure.comment,
+                        )
                         for failure in run_failures
                     ]
                     return run_failures_with_index

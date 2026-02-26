@@ -1,7 +1,8 @@
 import logging
 from collections.abc import AsyncIterable, Iterable
-from dataclasses import dataclass, field
 from typing import Any, Dict, List, Tuple
+
+from pydantic import BaseModel, Field
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
@@ -33,13 +34,12 @@ def _to_sdk_attachment(attachment: dial_client_models.Attachment) -> dial_sdk_mo
     return dial_sdk_models.Attachment(**attachment.model_dump())
 
 
-@dataclass
-class _StreamResult:
+class _StreamResult(BaseModel):
     content: str = ""
     attachments: list[dial_sdk_models.Attachment] | None = None
     state: dict[str, Any] | None = None
     usage: dial_client_models.CompletionUsage | None = None
-    statistics: dict[str, Any] = field(default_factory=dict)
+    statistics: dict[str, Any] = Field(default_factory=dict)
 
     def extend_attachments(self, attachments: list[dial_client_models.Attachment]) -> None:
         if self.attachments is None:

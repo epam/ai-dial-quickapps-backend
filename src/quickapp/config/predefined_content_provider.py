@@ -1,13 +1,12 @@
 import json
 import logging
 import warnings
-from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
 from injector import inject
-from pydantic import Field
+from pydantic import BaseModel, ConfigDict, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
@@ -46,11 +45,12 @@ class PredefinedSettings(BaseSettings):
     )
 
 
-@dataclass(frozen=True)
-class LayerInfo:
+class LayerInfo(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     path: Path
-    content_counts: dict[ContentType, int] = field(default_factory=dict)
-    overrides: dict[ContentType, list[str]] = field(default_factory=dict)
+    content_counts: dict[ContentType, int] = Field(default_factory=dict)
+    overrides: dict[ContentType, list[str]] = Field(default_factory=dict)
 
 
 @inject
