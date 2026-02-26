@@ -160,16 +160,14 @@ class BaseDeploymentTool(StagedBaseTool):
 
         return assistant_msg
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
 
         prepared: dict[str, Any] = {}
 
         # If tool config defines defaults, normalize them first
-        if isinstance(self.tool_config, DialDeploymentTool):
-            tool_config = cast(DialDeploymentTool, self.tool_config)
-            params = tool_config.deployment.parameters
-            self._merge_to_prepared_params(params, prepared)
+        params = self.tool_config.deployment.parameters
+        self._merge_to_prepared_params(params, prepared)
 
         # Now process runtime kwargs - these should override defaults
         prepared.update(kwargs)

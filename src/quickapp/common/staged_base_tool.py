@@ -85,7 +85,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     )
                 return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         for transformer in self.__argument_transformers:
             kwargs = await transformer.transform(kwargs)
         return kwargs

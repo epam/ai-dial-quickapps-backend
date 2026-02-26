@@ -54,7 +54,7 @@ class _MCPTool(StagedBaseTool):
         self.__file_service: DialFileService = file_service
         self.__dial_toolset_id = dial_toolset_id
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
