@@ -223,7 +223,19 @@ by other modules, and to provide a hook point if the provider is later changed t
 | `_SkillsInitializer`                             | Request scope | `list[StartupInitializer]` |
 | `_SkillReaderTool`                               | Request scope | `list[StagedBaseTool]`     |
 | `AgentSkillsProvider` as `PromptPartProvider`    | —             | `list[PromptPartProvider]` |
-| `_InjectFileTransferInstructionTransformer`      | Request scope | `list[MessagesTransformer]`|
+
+#### `FileTransferModule` — DI wiring
+
+**Owner:** `file_transfer/` package.
+**What:** Injector `Module` that registers file transfer components — the argument transformer and the message
+injection transformer.
+
+**Registrations:**
+
+| Binding                                          | Scope         | Multiprovider target              |
+|--------------------------------------------------|---------------|-----------------------------------|
+| `_FileArgumentTransformer`                       | Request scope | `list[ToolArgumentTransformer]`   |
+| `_InjectFileTransferInstructionTransformer`      | Request scope | `list[MessagesTransformer]`       |
 
 #### Impact on `PredefinedContentProvider` — directory-based skill scanning
 
@@ -269,7 +281,7 @@ expected format, and apply the correct prefix. Multiple examples illustrate each
 
 #### `_InjectFileTransferInstructionTransformer` — synthetic injection
 
-**Owner:** `skills/` package.
+**Owner:** `file_transfer/` package.
 **What:** A `MessagesSetupTransformer` that injects a synthetic `read_skill` tool call + response into the message
 history at request setup, ensuring the agent sees the file transfer instructions before processing any user message.
 
@@ -285,11 +297,32 @@ history at request setup, ensuring the agent sees the file transfer instructions
 This pattern — synthetic tool-call injection — makes the skill content appear as if the agent already read it, without
 consuming an actual orchestrator iteration.
 
-#### MCP parameter preprocessing
+#### Tool argument preprocessing
 
-**Owner:** `mcp_tooling/` package.
-**What:** `_MCPTool._pre_process_params()` intercepts the `file:{prefix}::{value}` pattern in tool call arguments
-and resolves it before forwarding to the MCP server.
+##### `ToolArgumentTransformer` — generic argument transformation
+
+**Owner:** `common/abstract/` package.
+**What:** An abstract base class with a single async method `transform(kwargs) -> kwargs`. Multiple implementations
+can be registered via DI multiprovider. `StagedBaseTool._pre_process_params()` iterates the injected
+`list[ToolArgumentTransformer]` and applies each transformer in sequence, so **all tool types** (MCP, REST API,
+deployment, internal) receive the same argument transformations.
+
+```python
+class ToolArgumentTransformer(ABC):
+    @abstractmethod
+    async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]: ...
+```
+
+**Integration with `StagedBaseTool`:** The base `_pre_process_params()` method is no longer a no-op. It iterates
+the transformer list and returns the result. Subclasses that override `_pre_process_params()` (e.g.
+`BaseDeploymentTool` for config-default merging, `_MCPTool` for `dial_url` permission grants) call `super()` first
+to run the transformer chain, then apply their tool-specific post-processing.
+
+##### `_FileArgumentTransformer` — file prefix resolution
+
+**Owner:** `file_transfer/` package.
+**What:** A `ToolArgumentTransformer` implementation that intercepts the `file:{prefix}::{value}` pattern in tool
+call arguments and resolves it before the tool receives the parameters.
 
 **Pattern:** `^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$` (case-insensitive).
 
@@ -306,30 +339,46 @@ flowchart TD
     G --> H{Binary signature check}
     H -->|Binary detected| I[Reject with error]
     H -->|Text| J[Decode UTF-8 with fallbacks]
-    D -->|url| K{dial_url flag in schema?}
-    K -->|Yes| L[Grant permissions, pass URL]
-    K -->|No| M[Pass URL unchanged]
-    D -->|Missing| N[Reject: prefix required]
+    D -->|url| K[Strip prefix, pass URL through]
+    D -->|Missing| L[Reject: prefix required]
 ```
+
+The `url` prefix performs only prefix stripping — it replaces `file:url::<url>` with the bare `<url>`. Tool-specific
+concerns like DIAL file permission grants are handled by the tool's own `_pre_process_params()` override (see
+MCP-specific `dial_url` handling below).
 
 **`FilePrefixHandlers`** — static handler methods for each prefix:
 
 - `handle_base64(file_url, file_service)` — downloads and base64-encodes.
 - `handle_text(file_url, file_service, parameter_name)` — downloads, detects binary signatures (PNG, JPEG, GIF, PDF,
-  ZIP), decodes text with `utf-8-sig` → `latin-1` → `utf-8` (replacement) fallback chain.
+  ZIP), decodes text with `utf-8-sig` → `utf-8` (replacement) fallback chain.
 
 **`DialFileService`** — request-scoped service for file operations:
 
 - `download_file(url)` — downloads from DIAL Core with `StateHolder` caching. Rejects files exceeding **10 MB**
   (hardcoded limit). Downloaded bytes are cached in `StateHolder` for the request duration to avoid re-downloading the
   same file across multiple tool calls.
-- `grant_permissions_to_files(urls, toolset_id)` — grants DIAL Core file access to a toolset (needed for `url` prefix
+- `grant_permissions_to_files(urls, toolset_id)` — grants DIAL Core file access to a toolset (needed for MCP tools
   with `dial_url` parameters).
+
+##### MCP-specific `dial_url` handling
+
+**Owner:** `mcp_tooling/` package.
+**What:** After the generic transformer chain resolves `file:` patterns, `_MCPTool._pre_process_params()` performs
+a post-processing pass for MCP-specific `dial_url` permission grants.
+
+`_MCPTool._pre_process_params()` calls `super()` first (which runs the `ToolArgumentTransformer` chain), then
+iterates the resolved parameters. For each string parameter whose MCP input schema property has `dial_url: true`, it
+collects the URL and calls `DialFileService.grant_permissions_to_files()` to share the file with the MCP server's
+DIAL toolset. If `dial_toolset_id` is not configured, it raises `InvalidToolCallParameterException`.
+
+This separation keeps the generic file resolution (applicable to all tool types) in the transformer, while
+MCP-specific permission management remains in the MCP tool.
 
 #### Retry strategy for invalid parameters
 
-**Owner:** `common/` package (exception, fallback handler) + `mcp_tooling/` package (raise sites).
-**What:** When MCP parameter preprocessing detects an invalid `file:` value, it raises
+**Owner:** `common/` package (exception, fallback handler) + `file_transfer/` package (raise sites).
+**What:** When file argument preprocessing detects an invalid `file:` value, it raises
 `InvalidToolCallParameterException`. `StagedBaseTool` catches this exception and returns a retry fallback response
 instead of propagating the error, giving the agent a chance to re-attempt the tool call with corrected parameters.
 
@@ -338,7 +387,7 @@ offending parameter name and a human-readable error description. Raised in the f
 
 | Raise site | Condition |
 |------------|-----------|
-| `_MCPTool._pre_process_params()` | `file:` pattern matched but prefix is missing (`file::path` instead of `file:text::path`) |
+| `_FileArgumentTransformer.transform()` | `file:` pattern matched but prefix is missing (`file::path` instead of `file:text::path`) |
 | `_MCPTool._pre_process_params()` | `dial_url` parameter detected but `dial_toolset_id` is not configured |
 | `FilePrefixHandlers.handle_base64()` | Downloaded content cannot be coerced to bytes |
 | `FilePrefixHandlers.handle_text()` | Downloaded content cannot be coerced to bytes |
@@ -359,7 +408,7 @@ purpose is internal — the `InvalidToolCallParameterException` handler construc
 operator use.
 
 **`_pre_process_params()` is now async.** The base method in `StagedBaseTool` changed from `def` to `async def` to
-support the async file download operations in `_MCPTool`'s override.
+support the async file download operations in the transformer chain.
 
 ---
 
@@ -382,7 +431,7 @@ encode + cache cycle that is now handled more flexibly by the file transfer skil
 
 **Why replaced:** The content downloader only supported one mode (download → base64 → cache → tell agent to pass URL).
 The new approach supports three modes (base64, text, url), does not require an extra tool-call round-trip, and
-integrates directly into MCP parameter preprocessing.
+integrates into the generic tool argument preprocessing pipeline that applies to all tool types.
 
 ### Removal of `AgentInstructionsProvider`
 
@@ -410,9 +459,9 @@ content to skills, which offer richer metadata (name, description, allowed tools
 
 ## Out of Scope
 
-- **Nested object handling in MCP parameters.** The `file:` pattern matching in `_pre_process_params()` only scans
-  top-level string values. Nested objects and arrays are not traversed. This is noted as a PoC limitation in the code
-  and can be addressed in a follow-up when a concrete use case arises.
+- **Nested object handling in tool arguments.** The `file:` pattern matching in `_FileArgumentTransformer` only scans
+  top-level string values. Nested objects and arrays are not traversed. This is noted as a PoC limitation and can be
+  addressed in a follow-up when a concrete use case arises.
 
 - **Skill subdirectories (`scripts/`, `references/`, `assets/`).** The spec defines optional subdirectories for
   bundled scripts, reference docs, and static assets. Only `SKILL.md` is read; other contents of the skill directory
@@ -426,19 +475,10 @@ content to skills, which offer richer metadata (name, description, allowed tools
 - **Dynamic skill registration.** Skills are loaded once at startup from predefined content layers. Runtime
   registration of skills (e.g. from user-uploaded files) is not supported.
 
-- **Non-MCP tool preprocessing.** The `file:{prefix}::` pattern is only processed in `_MCPTool._pre_process_params()`.
-  REST API tools and DIAL deployment tools do not support this pattern. Extending it would require lifting the
-  preprocessing to `StagedBaseTool` or a shared mixin.
-
 - **Hot-reloading of skills.** Skills are loaded once at singleton construction time. Adding, modifying, or removing
   skill files requires an application restart. Hot-reloading could be added if a concrete use case arises.
 
 ### Known Limitations
-
-- **File transfer injection is unconditional.** `_InjectFileTransferInstructionTransformer` always injects the file
-  transfer skill, even when the application has no MCP tools configured (REST API-only or deployment-only apps). This
-  wastes context tokens and may confuse the agent with irrelevant instructions. A future improvement should gate
-  injection on whether MCP toolsets are present in the application config.
 
 - **Binary signature detection is non-exhaustive.** `FilePrefixHandlers.handle_text` checks 5 binary signatures (PNG,
   JPEG, GIF, PDF, ZIP). Other binary formats (WEBP, TIFF, BMP, WOFF, MP3/MP4, DOCX/XLSX) would pass the check and
@@ -513,7 +553,7 @@ User: "Analyze the uploaded spreadsheet using the analytics tool"
 Agent thinks: I have file transfer instructions, the analytics tool expects text content...
 Agent calls: run_analytics(data="file:text::files/bucket/spreadsheet.csv")
 
-MCP preprocessing: downloads file, decodes as UTF-8, passes text content to MCP server
+Tool argument preprocessing: downloads file, decodes as UTF-8, passes text content to the tool
 ```
 
 ### File prefix examples
@@ -537,8 +577,8 @@ MCP preprocessing: downloads file, decodes as UTF-8, passes text content to MCP 
 Application configs referencing `content_downloader` in `InternalToolSet` will have the tool silently skipped.
 Agents that relied on it will no longer have it available.
 
-**Mitigation:** Remove `content_downloader` from application configs. File handling is now automatic via MCP
-preprocessing.
+**Mitigation:** Remove `content_downloader` from application configs. File handling is now automatic via tool
+argument preprocessing.
 
 #### `AgentInstructionsProvider` removed
 
@@ -565,30 +605,34 @@ and can be read on demand by the agent via the `read_skill` tool.
 
 | Component                                           | Change                                                                                     |
 |-----------------------------------------------------|--------------------------------------------------------------------------------------------|
-| **`skills/` package** (new)                         | New package with skills framework: provider, reader tool, transformer, DI module            |
+| **`skills/` package** (new)                         | New package with skills framework: provider, reader tool, DI module                        |
 | **`AgentSkillsProvider`** (new)                     | Singleton that loads skills, parses frontmatter, validates name-to-directory match, generates XML, caches content |
 | **`_SkillReaderTool`** (new)                        | Internal tool for on-demand skill content retrieval                                        |
-| **`_InjectFileTransferInstructionTransformer`** (new) | Message transformer injecting synthetic file transfer skill at request setup               |
 | **`_SkillsInitializer`** (new)                      | Startup initializer for eager skill loading                                                |
-| **`SkillsModule`** (new)                            | DI module wiring all skills components                                                     |
+| **`SkillsModule`** (new)                            | DI module wiring skills components (provider, reader tool, prompt parts)                   |
+| **`file_transfer/` package** (new)                  | New package with file argument transformer, file transfer instruction injector, DI module   |
+| **`ToolArgumentTransformer`** (new)                 | ABC in `common/abstract/` for generic tool argument transformation                         |
+| **`_FileArgumentTransformer`** (new)                | `ToolArgumentTransformer` implementation: `file:{prefix}::` pattern detection and resolution |
+| **`_InjectFileTransferInstructionTransformer`** (new) | Message transformer injecting synthetic file transfer skill at request setup               |
+| **`FileTransferModule`** (new)                      | DI module wiring file transfer components (argument transformer, message transformer)      |
 | **`PromptPartProvider`** (new)                      | ABC for composable system prompt fragments                                                 |
 | **`ConfigBasedPromptProvider`** (new)               | Extracts existing config prompt logic into a `PromptPartProvider` implementation            |
 | **`_AddSystemPromptTransformer`**                   | Modified to collect and join multiple `PromptPartProvider` parts instead of single prompt   |
 | **`PredefinedContentProvider`**                     | `_load_all()` gains directory-based scanning for `ContentType.SKILL` (subdirectories with `SKILL.md`) |
 | **`tool-call-file-parameter-formatting/SKILL.md`** (new) | Built-in skill with file parameter formatting instructions                              |
-| **`FilePrefixHandlers`** (new)                      | Static handlers for `base64`, `text` prefix resolution                                     |
-| **`_MCPTool._pre_process_params()`**                | Added `file:{prefix}::` pattern detection and prefix-based preprocessing                   |
+| **`FilePrefixHandlers`** (new)                      | Static handlers for `base64`, `text` prefix resolution (owned by `file_transfer/`)         |
+| **`_MCPTool._pre_process_params()`**                | Calls `super()` for generic transformer chain; retains only MCP-specific `dial_url` permission grants |
+| **`StagedBaseTool`**                                | Accepts `list[ToolArgumentTransformer]` via DI; `_pre_process_params()` iterates transformer chain; catches `InvalidToolCallParameterException` for retry; `_pre_process_params()` now async |
 | **`DialFileService`** (new)                         | Request-scoped service for DIAL Core file download and permission management               |
 | **`DialCoreClient`**                                | Existing methods (`get_metadata()`, `get_file()`, `grant_permissions()`) now consumed by `DialFileService` |
 | **`InvalidToolCallParameterException`** (new)       | Exception for invalid `file:` parameter values; triggers retry fallback                    |
 | **`RetryStrategyModel`** (new)                      | New tool fallback strategy type with required `instructions` field                         |
 | **`RetryStrategyHandler`** (new)                    | Fallback handler that returns retry instructions to the agent                              |
-| **`StagedBaseTool`**                                | Catches `InvalidToolCallParameterException` for retry; `_pre_process_params()` now async   |
 | **`AgentInstructionsProvider`** (removed)            | Replaced by the `PromptPartProvider` abstraction; `instructions/` directory convention removed |
-| **`_ContentDownloadTool`** (removed)                | Replaced by file transfer skill + MCP preprocessing                                       |
+| **`_ContentDownloadTool`** (removed)                | Replaced by file transfer skill + tool argument preprocessing                              |
 | **`_ContentDownloaderStageWrapper`** (removed)      | Removed with content downloader                                                            |
 | **`content_downloader.json`** (removed)             | Predefined tool config removed                                                             |
-| **`AppFactory`**                                    | `SkillsModule` added to injector module list                                               |
+| **`AppFactory`**                                    | `SkillsModule` and `FileTransferModule` added to injector module list                      |
 
 ---
 
@@ -605,10 +649,13 @@ The following bugs/improvements were identified during design review and require
    matches the directory name (provider key) and skip with warning if not. Remove duplicate-name deduplication logic
    (no longer needed since directory names are unique within a merged layer). Update name validation regex to reject
    consecutive hyphens (`--`) per the Agent Skills spec.
-4. **`_mcp_tool.py`:** Add `kwargs[key] = file_url_part` to the `dial_url` branch in `_pre_process_params()`. Currently
-   the MCP server receives the raw `file:url::...` string instead of the stripped URL when `dial_url` is true.
+4. **`_mcp_tool.py`:** Refactor `_pre_process_params()` to call `super()` first (running the generic
+   `ToolArgumentTransformer` chain), then perform only MCP-specific `dial_url` permission grants as post-processing.
+   The `file:` pattern matching, `FilePrefixHandlers` dispatch, and missing-prefix error are now handled by
+   `_FileArgumentTransformer`.
 5. **`_file_prefix_handlers.py`:** Remove unreachable third fallback in `handle_text` text decoding chain (`latin-1`
    never raises `UnicodeDecodeError`).
 6. **Test coverage:** Add unit tests for `AgentSkillsProvider` (frontmatter parsing, XML generation, skill loading,
-   name-to-directory validation), `_SkillReaderTool`, `FilePrefixHandlers`, `_MCPTool._pre_process_params` (including
-   `kwargs[key]` update in both `dial_url=true` and `dial_url=false` branches), and `DialFileService`.
+   name-to-directory validation), `_SkillReaderTool`, `FilePrefixHandlers`, `_FileArgumentTransformer` (regex matching,
+   prefix dispatch, missing prefix error), `_MCPTool._pre_process_params` (`dial_url` permission grants after
+   transformer chain), and `DialFileService`.

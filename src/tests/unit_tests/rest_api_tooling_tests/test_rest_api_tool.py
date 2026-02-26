@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import StagedBaseTool, DIAL_BEARER, DIAL_API_KEY
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -112,6 +113,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -194,6 +196,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -256,6 +259,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([RestApiToolingModule, configure])
 
@@ -309,6 +313,7 @@ class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
             binder.bind(AttachmentService, mock_dial_attachment_service)
             binder.bind(Stage, to=mock_stage)
             binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([RestApiToolingModule, configure])
 

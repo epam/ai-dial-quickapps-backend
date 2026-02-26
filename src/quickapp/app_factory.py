@@ -12,6 +12,7 @@ from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
@@ -46,6 +47,7 @@ class AppFactory:
                 StartersModule(),
                 ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
+                FileTransferModule(),
                 AttachmentProcessingModule(),
                 SkillsModule(),
             ]

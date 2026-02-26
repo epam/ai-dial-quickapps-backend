@@ -1,6 +1,6 @@
 import base64
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -10,6 +10,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
@@ -41,6 +42,8 @@ def _make_tool(
     file_service.download_file = AsyncMock()
     file_service.grant_permissions_to_files = AsyncMock()
 
+    file_transformer = _FileArgumentTransformer(file_service=file_service)
+
     mcp_tool = _MCPTool(
         tool=tool,
         tool_config=tool_config,
@@ -51,42 +54,35 @@ def _make_tool(
         perf_timer=perf_timer,
         file_service=file_service,
         dial_toolset_id=dial_toolset_id,
+        argument_transformers=[file_transformer],
     )
     return mcp_tool, file_service
 
 
 class TestPreProcessParams:
     @pytest.mark.asyncio
-    async def test_base64_prefix_calls_handle_base64(self):
-        tool, _ = _make_tool()
+    async def test_base64_prefix(self):
+        tool, file_service = _make_tool()
         raw = b"binary data"
+        file_service.download_file.return_value = raw
 
-        with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_base64",
-            new_callable=AsyncMock,
-            return_value=base64.b64encode(raw).decode(),
-        ) as mock_handler:
-            result = await tool._pre_process_params(
-                image="file:base64::files/photo.png"
-            )
+        result = await tool._pre_process_params(
+            image="file:base64::files/photo.png"
+        )
 
-        mock_handler.assert_awaited_once()
+        file_service.download_file.assert_awaited_once_with("files/photo.png")
         assert result["image"] == base64.b64encode(raw).decode()
 
     @pytest.mark.asyncio
-    async def test_text_prefix_calls_handle_text(self):
-        tool, _ = _make_tool()
+    async def test_text_prefix(self):
+        tool, file_service = _make_tool()
+        file_service.download_file.return_value = b"decoded text"
 
-        with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_text",
-            new_callable=AsyncMock,
-            return_value="decoded text",
-        ) as mock_handler:
-            result = await tool._pre_process_params(
-                content="file:text::files/doc.txt"
-            )
+        result = await tool._pre_process_params(
+            content="file:text::files/doc.txt"
+        )
 
-        mock_handler.assert_awaited_once()
+        file_service.download_file.assert_awaited_once_with("files/doc.txt")
         assert result["content"] == "decoded text"
 
     @pytest.mark.asyncio
@@ -149,15 +145,11 @@ class TestPreProcessParams:
 
     @pytest.mark.asyncio
     async def test_case_insensitive_prefix(self):
-        tool, _ = _make_tool()
+        tool, file_service = _make_tool()
+        file_service.download_file.return_value = b"encoded"
 
-        with patch(
-            "quickapp.mcp_tooling._mcp_tool.FilePrefixHandlers.handle_base64",
-            new_callable=AsyncMock,
-            return_value="encoded",
-        ):
-            result = await tool._pre_process_params(
-                image="file:BASE64::files/photo.png"
-            )
+        result = await tool._pre_process_params(
+            image="file:BASE64::files/photo.png"
+        )
 
-        assert result["image"] == "encoded"
+        assert result["image"] == base64.b64encode(b"encoded").decode()

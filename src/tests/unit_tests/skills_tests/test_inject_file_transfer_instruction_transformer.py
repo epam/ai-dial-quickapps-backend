@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Role
 
 from quickapp.config.predefined_content_provider import PredefinedContentProvider, PredefinedSettings
-from quickapp.skills._inject_file_transfer_instruction_transformer import (
+from quickapp.file_transfer._inject_file_transfer_instruction_transformer import (
     BUILTIN_FILE_TRANSFER_SKILL,
     SYNTHETIC_TOOL_CALL_ID,
     _InjectFileTransferInstructionTransformer,
