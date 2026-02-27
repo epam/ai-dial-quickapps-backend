@@ -370,6 +370,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
 
