@@ -103,13 +103,21 @@ Before executing the tool call, perform this check:
 *   **Reasoning:** Description explicitly states "base64-encoded file data."
 *   **Result:** `file:base64::files/uploads/document.pdf`
 
-### Example 8: Multi-file upload tool (array parameter)
+### Example 8: Multi-file upload tool (array parameter, base64 content)
 *   **Tool Definition:**
     *   `name`: `batch_processor`
     *   `parameter`: `documents` (type: array of strings)
     *   `description`: "List of base64-encoded file contents."
 *   **Reasoning:** Description asks for "base64-encoded file contents" for each element.
 *   **Result:** `["file:base64::files/doc1.pdf", "file:base64::files/doc2.pdf"]`
+
+### Example 9: Multi-file upload tool (array parameter, URL references)
+*   **Tool Definition:**
+*  `name`: `rag`
+    *   `parameter`: `attachment_urls` (type: array of strings)
+    *   `description`: "List of URLs pointing to the files to be ingested."
+*   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element.
+*   **Result:** `["file:url::https://example.com/doc1.pdf", "file:url::https://example.com/doc2.pdf"]`
 
 > **Note:** The `file:{prefix}::` format works for both single string parameters and individual elements within array parameters.
 

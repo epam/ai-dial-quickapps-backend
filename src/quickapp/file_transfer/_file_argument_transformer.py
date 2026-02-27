@@ -24,12 +24,16 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
         self.__file_service = file_service
 
     async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        logger.debug("Transforming tool arguments: keys=%s", list(kwargs.keys()))
+
         for key, value in list(kwargs.items()):
             if isinstance(value, str):
                 resolved = await self._resolve_value(key, value)
                 if resolved is not value:
+                    logger.debug("Resolved string argument %s", key)
                     kwargs[key] = resolved
             elif isinstance(value, list):
+                logger.debug("Processing list argument %s with %d elements", key, len(value))
                 resolved_list = [
                     await self._resolve_value(key, elem) if isinstance(elem, str) else elem
                     for elem in value
