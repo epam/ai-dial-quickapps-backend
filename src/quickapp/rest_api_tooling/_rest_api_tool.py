@@ -6,6 +6,7 @@ from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import generate_attachment_filename, matches_type
@@ -30,6 +31,7 @@ class _RestApiTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
@@ -37,6 +39,7 @@ class _RestApiTool(StagedBaseTool):
             name=tool_config.open_ai_tool.function.name,
             description=tool_config.open_ai_tool.function.description,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
         )
         self.__request_details_builder: _RequestDetailsBuilder = request_details_builder
         self.stage_name_component = f"Calling {tool_config.rest_api_method_info.method_url}"
