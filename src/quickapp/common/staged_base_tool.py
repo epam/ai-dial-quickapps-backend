@@ -5,6 +5,7 @@ from typing import Any, Optional
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
@@ -26,12 +27,14 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         perf_timer: PerformanceTimer,
         tool_config: _BaseToolConfig,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.__stage_wrapper_builder: AssistedBuilder[BaseStageWrapper] = stage_wrapper_builder
         self._tool_config: _BaseToolConfig = tool_config
         self.__perf_timer: PerformanceTimer = perf_timer
+        self.__argument_transformers: list[ToolArgumentTransformer] = argument_transformers or []
 
     @property
     def tool_config(self):
@@ -82,8 +85,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     )
                 return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
-        # No preprocessing of parameters by default. return parameters "as is"
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        for transformer in self.__argument_transformers:
+            kwargs = await transformer.transform(kwargs)
         return kwargs
 
     async def _run_in_stage_report_success(

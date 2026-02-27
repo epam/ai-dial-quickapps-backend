@@ -13,6 +13,7 @@ from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
@@ -37,12 +38,14 @@ class BaseDeploymentTool(StagedBaseTool):
         messages: list[Message],
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
             **kwargs,
         )
         self.__application_id: str = application_id
@@ -157,15 +160,14 @@ class BaseDeploymentTool(StagedBaseTool):
 
         return assistant_msg
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        kwargs = await super()._pre_process_params(**kwargs)
 
         prepared: dict[str, Any] = {}
 
         # If tool config defines defaults, normalize them first
-        if isinstance(self.tool_config, DialDeploymentTool):
-            tool_config = cast(DialDeploymentTool, self.tool_config)
-            params = tool_config.deployment.parameters
-            self._merge_to_prepared_params(params, prepared)
+        params = self.tool_config.deployment.parameters
+        self._merge_to_prepared_params(params, prepared)
 
         # Now process runtime kwargs - these should override defaults
         prepared.update(kwargs)

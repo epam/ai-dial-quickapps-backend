@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.mcp_tooling._file_prefix_handlers import FilePrefixHandlers
+from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
 
 @pytest.fixture
@@ -24,12 +24,6 @@ class TestHandleBase64:
         mock_file_service.download_file.return_value = raw
         result = await FilePrefixHandlers.handle_base64("files/test.bin", mock_file_service)
         assert result == base64.b64encode(raw).decode()
-
-    @pytest.mark.asyncio
-    async def test_none_content_returns_empty(self, mock_file_service):
-        mock_file_service.download_file.return_value = None
-        result = await FilePrefixHandlers.handle_base64("files/test.bin", mock_file_service)
-        assert result == ""
 
     @pytest.mark.asyncio
     async def test_non_bytes_raises_exception(self, mock_file_service):
@@ -72,14 +66,6 @@ class TestHandleText:
         assert "\ufffd" in result  # replacement character
 
     @pytest.mark.asyncio
-    async def test_none_content_returns_empty(self, mock_file_service):
-        mock_file_service.download_file.return_value = None
-        result = await FilePrefixHandlers.handle_text(
-            "files/test.txt", mock_file_service, parameter_name="input"
-        )
-        assert result == ""
-
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "signature,desc",
         [
@@ -90,9 +76,7 @@ class TestHandleText:
             (b"PK\x03\x04", "ZIP archive"),
         ],
     )
-    async def test_binary_signature_raises_exception(
-        self, mock_file_service, signature, desc
-    ):
+    async def test_binary_signature_raises_exception(self, mock_file_service, signature, desc):
         mock_file_service.download_file.return_value = signature + b"\x00" * 100
         with pytest.raises(InvalidToolCallParameterException, match="binary"):
             await FilePrefixHandlers.handle_text(

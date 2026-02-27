@@ -4,6 +4,7 @@ from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import AssistedBuilder, inject
 
 from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
@@ -56,12 +57,14 @@ class _PyInterpreterTool(StagedBaseTool):
         dial_api_key: DIAL_API_KEY,
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
             **kwargs,
         )
         self.__messages: list[Message] = messages

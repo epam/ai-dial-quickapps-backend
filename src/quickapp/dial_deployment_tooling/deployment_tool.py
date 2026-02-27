@@ -4,6 +4,7 @@ from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 from pydantic import BaseModel, Field
 
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 
@@ -30,6 +31,7 @@ class DeploymentTool(BaseDeploymentTool):
         messages: list[Message],
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
             application_id=application_id,
@@ -41,5 +43,6 @@ class DeploymentTool(BaseDeploymentTool):
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
         )
         self.stage_name_component = f"Calling {application_name} application"

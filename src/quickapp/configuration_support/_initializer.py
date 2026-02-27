@@ -19,3 +19,4 @@ class _Initializer(StartupInitializer):
     async def initialize(self) -> None:
         logger.debug("Initializing Configuration Support API")
         self.controller.register_routes(self.app)
+        logger.debug("Configuration Support API initialized")

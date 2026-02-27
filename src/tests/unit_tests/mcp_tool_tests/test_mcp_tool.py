@@ -11,6 +11,7 @@ from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -116,6 +117,7 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                 to=create_app_configuration([mcp_toolset]),
             )
             binder.bind(PerformanceTimer, to=PerformanceTimer)
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([MCPToolingModule, configure])
 
@@ -289,6 +291,7 @@ class MCPToolTest(unittest.IsolatedAsyncioTestCase):
                 to=create_app_configuration([mcp_toolset]),
             )
             binder.bind(PerformanceTimer, to=PerformanceTimer)
+            binder.multibind(list[ToolArgumentTransformer], to=[])
 
         app = create_test_app([MCPToolingModule, configure])
 
