@@ -2,8 +2,6 @@ import logging
 from collections.abc import AsyncIterable, Iterable
 from typing import Any, Dict, List, Tuple
 
-from pydantic import BaseModel, Field
-
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
 from aidial_client.types.chat import response as dial_client_models
@@ -15,6 +13,7 @@ from aidial_client.types.chat.request_param import (
 )
 from aidial_sdk import chat_completion as dial_sdk_models
 from injector import inject
+from pydantic import BaseModel, Field
 
 from quickapp.common import CompletionResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper

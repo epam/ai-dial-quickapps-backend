@@ -2,7 +2,7 @@ from typing import Optional
 
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
-from pydantic import BaseModel, PrivateAttr
+from pydantic import PrivateAttr
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER
 from quickapp.common.messages_mixin import MessagesMixin
