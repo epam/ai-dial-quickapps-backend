@@ -37,7 +37,7 @@ class _MCPConnectionManager:
         self.__oauth_token_fetcher: OAuthTokenFetcher = oauth_token_fetcher
         self.__dial_settings: DialSettings = dial_settings
         self.__bearer: DIAL_BEARER = bearer
-        self.__forwarded_headers: dict[str, str] | None = forwarded_headers
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
         headers = (

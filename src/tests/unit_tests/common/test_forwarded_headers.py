@@ -49,22 +49,22 @@ class TestExtractXHeadersFromRequest:
             }
         )
         result = extract_x_headers_from_request(request)
-        assert result == {}
+        assert result is None
 
     def test_extract_empty_dict_returns_empty(self):
         """When request.headers is empty dict, returns empty dict."""
         request = SimpleNamespace(headers={})
         result = extract_x_headers_from_request(request)
-        assert result == {}
+        assert result is None
 
     def test_extract_when_headers_not_dict_returns_empty(self):
         """When request.headers is not a dict, returns empty (no crash)."""
         request = SimpleNamespace(headers=MagicMock())
         result = extract_x_headers_from_request(request)
-        assert result == {}
+        assert result is None
 
     def test_extract_when_headers_none_returns_empty(self):
         """When request.headers is None, returns empty (no crash)."""
         request = SimpleNamespace(headers=None)
         result = extract_x_headers_from_request(request)
-        assert result == {}
+        assert result is None

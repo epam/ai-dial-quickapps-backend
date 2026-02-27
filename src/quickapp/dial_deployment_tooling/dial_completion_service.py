@@ -53,7 +53,7 @@ class DialCompletionService:
 
     def __init__(self, dial_client: AsyncDial, forwarded_headers: ForwardedHeaders) -> None:
         self.__dial_client: AsyncDial = dial_client
-        self.__forwarded_headers: dict[str, str] | None = forwarded_headers
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
 
     @staticmethod
     def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Dict[str, Any] | None:
