@@ -109,7 +109,6 @@
         "required": [
           "query",
           "size",
-          "style",
           "quality"
         ]
       }

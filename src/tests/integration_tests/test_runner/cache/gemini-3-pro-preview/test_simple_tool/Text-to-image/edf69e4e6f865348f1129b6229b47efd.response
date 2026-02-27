@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A hyper-realistic, cinematic shot of a Tyrannosaurus Rex in a lush, prehistoric jungle. The dinosaur has intricate skin textures, scales, and realistic muscle definition. Sunlight filters through the dense canopy, creating dramatic lighting and shadows. The image is in super high quality, 8k resolution, with extreme detail on the dinosaur's features and the surrounding ancient flora."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 12:38:02 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-abf944f8-8e9b-4aaa-94da-c941b51edd89\",\"created\":1771936681,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-abf944f8-8e9b-4aaa-94da-c941b51edd89\",\"created\":1771936681,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/f49a12a4e4be6f4fb410662224f5a3da4f13239635a6f9c92de4cbc32cc38e09.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-abf944f8-8e9b-4aaa-94da-c941b51edd89\",\"created\":1771936681,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-abf944f8-8e9b-4aaa-94da-c941b51edd89\",\"created\":1771936681,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

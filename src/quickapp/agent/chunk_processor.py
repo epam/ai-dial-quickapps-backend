@@ -1,62 +1,12 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage, ToolCall
+from aidial_sdk.chat_completion import Choice, Stage
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
-from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-
-class Usage:
-    def __init__(self, prompt_tokens: int, completion_tokens: int):
-        self.prompt_tokens = prompt_tokens
-        self.completion_tokens = completion_tokens
-
-
-class AssistantCallResult:
-    def __init__(self):
-        self.__content = ""
-        self.__attachments: list[Attachment] = []
-        self.__tool_calls: Dict[int, ToolCall] = {}
-        self.__usage: Optional[Usage] = None
-
-    @property
-    def content(self):
-        return self.__content
-
-    def append_content(self, content: str) -> None:
-        self.__content += content
-
-    @property
-    def attachments(self):
-        return self.__attachments
-
-    def append_attachment(self, attachment: Attachment) -> None:
-        self.__attachments.append(attachment)
-
-    @property
-    def tool_calls(self):
-        values = list(self.__tool_calls.values())
-        return values if values else None
-
-    def append_tool_call_delta(self, tool_call_delta: ChoiceDeltaToolCall) -> None:
-        if tool_call_delta.id:
-            tool_call = ToolCall(**tool_call_delta.model_dump())
-            self.__tool_calls[tool_call_delta.index] = tool_call
-        else:
-            tool_call = self.__tool_calls[tool_call_delta.index]
-            if tool_call_delta.function:
-                argument_chunk = tool_call_delta.function.arguments or ''
-                tool_call.function.arguments += argument_chunk
-
-    @property
-    def usage(self):
-        return self.__usage
-
-    def set_usage(self, usage: Usage) -> None:
-        self.__usage = usage
-
+from ._models import AssistantCallResult, Usage
 
 logger = logging.getLogger(__name__)
 
@@ -76,19 +26,18 @@ class ChunkProcessor:
         destination.append_content("\n\r")
 
         async for chunk in chat_completion:
-            if not chunk.choices:
-                continue
-            for ch in chunk.choices:
-                if (content := ch.delta.content) and stream_content:
-                    destination.append_content(content)
-                    self.__assistant_call_result.append_content(content)
+            if chunk.choices:
+                for ch in chunk.choices:
+                    if (content := ch.delta.content) and stream_content:
+                        destination.append_content(content)
+                        self.__assistant_call_result.append_content(content)
 
-                if custom_content := getattr(ch.delta, 'custom_content', None):
-                    self.__process_custom_content(custom_content, destination)
+                    if custom_content := getattr(ch.delta, 'custom_content', None):
+                        self.__process_custom_content(custom_content, destination)
 
-                if tool_calls_deltas_list := getattr(ch.delta, 'tool_calls', None):
-                    for delta in tool_calls_deltas_list:
-                        self.__assistant_call_result.append_tool_call_delta(delta)
+                    if tool_calls_deltas_list := ch.delta.tool_calls:
+                        for delta in tool_calls_deltas_list:
+                            self.__assistant_call_result.append_tool_call_delta(delta)
             if chunk.usage:
                 self.__assistant_call_result.set_usage(
                     Usage(
@@ -128,7 +77,7 @@ class ChunkProcessor:
         if result.tool_calls:
             logger.debug(" ------ tool_calls:")
             for tool in result.tool_calls:
-                logger.debug(f" -------- {tool.function.name} - {tool.function.arguments} - {tool}")
+                logger.debug(f" -------- {tool.name} - {tool.arguments} - {tool}")
 
         if result.attachments:
             logger.debug(f" ------ attachments: {result.attachments}")

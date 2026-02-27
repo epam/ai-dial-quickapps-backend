@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A beautiful cityscape view of Kyiv, Ukraine on a cold winter day with partly cloudy skies. Temperature around 2\u00b0C with patches of blue sky breaking through gray clouds. The iconic golden domes of St. Michael's Golden-Domed Monastery and other historic architecture visible in the scene. Cold winter atmosphere with bare trees, people in warm winter clothing walking on the streets. Natural lighting with diffused sunlight filtering through the clouds. Realistic, photographic style capturing the authentic winter mood of the Ukrainian capital."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 11:24:10 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-5ba5dae7-961d-4572-97be-4a413d2dc3e6\",\"created\":1771932247,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-5ba5dae7-961d-4572-97be-4a413d2dc3e6\",\"created\":1771932247,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/9cc686141cd36fdaeb5ea1c6682dca605e24b7b86ce3cb00b574e7af33df04d8.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-5ba5dae7-961d-4572-97be-4a413d2dc3e6\",\"created\":1771932247,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-5ba5dae7-961d-4572-97be-4a413d2dc3e6\",\"created\":1771932247,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

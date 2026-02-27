@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A super-realistic dinosaur (Tyrannosaurus rex) in a cinematic, photoreal wildlife photograph. Ultra-detailed scales and skin texture, natural golden-hour lighting, shallow depth of field, sharp focus, realistic color grading, misty prehistoric jungle background, high dynamic range, no text, no watermark."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 13:40:48 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-e982c402-cb10-45f3-9c2e-ef3982216489\",\"created\":1771940444,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-e982c402-cb10-45f3-9c2e-ef3982216489\",\"created\":1771940444,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/abcf64260ef3336283433bab0d71606dbc9d5400c623aa756ed21d04a45c70a3.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-e982c402-cb10-45f3-9c2e-ef3982216489\",\"created\":1771940444,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-e982c402-cb10-45f3-9c2e-ef3982216489\",\"created\":1771940444,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

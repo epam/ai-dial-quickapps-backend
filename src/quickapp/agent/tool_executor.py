@@ -1,10 +1,11 @@
 import asyncio
+import json
 import logging
 from typing import Dict, List
 
-from aidial_sdk.chat_completion import ToolCall
 from injector import inject
 
+from quickapp.agent._models import AccumulatedToolCall
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import sanitize_toolname
@@ -20,17 +21,14 @@ class ToolExecutor:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
-    async def execute(self, tool_call_list: List[ToolCall]) -> List[CompletionResult]:
+    async def execute(self, tool_call_list: List[AccumulatedToolCall]) -> List[CompletionResult]:
         tasks = []
         for tc in tool_call_list:
-            tool = self.__tools.get(tc.function.name)
+            tool = self.__tools.get(tc.name)
 
-            # tc.function.arguments from agent returns json-like string
-            import json
+            args = json.loads(tc.arguments)
 
-            args = json.loads(tc.function.arguments)
-
-            logger.debug(f"Making tool calls: {tc.function.name} with args:{args}")
+            logger.debug(f"Making tool calls: {tc.name} with args:{args}")
             if tool:
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
 
@@ -54,10 +52,3 @@ class ToolExecutor:
                 tool_name = sanitize_toolname(function.name)
                 tool_dict[tool_name] = tool
         return tool_dict
-
-    @staticmethod
-    def _find_tool_call_by_id(tool_call_id, tool_call_list: List[ToolCall]):
-        for tc in tool_call_list:
-            if tc.id == tool_call_id:
-                return tc
-        raise RuntimeError(f"The {tool_call_id} is not found in the {tool_call_list}")
