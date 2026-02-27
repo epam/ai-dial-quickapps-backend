@@ -153,3 +153,24 @@ class TestPreProcessParams:
         )
 
         assert result["image"] == base64.b64encode(b"encoded").decode()
+
+    @pytest.mark.asyncio
+    async def test_dial_url_list_grants_permissions_for_all(self):
+        tool, file_service = _make_tool(
+            input_schema={
+                "properties": {
+                    "doc_urls": {"type": "array", "items": {"type": "string"}, "dial_url": True}
+                }
+            },
+            dial_toolset_id="my-toolset",
+        )
+        result = await tool._pre_process_params(
+            doc_urls=[
+                "file:url::files/report1.pdf",
+                "file:url::files/report2.pdf",
+            ]
+        )
+        assert result["doc_urls"] == ["files/report1.pdf", "files/report2.pdf"]
+        file_service.grant_permissions_to_files.assert_awaited_once_with(
+            ["files/report1.pdf", "files/report2.pdf"], "my-toolset"
+        )

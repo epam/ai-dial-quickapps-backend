@@ -58,14 +58,16 @@ class _MCPTool(StagedBaseTool):
         kwargs = await super()._pre_process_params(**kwargs)
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
-        files_to_share = []
+        files_to_share: list[str] = []
         for key, value in kwargs.items():
-            if not isinstance(value, str):
-                continue
             properties = self.__tool.inputSchema.get("properties", {})
             schema_prop = properties.get(key, {})
-            if schema_prop.get("dial_url"):
+            if not schema_prop.get("dial_url"):
+                continue
+            if isinstance(value, str):
                 files_to_share.append(value)
+            elif isinstance(value, list):
+                files_to_share.extend(elem for elem in value if isinstance(elem, str))
 
         if files_to_share:
             if not self.__dial_toolset_id:

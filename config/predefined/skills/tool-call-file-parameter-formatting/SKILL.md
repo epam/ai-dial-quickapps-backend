@@ -103,6 +103,16 @@ Before executing the tool call, perform this check:
 *   **Reasoning:** Description explicitly states "base64-encoded file data."
 *   **Result:** `file:base64::files/uploads/document.pdf`
 
+### Example 8: Multi-file upload tool (array parameter)
+*   **Tool Definition:**
+    *   `name`: `batch_processor`
+    *   `parameter`: `documents` (type: array of strings)
+    *   `description`: "List of base64-encoded file contents."
+*   **Reasoning:** Description asks for "base64-encoded file contents" for each element.
+*   **Result:** `["file:base64::files/doc1.pdf", "file:base64::files/doc2.pdf"]`
+
+> **Note:** The `file:{prefix}::` format works for both single string parameters and individual elements within array parameters.
+
 ## Common Mistakes
 *   ❌ Ignoring the tool description and defaulting to `url` for local files.
 *   ❌ Passing `file:base64::...` to a tool that only asks for a URL string (parameter name `url`).

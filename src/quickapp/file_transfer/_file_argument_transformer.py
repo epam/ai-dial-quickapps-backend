@@ -25,48 +25,55 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
 
     async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:
         for key, value in list(kwargs.items()):
-            if not isinstance(value, str):
-                continue
-
-            m = _FILE_PATTERN.match(value)
-            if not m:
-                continue
-
-            detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
-            file_url_part = m.group("file_url")
-
-            if detected_prefix == "base64":
-                logger.debug(
-                    "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = await FilePrefixHandlers.handle_base64(
-                    file_url_part, self.__file_service
-                )
-            elif detected_prefix == "url":
-                logger.debug(
-                    "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = file_url_part
-            elif detected_prefix == "text":
-                logger.debug(
-                    "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
-                    key,
-                    file_url_part,
-                )
-                kwargs[key] = await FilePrefixHandlers.handle_text(
-                    file_url_part, self.__file_service, parameter_name=key
-                )
-            else:
-                logger.warning(
-                    "Detected file reference without prefix for key %s (value: %s)", key, value
-                )
-                raise InvalidToolCallParameterException(
-                    parameter_name=key,
-                    message="Missing required file prefix (base64::, url::, text::)",
-                )
+            if isinstance(value, str):
+                resolved = await self._resolve_value(key, value)
+                if resolved is not value:
+                    kwargs[key] = resolved
+            elif isinstance(value, list):
+                resolved_list = [
+                    await self._resolve_value(key, elem) if isinstance(elem, str) else elem
+                    for elem in value
+                ]
+                kwargs[key] = resolved_list
 
         return kwargs
+
+    async def _resolve_value(self, key: str, value: str) -> str:
+        m = _FILE_PATTERN.match(value)
+        if not m:
+            return value
+
+        detected_prefix = m.group("prefix").lower() if m.group("prefix") else None
+        file_url_part = m.group("file_url")
+
+        if detected_prefix == "base64":
+            logger.debug(
+                "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
+                key,
+                file_url_part,
+            )
+            return await FilePrefixHandlers.handle_base64(file_url_part, self.__file_service)
+        elif detected_prefix == "url":
+            logger.debug(
+                "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
+                key,
+                file_url_part,
+            )
+            return file_url_part
+        elif detected_prefix == "text":
+            logger.debug(
+                "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
+                key,
+                file_url_part,
+            )
+            return await FilePrefixHandlers.handle_text(
+                file_url_part, self.__file_service, parameter_name=key
+            )
+        else:
+            logger.warning(
+                "Detected file reference without prefix for key %s (value: %s)", key, value
+            )
+            raise InvalidToolCallParameterException(
+                parameter_name=key,
+                message="Missing required file prefix (base64::, url::, text::)",
+            )
