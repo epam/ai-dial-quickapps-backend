@@ -28,19 +28,29 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
 
         for key, value in list(kwargs.items()):
             if isinstance(value, str):
-                resolved = await self._resolve_value(key, value)
+                resolved = await self._resolve_value_and_log(key, value)
                 if resolved is not value:
-                    logger.debug("Resolved string argument %s", key)
                     kwargs[key] = resolved
             elif isinstance(value, list):
                 logger.debug("Processing list argument %s with %d elements", key, len(value))
                 resolved_list = [
-                    await self._resolve_value(key, elem) if isinstance(elem, str) else elem
+                    await self._resolve_value_and_log(key, elem) if isinstance(elem, str) else elem
                     for elem in value
                 ]
                 kwargs[key] = resolved_list
 
         return kwargs
+
+    async def _resolve_value_and_log(self, key: str, value: str) -> str:
+        resolved_value = await self._resolve_value(key, value)
+        if resolved_value is not value:
+            logger.debug(
+                "Argument %s resolved to new value (original: %s, resolved: %s)",
+                key,
+                value,
+                resolved_value,
+            )
+        return resolved_value
 
     async def _resolve_value(self, key: str, value: str) -> str:
         m = _FILE_PATTERN.match(value)
