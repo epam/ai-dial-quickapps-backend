@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from hashlib import sha256
-from typing import Annotated, Any, Generic, List, Literal, Optional, TypeVar, Union
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -40,7 +40,7 @@ class JsonSchemaSimpleType(BaseModel):
         JsonTypeEnum.string, JsonTypeEnum.number, JsonTypeEnum.integer, JsonTypeEnum.boolean
     ]
     description: str | None = None
-    enum: Optional[List[Any]] = None
+    enum: list[Any] | None = None
 
 
 class JsonSchemaObject(BaseModel):
@@ -48,18 +48,18 @@ class JsonSchemaObject(BaseModel):
     properties: dict[
         str,
         Annotated[
-            Union[JsonSchemaSimpleType, JsonSchemaConst, 'JsonSchemaObject', 'JsonSchemaArray'],
+            JsonSchemaSimpleType | JsonSchemaConst | 'JsonSchemaObject' | 'JsonSchemaArray',
             Field(discriminator='type'),
         ],
     ]
     description: str
-    required: Optional[List[str]] = None
+    required: list[str] | None = None
 
 
 class JsonSchemaArray(BaseModel):
     type: Literal[JsonTypeEnum.array]
     items: Annotated[
-        Union[JsonSchemaSimpleType, JsonSchemaConst, JsonSchemaObject, 'JsonSchemaArray'],
+        JsonSchemaSimpleType | JsonSchemaConst | JsonSchemaObject | 'JsonSchemaArray',
         Field(discriminator='type'),
     ]
     description: str
@@ -110,12 +110,10 @@ class OpenAiToolFunctionParameters(
     properties: dict[
         str,
         Annotated[
-            Union[
-                TConfigurableJsonSchemaObject,
-                TConfigurableJsonSchemaArray,
-                TConfigurableSchemaSimpleType,
-                TConfigurableSchemaConst,
-            ],
+            TConfigurableJsonSchemaObject
+            | TConfigurableJsonSchemaArray
+            | TConfigurableSchemaSimpleType
+            | TConfigurableSchemaConst,
             Field(discriminator='type'),
         ],
     ]
