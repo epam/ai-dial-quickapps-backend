@@ -1,19 +1,19 @@
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 def format_openai_message_pipe_tree(
-    msg: Dict[str, Any],
+    msg: dict[str, Any],
     idx,
-    model: Optional[str] = None,
+    model: str | None = None,
     include_tools: bool = True,
     include_attachments: bool = True,
     include_stages: bool = True,
-    preview_len: Optional[int] = None,
+    preview_len: int | None = None,
 ):
     """Produce a human-readable 'pipe-tree' log of OpenAI Chat messages.
     - Header: "{idx} {role} (model=...): {content_preview}"
@@ -99,7 +99,7 @@ def format_openai_message_pipe_tree(
                 logger.info(f"|------ [{i}] function={fname} args={argprev}{suffix}")
 
 
-def _flatten_content(content: Any) -> str:
+def _flatten_content(content: object) -> str:
     """Handle str or list-of-parts content; return a plain string."""
     if content is None:
         return ""
@@ -107,7 +107,7 @@ def _flatten_content(content: Any) -> str:
         return content
     # If content is a list (e.g., [{'type':'text', 'text':'...'}, ...])
     if isinstance(content, list):
-        chunks: List[str] = []
+        chunks: list[str] = []
         for part in content:
             if isinstance(part, dict):  # Prefer text-like fields if present
                 if "text" in part and isinstance(part["text"], str):
@@ -121,7 +121,7 @@ def _flatten_content(content: Any) -> str:
     return str(content)
 
 
-def _preview_text(text: str, limit: int) -> Tuple[str, bool]:
+def _preview_text(text: str, limit: int) -> tuple[str, bool]:
     """Collapse whitespace and truncate to limit; return (preview, was_truncated)."""
     if not text:
         return "", False
@@ -133,9 +133,9 @@ def _preview_text(text: str, limit: int) -> Tuple[str, bool]:
     return collapsed[:limit].rstrip() + "...", True
 
 
-def _extract_tool_previews(msg: Dict[str, Any], preview_len: int) -> List[Tuple[str, str, bool]]:
+def _extract_tool_previews(msg: dict[str, Any], preview_len: int) -> list[tuple[str, str, bool]]:
     """Return list of (function_name, args_preview, was_truncated) for assistant tool calls. Supports both 'tool_calls' and legacy 'function_call'."""
-    previews: List[Tuple[str, str, bool]] = []
+    previews: list[tuple[str, str, bool]] = []
     tool_calls = msg.get("tool_calls") or []
     if isinstance(tool_calls, list) and tool_calls:
         for tc in tool_calls:
@@ -158,10 +158,10 @@ def _extract_tool_previews(msg: Dict[str, Any], preview_len: int) -> List[Tuple[
     return previews
 
 
-def _extract_attachments(msg: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _extract_attachments(msg: dict[str, Any]) -> list[dict[str, Any]]:
     """Try to collect structured attachments from common locations: - msg["attachments"] - msg["custom_content"]["attachments"] - msg["metadata"]["attachments"]
     Returns a normalized list with keys: name, mime/type, url, reference_url, data (optional)."""
-    out: List[Dict[str, Any]] = []
+    out: list[dict[str, Any]] = []
     sources = [
         msg.get("attachments"),
         (msg.get("custom_content") or {}).get("attachments"),
@@ -173,7 +173,7 @@ def _extract_attachments(msg: Dict[str, Any]) -> List[Dict[str, Any]]:
         for a in src:
             if not isinstance(a, dict):
                 continue
-            norm: Dict[str, Any] = {
+            norm: dict[str, Any] = {
                 "name": a.get("name") or a.get("filename"),
                 "mime": a.get("mime") or a.get("type"),
                 "type": a.get("mime"),
@@ -192,8 +192,8 @@ _ATTACHMENT_REGEX = re.compile(
 )
 
 
-def _parse_attachments_from_text(text: str) -> List[Dict[str, Any]]:
-    out: List[Dict[str, Any]] = []
+def _parse_attachments_from_text(text: str) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
     if not text:
         return out
     for m in _ATTACHMENT_REGEX.finditer(text):
@@ -207,7 +207,7 @@ def _parse_attachments_from_text(text: str) -> List[Dict[str, Any]]:
     return out
 
 
-def _extract_stages(msg: Dict[str, Any]) -> List[Dict[str, Any]]:
+def _extract_stages(msg: dict[str, Any]) -> list[dict[str, Any]]:
     """Try to find stages in msg["stages"] or msg["metadata"]["stages"] or msg["custom_content"]["stages"].
     Each stage is a dict with title and content (if available)."""
     candidates = [
