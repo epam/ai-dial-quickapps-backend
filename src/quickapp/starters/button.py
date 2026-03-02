@@ -1,4 +1,4 @@
-from typing import Any, List
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -24,7 +24,7 @@ class _Button(BaseModel):
 
 def _create_buttons(
     *,
-    buttons: List[_Button],
+    buttons: list[_Button],
     property_name: str = "starter",
     description: str = "Select an action",
     ty: str = "number",

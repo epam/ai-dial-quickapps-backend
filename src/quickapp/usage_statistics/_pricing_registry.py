@@ -1,5 +1,3 @@
-from typing import Dict, Optional
-
 from injector import inject
 
 from ._pricing import _Pricing
@@ -9,9 +7,9 @@ from ._pricing import _Pricing
 class _PricingRegistry:
 
     def __init__(self):
-        self.__pricing_cache: Dict[str, _Pricing] = {}
+        self.__pricing_cache: dict[str, _Pricing] = {}
 
-    def get_model_pricing(self, model_name: str) -> Optional[_Pricing]:
+    def get_model_pricing(self, model_name: str) -> _Pricing | None:
         if model_name in self.__pricing_cache:
             pricing = self.__pricing_cache[model_name]
             if not pricing.is_expired():
