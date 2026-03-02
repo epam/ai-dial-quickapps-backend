@@ -1,10 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -35,6 +35,7 @@ class _RequestContext(MessagesMixin):
     __bearer_set: bool = False
     __bearer: DIAL_BEARER = None
     __response_format: Optional[ResponseFormat] = None
+    __forwarded_headers: ForwardedHeaders = field(default=None)
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -95,3 +96,13 @@ class _RequestContext(MessagesMixin):
             raise RuntimeError("Response format is already set")
         _validate_response_format(response_format)
         self.__response_format = response_format
+
+    @property
+    def forwarded_headers(self) -> ForwardedHeaders:
+        return self.__forwarded_headers
+
+    @forwarded_headers.setter
+    def forwarded_headers(self, value: ForwardedHeaders) -> None:
+        if self.__forwarded_headers is not None:
+            raise RuntimeError("Forwarded headers are already set")
+        self.__forwarded_headers = value

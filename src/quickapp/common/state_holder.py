@@ -10,11 +10,10 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StateHolder:
-    content: str = field(default="")
     attachments: List[Attachment] = field(default_factory=list)
     tool_calls: List[ToolCall] = field(default_factory=list)
     __state: dict[str, Any] = field(default_factory=dict)
-    __file_contents: dict[str, str] = field(default_factory=dict)
+    __file_data_dict: dict[str, bytes] = field(default_factory=dict)
 
     def add_state(self, key: str, value: Any) -> None:
         logger.debug(f"Added state [{key}]={value}")
@@ -24,22 +23,22 @@ class StateHolder:
         logger.debug(f"Read state {self.__state}")
         return self.__state
 
-    def get_file_content(
+    def get_file_data(
         self, url: Optional[str] = None, key: Optional[str] = None
-    ) -> Optional[str]:
+    ) -> Optional[bytes]:
         if not url and not key:
             raise RuntimeError("Either url or key should be defined.")
         if not key and url:
             key = self.__get_file_key_by_url(url)
         if key:
-            content = self.__file_contents.get(key)
-            if content:
-                return content
+            file_data = self.__file_data_dict.get(key)
+            if file_data:
+                return file_data
         return None
 
-    def store_file_content(self, url: str, content: str) -> None:
+    def store_file_data(self, url: str, file_data: bytes) -> None:
         key = self.__get_file_key_by_url(url)
-        self.__file_contents[key] = content
+        self.__file_data_dict[key] = file_data
 
     @staticmethod
     def __get_file_key_by_url(url: str) -> str:

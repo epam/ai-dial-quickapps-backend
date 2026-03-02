@@ -14,8 +14,8 @@ from aidial_client.types.chat.request_param import (
     SystemMessageParam,
     UserMessageParam,
 )
-from aidial_client.types.chat.response import Attachment, ChatCompletionResponse
-from aidial_sdk.pydantic_v1 import StrictStr
+from aidial_client.types.chat.response import ChatCompletionResponse
+from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common import DIAL_API_KEY
@@ -55,7 +55,7 @@ class DisplayContentProcessor:
         self.__api_key: DIAL_API_KEY = api_key
         self.__dial_client: AsyncDial = dial_client
         self.__additional_handling_model: str = py_interpreter_settings.additional_handling_model
-        pio.defaults.chromium_args = [
+        pio.defaults.chromium_args = [  # type: ignore[attr-defined]
             "--no-sandbox",
             "--disable-gpu",
             "--disable-dev-shm-usage",
@@ -79,19 +79,15 @@ class DisplayContentProcessor:
 
         for media_type, data in content_dict.items():
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
-                attachment_dict = {"type": media_type}
                 bucket_info = await self._publish_to_bucket(media_type, data)
-                attachment_dict["url"] = bucket_info.get("url", "")
+                bucket_url = bucket_info.get("url", "")
 
-                if attachment_dict.get("type", None) and attachment_dict.get("url", None):
-                    # generate by content file title
-                    attachment_dict["data"] = json.dumps(data)
-                    # TODO: need to verify this part when attachments will be ready
-                    attachment = Attachment.model_validate(attachment_dict)
-                    title = await self._generate_title(attachment)
-                    # TODO: dirty fix, data and url shouldn't be both filled
-                    attachment.data = None
-                    attachment.title = title
+                if media_type and bucket_url:
+                    # Create a temporary data-only attachment for title generation
+                    temp_attachment = Attachment(type=media_type, data=json.dumps(data))
+                    title = await self._generate_title(temp_attachment)
+                    # Create the final url-only attachment
+                    attachment = Attachment(type=media_type, url=bucket_url, title=title)
 
                     attachments.append(attachment)
 
@@ -125,7 +121,7 @@ class DisplayContentProcessor:
         user_message = await self._generate_attachment_message(attachment)
         if user_message:
             messages = [
-                SystemMessageParam(role='system', content=StrictStr(_NAMING_SYS_PROMPT)),
+                SystemMessageParam(role='system', content=_NAMING_SYS_PROMPT),
                 user_message,
             ]
             try:
@@ -137,7 +133,7 @@ class DisplayContentProcessor:
 
                 # TODO: need to add usage statistics
 
-                return response.choices[0].message.content
+                return response.choices[0].message.content or str(uuid.uuid4())
             except Exception as e:
                 logger.exception(f"Exception during generating title for attachment: {e}")
 
@@ -149,7 +145,7 @@ class DisplayContentProcessor:
             pass
             # TODO: later will be added the flow to download files from py interpreter and then we need to handle such case
         else:
-            attachment_param = AttachmentParam(**attachment.model_dump())
+            attachment_param = AttachmentParam(**attachment.model_dump())  # type: ignore[typeddict-item]
             if attachment.type in (MediaTypes.PNG, MediaTypes.JPEG):
                 message = UserMessageParam(
                     role='user',

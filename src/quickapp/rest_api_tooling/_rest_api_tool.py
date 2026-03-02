@@ -2,10 +2,11 @@ import logging
 from typing import Any, Optional
 
 import httpx
-from aidial_client.types.chat.response import Attachment
+from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import CompletionResult, ForwardedHeaders, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import generate_attachment_filename, matches_type
@@ -30,6 +31,8 @@ class _RestApiTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_RestApiStageWrapper],
         dial_attachment_service: AttachmentService,
         perf_timer: PerformanceTimer,
+        forwarded_headers: ForwardedHeaders,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
@@ -37,12 +40,14 @@ class _RestApiTool(StagedBaseTool):
             name=tool_config.open_ai_tool.function.name,
             description=tool_config.open_ai_tool.function.description,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
         )
         self.__request_details_builder: _RequestDetailsBuilder = request_details_builder
         self.stage_name_component = f"Calling {tool_config.rest_api_method_info.method_url}"
         self.__auth_info: Authorization = auth_info
         self._tool_config: RestApiTool = tool_config
         self.__dial_attachment_service = dial_attachment_service
+        self.__forwarded_headers = forwarded_headers
 
     async def _run_in_stage_async(
         self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
@@ -61,27 +66,28 @@ class _RestApiTool(StagedBaseTool):
         request_details = await request_details.with_auth(self.__auth_info)
         request_details = request_details.build()
 
+        # Merge forwarded X-* headers from the original request into the outgoing request
+        headers = dict(request_details.headers)
+        if self.__forwarded_headers:
+            headers.update(self.__forwarded_headers)
+
         async with httpx.AsyncClient() as client:
             response = await client.request(
                 method=request_details.method,
                 url=request_details.url,
-                headers=request_details.headers,
+                headers=headers,
                 params=request_details.params,
                 json=request_details.data,
             )
             response.raise_for_status()
 
-            raw_mime = response.headers.get('Content-Type', None)
-
+            raw_mime = response.headers.get('Content-Type')
             mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
 
-            attachments = []
+            attachments: list[Attachment] = []
+            rac = self._tool_config.response_as_attachment
 
-            if (
-                self._tool_config
-                and mime_type
-                and matches_type(mime_type, self._tool_config.attachment.supported_types)
-            ):
+            if rac and rac.enabled and mime_type and matches_type(mime_type, rac.content_types):
                 title = generate_attachment_filename(
                     mime_type, base_filename=self._tool_config.open_ai_tool.function.name
                 )
@@ -90,11 +96,14 @@ class _RestApiTool(StagedBaseTool):
                 attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                     attachment
                 )
-
                 attachments.append(attachment)
 
+            content = response.text
+            if attachments and rac and not rac.include_body_as_content:
+                content = f"See attached file: {attachments[0].title}"
+
             result = CompletionResult(
-                content=response.text,
+                content=content,
                 content_type=response.headers.get('Content-Type', ""),
                 attachments=attachments,
             )

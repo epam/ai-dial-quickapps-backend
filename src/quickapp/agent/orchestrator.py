@@ -1,14 +1,15 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
-from pydantic.v1 import StrictStr
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
-from quickapp.agent.processors.chunk_processor import ChunkProcessor
-from quickapp.agent.processors.tool_executor import ToolExecutor
+from quickapp.agent.chunk_processor import ChunkProcessor
+from quickapp.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
@@ -17,6 +18,8 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
+
+from ._models import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -52,22 +55,59 @@ class Orchestrator:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
 
+    @asynccontextmanager
+    async def _persisting_state(self) -> AsyncIterator[None]:
+        exc_to_reraise: BaseException | None = None
+        try:
+            yield
+        except BaseException as exc:
+            exc_to_reraise = exc
+            logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
+        finally:
+            tool_execution_history = self._build_tool_execution_history()
+            if tool_execution_history:
+                self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
+
+            self.__choice.set_state(self.__state_holder.get_state())
+            if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
+                await self.__usage_statistics_service.process_usage_statistics(
+                    self.__usage_statistics_list
+                )
+            logger.debug(f"State holder: {self.__state_holder.get_state()}")
+
+        if exc_to_reraise is not None:
+            raise exc_to_reraise
+
     async def invoke(self):
-        await self.__track_iterations()
-        self.__perf_timer.start_period(f"{self.__period_name}_{self.__iterations_counter}", level=2)
+        async with self._persisting_state():
+            while await self._run_iteration():
+                pass
+
+    async def _run_iteration(self) -> bool:
+        """Run a single orchestrator iteration. Returns True if the loop should continue."""
+        self.__iterations_counter += 1
+        if self.__iterations_counter > self.__MAX_ITERATIONS_COUNT:
+            raise OrchestratorExceedMaxIterationsException()
+
+        period = f"{self.__period_name}_{self.__iterations_counter}"
+        self.__perf_timer.start_period(period, level=2)
 
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
         assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
             chat_completion=chat_completion_stream, destination=self.__choice
         )
+        if assistant_call_result is None:
+            raise RuntimeError("Assistant invocation returned no result.")
+
+        tool_calls = assistant_call_result.tool_calls
 
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
-                content=assistant_call_result.content or StrictStr(" "),  # avoid empty content
+                content=assistant_call_result.content or " ",
                 custom_content=CustomContent(attachments=assistant_call_result.attachments),
-                tool_calls=assistant_call_result.tool_calls,
+                tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
@@ -78,64 +118,42 @@ class Orchestrator:
                     completion_tokens=assistant_call_result.usage.completion_tokens,
                 )
             )
-        self.__perf_timer.add_milestone(
-            f"{self.__period_name}_{self.__iterations_counter}", "assistant_response_received"
-        )
+        self.__perf_timer.add_milestone(period, "assistant_response_received")
         logger.debug(f"Message from agent: {self.__messages_context.messages}")
-        # State already contains assistant call result.
-        # 2. Check for tool calls in the response and handle them concurrently
-        tool_calls = assistant_call_result.tool_calls
-        if tool_calls:
-            # 3. Prepare tool message/call (i.e. add system message from tool config, validate parameters, etc.)
-            # 4. Process tool calls asynchronously and concurrently
-            logger.debug(f"Agent requests tool calls: {tool_calls}")
-            tool_call_results = await self.__tool_executor.execute(tool_calls)
-            if tool_call_results:
-                logger.debug(f"Tool call results: {tool_call_results}")
-                # 5. store tool results to state  ## Check if state might be pushed during the actual call.
-                # refactor below? seems we need to append to the state
-                tool_execution_history = self.__state_holder.get_state().get(
-                    TOOL_EXECUTION_HISTORY, []
-                )
-                # todo move to separate method
-                for i in range(len(tool_call_results)):
-                    tool_call_result_message = tool_call_results[i].to_tool_message()
-                    self.__messages_context.append_message(tool_call_result_message)
-                    tool_execution_history.append(
-                        ExecutedToolCallDTO(
-                            tool_call=tool_calls[i],
-                            tool_execution_result=tool_call_result_message,
-                        ).model_dump(mode="json", exclude_none=True)
-                    )
-                    for attachment in tool_call_results[i].propagate_to_choice:
-                        # Need to repack, cause Message contains same attachment but from other package: aidial_client.types.chat.response.Attachment
-                        self.__choice.add_attachment(
-                            **attachment.model_dump(exclude={"index"})
-                        )  # attachment can't be created with any extra parameters
-                    if tool_call_results[i].usage and self.__SHOW_USAGE_STATISTICS:
-                        self.__usage_statistics_list.extend(tool_call_results[i].usage)
-                logger.debug(f"State:{tool_execution_history}")
-                self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
-                self.__perf_timer.stop_period(f"{self.__period_name}_{self.__iterations_counter}")
-            else:
-                raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
 
-            logger.debug(f"Message from context: {self.__messages_context.messages}")
-            # 7. Call agent if there were any tool call
-            await self.invoke()
-        else:
-            # 8. If no tool calls, return the processed response and end
-            self.__choice.set_state(self.__state_holder.get_state())
-            if self.__usage_statistics_list and self.__SHOW_USAGE_STATISTICS:
-                await self.__usage_statistics_service.process_usage_statistics(
-                    self.__usage_statistics_list
-                )
-            logger.debug(f"State holder: {self.__state_holder.get_state()}")
-        # 9. Push usage stats to the stage if that is configured
+        if not tool_calls:
+            return False
 
-        return None  # As we are storing state in StateHolder, there is no need to return any value.
+        logger.debug(f"Agent requests tool calls: {tool_calls}")
+        tool_call_results = await self.__tool_executor.execute(tool_calls)
+        if not tool_call_results:
+            raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
 
-    async def __track_iterations(self):
-        self.__iterations_counter += 1
-        if self.__iterations_counter > self.__MAX_ITERATIONS_COUNT:
-            raise OrchestratorExceedMaxIterationsException()
+        logger.debug(f"Tool call results: {tool_call_results}")
+        for tool_call_result in tool_call_results:
+            tool_call_result_message = tool_call_result.to_tool_message()
+            self.__messages_context.append_message(tool_call_result_message)
+            for attachment in tool_call_result.propagate_to_choice:
+                self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+                self.__usage_statistics_list.extend(tool_call_result.usage)
+
+        self.__perf_timer.stop_period(period)
+        logger.debug(f"Message from context: {self.__messages_context.messages}")
+        return True
+
+    def _build_tool_execution_history(self) -> list[dict[str, object]]:
+        """Build tool execution history by extracting ASSISTANT and TOOL messages.
+
+        Stores messages directly to preserve parallel tool call grouping.
+        Only includes ASSISTANT messages with tool_calls and TOOL messages.
+        """
+        history: list[dict[str, object]] = []
+
+        for msg in reversed(self.__messages_context.messages):
+            if msg.role == Role.USER:
+                break
+            if msg.role == Role.TOOL or (msg.role == Role.ASSISTANT and msg.tool_calls):
+                history.append(msg.model_dump(mode="json", exclude_none=True))
+
+        return history[::-1]

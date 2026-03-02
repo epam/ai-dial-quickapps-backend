@@ -2,21 +2,19 @@ import copy
 
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
-from openai import AsyncAzureOpenAI
+from openai.lib.azure import AsyncAzureOpenAI
 
-from quickapp.agent.agent_instructions_provider import AgentInstructionsProvider
+from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.processors.chunk_processor import ChunkProcessor
-from quickapp.agent.processors.pre_transformers import (
-    AddContextAttachmentTransformer,
-    AddSystemPromptTransformer,
-    ExtractToolCallsFromStateProcessor,
-    PreTransformer,
-    ReduceAttachmentTransformer,
-)
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -59,7 +57,12 @@ class AgentModule(Module):
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
-        binder.bind(AgentInstructionsProvider, to=AgentInstructionsProvider, scope=singleton)
+        binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
+        binder.bind(
+            _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
+        )
+        binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
+        binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
 
     @provider
     def provide_openai_client(
@@ -67,29 +70,16 @@ class AgentModule(Module):
         dial_settings: DialSettings,
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
+        forwarded_headers: ForwardedHeaders,
     ) -> AsyncAzureOpenAI:
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             azure_deployment=config.orchestrator.deployment.name,
             api_version=dial_settings.api_version,
+            default_headers=forwarded_headers or None,
         )
         return azure_client
-
-    @multiprovider
-    def provide_pre_processors(
-        self, config: ApplicationConfig, instructions_provider: AgentInstructionsProvider
-    ) -> list[PreTransformer]:
-        # Order of Transformers is crucial for correct request processing
-        return [
-            AddSystemPromptTransformer(
-                config.orchestrator.system_prompt.content, instructions_provider.get()
-            ),
-            ExtractToolCallsFromStateProcessor(),
-            # RemoveStateTransformer(),
-            AddContextAttachmentTransformer(config.contexts),
-            ReduceAttachmentTransformer(),
-        ]
 
     @multiprovider
     def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
@@ -126,3 +116,19 @@ class AgentModule(Module):
                 DEFAULT_ATTACHMENT_URLS_PARAM
             )
         return converted_open_ai_tool
+
+    @multiprovider
+    def provide_message_transformers(
+        self,
+        add_system_prompt: _AddSystemPromptTransformer,
+    ) -> list[MessagesTransformer]:
+        return [
+            add_system_prompt,
+        ]
+
+    @multiprovider
+    def provide_prompt_parts(
+        self,
+        config_prompt: ConfigBasedPromptProvider,
+    ) -> list[PromptPartProvider]:
+        return [config_prompt]

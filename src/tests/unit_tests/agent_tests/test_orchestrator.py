@@ -2,18 +2,31 @@ import pytest
 from types import SimpleNamespace
 from unittest.mock import Mock, AsyncMock
 
+from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
+
+from quickapp.agent._models import AccumulatedToolCall
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
+
+
+def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
+    tc = AccumulatedToolCall()
+    tc._id = id
+    tc._name = name
+    tc._arguments = arguments
+    return tc
 
 
 @pytest.mark.asyncio
 async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     # Mocks and simple objects
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
+
+    messages_list: list[Message] = []
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
@@ -46,7 +59,9 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     tool_executor = Mock()
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -59,10 +74,13 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     await orchestrator.invoke()
+
+    # No tool calls means no tool execution history — state_holder.add_state should NOT be called
+    state_holder.add_state.assert_not_called()
 
     # choice.set_state should be called with the state from state_holder
     choice.set_state.assert_called_once_with(initial_state)
@@ -80,26 +98,21 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
 async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messages():
     # Mocks and simple objects
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
+
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
     choice.set_state = Mock()
 
-    # First assistant result contains tool_calls, second has none (to end recursion)
+    # First assistant result contains tool_calls, second has none (to end loop)
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        # Provide full tool call shape expected by pydantic Message validation
-        tool_calls=[
-            {
-                "id": "tc-1",
-                "type": "function",
-                "function": {"name": "tool_a", "arguments": "{}"},
-            }
-        ],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )
     assistant_result_no_tools = SimpleNamespace(
@@ -114,21 +127,21 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
     chunk_processor = Mock()
-    # Return with tools first, then without tools to stop recursion
-    chunk_processor.process_chunks = AsyncMock(side_effect=[assistant_result_with_tools, assistant_result_no_tools])
+    # Return with tools first, then without tools to stop loop
+    chunk_processor.process_chunks = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
     chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
 
     state_holder = Mock()
-    # initial execution history empty
-    state_holder.get_state = Mock(return_value={TOOL_EXECUTION_HISTORY: []})
+    state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
     usage_statistics_service = Mock()
     usage_statistics_service.process_usage_statistics = AsyncMock()
 
-    # Prepare tool executor result
-    # Use a dict shaped like a Message so pydantic can validate it
-    tool_message = {"role": "assistant", "content": "tool output"}
+    # Prepare tool executor result — tool message must be a real Message for the helper
+    tool_message = Message(role=Role.TOOL, content="tool output", tool_call_id="tc-1")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
 
@@ -138,13 +151,17 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     tool_result.propagate_to_choice = [attach]
 
     # tool_result.usage is a list compatible with DeploymentUsage instances
-    tool_result.usage = [DeploymentUsage(model_name="test-model", prompt_tokens=3, completion_tokens=4)]
+    tool_result.usage = [
+        DeploymentUsage(model_name="test-model", prompt_tokens=3, completion_tokens=4)
+    ]
 
     tool_executor = Mock()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=10, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=10, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -157,7 +174,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     await orchestrator.invoke()
@@ -174,21 +191,25 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     attach.model_dump.assert_called()
     choice.add_attachment.assert_called_once_with(**attach.model_dump())
 
-    # state_holder.add_state should be called to store TOOL_EXECUTION_HISTORY
-    state_holder.add_state.assert_called()
+    # state_holder.add_state should be called once at the end with the full history
+    state_holder.add_state.assert_called_once()
     key, value = state_holder.add_state.call_args[0]
     assert key == TOOL_EXECUTION_HISTORY
     assert isinstance(value, list)
-    assert len(value) >= 1
+    # New format stores messages directly: ASSISTANT + TOOL = 2 messages
+    assert len(value) == 2
+    assert value[0]["role"] == "assistant"
+    assert value[1]["role"] == "tool"
 
 
 @pytest.mark.asyncio
 async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
 
+    messages_list: list[Message] = []
     messages_context = Mock()
-    messages_context.append_message = Mock()
-    messages_context.messages = []
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
 
     choice = Mock()
     choice.add_attachment = Mock()
@@ -198,9 +219,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
-        tool_calls=[
-            {"id": "tc-1", "type": "function", "function": {"name": "tool_a", "arguments": "{}"}}
-        ],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
     )
 
@@ -224,7 +243,9 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute = AsyncMock(return_value=[])
 
     app_config = SimpleNamespace(
-        orchestrator=SimpleNamespace(max_iterations=5, deployment=SimpleNamespace(name="test-model"))
+        orchestrator=SimpleNamespace(
+            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+        )
     )
 
     orchestrator = Orchestrator(
@@ -237,7 +258,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         assistant_invoker_provider=assistant_invoker_provider,
         chunk_processor_provider=chunk_processor_provider,
         app_config=app_config,
-        perf_timer=Mock()
+        perf_timer=Mock(),
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -245,3 +266,165 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
 
     assert "doesn't return any result" in str(excinfo.value)
     tool_executor.execute.assert_awaited_once()
+
+
+def _make_tool_call(call_id: str, name: str = "tool_a") -> ToolCall:
+    return ToolCall(
+        id=call_id,
+        type="function",
+        function=FunctionCall(name=name, arguments="{}"),
+    )
+
+
+def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    return Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=Mock(add_attachment=Mock(), set_state=Mock()),
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=Mock(),
+        chunk_processor_provider=Mock(),
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(max_iterations=10, deployment=SimpleNamespace(name="m"))
+        ),
+        perf_timer=Mock(),
+    )
+
+
+class TestBuildToolExecutionHistory:
+    def test_empty_messages_returns_empty(self):
+        orchestrator = _make_orchestrator([])
+        result = orchestrator._build_tool_execution_history()
+        assert result == []
+
+    def test_only_user_and_final_assistant_returns_empty(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(role=Role.ASSISTANT, content="hi there"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+        assert result == []
+
+    def test_single_tool_call_iteration(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            Message(role=Role.ASSISTANT, content="done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[1]["role"] == "tool"
+
+    def test_multiple_iterations(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            # Iteration 1
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            # Iteration 2
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-2", name="tool_b")],
+            ),
+            Message(role=Role.TOOL, content="result-2", tool_call_id="tc-2"),
+            # Final
+            Message(role=Role.ASSISTANT, content="all done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 4
+        assert result[0]["role"] == "assistant"
+        assert result[1]["role"] == "tool"
+        assert result[2]["role"] == "assistant"
+        assert result[3]["role"] == "tool"
+
+    def test_parallel_tool_calls_preserved(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1"), _make_tool_call("tc-2", name="tool_b")],
+            ),
+            Message(role=Role.TOOL, content="result-1", tool_call_id="tc-1"),
+            Message(role=Role.TOOL, content="result-2", tool_call_id="tc-2"),
+            Message(role=Role.ASSISTANT, content="done"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 3
+        # Single ASSISTANT with both tool_calls
+        assert result[0]["role"] == "assistant"
+        assert len(result[0]["tool_calls"]) == 2
+        assert result[1]["role"] == "tool"
+        assert result[2]["role"] == "tool"
+
+    def test_stops_at_last_user_message(self):
+        messages = [
+            # Earlier turn (should be excluded)
+            Message(role=Role.USER, content="first"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-old")],
+            ),
+            Message(role=Role.TOOL, content="old-result", tool_call_id="tc-old"),
+            Message(role=Role.ASSISTANT, content="first answer"),
+            # Current turn
+            Message(role=Role.USER, content="second"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-new")],
+            ),
+            Message(role=Role.TOOL, content="new-result", tool_call_id="tc-new"),
+            Message(role=Role.ASSISTANT, content="second answer"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        # Only current turn's tool call pair
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-new"
+        assert result[1]["role"] == "tool"
+        assert result[1]["content"] == "new-result"
+
+    def test_final_assistant_without_tool_calls_excluded(self):
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-1")],
+            ),
+            Message(role=Role.TOOL, content="result", tool_call_id="tc-1"),
+            Message(role=Role.ASSISTANT, content="final answer"),  # no tool_calls
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        # Final ASSISTANT without tool_calls is excluded
+        assert len(result) == 2
+        assert all(r["role"] != "assistant" or "tool_calls" in r for r in result)

@@ -6,6 +6,7 @@ from injector import Binder, ClassAssistedBuilder, Module, multiprovider
 from quickapp.common import StagedBaseTool
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 
 from ._request_detail_builder import _RequestDetailsBuilder
@@ -28,19 +29,38 @@ class RestApiToolingModule(Module):
     def __provide_rest_api_tools(
         self, app_config: ApplicationConfig, tool_builder: ClassAssistedBuilder[_RestApiTool]
     ) -> list[StagedBaseTool]:
-        result = []
+        result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:
-                for tool in self.__create_rest_api_tools(toolset_info, tool_builder):
-                    result.append(tool)
+                result.extend(self.__create_rest_api_tools(toolset_info, tool_builder))
         return result
 
     @staticmethod
     def __create_rest_api_tools(
         rest_api_toolset: RestApiToolSet, tool_builder: ClassAssistedBuilder[_RestApiTool]
     ) -> list[StagedBaseTool]:
-        return [
-            tool_builder.build(tool_config=tool_config, auth_info=rest_api_toolset.authorization)
-            for tool_config in rest_api_toolset.tools
-            if tool_config.enabled
-        ]
+        result: list[StagedBaseTool] = []
+        for tool_config in rest_api_toolset.tools:
+            if not tool_config.enabled:
+                continue
+            if isinstance(tool_config, RestApiTool):
+                if (
+                    "response_as_attachment" not in tool_config.model_fields_set
+                    and rest_api_toolset.response_as_attachment is not None
+                ):
+                    tool_config = tool_config.model_copy(
+                        update={"response_as_attachment": rest_api_toolset.response_as_attachment}
+                    )
+                if "response_as_attachment" not in tool_config.model_fields_set:
+                    logger.warning(
+                        "REST API tool '%s' uses the default response_as_attachment.enabled=false. "
+                        "If you relied on automatic attachment creation, "
+                        "set enabled=true explicitly.",
+                        tool_config.open_ai_tool.function.name,
+                    )
+            result.append(
+                tool_builder.build(
+                    tool_config=tool_config, auth_info=rest_api_toolset.authorization
+                )
+            )
+        return result

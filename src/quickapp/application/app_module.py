@@ -5,18 +5,25 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
+from quickapp.common._di_types import ForwardedHeaders
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.config.predefined_content_provider import (
+    PredefinedContentProvider,
+    PredefinedSettings,
+)
 
 from ._initialization_error_handler import _InitializationErrorHandler
+from ._messages_setup import _MessagesSetup
 from ._otel_settings import _OtelSettings
 from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
 from ._request_context import _RequestContext
+from ._request_context_setup import _RequestContextSetup
 
 
 class AppModule(Module):
@@ -32,11 +39,15 @@ class AppModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(FastAPI, to=_QuickAppApplication, scope=singleton)
-        binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)
+        binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)  # type: ignore[type-abstract]
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
+        binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)
+        binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
+        binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
+        binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(
@@ -62,6 +73,10 @@ class AppModule(Module):
     @provider
     def __provide_response_format(self, context: _RequestContext) -> RESPONSE_FORMAT:
         return context.response_format
+
+    @provider
+    def __provide_forwarded_headers(self, context: _RequestContext) -> ForwardedHeaders:
+        return context.forwarded_headers
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:

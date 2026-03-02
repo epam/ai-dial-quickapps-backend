@@ -2,7 +2,9 @@ import json
 import logging
 from typing import Dict, List, NamedTuple, Any
 
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY, ExecutedToolCallDTO
+from aidial_sdk.chat_completion.request import Message, Role
+
+from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from tests.integration_tests.conftest import FailureReason, TestStats
 from tests.integration_tests.test_runner.models import Argument, AttachmentCheck, Failure, ToolCall
 from tests.integration_tests.test_runner.similarity_checker import get_similarity, get_similarity_alternatives
@@ -170,10 +172,9 @@ class ResponseValidator:
 
     @staticmethod
     def _parse_intermediate_steps(state: Dict) -> List[ParsedToolCall]:
-        """
-        Parses the 'intermediate_steps' string from the state into a list of ParsedToolCall objects.
-        The new state format is a JSON string of a list of tuples, where each tuple contains
-        (ToolAgentAction, tool_output).
+        """Parse tool execution history from state.
+
+        Expects message-based format: list of serialized Message objects.
         """
         if state is None:
             return []
@@ -182,28 +183,36 @@ class ResponseValidator:
             return []
 
         try:
-            # The outer structure is a JSON array
             parsed_calls = []
+            pending_results: dict[str, str] = {}
 
+            # First pass: collect all TOOL results
             for step in steps:
-                tool_call_dto = ExecutedToolCallDTO(**step)
-                tool_name = tool_call_dto.tool_call.function.name
-                tool_input = tool_call_dto.tool_call.function.arguments
+                msg = Message(**step) if isinstance(step, dict) else step
+                if msg.role == Role.TOOL and msg.tool_call_id:
+                    pending_results[msg.tool_call_id] = str(msg.content) if msg.content else ""
 
-                if isinstance(tool_input, str):
-                    try:
-                        args = json.loads(tool_input)
-                    except json.JSONDecodeError:
-                        args = {"input": tool_input}
-                else:
-                    args = tool_input or {}
+            # Second pass: extract tool calls with their results
+            for step in steps:
+                msg = Message(**step) if isinstance(step, dict) else step
+                if msg.role == Role.ASSISTANT and msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        tool_input = tc.function.arguments
+                        if isinstance(tool_input, str):
+                            try:
+                                args = json.loads(tool_input)
+                            except json.JSONDecodeError:
+                                args = {"input": tool_input}
+                        else:
+                            args = tool_input or {}
 
-                result_content = tool_call_dto.tool_execution_result.content
-
-                if tool_name:
-                    parsed_calls.append(
-                        ParsedToolCall(name=tool_name, args=args, result=result_content)
-                    )
+                        parsed_calls.append(
+                            ParsedToolCall(
+                                name=tc.function.name,
+                                args=args,
+                                result=pending_results.get(tc.id, ""),
+                            )
+                        )
 
             return parsed_calls
         except (json.JSONDecodeError, TypeError, IndexError) as e:

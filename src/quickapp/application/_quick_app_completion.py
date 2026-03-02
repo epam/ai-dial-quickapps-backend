@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import openai
 from aidial_sdk.chat_completion import ChatCompletion, Request, Response
@@ -7,19 +6,16 @@ from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
 from httpx import HTTPError
 from injector import Injector, inject
-from pydantic import SecretStr
 
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.common.presentation_settings import PresentationSettings
 
-from ..config.utils import bool_env_var
 from ._initialization_error_handler import _InitializationErrorHandler
-from ._request_context import _RequestContext
+from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 
 logger = logging.getLogger(__name__)
@@ -34,9 +30,13 @@ logger = logging.getLogger(__name__)
 @inject
 class _QuickAppCompletion(ChatCompletion):
 
-    def __init__(self, injector: Injector, config_resolver: ConfigResolver):
+    def __init__(
+        self,
+        injector: Injector,
+        presentation_settings: PresentationSettings,
+    ):
         self.__injector: Injector = injector
-        self.__config_resolver: ConfigResolver = config_resolver
+        self.__presentation_settings: PresentationSettings = presentation_settings
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
@@ -44,7 +44,7 @@ class _QuickAppCompletion(ChatCompletion):
         timer_service.start_period(self.__timer_period_name, level=1)
         with response.create_single_choice() as choice:
             try:
-                await self.__setup_request_context(request, choice)
+                await self.__injector.get(_RequestContextSetup).setup(request, choice)
                 timer_service.add_milestone(self.__timer_period_name, "request context setup")
                 await invoke_initializers(self.__injector, InitializerType.completion)
                 self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
@@ -58,43 +58,17 @@ class _QuickAppCompletion(ChatCompletion):
                 logger.debug(
                     "Chat completion performance report:\n%s", timer_service.get_report_json()
                 )
-                if bool_env_var("SHOW_EXECUTION_TIME_STAGE", False):
+                if self.__presentation_settings.show_execution_time_stage:
                     with choice.create_stage("Execution time") as stage:
                         stage.append_content(timer_service.get_report_md())
 
     async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
-        await self.__setup_request_context(request)
+        await self.__injector.get(_RequestContextSetup).setup(request)
         await invoke_initializers(self.__injector, InitializerType.configuration)
         if not self.__injector.binder.has_explicit_binding_for(list[Configuration]):
             return ConfigurationResponse()
         configurations = self.__injector.get(list[Configuration])
         return Configuration.from_list_of_configurations(configurations).to_configuration_response()
-
-    def __resolve_application_config(self, application_properties):
-        application_config = ApplicationConfig.model_validate(application_properties)
-        return self.__config_resolver.resolve_config(application_config)
-
-    async def __setup_request_context(
-        self, request: Request | ConfigurationRequest, choice: Optional[Choice] = None
-    ) -> None:
-        context = self.__injector.get(_RequestContext)
-        context.api_key = SecretStr(request.api_key)
-
-        if getattr(request, "bearer_token", None):
-            context.bearer = SecretStr(request.bearer_token)
-        else:
-            context.bearer = None
-
-        context.application_config = self.__resolve_application_config(
-            await request.request_dial_application_properties()
-        )
-        if isinstance(request, Request):
-            context.messages = request.messages
-        if choice:
-            context.choice = choice
-
-        if getattr(request, "response_format", None):
-            context.response_format = request.response_format
 
     @staticmethod
     def __handle_exception(choice: Choice, e: Exception):
