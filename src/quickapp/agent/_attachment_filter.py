@@ -27,7 +27,7 @@ class _AttachmentFilter:
 
     @staticmethod
     def _build_attachment_xml(attachments: list[Attachment]) -> str:
-        xml_parts = ["<user_attachments>"]
+        xml_parts = ["<attachments>"]
         for attachment in attachments:
             xml_parts.append("  <attachment>")
             xml_parts.append(f"    <title>{escape(str(attachment.title or ''))}</title>")
@@ -38,7 +38,7 @@ class _AttachmentFilter:
                     f"    <reference_url>{escape(str(attachment.reference_url))}</reference_url>"
                 )
             xml_parts.append("  </attachment>")
-        xml_parts.append("</user_attachments>")
+        xml_parts.append("</attachments>")
         return "\n".join(xml_parts)
 
     def _filter(self, message: Message) -> Message:

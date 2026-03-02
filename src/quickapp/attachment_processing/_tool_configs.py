@@ -16,9 +16,9 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
             name=f"{INTERNAL_TOOL_NAME_PREFIX}available_context",
             description=(
                 "Returns metadata about admin-configured context files."
-                " **IMPORTANT**: this tool is not applicable to user-attached files, "
-                "and will not return any information about them. If you see file in <user_attachments> section, "
-                "it means that the file was attached by the user, and is available for you to use."
+                " **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
+                "and will not return any information about them. If you see file in <attachments> section of user "
+                "message, it means that the file was attached by the user, and is available for you to use."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,

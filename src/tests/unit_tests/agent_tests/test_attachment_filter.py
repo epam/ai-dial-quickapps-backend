@@ -61,7 +61,7 @@ class Test_AttachmentFilter:
         )
         result = transformer.filter_attachments([msg])
         content = str(result[0].content)
-        assert "<user_attachments>" in content
+        assert "<attachments>" in content
         assert "<title>doc.pdf</title>" in content
         assert "<type>application/pdf</type>" in content
         assert "<title>photo.png</title>" in content
@@ -208,7 +208,7 @@ class Test_AttachmentFilter:
         )
         result = transformer.filter_attachments([msg])
         content = str(result[0].content)
-        assert "<user_attachments>" in content
+        assert "<attachments>" in content
         assert "<title>doc.pdf</title>" in content
 
     def test_reference_url_conditional_absent(self):
