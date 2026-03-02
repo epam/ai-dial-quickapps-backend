@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from hashlib import sha256
-from typing import Annotated, Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -48,7 +48,7 @@ class JsonSchemaObject(BaseModel):
     properties: dict[
         str,
         Annotated[
-            JsonSchemaSimpleType | JsonSchemaConst | 'JsonSchemaObject' | 'JsonSchemaArray',
+            Union[JsonSchemaSimpleType, JsonSchemaConst, 'JsonSchemaObject', 'JsonSchemaArray'],
             Field(discriminator='type'),
         ],
     ]
@@ -59,7 +59,7 @@ class JsonSchemaObject(BaseModel):
 class JsonSchemaArray(BaseModel):
     type: Literal[JsonTypeEnum.array]
     items: Annotated[
-        JsonSchemaSimpleType | JsonSchemaConst | JsonSchemaObject | 'JsonSchemaArray',
+        Union[JsonSchemaSimpleType, JsonSchemaConst, JsonSchemaObject, 'JsonSchemaArray'],
         Field(discriminator='type'),
     ]
     description: str
@@ -110,10 +110,12 @@ class OpenAiToolFunctionParameters(
     properties: dict[
         str,
         Annotated[
-            TConfigurableJsonSchemaObject
-            | TConfigurableJsonSchemaArray
-            | TConfigurableSchemaSimpleType
-            | TConfigurableSchemaConst,
+            Union[
+                TConfigurableJsonSchemaObject,
+                TConfigurableJsonSchemaArray,
+                TConfigurableSchemaSimpleType,
+                TConfigurableSchemaConst,
+            ],
             Field(discriminator='type'),
         ],
     ]
