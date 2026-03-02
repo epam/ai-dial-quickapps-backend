@@ -1,5 +1,3 @@
-from typing import Dict, Optional
-
 from quickapp.common.media_types import MediaTypes
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
@@ -19,7 +17,7 @@ class ContentSanitizer:
 
     @staticmethod
     def sanitize(
-        data: CodeExecutionResponse, data_sample_config: Optional[DataSampleConfig]
+        data: CodeExecutionResponse, data_sample_config: DataSampleConfig | None
     ) -> CodeExecutionResponse:
         """
         Deletes from Py Interpreter response all content that is not supported to avoid LLM overload with unnecessary info
@@ -35,9 +33,9 @@ class ContentSanitizer:
 
     @staticmethod
     def _sanityze_result(
-        data: CodeExecutionResponse, data_sample_config: Optional[DataSampleConfig]
+        data: CodeExecutionResponse, data_sample_config: DataSampleConfig | None
     ):
-        if data.result and isinstance(data.result, Dict):
+        if data.result and isinstance(data.result, dict):
             updated_data = {}
             for media_type, content in data.result.items():
                 if media_type in _SUPPORTED_RESULT_MEDIA_TYPES:
@@ -52,7 +50,7 @@ class ContentSanitizer:
             data.stdout = ContentSanitizer._to_sample(data.stdout, data_sample_config)
 
     @staticmethod
-    def _to_sample(content: str, data_sample_config: Optional[DataSampleConfig]) -> str:
+    def _to_sample(content: str, data_sample_config: DataSampleConfig | None) -> str:
         # Handle Optional fields with explicit defaults to avoid type errors
         if data_sample_config is None:
             data_sample_config = DataSampleConfig()
