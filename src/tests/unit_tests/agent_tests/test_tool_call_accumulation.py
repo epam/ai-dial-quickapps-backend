@@ -124,11 +124,34 @@ def test_accessing_name_before_set_raises():
         _ = tc.name
 
 
-def test_accessing_arguments_before_set_raises():
-    """Test that accessing arguments before they have been accumulated raises ValueError."""
+def test_accessing_arguments_before_set_returns_empty_object():
+    """If a tool call never streams any arguments chunks, arguments should default to '{}' ."""
     tc = AccumulatedToolCall()
-    with pytest.raises(ValueError, match="arguments have not been received"):
-        _ = tc.arguments
+    assert tc.arguments == "{}"
+
+
+def test_tool_call_without_arguments_is_accumulated_from_deltas():
+    """Simulate streaming deltas where id/name arrive but arguments never do."""
+    result = AssistantCallResult()
+
+    # First (and only) delta for the tool call: id + name present, arguments absent.
+    result.append_tool_call_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id="call-no-args",
+            function=ChoiceDeltaToolCallFunction(arguments=None, name="tool_without_args"),
+            type="function",
+        )
+    )
+
+    tool_calls = result.tool_calls
+    assert tool_calls is not None
+    assert len(tool_calls) == 1
+
+    tc = tool_calls[0]
+    assert tc.id == "call-no-args"
+    assert tc.name == "tool_without_args"
+    assert tc.arguments == "{}"
 
 
 def test_arguments_accumulated_across_deltas():
@@ -137,14 +160,14 @@ def test_arguments_accumulated_across_deltas():
     tc.append_delta(
         ChoiceDeltaToolCall(
             index=0,
-            id='c1',
-            function=ChoiceDeltaToolCallFunction(arguments=None, name='f'),
-            type='function',
+            id="c1",
+            function=ChoiceDeltaToolCallFunction(arguments=None, name="f"),
+            type="function",
         )
     )
-    # arguments still None at this point
-    with pytest.raises(ValueError):
-        _ = tc.arguments
+
+    # No arguments chunks yet => default empty object.
+    assert tc.arguments == "{}"
 
     tc.append_delta(
         ChoiceDeltaToolCall(
@@ -160,7 +183,7 @@ def test_arguments_accumulated_across_deltas():
         ChoiceDeltaToolCall(
             index=0,
             id=None,
-            function=ChoiceDeltaToolCallFunction(arguments=' 1}', name=None),
+            function=ChoiceDeltaToolCallFunction(arguments=" 1}", name=None),
             type=None,
         )
     )
