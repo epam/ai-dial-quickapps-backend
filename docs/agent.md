@@ -241,9 +241,9 @@ The processor builds an aggregated result containing all accumulated data for th
 
 The system uses two separate mechanisms to inform the agent about available files:
 
-- **User attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends text metadata to user message
-  content (e.g., `Attachment X, of type Y, url Z`). This is simple, direct, and preserves the natural conversation
-  flow.
+- **User attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
+  (`<user_attachments>`) to user message content. Each attachment is represented as an `<attachment>` element with
+  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
