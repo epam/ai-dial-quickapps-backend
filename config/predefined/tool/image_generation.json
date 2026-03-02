@@ -6,7 +6,7 @@
     }
   },
   "deployment": {
-    "name": "dall-e-3"
+    "name": "gpt-image-1"
   },
   "open_ai_tool": {
     "type": "function",
@@ -28,11 +28,12 @@
           },
           "size": {
             "type": "string",
-            "description": "The size of the generated image. ",
+            "description": "Must be one of `1024x1024`, `1536x1024` (landscape), `1024x1536` (portrait), or `auto` (default value)",
             "enum": [
               "1024x1024",
-              "1024x1792",
-              "1792x1024"
+              "1536x1024",
+              "1024x1536",
+              "auto"
             ],
             "default": "1024x1024",
             "display": {
@@ -41,26 +42,61 @@
               }
             }
           },
-          "style": {
-            "type": "string",
-            "description": "The style of the generated image. Must be one of vivid or natural. Vivid causes the model to lean towards generating hyper-real and dramatic images. Natural causes the model to produce more natural, less hyper-real looking images.",
-            "enum": [
-              "natural",
-              "vivid"
-            ],
-            "default": "natural",
+          "output_compression": {
+            "type": "integer",
+            "description": "The compression level (0-100%) for the generated images. This parameter is only\nsupported with the `webp` or `jpeg` output formats, and defaults to 100.",
             "display": {
               "stage": {
-                "name": "**Image style:** "
+                "name": "**Output compression:** "
+              }
+            }
+          },
+          "moderation": {
+            "type": "string",
+            "description": "Control the content-moderation level for generated images.\nMust be either `low` for less restrictive filtering or `auto` (default value).",
+            "default": "auto",
+            "enum": [
+              "low",
+              "auto"
+            ]
+          },
+          "background": {
+            "type": "string",
+            "description": "Allows to set transparency for the background of the generated image(s).\\nMust be one of `transparent`, `opaque` or `auto` (default value).\\nWhen `auto` is used, the model will automatically determine the best\\nbackground for the image.\\n\\nIf `transparent`, the output format needs to support transparency, so it should\\nbe set to either `png` (default value) or `webp`.",
+            "enum": [
+              "transparent",
+              "opaque",
+              "auto"
+            ],
+            "default": "auto",
+            "display": {
+              "stage": {
+                "name": "**Background:** "
+              }
+            }
+          },
+          "output_format": {
+            "type": "string",
+            "description": "The format in which the generated images are returned.\\nMust be one of `png`, `jpeg`, or `webp`.",
+            "enum": [
+              "png",
+              "jpeg",
+              "webp"
+            ],
+            "default": "png",
+            "display": {
+              "stage": {
+                "name": "**Output format:** "
               }
             }
           },
           "quality": {
             "type": "string",
-            "description": "The quality of the image that will be generated. `hd` creates images with finer details and greater consistency across the image.",
+            "description": "The quality of the image that will be generated. `high` creates images with finer details and greater consistency across the image.",
             "enum": [
-              "standard",
-              "hd"
+              "high",
+              "medium",
+              "low"
             ],
             "default": "standard",
             "display": {
@@ -73,7 +109,6 @@
         "required": [
           "query",
           "size",
-          "style",
           "quality"
         ]
       }

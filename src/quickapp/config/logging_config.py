@@ -1,12 +1,9 @@
 import logging
 import logging.config
-import os
-from typing import Any
 
 import uvicorn.logging
-from pydantic import BaseModel, Field
 
-from quickapp.config.utils import bool_env_var
+from quickapp.config.logging_settings import LoggingSettings
 
 
 class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
@@ -15,37 +12,20 @@ class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
         return res
 
 
-DEFAULT_LOG_FORMAT = (
-    "%(message)s"
-    if os.environ.get("LOG_MODE") == "dev"
-    else "%(asctime)s [%(levelname)s] |%(process)d| %(pathname)s:%(lineno)d: %(message)s"
-)
-DEFAULT_LOG_LEVEL = "INFO"
+class LoggingConfig:
+    def __init__(self, settings: LoggingSettings) -> None:
+        self._settings = settings
+        self._configure_logging()
+        self._override_aidial_sdk_logger()
 
-
-class LoggingConfig(BaseModel):
-    log_format: str = Field(default=os.getenv("LOG_FORMAT", DEFAULT_LOG_FORMAT))
-    log_level: str = Field(default=os.getenv("LOG_LEVEL", DEFAULT_LOG_LEVEL))
-    quickapp_log_level: str = Field(default=os.getenv("QUICKAPP_LOG_LEVEL", DEFAULT_LOG_LEVEL))
-    # by default kaleido and choreographer log a lot of unnecessary information on INFO level
-    plotly_image_conversion_log_level: str = Field(
-        default=os.getenv("PLOTLY_IMAGE_CONVERSION_LOG_LEVEL", "WARN")
-    )
-    log_multiline_mode_enabled: bool = bool_env_var("LOG_MULTILINE_LOG_ENABLED", False)
-
-    def __init__(self, /, **data: Any) -> None:
-        super().__init__(**data)
-        self.configure_logging()
-        self.override_aidial_sdk_logger(self.log_format)
-
-    def get_logging_config(self):
+    def _get_logging_config(self) -> dict:
         return {
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
                 "default": {
                     "()": "logging.Formatter",
-                    "fmt": self.log_format,
+                    "fmt": self._settings.log_format,
                 },
             },
             "handlers": {
@@ -56,67 +36,83 @@ class LoggingConfig(BaseModel):
             },
             "root": {
                 "handlers": ["console"],
-                "level": self.log_level,
+                "level": self._settings.log_level,
             },
             "loggers": {
                 "quickapp": {
                     "handlers": ["console"],
-                    "level": self.quickapp_log_level,
+                    "level": self._settings.quickapp_log_level,
                     "propagate": False,
                 },
                 # override third-party libs log format
-                "uvicorn": {"handlers": ["console"], "level": self.log_level, "propagate": False},
+                "uvicorn": {
+                    "handlers": ["console"],
+                    "level": self._settings.log_level,
+                    "propagate": False,
+                },
                 "uvicorn.access": {
                     "handlers": ["console"],
-                    "level": self.log_level,
+                    "level": self._settings.log_level,
                     "propagate": False,
                 },
                 "uvicorn.error": {
                     "handlers": ["console"],
-                    "level": self.log_level,
+                    "level": self._settings.log_level,
                     "propagate": False,
                 },
                 "httpcore": {
                     "handlers": ["console"],
-                    "level": self.log_level,
+                    "level": self._settings.log_level,
                     "propagate": False,
                 },
-                "openai": {"handlers": ["console"], "level": self.log_level, "propagate": False},
+                "openai": {
+                    "handlers": ["console"],
+                    "level": self._settings.log_level,
+                    "propagate": False,
+                },
                 "kaleido": {
                     "handlers": ["console"],
-                    "level": self.plotly_image_conversion_log_level,
+                    "level": self._settings.plotly_image_conversion_log_level,
                     "propagate": False,
                 },
                 "choreographer": {
                     "handlers": ["console"],
-                    "level": self.plotly_image_conversion_log_level,
+                    "level": self._settings.plotly_image_conversion_log_level,
                     "propagate": False,
                 },
             },
         }
 
-    def configure_logging(self):
-        logging.config.dictConfig(self.get_logging_config())
+    def _configure_logging(self) -> None:
+        logging.config.dictConfig(self._get_logging_config())
+
+        # Ensure quickapp logger level is applied (e.g. QUICKAPP_LOG_LEVEL=DEBUG)
+        quickapp_logger = logging.getLogger("quickapp")
+        level = getattr(
+            logging,
+            self._settings.quickapp_log_level.upper(),
+            logging.INFO,
+        )
+        quickapp_logger.setLevel(level)
 
         # Override "aidial_sdk" logger to meet same logging format
         from aidial_sdk import logger as aidial_sdk_logger
 
         aidial_sdk_logger.propagate = False
-        aidial_sdk_logger.setLevel(self.log_level)
+        aidial_sdk_logger.setLevel(self._settings.log_level)
 
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(self.log_format))
+        handler.setFormatter(logging.Formatter(self._settings.log_format))
 
         aidial_sdk_logger.handlers = [handler]
 
-    @staticmethod
-    def override_aidial_sdk_logger(log_format: str):
+    def _override_aidial_sdk_logger(self) -> None:
         from aidial_sdk import logger as aidial_sdk_logger  # type: ignore
 
         aidial_sdk_logger.propagate = False
-        aidial_sdk_logger.setLevel("INFO")  # DIALConfig.LOG_LEVEL)
+        aidial_sdk_logger.setLevel("INFO")
 
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(log_format))
+        handler.setFormatter(logging.Formatter(self._settings.log_format))
 
         aidial_sdk_logger.handlers = [handler]

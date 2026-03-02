@@ -1,21 +1,5 @@
 {
   "applications": {
-    "dial-rag": {
-      "name": "dial-rag",
-      "endpoint": "http://dial-rag:5000/openai/deployments/dial-rag/chat/completions",
-      "display_name": "DialRag App ",
-      "description": "Application that can read files",
-      "forward_auth_token": false,
-      "input_attachment_types": [
-        "*/*"
-      ],
-      "max_input_attachments": 3,
-      "defaults": {},
-      "interceptors": [],
-      "description_keywords": [],
-      "max_retry_attempts": 1,
-      "application_properties": {}
-    },
     "quick_app_2": {
       "displayName": "Quick App 2",
       "description": "The sample of Quick App v2",
@@ -32,7 +16,7 @@
           "system_prompt": {
             "type": "custom",
             "variables": {},
-            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nWhen using MCP tools with file parameter, always use file url like files/<file_path>/<file_name>\nAlways format your responses in markdown."
+            "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nAlways format your responses in markdown."
           }
         },
         "contexts": [],
@@ -82,9 +66,138 @@
       },
       "inputAttachmentTypes": [
         "*/*"
+      ]
+    },
+    "nested_quick_app": {
+      "displayName": "NestedQuickApp",
+      "description": "QuickApp that has access to web search and image generation tools and can be used as a tool in other QuickApp",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
       ],
-      "features": {
-        "assistant_attachments_in_request_supported": true
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "gpt-4.1-2025-04-14"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are an AI assistant that helps people find information using web search and generate images using image generation tool. Always format your responses in markdown."
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "name": "sample",
+            "description": "sample toolset",
+            "type": "dial-deployment",
+            "tools": [
+              {
+                "type": "predefined-tool",
+                "template_name": "web_search"
+              },
+              {
+                "type": "predefined-tool",
+                "template_name": "image_generation"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "root_quick_app": {
+      "displayName": "RootQuickApp",
+      "description": "Sample quick app that demonstrates nesting of quick apps. Has access to NestedQuickApp which in turn has access to web search and image generation tools",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "gpt-4.1-2025-04-14"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are smart AI assistant with access to tools. Always format your responses in markdown."
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "name": "nested-quick-app-toolset",
+            "description": "Set with NestedQuickApp quick app as a tool",
+            "type": "dial-deployment",
+            "tools": [
+              {
+                "type": "deployment-tool",
+                "display": {
+                  "stage": {
+                    "name": "Nested QuickApp: "
+                  }
+                },
+                "deployment": {
+                  "name": "nested_quick_app"
+                },
+                "content_propagation": {
+                  "propagate_history": true,
+                  "propagate_headers": []
+                },
+                "open_ai_tool": {
+                  "type": "function",
+                  "function": {
+                    "name": "nested_quick_app_tool",
+                    "description": "Tool that has access to NestedQuickApp subagent, which in turn has access to web search and image generation tools. Use when web search or image generation is needed and you want to use NestedQuickApp toolset capabilities to process the request. Always provide clear and concise input to get the best results.",
+                    "parameters": {
+                      "type": "object",
+                      "properties": {
+                        "query": {
+                          "type": "string",
+                          "description": "Agent prompt",
+                          "display": {
+                            "stage": {
+                              "show_value_in_stage_title": true,
+                              "name": "**Prompt:** "
+                            }
+                          }
+                        },
+                        "attachment_urls": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          },
+                          "description": "A list of full URLs for each attachment related to the tool call. Each item must be a full URL string. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+                          "display": {
+                            "stage": {
+                              "name": "**Files:** "
+                            }
+                          }
+                        }
+                      },
+                      "required": [
+                        "query"
+                      ]
+                    }
+                  }
+                },
+                "attachment": {
+                  "supported_types": [
+                    "*/*"
+                  ]
+                },
+                "fallback_configuration": {
+                  "strategies": [
+                    {
+                      "type": "continue"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
       }
     }
   }

@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "Natural-style, high-quality 1000x1000 scene of Kyiv, Ukraine during wintry weather: overcast 100% cloudy sky with light-to-moderate falling snow, cold atmosphere. View across the Dnipro River toward the Kyiv skyline with recognizable landmarks in a realistic way (Motherland Monument silhouette in the distance, golden domes faintly visible), streets and rooftops dusted with fresh snow, people in winter coats, soft diffuse gray daylight, gentle snowflakes visible, subtle wind indicated by drifting snow, cinematic but natural colors, no text, no logos."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Tue, 24 Feb 2026 13:34:59 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-36a04650-52e5-498f-ae1b-a4835c74ea8f\",\"created\":1771940096,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-36a04650-52e5-498f-ae1b-a4835c74ea8f\",\"created\":1771940096,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/2d0138478fc48f6172a6669a0e34558d83ba0a5bb42b8a1055139121dbe0e4c0.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-36a04650-52e5-498f-ae1b-a4835c74ea8f\",\"created\":1771940096,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-36a04650-52e5-498f-ae1b-a4835c74ea8f\",\"created\":1771940096,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

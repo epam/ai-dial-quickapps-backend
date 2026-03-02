@@ -74,9 +74,10 @@ class ToolConfigCoreService:
                 logger.debug(f"Getting application config for {deployment}")
                 config_schema = await dial_core.get_deployment_config(deployment)
 
-            return ToolConfigCoreService._convert_to_openai_tool_format(
-                deployment_model or application_model, config_schema
-            )
+            model = deployment_model or application_model
+            if model is None:
+                raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
+            return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
 
     @staticmethod
     def _convert_to_openai_tool_format(
@@ -90,14 +91,13 @@ class ToolConfigCoreService:
             config: The JSON response from get_deployment_config (if available).
 
         Returns:
-            A dictionary representing the final tool configuration.
+            A DialDeploymentTool representing the final tool configuration.
         """
         output_tool = DialDeploymentTool(
-            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"**Call {deployment.id}:** ")),
+            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment.id}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
             attachment=AttachmentConfig(
                 propagate_types_to_choice=[],
-                supported_types=deployment.input_attachment_types or [],
             ),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
@@ -111,9 +111,8 @@ class ToolConfigCoreService:
             ),
         )
 
-        properties = dict[str, Any]()
-        required_params = []
-        # Always add the 'query' parameter
+        properties: dict[str, Any] = {}
+        required_params: list[str] = []
         properties["query"] = ConfigurableSchemaSimpleType(
             type=JsonTypeEnum.string,
             description="The query for the tool.",
@@ -123,8 +122,6 @@ class ToolConfigCoreService:
 
         # Handle attachments if the tool supports them
         if deployment.input_attachment_types:
-            if output_tool.attachment:
-                output_tool.attachment.supported_types = deployment.input_attachment_types
             properties["attachment_urls"] = ConfigurableSchemaArray(
                 type=JsonTypeEnum.array,
                 items=ConfigurableSchemaSimpleType(
@@ -140,6 +137,7 @@ class ToolConfigCoreService:
             required_params.append("attachment_urls")
 
         if config and config.get("properties"):
+            config_required = set(config.get("required", []))
             for param_name, param_details in config["properties"].items():
                 logger.debug(f"Processing parameter: {param_name} with details: {param_details}")
                 # Extract enum values from the 'anyOf' structure
@@ -152,15 +150,15 @@ class ToolConfigCoreService:
                 properties[param_name] = ConfigurableSchemaSimpleType(
                     type=JsonTypeEnum.string,
                     description=param_details.get("description", ""),
-                    enum=enum_values if enum_values else None,
-                    default=enum_values[0] if enum_values else None,
+                    enum=enum_values or None,
+                    default=param_details.get("default"),
                     display=ParameterDisplayConfig(stage=FormattedParameterConfig(ignore=True)),
                 )
-                required_params.append(param_name)
+                if param_name in config_required:
+                    required_params.append(param_name)
 
-        # Assign the dynamically generated properties and required list
         output_tool.open_ai_tool.function.parameters.properties = properties
-        output_tool.open_ai_tool.function.parameters.required = sorted(list(set(required_params)))
+        output_tool.open_ai_tool.function.parameters.required = sorted(set(required_params))
 
         return output_tool
 
@@ -174,7 +172,7 @@ class ToolConfigCoreService:
                 info_dict = await dial_core.get_toolset_info(toolset_dial_id)
                 return ToolsetInfo.model_validate(info_dict)
             except HTTPStatusError as e:
-                logger.exception(f"Something went wrong during getting toolset {toolset_dial_id}")
+                logger.exception("Something went wrong during getting toolset %s", toolset_dial_id)
                 if e.response.status_code == 404:
                     raise ToolsetNotFoundException(
                         toolset_id=toolset_dial_id,

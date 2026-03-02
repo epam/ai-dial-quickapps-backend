@@ -1,37 +1,26 @@
-import json
-from enum import Enum
-from pathlib import Path
-from typing import Dict, List
+from typing import Any
 
+from injector import inject
 from pydantic import BaseModel, Field, TypeAdapter, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
-from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
-
-project_root_path = Path(__file__).parents[3]
-
-
-class PredefinedSettings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix='predefined_')
-    base_path: str | None = Field(
-        default=None, description="base path where predefined templates are stored"
-    )
 
 
 class PromptConfigResponse(BaseModel):
     prompt: str
-    allowed_models: List[str] = Field(default=[])
+    allowed_models: list[str] = Field(default=[])
 
 
 class PromptMapping(BaseSettings):
     model_config = SettingsConfigDict(env_prefix='config_')
-    prompt_mapping: Dict[str, List[str]] = Field(
+    prompt_mapping: dict[str, list[str]] = Field(
         default={
             "gpt_prompt": [
                 "gpt-5-mini-2025-08-07",
@@ -134,133 +123,68 @@ class PromptMapping(BaseSettings):
         return self
 
 
-class TemplateType(str, Enum):
-    system_prompt = 'prompt'
-    tool_set = 'toolset'
-    tool = 'tool'
-
-
-def add_default_content_downloader(raw_config: ApplicationConfig):
-    # Check if any existing tool set already has the `content_downloader` predefined tool
-    for tool_set in raw_config.tool_sets:
-        if not hasattr(tool_set, "tools"):
-            # Some tool set variants do not define `tools`
-            continue
-        for tool in tool_set.tools:  # type: ignore[union-attr]
-            if isinstance(tool, PredefinedTool) and tool.template_name == "content_downloader":
-                return
-
-    # If not found, append a default internal tool set with the content_downloader tool
-    raw_config.tool_sets.append(
-        InternalToolSet(
-            name="Default tools",
-            tools=[PredefinedTool(template_name="content_downloader", enabled=True)],
-        )
-    )
-
-
+@inject
 class ConfigResolver:
-    def __init__(self):
-        self.predefined_settings = PredefinedSettings()
-        if self.predefined_settings.base_path:
-            self.base_path = Path(self.predefined_settings.base_path)
-        else:
-            self.base_path = project_root_path / "config/predefined"
-        self.cache = {}  # avoid re-reading files
+    def __init__(self, provider: PredefinedContentProvider):
+        self._provider = provider
         self.prompt_mapping = PromptMapping()
-        self.template_map = self._scan_templates()
 
-    def _scan_templates(self):
-        template_map: Dict[str, List[str]] = {tt: [] for tt in TemplateType}
-        prompt_dir = self.base_path / TemplateType.system_prompt.value
-        if prompt_dir.exists() and prompt_dir.is_dir():
-            for file_path in prompt_dir.glob("*.md"):
-                template_map[TemplateType.system_prompt.value].append(file_path.stem)
+    @property
+    def template_map(self) -> dict[str, list[str]]:
+        """Read-only property delegating to the provider, excluding SKILL."""
+        return {
+            ct.value: self._provider.list_names(ct) for ct in ContentType if ct != ContentType.SKILL
+        }
 
-        tools_dir = self.base_path / TemplateType.tool.value
-        if tools_dir.exists() and tools_dir.is_dir():
-            for json_file in tools_dir.glob("*.json"):
-                template_map[TemplateType.tool.value].append(json_file.stem)
-
-        tool_sets_dir = self.base_path / TemplateType.tool_set.value
-        if tool_sets_dir.exists() and tool_sets_dir.is_dir():
-            for json_file in tool_sets_dir.glob("*.json"):
-                template_map[TemplateType.tool_set.value].append(json_file.stem)
-
-        return template_map
-
-    def get_prompts(self) -> List[PromptConfigResponse]:
-        all_prompts = self.template_map[TemplateType.system_prompt.value]
-        resolved_prompts = [
+    def get_prompts(self) -> list[PromptConfigResponse]:
+        return [
             PromptConfigResponse(
                 prompt=p, allowed_models=self.prompt_mapping.prompt_mapping.get(p, [])
             )
-            for p in all_prompts
+            for p in self._provider.list_names(ContentType.PROMPT)
         ]
-        return resolved_prompts
 
-    def get_tools(self) -> List[str]:
-        return self.template_map[TemplateType.tool.value]
+    def get_tools(self) -> list[str]:
+        return self._provider.list_names(ContentType.TOOL)
 
-    def get_tool_sets(self) -> List[str]:
-        return self.template_map[TemplateType.tool_set.value]
+    def get_tool_sets(self) -> list[str]:
+        return self._provider.list_names(ContentType.TOOLSET)
 
-    def read_template_content(self, template_type: TemplateType, template_name: str):
-        key = f"{template_type.value}/{template_name}"
-        if key in self.cache:
-            return self.cache[key]  # No need to read file again.
-        if template_type == TemplateType.system_prompt:
-            file_path = self.base_path / f"{key}.md"
-            try:
-                content = file_path.read_text(encoding='utf-8')
-                self.cache[key] = content
-                return content
-            except Exception as e:
-                raise FileNotFoundError(f"Error reading prompt '{file_path}': {e}")
-        else:
-            # Toolsets and Tools are JSON
-            file_path = self.base_path / f"{key}.json"
-            try:
-                with file_path.open('r', encoding='utf-8') as f:
-                    content = json.load(f)
-                self.cache[key] = content
-                return content
-            except Exception as e:
-                raise FileNotFoundError(f"Error reading JSON template '{file_path}': {e}")
+    def read_template_content(self, template_type: ContentType, template_name: str) -> Any:
+        if template_type.is_text:
+            return self._provider.read_text(template_type, template_name)
+        return self._provider.read_json(template_type, template_name)
 
     def resolve_config(self, raw_config: ApplicationConfig) -> ApplicationConfig:
         # orchestrator system prompt
         spc = raw_config.orchestrator.system_prompt
         if isinstance(spc, PredefinedSystemPromptConfig):
-            spc.content = self.read_template_content(TemplateType.system_prompt, spc.template)
+            spc.content = self.read_template_content(ContentType.PROMPT, spc.template)
 
         # tool-sets
-        add_default_content_downloader(raw_config)
         resolved_tool_set_list = []
         for tool_set in raw_config.tool_sets:
             if isinstance(tool_set, PredefinedToolSet):
                 resolved_tool_set_list.append(self.resolve_predefined_toolset(tool_set))
             else:
-                # It's not a template, however it might contain tool references
                 resolved_tool_set_list.append(self.resolve_toolset(tool_set))
         raw_config.tool_sets = resolved_tool_set_list
 
         return raw_config
 
     def resolve_predefined_toolset(self, tool_set: PredefinedToolSet) -> ToolSet:
-        template_content = self.read_template_content(TemplateType.tool_set, tool_set.template_name)
+        template_content = self.read_template_content(ContentType.TOOLSET, tool_set.template_name)
         actual_tool_set: ToolSet = TypeAdapter(ToolSet).validate_python(template_content)
         return self.resolve_toolset(actual_tool_set)
 
     def resolve_toolset(self, tool_set: ToolSet) -> ToolSet:
         if not hasattr(tool_set, 'tools'):
             return tool_set
-        resolved_tools: List[AnyTool] = []
+        resolved_tools: list[AnyTool] = []
         for tool in tool_set.tools:
             if isinstance(tool, PredefinedTool) and tool.enabled:
                 resolved_tools.append(self.resolve_tool(tool))
             else:
-                # It's not a template, just append it
                 resolved_tools.append(tool)
 
         tool_set.tools.clear()
@@ -269,7 +193,5 @@ class ConfigResolver:
         return tool_set
 
     def resolve_tool(self, tool: PredefinedTool) -> AnyTool:
-        template_content = self.read_template_content(TemplateType.tool, tool.template_name)
-        actual_tool: AnyTool = TypeAdapter(AnyTool).validate_python(template_content)
-
-        return actual_tool
+        template_content = self.read_template_content(ContentType.TOOL, tool.template_name)
+        return TypeAdapter(AnyTool).validate_python(template_content)

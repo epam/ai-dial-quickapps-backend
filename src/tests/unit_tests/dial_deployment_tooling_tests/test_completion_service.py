@@ -1,10 +1,14 @@
 import pytest
+from aidial_client.types.chat.request_param import (
+    AssistantMessageParam,
+    AttachmentParam,
+    CustomContentParam,
+    UserMessageParam,
+)
 from unittest.mock import AsyncMock, MagicMock, call
-from aidial_sdk.chat_completion import Message, Role
-from pydantic import StrictStr
 
-from quickapp.config.tools.deployment import ContentPropagation
-from quickapp.dial_deployment_tooling.constants import EXTRA_BODY
+from quickapp.common import ForwardedHeaders
+from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 
@@ -27,17 +31,8 @@ def dial_client():
 
 
 @pytest.fixture
-def history_messages():
-    return [
-        Message(role=Role.USER, content=StrictStr("First message")),
-        Message(role=Role.ASSISTANT, content=StrictStr("First response")),
-        Message(role=Role.USER, content=StrictStr("Current message"))
-    ]
-
-
-@pytest.fixture
-def completion_service(dial_client, history_messages):
-    return DialCompletionService(dial_client, history_messages)
+def completion_service(dial_client):
+    return DialCompletionService(dial_client, None)
 
 
 @pytest.fixture
@@ -50,52 +45,81 @@ def mock_stage_wrapper():
 
 @pytest.mark.asyncio
 async def test_history_propagation_enabled(completion_service, dial_client, mock_stage_wrapper):
-    # Act
+    # Act — pass pre-built history directly
+    history = [
+        UserMessageParam(role="user", content="First question"),
+        AssistantMessageParam(role="assistant", content="First answer"),
+        UserMessageParam(role="user", content="Second question"),
+        AssistantMessageParam(role="assistant", content="Second answer"),
+    ]
     await completion_service.complete_request_async(
         params={"query": "Test query"},
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=ContentPropagation(propagate_history=True),
-        stage_wrapper=mock_stage_wrapper
+        stage_wrapper=mock_stage_wrapper,
+        history=history,
     )
 
-    # Assert
+    # Assert — 4 history messages + current query
     call_args = dial_client.chat.completions.create.call_args[1]
-    assert len(call_args["messages"]) == 3
-    assert call_args["messages"][0]["content"] == "First message"
-    assert call_args["messages"][1]["content"] == "First response"
-    assert call_args["messages"][2]["content"] == "Test query"
+    assert len(call_args["messages"]) == 5
+    assert call_args["messages"][0]["content"] == "First question"
+    assert call_args["messages"][0]["role"] == "user"
+    assert call_args["messages"][1]["content"] == "First answer"
+    assert call_args["messages"][1]["role"] == "assistant"
+    assert call_args["messages"][2]["content"] == "Second question"
+    assert call_args["messages"][2]["role"] == "user"
+    assert call_args["messages"][3]["content"] == "Second answer"
+    assert call_args["messages"][3]["role"] == "assistant"
+    assert call_args["messages"][4]["content"] == "Test query"
+    assert call_args["messages"][4]["role"] == "user"
 
 
 @pytest.mark.asyncio
-async def test_history_propagation_disabled(completion_service, dial_client, mock_stage_wrapper):
-    # Act
+async def test_no_history(completion_service, dial_client, mock_stage_wrapper):
+    # Act — no history passed
     await completion_service.complete_request_async(
         params={"query": "Test query"},
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=ContentPropagation(propagate_history=False),
-        stage_wrapper=mock_stage_wrapper
+        stage_wrapper=mock_stage_wrapper,
     )
 
-    # Assert
+    # Assert — only current query
     call_args = dial_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 1
     assert call_args["messages"][0]["content"] == "Test query"
 
 
 @pytest.mark.asyncio
-async def test_content_propagation_none(completion_service, dial_client, mock_stage_wrapper):
-    # Act
+async def test_empty_history(completion_service, dial_client, mock_stage_wrapper):
+    # Act — empty history list
     await completion_service.complete_request_async(
         params={"query": "Test query"},
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=None,
-        stage_wrapper=mock_stage_wrapper
+        stage_wrapper=mock_stage_wrapper,
+        history=[],
     )
 
-    # Assert
+    # Assert — only current query
+    call_args = dial_client.chat.completions.create.call_args[1]
+    assert len(call_args["messages"]) == 1
+    assert call_args["messages"][0]["content"] == "Test query"
+
+
+@pytest.mark.asyncio
+async def test_history_none_explicitly(completion_service, dial_client, mock_stage_wrapper):
+    # Act — explicitly pass None
+    await completion_service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        history=None,
+    )
+
+    # Assert — only current query
     call_args = dial_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 1
     assert call_args["messages"][0]["content"] == "Test query"
@@ -107,8 +131,7 @@ async def test_stage_wrapper_none(completion_service, dial_client):
         params={"query": "Test query"},
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=None,
-        stage_wrapper=None
+        stage_wrapper=None,
     )
 
     # Assert
@@ -123,8 +146,7 @@ async def test_stage_wrapper_content_streaming(completion_service, dial_client, 
         params={"query": "Test query"},
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=None,
-        stage_wrapper=mock_stage_wrapper
+        stage_wrapper=mock_stage_wrapper,
     )
 
     # Assert - Check that both calls were made: first the header, then the content
@@ -150,7 +172,6 @@ async def test_extra_params_go_to_extra_body_not_top_level(
         },
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=None,
         stage_wrapper=mock_stage_wrapper,
     )
 
@@ -181,7 +202,6 @@ async def test_extra_body_from_params_merged_with_other_params(
         },
         deployment_id="test-deployment",
         deployment_name="Test Deployment",
-        content_propagation=None,
         stage_wrapper=mock_stage_wrapper,
     )
 
@@ -190,3 +210,78 @@ async def test_extra_body_from_params_merged_with_other_params(
     assert extra_body["custom_fields"] == {"key": "from_deployment"}
     assert extra_body["temperature"] == 0.5
     assert "query" not in extra_body
+
+
+@pytest.mark.asyncio
+async def test_history_with_custom_content_passed_through(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """History entries with custom_content appear unchanged in messages sent to the API."""
+    history = [
+        UserMessageParam(
+            role="user",
+            content="Describe the image",
+            custom_content=CustomContentParam(
+                attachments=[
+                    AttachmentParam(type="image/png", title="img.png", url="files/abc/img.png")
+                ]
+            ),
+        ),
+        AssistantMessageParam(
+            role="assistant",
+            content="It shows a chart",
+            custom_content=CustomContentParam(
+                attachments=[
+                    AttachmentParam(type="image/png", title="annotated.png", url="files/out.png")
+                ],
+                state={"cursor": 10},
+            ),
+        ),
+    ]
+    await completion_service.complete_request_async(
+        params={"query": "Follow up question"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        history=history,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    msgs = call_args["messages"]
+    assert len(msgs) == 3
+
+    # User history message preserves custom_content
+    user_msg = msgs[0]
+    assert user_msg["content"] == "Describe the image"
+    assert user_msg["custom_content"]["attachments"][0]["type"] == "image/png"
+    assert user_msg["custom_content"]["attachments"][0]["url"] == "files/abc/img.png"
+
+    # Assistant history message preserves custom_content
+    assistant_msg = msgs[1]
+    assert assistant_msg["content"] == "It shows a chart"
+    assert assistant_msg["custom_content"]["attachments"][0]["title"] == "annotated.png"
+    assert assistant_msg["custom_content"]["state"] == {"cursor": 10}
+
+    # Current query is the last message
+    assert msgs[2]["content"] == "Follow up question"
+    assert msgs[2]["role"] == "user"
+
+
+@pytest.mark.asyncio
+async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_stage_wrapper):
+    """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
+    forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
+    service = DialCompletionService(dial_client, forwarded)
+
+    await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    assert EXTRA_HEADERS in call_args
+    extra_headers = call_args[EXTRA_HEADERS]
+    assert extra_headers["X-Request-Id"] == "deploy-req-789"
+    assert extra_headers["X-Deployment-Custom"] == "deploy-val"

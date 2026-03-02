@@ -1,12 +1,42 @@
 [project]
 name = "QuickApps"
-version = "0.5.0rc"
+version = "0.6.0rc"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 license = "Apache-2.0"
 authors = [
     {name = "EPAM Systems"}
+]
+dependencies = [
+    # Core framework & DI
+    "aidial-client>=0.4.0,<0.5.0",                # DIAL API client
+    "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
+    "pydantic>=2.12.4,<3.0.0",                    # Data validation
+    "pydantic-settings>=2.12.0,<3.0.0",           # Settings management
+    "injector>=0.23.0,<0.24.0",                   # Dependency injection
+    "fastapi-injector>=0.9.0,<0.10.0",            # FastAPI + injector integration
+
+    # Data processing & visualization
+    "pandas>=2.3.3,<3.0.0",                       # Data manipulation
+    "tabulate>=0.9.0,<0.10.0",                    # Table formatting
+    "plotly[kaleido]>=6.5.2,<7.0.0",              # Data visualization with image export
+
+    # MCP (Model Context Protocol)
+    "mcp>=1.23.2,<2.0.0",                         # MCP protocol support
+    "fastmcp>=2.14.3,<3.0.0",                     # High-level MCP server framework
+
+    # HTML & web content
+    "beautifulsoup4>=4.14.2,<5.0.0",              # HTML parsing
+    "bs4>=0.0.2,<0.0.3",                          # BeautifulSoup4 meta-package
+
+    # Authentication & networking
+    "authlib>=1.6.5,<2.0.0",                      # OAuth / JWT authentication
+    "urllib3>=2.6.3,<3.0.0",                      # HTTP client library
+
+    # Utilities
+    "common>=0.1.2,<0.2.0",                       # Shared utilities
+    "pyyaml (>=6.0.2,<7.0.0)",                       # YAML parsing
 ]
 homepage = "https://dialx.ai"
 repository = "https://github.com/epam/ai-dial-quickapps-backend"
@@ -16,34 +46,20 @@ keywords = ["ai"]
 package-mode = false
 requires-poetry = '>=2.0.0,<3.0.0'
 
-[tool.poetry.dependencies]
-aidial-client = "^0.4.0"
-aidial-sdk = {version="^0.31.0", extras = ["telemetry"]}
-pydantic = { version = "^2.12.4" }
-pydantic-settings = { version = "^2.12.0" }
-injector = "^0.23.0"
-fastapi-injector = "^0.9.0"
-pandas = "^2.3.3"
-tabulate = "^0.9.0"
-common = "^0.1.2"
-beautifulsoup4 = "^4.14.2"
-bs4 = "^0.0.2"
-authlib = "^1.6.5"
-plotly = {version = "^6.5.2", extras = ["kaleido"]}
-mcp = "^1.23.2"
-fastmcp = "^2.14.3"
-urllib3 = "^2.6.3"
-
 [tool.poetry.group.dev.dependencies]
 black = { version = "^24.4.0", extras = ["jupyter"] }
 isort = "^5.13.2"
-mypy = "^1.9.0"
+mypy = "^1.19.1"
 fastmcp = "^2.12.5"
 types-requests = "^2.31.0.20240406"
 pre-commit = "^3.8.0"
 flake8 = "^7.1.2"
 autoflake = "^2.3.1"
 pyright = "^1.1.394"
+pandas-stubs = "^3.0.0.260204"
+types-authlib = "^1.6.8.20260215"
+plotly-stubs = "^0.1.2"
+types-pyyaml = ">=6.0.12"
 
 [tool.poetry.group.test.dependencies]
 pytest = "^8.3.4"
@@ -122,7 +138,12 @@ exclude = [
 ]
 
 [tool.mypy]
-ignore_missing_imports = true
+plugins = ["pydantic.mypy"]
+ignore_missing_imports = false
+
+[[tool.mypy.overrides]]
+module = ["aidial_sdk.*", "aidial_client.*"]
+follow_untyped_imports = true
 
 [tool.poetry.group.dev]
 optional = true

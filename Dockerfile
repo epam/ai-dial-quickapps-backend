@@ -26,7 +26,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PREDEFINED_BASE_PATH="/app/predefined" \
+    PYDANTIC_V2=True \
     CHROME_BIN=/home/appuser/.cache/kaleido/chrome
 
 # Copy the sources and virtual env. No poetry.

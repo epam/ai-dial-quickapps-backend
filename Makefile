@@ -5,6 +5,9 @@ PYTHON ?= python3
 -include .env
 export
 
+# AI DIAL SDK: pydantic v2 mode
+export PYDANTIC_V2=True
+
 init_venv:
 	$(POETRY) env use $(PYTHON)
 
@@ -31,6 +34,7 @@ lint: install_dev
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
 	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 
 mypy: install_dev
 	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
@@ -39,6 +43,7 @@ format: install_dev
 	$(POETRY) run autoflake $(SRC_DIRS)
 	$(POETRY) run black $(SRC_DIRS)
 	$(POETRY) run isort $(SRC_DIRS)
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
 install_pre_commit_hooks: poetry-boot
 	pre-commit install
@@ -50,14 +55,13 @@ test: install_dev
 	$(POETRY) run pytest src/tests/unit_tests --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
 
 dump_app_schema: install_dev
-	$(POETRY) run python src/scripts/dump_app_schema.py generated-app-schema.json
+	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
 generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
 	--template docker_compose_files/core/configuration/models-template.json \
 	--config docker_compose_files/core/configuration/generated/models.json \
-	--applications dial-rag,dial-web-rag \
-    --schemas docker_compose_files/core/configuration/generated/application-schemas.json
+	--applications dial-rag,dial-web-rag
 
 start_test_server:
 	echo "Starting MCP + REST servers..."
@@ -85,6 +89,9 @@ integration_test: install_integration
 	$(MAKE) start_test_server
 	$(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration"
 	$(MAKE) stop_test_server
+
+integration_test_run:
+	$(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
 
 e2e_test: install_integration
 	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"

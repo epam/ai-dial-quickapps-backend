@@ -233,28 +233,28 @@
     </mxGraphModel>
   </diagram>
   <diagram id="yaPwJFAwiMmDe0uDTxr2" name="history">
-    <mxGraphModel dx="1018" dy="699" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+    <mxGraphModel dx="983" dy="589" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
       <root>
         <mxCell id="0" />
         <mxCell id="1" parent="0" />
         <mxCell id="AFQjY1wrF4xSWfefCXU5-33" value="System Prompt" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="40" width="160" height="40" as="geometry" />
+          <mxGeometry x="160" y="40" width="250" height="40" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-34" value="Assistant" style="swimlane;whiteSpace=wrap;html=1;startSize=20;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="160" y="150" width="160" height="130" as="geometry" />
+          <mxGeometry x="160" y="120" width="250" height="160" as="geometry" />
         </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-35" value="&lt;i&gt;Tool Call:&lt;/i&gt; AvailableAttachments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;dashed=1;" parent="AFQjY1wrF4xSWfefCXU5-34" vertex="1">
-          <mxGeometry x="10" y="30" width="140" height="40" as="geometry" />
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-35" value="&lt;i&gt;Tool Call:&lt;/i&gt;&amp;nbsp;&lt;div&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;ReadSkill(&lt;/span&gt;&lt;span style=&quot;background-color: transparent; color: light-dark(rgb(0, 0, 0), rgb(255, 255, 255));&quot;&gt;&quot;builtin/working_with_files&quot;)&lt;/span&gt;&lt;/div&gt;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;dashed=1;" parent="AFQjY1wrF4xSWfefCXU5-34" vertex="1">
+          <mxGeometry x="10" y="30" width="230" height="70" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-36" value="&lt;i&gt;Tool Call:&lt;/i&gt; AvailableFilesContext" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;dashed=1;" parent="AFQjY1wrF4xSWfefCXU5-34" vertex="1">
-          <mxGeometry x="10" y="80" width="140" height="40" as="geometry" />
+          <mxGeometry x="10" y="110" width="230" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-37" value="&lt;i&gt;Tool Response:&lt;/i&gt; AvailableAttachments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="160" y="290" width="160" height="40" as="geometry" />
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-37" value="&lt;i&gt;Tool Response:&lt;/i&gt;&amp;nbsp;ReadSkill" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="160" y="290" width="250" height="40" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-38" value="" style="endArrow=none;html=1;rounded=0;fontFamily=Open Sans;" parent="1" edge="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="150" y="1060" as="sourcePoint" />
+            <mxPoint x="150" y="980" as="sourcePoint" />
             <mxPoint x="150" y="30" as="targetPoint" />
           </mxGeometry>
         </mxCell>
@@ -268,19 +268,19 @@
           <mxGeometry x="80" y="230" width="60" height="30" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-41" value="User Message: What&#39;s the weather in Vilnius" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="400" width="160" height="40" as="geometry" />
+          <mxGeometry x="160" y="400" width="250" height="40" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-42" value="Assistant" style="swimlane;whiteSpace=wrap;html=1;startSize=20;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="450" width="160" height="90" as="geometry" />
+          <mxGeometry x="160" y="450" width="250" height="90" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-43" value="&lt;i&gt;Tool Call: &lt;/i&gt;WebSearch(&quot;weather in Vilnius Jan 16th 2026&quot;)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;" parent="AFQjY1wrF4xSWfefCXU5-42" vertex="1">
-          <mxGeometry x="10" y="30" width="140" height="50" as="geometry" />
+          <mxGeometry x="10" y="30" width="230" height="50" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-44" value="&lt;i&gt;Tool Response: &lt;/i&gt;WebSearch" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="550" width="160" height="40" as="geometry" />
+          <mxGeometry x="160" y="550" width="250" height="40" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-45" value="Assistant Response" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="600" width="160" height="40" as="geometry" />
+          <mxGeometry x="160" y="600" width="250" height="40" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-46" value="" style="endArrow=none;html=1;rounded=0;fontFamily=Open Sans;" parent="1" edge="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
@@ -290,62 +290,56 @@
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-47" value="" style="endArrow=none;html=1;rounded=0;fontFamily=Open Sans;" parent="1" edge="1">
           <mxGeometry width="50" height="50" relative="1" as="geometry">
-            <mxPoint x="150" y="1060" as="sourcePoint" />
-            <mxPoint x="230" y="1060" as="targetPoint" />
+            <mxPoint x="150" y="980" as="sourcePoint" />
+            <mxPoint x="230" y="980" as="targetPoint" />
           </mxGeometry>
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-48" value="Dynamic History" style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
           <mxGeometry x="80" y="655" width="60" height="30" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-49" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Open Sans;" parent="1" source="AFQjY1wrF4xSWfefCXU5-50" target="AFQjY1wrF4xSWfefCXU5-58" edge="1">
-          <mxGeometry relative="1" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-50" value="User Message: What is the WEO estimation of US GDP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="650" width="160" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-51" value="..." style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=22;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="210" y="980" width="60" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-52" value="Assistant Response" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="1010" width="160" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-53" value="History Example" style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontStyle=2;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="150" y="1070" width="180" height="30" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-54" value="Instruction: how to work with tool arguments of type &quot;file&quot;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="90" width="160" height="50" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-55" value="&lt;i&gt;Tool Response:&lt;/i&gt; AvailableFilesContext" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="160" y="340" width="160" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-56" value="Assistant" style="swimlane;whiteSpace=wrap;html=1;startSize=20;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="160" y="700" width="160" height="80" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-57" value="&lt;i&gt;Tool Call:&lt;/i&gt; AvailableAttachments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;dashed=1;" parent="AFQjY1wrF4xSWfefCXU5-56" vertex="1">
-          <mxGeometry x="10" y="30" width="140" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-58" value="weo.pdf" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="340" y="660" width="80" height="20" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-59" value="&lt;i&gt;Tool Response:&lt;/i&gt; AvailableAttachments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
-          <mxGeometry x="160" y="790" width="160" height="40" as="geometry" />
-        </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Open Sans;" parent="1" target="AFQjY1wrF4xSWfefCXU5-61" edge="1">
           <mxGeometry relative="1" as="geometry">
-            <mxPoint x="320" y="810" as="sourcePoint" />
+            <mxPoint x="410" y="670" as="sourcePoint" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="AFQjY1wrF4xSWfefCXU5-61" value="weo.pdf" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="340" y="800" width="80" height="20" as="geometry" />
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-50" value="User Message: What is the WEO estimation of US GDP" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="160" y="650" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-51" value="..." style="text;html=1;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontStyle=1;fontSize=22;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="210" y="890" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-52" value="Assistant Response" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="160" y="920" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-53" value="History Example" style="text;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;spacingLeft=4;spacingRight=4;overflow=hidden;points=[[0,0.5],[1,0.5]];portConstraint=eastwest;rotatable=0;whiteSpace=wrap;html=1;fontStyle=2;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="150" y="980" width="180" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-54" value="Skills list" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontColor=#333333;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="160" y="80" width="250" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-55" value="&lt;i&gt;Tool Response:&lt;/i&gt; AvailableFilesContext" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;dashed=1;" parent="1" vertex="1">
+          <mxGeometry x="160" y="340" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-58" value="weo.pdf" style="rounded=1;whiteSpace=wrap;html=1;fontFamily=Open Sans;" parent="1" vertex="1">
+          <mxGeometry x="430" y="660" width="80" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="AFQjY1wrF4xSWfefCXU5-60" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;fontFamily=Open Sans;exitX=1;exitY=0.5;exitDx=0;exitDy=0;" parent="1" edge="1" source="AFQjY1wrF4xSWfefCXU5-59">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="410" y="760" as="sourcePoint" />
+            <mxPoint x="430" y="760.0344827586207" as="targetPoint" />
+          </mxGeometry>
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-62" value="Assistant" style="swimlane;whiteSpace=wrap;html=1;startSize=20;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="840" width="160" height="90" as="geometry" />
+          <mxGeometry x="160" y="740" width="250" height="90" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-63" value="&lt;i&gt;Tool Call:&lt;/i&gt; RAG(&quot;US GDP&quot;, &quot;weo.pdf&quot;)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontFamily=Open Sans;" parent="AFQjY1wrF4xSWfefCXU5-62" vertex="1">
-          <mxGeometry x="10" y="30" width="140" height="50" as="geometry" />
+          <mxGeometry x="10" y="30" width="230" height="50" as="geometry" />
         </mxCell>
         <mxCell id="AFQjY1wrF4xSWfefCXU5-64" value="&lt;i&gt;Tool Response:&lt;/i&gt; RAG" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontFamily=Open Sans;" parent="1" vertex="1">
-          <mxGeometry x="160" y="940" width="160" height="40" as="geometry" />
+          <mxGeometry x="160" y="840" width="250" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="IJXSJNRQFUpi483JHOZH-3" value="&lt;i&gt;Injection: &lt;/i&gt;User attached file &quot;weo.pdf&quot; of type &quot;application/pdf&quot;" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontStyle=1;fontFamily=Open Sans;" vertex="1" parent="1">
+          <mxGeometry x="160" y="690" width="250" height="40" as="geometry" />
         </mxCell>
       </root>
     </mxGraphModel>

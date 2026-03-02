@@ -6,3 +6,4 @@ from pydantic import SecretStr
 DIAL_API_KEY = Annotated[SecretStr, "DIAL_API_KEY"]
 DIAL_BEARER = Annotated[Optional[SecretStr], "DIAL_BEARER"]
 RESPONSE_FORMAT = Annotated[Optional[ResponseFormat], "RESPONSE_FORMAT"]
+ForwardedHeaders = Annotated[dict[str, str] | None, "ForwardedHeaders"]

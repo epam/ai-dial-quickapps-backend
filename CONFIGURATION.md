@@ -47,7 +47,7 @@ The project contains predefined configs of application and predefined tools
     {
       "type": "file",
       "description": "Some file context description",
-      "url": "https://dial-core.example.com"
+      "url": "files/mybucket/file_to_convert.png"
     },
     {
       "type": "user-defined",
@@ -353,7 +353,7 @@ The context loaded by URL:
 {
   "type": "file",
   "description": "Some file context description",
-  "url": "https://<DIAL_URL>/v1/files/{path}/{name}"
+  "url": "files/{path}/{name}"
 }
 
 ```

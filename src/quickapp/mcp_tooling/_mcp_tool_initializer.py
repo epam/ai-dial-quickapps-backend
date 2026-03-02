@@ -163,6 +163,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         ),
                     ),
                     connection_manager=connection_manager,
+                    dial_toolset_id=(
+                        toolset_info.dial_id if isinstance(toolset_info, DialMCPToolSet) else None
+                    ),
                 )
                 created_tools.append(mcp_tool)
             if created_tools:

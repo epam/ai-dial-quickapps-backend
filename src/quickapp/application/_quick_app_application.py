@@ -1,11 +1,18 @@
+import logging
+from contextlib import asynccontextmanager
+
 from aidial_sdk.application import DIALApp
 from aidial_sdk.chat_completion import ChatCompletion
 from aidial_sdk.telemetry.types import TelemetryConfig
+from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
 from injector import Injector, inject
 
 from quickapp.application._otel_settings import _OtelSettings
+from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.dial_settings import DialSettings
+
+logger = logging.getLogger(__name__)
 
 
 # The _QuickAppApplication class extends DIALApp to create a FastAPI-based application
@@ -21,11 +28,18 @@ class _QuickAppApplication(DIALApp):
         dial_settings: DialSettings,
         otel_settings: _OtelSettings,
     ):
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):  # noqa: ARG001
+            await invoke_initializers(injector, InitializerType.startup)
+            logger.info("All modules successfully configured")
+            yield
+
         super().__init__(
             dial_url=dial_settings.url,
             propagate_auth_headers=True,
             add_healthcheck=True,
             telemetry_config=TelemetryConfig(service_name=otel_settings.service_name),
+            lifespan=lifespan,
         )
         # noinspection PyTypeChecker
         self.add_middleware(InjectorMiddleware, injector=injector)

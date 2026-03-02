@@ -6,9 +6,5 @@ ATTACHMENT_PARAM = "attachment_urls"
 
 # Extra body / custom fields keys
 EXTRA_BODY = "extra_body"
-CUSTOM_FIELDS = "custom_fields"
+EXTRA_HEADERS = "extra_headers"
 CONFIGURATION = "configuration"
-
-CUSTOM_CONTENT = "custom_content"
-
-USAGE_PARAM = "usage"

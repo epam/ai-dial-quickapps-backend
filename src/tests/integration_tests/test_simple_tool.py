@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
         "Image generation test case",
         similarity_threshold=0.8,
     ).add_user_message(
-        user_message="Draw an image of a dinosaur. It should looks like super real with super quality image in size 1792x1024. When you ll be ready, please show me the image and say: Here is the image of a dinosaur. Do you like it?",
+        user_message="Draw an image of a dinosaur. It should looks like super real with super quality image in size 1536x1024. When you ll be ready, please show me the image and say: Here is the image of a dinosaur. Do you like it?",
         tool_calls=[
             ToolCall(ToolNames.IMAGE_GENERATION_TOOL.value)
             .add_soft_argument_check(
@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
                     "A dinosaur",
                 ],
             )
-            .add_strict_argument_check("size", "1792x1024")
-            .add_strict_argument_check("quality", "hd"),
+            .add_strict_argument_check("size", "1536x1024")
+            .add_strict_argument_check("quality", "high"),
         ],
         answer=[
             "Here is the image of a dinosaur. Do you like it?",
@@ -56,7 +56,7 @@ def test_text_to_image(client):
 @e2e_test(
     config_file_set="integration",
     test_case=TstCase("Text-to-image2", "Image generation test case", similarity_threshold=0.7).add_user_message(
-        user_message="Draw an image with small size 1024x1024 and in standard quality of A beautiful winter scene in Vilnius, Lithuania. Snow-covered baroque architecture with the iconic Gediminas Tower visible on the hill. The old town streets are blanketed in fresh white snow, with warm golden lights glowing from windows of historic buildings. The Cathedral Square with its bell tower is partially visible, all covered in pristine snow. Street lamps create a warm glow in the winter evening atmosphere. Traditional Lithuanian architectural details are visible on the colorful building facades despite the snow coverage.",
+        user_message="Draw an image with small size 1024x1024 and in medium quality of A beautiful winter scene in Vilnius, Lithuania. Snow-covered baroque architecture with the iconic Gediminas Tower visible on the hill. The old town streets are blanketed in fresh white snow, with warm golden lights glowing from windows of historic buildings. The Cathedral Square with its bell tower is partially visible, all covered in pristine snow. Street lamps create a warm glow in the winter evening atmosphere. Traditional Lithuanian architectural details are visible on the colorful building facades despite the snow coverage.",
         tool_calls=[
             ToolCall(ToolNames.IMAGE_GENERATION_TOOL.value)
             .add_soft_argument_check(
@@ -67,7 +67,7 @@ def test_text_to_image(client):
                 similarity_threshold=0.6,
             )
             .add_strict_argument_check("size", "1024x1024")
-            .add_strict_argument_check("quality", "standard"),
+            .add_strict_argument_check("quality", "medium"),
         ],
         answer=[
             "Here is the image of Vilnius in winter. How do you like it?",
