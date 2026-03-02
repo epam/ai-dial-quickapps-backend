@@ -32,9 +32,7 @@ class ContentSanitizer:
         return data
 
     @staticmethod
-    def _sanityze_result(
-        data: CodeExecutionResponse, data_sample_config: DataSampleConfig | None
-    ):
+    def _sanityze_result(data: CodeExecutionResponse, data_sample_config: DataSampleConfig | None):
         if data.result and isinstance(data.result, dict):
             updated_data = {}
             for media_type, content in data.result.items():

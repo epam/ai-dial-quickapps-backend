@@ -23,9 +23,7 @@ class StateHolder:
         logger.debug(f"Read state {self.__state}")
         return self.__state
 
-    def get_file_data(
-        self, url: str | None = None, key: str | None = None
-    ) -> bytes | None:
+    def get_file_data(self, url: str | None = None, key: str | None = None) -> bytes | None:
         if not url and not key:
             raise RuntimeError("Either url or key should be defined.")
         if not key and url:
