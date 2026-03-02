@@ -8,6 +8,7 @@ This folder contains technical documentation for the Quick Apps backend.
 |-----------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------|
 | [Agent Design](./agent.md)                    | Internal architecture of the Quick Apps agent system, including the orchestrator loop, tool system, and message processing pipeline. |
 | [Application Schema](./application-schema.md) | How to configure QuickApps in DIAL Core (schema endpoint vs full schema).                                                            |
+| [File Transfer](file_transfer.md)             | How Quick Apps handles file parameters in tool calls (`file:{prefix}::` convention, preprocessing pipeline).                         |
 
 ## Preview Features
 

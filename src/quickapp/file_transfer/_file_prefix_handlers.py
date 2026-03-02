@@ -21,9 +21,6 @@ class FilePrefixHandlers:
     @staticmethod
     async def handle_base64(file_url: str, file_service: DialFileService) -> str:
         content = await file_service.download_file(file_url)
-        if content is None:
-            logger.warning("Downloaded content is None for %s", file_url)
-            return ""
         if not isinstance(content, (bytes, bytearray)):
             try:
                 content = bytes(content)
@@ -40,9 +37,6 @@ class FilePrefixHandlers:
         file_url: str, file_service: DialFileService, parameter_name: str = "<unknown>"
     ) -> str:
         content_bytes = await file_service.download_file(file_url)
-        if content_bytes is None:
-            logger.warning("Downloaded content is None for %s; returning empty text", file_url)
-            return ""
 
         if not isinstance(content_bytes, (bytes, bytearray)):
             try:

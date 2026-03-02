@@ -132,7 +132,7 @@ All tools inherit from a common base class that defines:
 
 - A standardized execution interface
 - Lifecycle management with stage wrappers
-- Parameter preprocessing hooks
+- Parameter preprocessing via a chain of `ToolArgumentTransformer` instances (e.g. `file:` prefix resolution)
 - Attachment filtering based on `supported_types` configuration (single canonical filter point)
 - Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
 - Performance timing
@@ -314,7 +314,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 10 specialized DI modules:
+The application is composed of 12 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -325,7 +325,9 @@ The application is composed of 10 specialized DI modules:
 7. **Starters Module**: UI starter button configuration
 8. **Configuration Support API Module**: Configuration validation endpoints
 9. **DIAL Core Services Module**: DIAL Core integration
-10. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+12. **Skills Module**: Skill reader tool, agent skills provider
 
 ### Scoping
 

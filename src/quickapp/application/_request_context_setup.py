@@ -7,6 +7,7 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
+from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
@@ -44,6 +45,7 @@ class _RequestContextSetup:
         )
         if isinstance(request, Request):
             context.messages = self.__messages_setup.setup(request.messages)
+            context.forwarded_headers = extract_x_headers_from_request(request)
         if choice:
             context.choice = choice
 
