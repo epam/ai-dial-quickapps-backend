@@ -1,10 +1,9 @@
-import asyncio
 import logging
 import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 import pytest_asyncio
@@ -66,7 +65,7 @@ class TestStats:
 class SuiteStats:
     # passed: int = 0
     # failed: int = 0
-    test_stat_list: List[TestStats] = field(default_factory=list)
+    test_stat_list: list[TestStats] = field(default_factory=list)
 
     @property
     def passed(self):

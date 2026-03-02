@@ -3,7 +3,6 @@ import logging
 import os
 from enum import Enum
 from pathlib import Path
-from typing import List
 
 from pydantic import SecretStr
 
@@ -78,7 +77,7 @@ class TestConfig:
     @classmethod
     def load_tools_config(cls, port: int, config_file_set: str = "e2e") -> list[ToolSet]:
         files_list = file_sets.get(config_file_set)
-        tool_set_list: List[ToolSet] = []
+        tool_set_list: list[ToolSet] = []
         for file in files_list:
             file_path = Path(__file__).parent / f"{file}.json"
             data = json.loads(file_path.read_text())
