@@ -1,7 +1,7 @@
 import logging
 from dataclasses import dataclass, field
 from hashlib import sha256
-from typing import Any, List, Optional
+from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, ToolCall
 
@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class StateHolder:
-    attachments: List[Attachment] = field(default_factory=list)
-    tool_calls: List[ToolCall] = field(default_factory=list)
+    attachments: list[Attachment] = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
     __state: dict[str, Any] = field(default_factory=dict)
     __file_data_dict: dict[str, bytes] = field(default_factory=dict)
 
@@ -24,8 +24,8 @@ class StateHolder:
         return self.__state
 
     def get_file_data(
-        self, url: Optional[str] = None, key: Optional[str] = None
-    ) -> Optional[bytes]:
+        self, url: str | None = None, key: str | None = None
+    ) -> bytes | None:
         if not url and not key:
             raise RuntimeError("Either url or key should be defined.")
         if not key and url:

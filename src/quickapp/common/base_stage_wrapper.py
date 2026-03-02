@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
-from typing import Any, Optional, Type, cast
+from typing import Any, cast
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
@@ -15,14 +15,14 @@ from quickapp.config.tools.display.paramenter import (
 class BaseStageWrapper(ABC):
 
     def __init__(
-        self, stage: Stage, tool_config: Optional[BaseTool] = None, stage_name: Optional[str] = None
+        self, stage: Stage, tool_config: BaseTool | None = None, stage_name: str | None = None
     ) -> None:
         self.__stage: Stage = stage
         self.__tool_config: BaseTool | None = tool_config
         self.name: str = stage_name if stage_name else ""
         self._parameters_config_map: dict[str, FormattedParameterConfig] = {}
         if tool_config and issubclass(type(tool_config), BaseOpenAITool):
-            openai_tool_config = cast(Type[BaseOpenAITool], tool_config)
+            openai_tool_config = cast(type[BaseOpenAITool], tool_config)
             for (
                 prop_name,
                 config,
@@ -62,10 +62,10 @@ class BaseStageWrapper(ABC):
 
     def __exit__(
         self,
-        exc_type: Optional[Type[BaseException]],
-        exc: Optional[BaseException],
-        traceback: Optional[TracebackType],
-    ) -> Optional[bool]:
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> bool | None:
         return self.__stage.__exit__(exc_type, exc, traceback)
 
     def append_stage_name(self, text: str) -> None:
