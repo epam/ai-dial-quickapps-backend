@@ -13,7 +13,7 @@ from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.common import RESPONSE_FORMAT
+from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 
@@ -33,6 +33,7 @@ class AssistantInvoker:
         attachment_filter: _AttachmentFilter,
         presentation_settings: PresentationSettings,
         agent_settings: AgentSettings,
+        forwarded_headers: ForwardedHeaders,
     ) -> None:
         self.__attachment_filter = attachment_filter
         self.__messages: list[Message] = messages
@@ -43,6 +44,7 @@ class AssistantInvoker:
         self.__response_format = response_format
         self.__presentation_settings = presentation_settings
         self.__agent_settings = agent_settings
+        self.__forwarded_headers = forwarded_headers
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         completion_config = self.__prepare_chat_completion_config()
@@ -77,6 +79,9 @@ class AssistantInvoker:
 
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}
+
+        if self.__forwarded_headers:
+            payload["extra_headers"] = self.__forwarded_headers
 
         chat_completion_config.update(payload)
         logger.debug(f"Chat completion config: {chat_completion_config}")

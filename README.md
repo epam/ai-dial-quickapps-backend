@@ -56,6 +56,19 @@ file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
+### Forwarding headers
+
+Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound
+calls made during that chat completion. No configuration is required.
+
+- **Orchestrator (Azure OpenAI):** forwarded headers are sent on each chat completion request.
+- **MCP tools:** forwarded headers are merged into the HTTP/SSE headers used when connecting to MCP servers.
+- **DIAL deployment tools:** forwarded headers are sent as `extra_headers` when calling DIAL chat completions.
+- **REST API tools:** forwarded headers are merged into the outgoing HTTP request headers.
+
+Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
+your gateways or downstream services expect.
+
 ### Environment Variables
 
 | Variable                                   | Default                    | Required | Description                                                                                                  |
