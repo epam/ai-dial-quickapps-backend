@@ -23,14 +23,14 @@ put the migrated JSON under `applicationProperties` as shown below.
 ## 1. Prerequisites and deployment
 
 - **Core/Chat versions**: Quick Apps 1 required Core ≥ 0.28.0 and Chat ≥ 0.29.0. For Quick Apps 2.0, use the versions
-  required by the current Quick Apps 2 backend and [README](./README.md).
+  required by the current Quick Apps 2 backend and [README](../README.md).
 - **Schema in Core**: Add the **Quick Apps 2.0** application type schema to DIAL Core (e.g. from `make dump_app_schema`
   or the hosted quickapps2 schema). 
 - **Chat**: Ensure the chat component has Quick Apps 2.0 enabled (e.g. `ENABLED_FEATURES` including the appropriate
   quick-apps flag and any host/schema IDs your setup uses). See project README and deployment docs.
 - **Environment**: Old env vars like `API_VERSION`, `TEMPERATURE_FALLBACK`, `SYSTEM_PROMPT_FALLBACK`,
   `RAG_DEPLOYMENT_NAME` are replaced by the Quick Apps 2.0 configuration and env (e.g. `DIAL_URL`, `DIAL_API_VERSION`).
-  See [README](./README.md#environment-variables) and [CONFIGURATION](./CONFIGURATION.md).
+  See [README](../README.md#environment-variables) and [CONFIGURATION](../CONFIGURATION.md).
 
 ---
 
@@ -145,7 +145,7 @@ Migration steps:
 
 1. For each QuickApps 1 **RestApiToolset** item, add one object to `tool_sets` with `type: "rest-api"`, same `name`,
    `authorization`, and `tools`. Tool shape (`rest_api_method_info` + `open_ai_tool`) can usually be reused; add
-   `display` / `parameter_info` if you need stage or parameter behavior (see [CONFIGURATION](./CONFIGURATION.md)).
+   `display` / `parameter_info` if you need stage or parameter behavior (see [CONFIGURATION](../CONFIGURATION.md)).
 2. For each **WebApiToolsetInfo** (tool_endpoints + auth_info), convert each endpoint into a **rest-api** tool:
     - `method_url` / `method_type` → `rest_api_method_info`.
     - Build an `open_ai_tool.function` (name, description, parameters) from the endpoint's name, description, and
@@ -156,7 +156,7 @@ Auth mapping:
 
 - Old `auth_info.auth_type: "apikey"` → `authorization.type: "api_key"` with `key`, `name`, and `location` (e.g. `query`
   or `header`).
-- Old OBO auth → map to `client_id_secret` or the appropriate 2.0 auth type per [CONFIGURATION](./CONFIGURATION.md).
+- Old OBO auth → map to `client_id_secret` or the appropriate 2.0 auth type per [CONFIGURATION](../CONFIGURATION.md).
 
 #### 2.3.2 MCP tools
 
@@ -179,7 +179,7 @@ To mimic "application X as tool":
 - If there is a **predefined template** for that use (e.g. `dial_rag`, `web_search`, `image_generation`), add a tool set
   with `type: "dial-deployment"` and a tool like `{"type": "predefined-tool", "template_name": "..."}`.
 - If you need to call a specific deployment or app by id/name, configure a deployment tool with the appropriate
-  `deployment` and `open_ai_tool` (see [CONFIGURATION](./CONFIGURATION.md) and samples in the repo). There is no direct
+  `deployment` and `open_ai_tool` (see [CONFIGURATION](../CONFIGURATION.md) and samples in the repo). There is no direct
   1:1 field for ConditionGroup-based application selection; you may need one tool set per app or to align with how Quick
   Apps 2.0 exposes deployments.
 
@@ -406,7 +406,7 @@ leave display name, description, starters, and attachment behavior on the applic
 
 ## 6. References
 
-- New Quick Apps: [README.md](./README.md), [CONFIGURATION.md](./CONFIGURATION.md)
+- New Quick Apps: [README.md](../README.md), [CONFIGURATION.md](../CONFIGURATION.md)
 - Old Quick Apps: [quickapp1.md](./quickapp1.md), [quick_apps_explained.md](./quick_apps_explained.md)
 - Schema: generate with `make dump_app_schema`; hosted ref:
   `https://mydial.epam.com/custom_application_schemas/quickapps2`

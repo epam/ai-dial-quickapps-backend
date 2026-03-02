@@ -40,7 +40,8 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
 - [Agent Skills](docs/skills.md) `[Preview]` - How to create and manage reusable agent skills
-- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
+- [Technical Documentation](docs/README.md) - Internal architecture and design documents
+- [Migration Guide](docs/migration_quickapps1_to_quickapps2.md) - For users migrating from Quick Apps 1.x
 
 ## Quick start (general)
 
