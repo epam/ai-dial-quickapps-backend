@@ -5,6 +5,8 @@ from typing import Any, ClassVar, Literal
 from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
+from quickapp.common.dial_schema import DialJSONSchemaExtensions
+
 _DIAL_SCHEMA_URL = "https://dial.epam.com/application_type_schemas/schema#"
 _DIAL_ID_PREFIX = "https://mydial.epam.com/custom_application_schemas/"
 
@@ -78,7 +80,7 @@ def _dial_config_field(
     """
     json_schema_extra = kwargs.get("json_schema_extra", {})
     if isinstance(json_schema_extra, dict):
-        json_schema_extra["dial:propertyKind"] = property_kind
+        json_schema_extra[DialJSONSchemaExtensions.PROPERTY_KIND] = property_kind
     else:
         # If json_schema_extra is a callable, wrap it
         original_extra = json_schema_extra
@@ -86,7 +88,7 @@ def _dial_config_field(
         def new_extra(schema):
             if callable(original_extra):
                 original_extra(schema)
-            schema["dial:propertyKind"] = property_kind
+            schema[DialJSONSchemaExtensions.PROPERTY_KIND] = property_kind
 
         json_schema_extra = new_extra
 
@@ -107,7 +109,7 @@ def _dial_resource_config_field(default: Any = ..., **kwargs) -> Any:
     """
     json_schema_extra = kwargs.get("json_schema_extra", {})
     if isinstance(json_schema_extra, dict):
-        json_schema_extra["dial:resource"] = True
+        json_schema_extra[DialJSONSchemaExtensions.RESOURCE] = True
     else:
         # If json_schema_extra is a callable, wrap it
         original_extra = json_schema_extra
@@ -115,7 +117,7 @@ def _dial_resource_config_field(default: Any = ..., **kwargs) -> Any:
         def new_extra(schema):
             if callable(original_extra):
                 original_extra(schema)
-            schema["dial:resource"] = True
+            schema[DialJSONSchemaExtensions.RESOURCE] = True
 
         json_schema_extra = new_extra
 
@@ -136,7 +138,7 @@ def _dial_file_config_field(default: Any = ..., **kwargs) -> Any:
     """
     json_schema_extra = kwargs.get("json_schema_extra", {})
     if isinstance(json_schema_extra, dict):
-        json_schema_extra["dial:file"] = True
+        json_schema_extra[DialJSONSchemaExtensions.FILE] = True
         json_schema_extra["format"] = "dial-file-encoded"
     else:
         # If json_schema_extra is a callable, wrap it
@@ -145,7 +147,7 @@ def _dial_file_config_field(default: Any = ..., **kwargs) -> Any:
         def new_extra(schema):
             if callable(original_extra):
                 original_extra(schema)
-            schema["dial:file"] = True
+            schema[DialJSONSchemaExtensions.FILE] = True
             schema["format"] = "dial-file-encoded"
 
         json_schema_extra = new_extra
@@ -163,13 +165,15 @@ class BaseApplicationTypeConfig(BaseModel):
     _dial_schema_id: ClassVar[str]
     _dial_application_type_display_name: ClassVar[str]
     _dial_append_application_properties_header: ClassVar[bool] = False
+    _dial_assistant_attachments_in_request_supported: ClassVar[bool] = True
 
-    __schema_attributes_order: ClassVar[list[str]] = [
+    _schema_attributes_order: ClassVar[list[str]] = [
+        DialJSONSchemaExtensions.DISPLAY_NAME,
+        DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER,
+        DialJSONSchemaExtensions.ASSISTANT_ATTACHMENTS_IN_REQUEST,
         "type",
         "$id",
         "$schema",
-        "dial:applicationTypeDisplayName",
-        "dial:appendApplicationPropertiesHeader",
         "title",
         "$defs",
         "properties",
@@ -207,10 +211,12 @@ class BaseApplicationTypeConfig(BaseModel):
         """
         if field_info.json_schema_extra:
             if isinstance(field_info.json_schema_extra, dict):
-                value = field_info.json_schema_extra.get("dial:propertyKind", "server")
+                value = field_info.json_schema_extra.get(
+                    DialJSONSchemaExtensions.PROPERTY_KIND, "server"
+                )
                 if value not in ("client", "server"):
                     raise ValueError(
-                        f"Invalid dial:propertyKind value: {value}. "
+                        f"Invalid {DialJSONSchemaExtensions.PROPERTY_KIND} value: {value}. "
                         "Must be 'client' or 'server'."
                     )
                 return value  # type: ignore[return-value]
@@ -231,32 +237,33 @@ class BaseApplicationTypeConfig(BaseModel):
         for idx, (prop_name, prop_schema) in enumerate(properties.items()):
             # Get property kind from field metadata or schema
             property_kind = "server"
-            if "dial:propertyKind" in prop_schema:
-                property_kind = prop_schema.pop("dial:propertyKind")
+            if DialJSONSchemaExtensions.PROPERTY_KIND in prop_schema:
+                property_kind = prop_schema.pop(DialJSONSchemaExtensions.PROPERTY_KIND)
             elif prop_name in model_fields:
                 field_info = model_fields[prop_name]
                 property_kind = cls._get_property_kind(field_info)
 
-            prop_schema["dial:meta"] = {
-                "dial:propertyKind": property_kind,
-                "dial:propertyOrder": idx + 1,
+            prop_schema[DialJSONSchemaExtensions.META] = {
+                DialJSONSchemaExtensions.PROPERTY_KIND: property_kind,
+                DialJSONSchemaExtensions.PROPERTY_ORDER: idx + 1,
             }
 
         # Add DIAL-specific root properties
         if include_dial_fields:
             schema["$id"] = f"{_DIAL_ID_PREFIX}{cls._dial_schema_id}"
             schema["$schema"] = _DIAL_SCHEMA_URL
-            schema["dial:applicationTypeDisplayName"] = cls._dial_application_type_display_name
-            schema["dial:appendApplicationPropertiesHeader"] = (
+            schema[DialJSONSchemaExtensions.DISPLAY_NAME] = cls._dial_application_type_display_name
+            schema[DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER] = (
                 cls._dial_append_application_properties_header
+            )
+            schema[DialJSONSchemaExtensions.ASSISTANT_ATTACHMENTS_IN_REQUEST] = (
+                cls._dial_assistant_attachments_in_request_supported
             )
 
         # order the schema attributes and append all other attributes
-        ordered_schema = {
-            key: schema[key] for key in cls.__schema_attributes_order if key in schema
-        }
+        ordered_schema = {key: schema[key] for key in cls._schema_attributes_order if key in schema}
         for key in schema:
-            if key not in cls.__schema_attributes_order:
+            if key not in cls._schema_attributes_order:
                 ordered_schema[key] = schema[key]
 
         return ordered_schema
