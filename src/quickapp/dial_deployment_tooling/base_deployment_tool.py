@@ -8,7 +8,7 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from aidial_sdk.chat_completion import Message, Role
+from aidial_sdk.chat_completion import CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
@@ -17,6 +17,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
@@ -90,7 +91,7 @@ class BaseDeploymentTool(StagedBaseTool):
             return []
 
         # Build map: tool_call_id -> (content, custom_content)
-        tool_result_by_id: dict[str, tuple[str, Any]] = {}
+        tool_result_by_id: dict[str, tuple[str, CustomContent | None]] = {}
         for msg in self.__messages:
             if msg.role == Role.TOOL and msg.tool_call_id and msg.content:
                 content = str(msg.content) if not isinstance(msg.content, str) else msg.content
@@ -144,7 +145,7 @@ class BaseDeploymentTool(StagedBaseTool):
         return user_msg
 
     @classmethod
-    def _build_assistant_message(cls, content: str, custom_content: Any) -> AssistantMessageParam:
+    def _build_assistant_message(cls, content: str, custom_content: CustomContent | None) -> AssistantMessageParam:
         assistant_msg = AssistantMessageParam(role="assistant", content=content)
 
         if custom_content:
@@ -177,7 +178,7 @@ class BaseDeploymentTool(StagedBaseTool):
         return prepared
 
     @staticmethod
-    def _merge_to_prepared_params(params: Any, prepared: dict[str, Any]):
+    def _merge_to_prepared_params(params: DialDeploymentParameters, prepared: dict[str, Any]):
         """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
         params_dict = to_plain_dict(params)
         if isinstance(params_dict, dict):

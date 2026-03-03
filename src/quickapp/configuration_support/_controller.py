@@ -55,7 +55,7 @@ class _Controller:
             api_key = SecretStr(request.headers.get("api-key", ""))
             return await self.__service.get_basic_tool_config(deployment, api_key)
 
-    def _get_template_content(self, template_type: ContentType, template_name: str) -> Any:
+    def _get_template_content(self, template_type: ContentType, template_name: str) -> str | dict[str, Any] | ToolSet:
         templates = self.__config_resolver.template_map.get(template_type.value, [])
         if template_name not in templates:
             raise HTTPException(
