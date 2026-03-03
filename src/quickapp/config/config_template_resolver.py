@@ -150,7 +150,7 @@ class ConfigResolver:
     def get_tool_sets(self) -> list[str]:
         return self._provider.list_names(ContentType.TOOLSET)
 
-    def read_template_content(self, template_type: ContentType, template_name: str) -> Any:
+    def read_template_content(self, template_type: ContentType, template_name: str) -> str | dict[str, Any]:
         if template_type.is_text:
             return self._provider.read_text(template_type, template_name)
         return self._provider.read_json(template_type, template_name)
