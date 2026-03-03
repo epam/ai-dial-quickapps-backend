@@ -3,18 +3,30 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from quickapp.agent._attachment_filter import _AttachmentFilter
 
 
-def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
-    msg = Message(role=Role.USER, content=content)
+def _msg(
+    role: Role, content: str | None = "", attachments: list[Attachment] | None = None
+) -> Message:
+    msg = Message(role=role, content=content)
     if attachments:
         msg.custom_content = CustomContent(attachments=attachments)
     return msg
 
 
-def _attachment(title: str, url: str, mime_type: str) -> Attachment:
+def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
+    return _msg(Role.USER, content, attachments)
+
+
+def _attachment(
+    title: str,
+    url: str,
+    mime_type: str,
+    reference_url: str | None = None,
+) -> Attachment:
     return Attachment(
         title=title,
         url=url,
         type=mime_type,
+        reference_url=reference_url,
     )
 
 
@@ -38,7 +50,7 @@ class Test_AttachmentFilter:
         result = transformer.filter_attachments([msg])
         assert len(result[0].custom_content.attachments) == 0
 
-    def test_text_metadata_injected_for_attachments(self):
+    def test_xml_metadata_injected_for_attachments(self):
         transformer = _AttachmentFilter()
         msg = _user_msg(
             "original content",
@@ -49,12 +61,13 @@ class Test_AttachmentFilter:
         )
         result = transformer.filter_attachments([msg])
         content = str(result[0].content)
-        assert "Attachment doc.pdf" in content
-        assert "application/pdf" in content
+        assert "<attachments>" in content
+        assert "<title>doc.pdf</title>" in content
+        assert "<type>application/pdf</type>" in content
+        assert "<title>photo.png</title>" in content
+        assert "<type>image/png</type>" in content
 
-        # Image attachments are kept inline AND get text metadata injected
-        assert "Attachment photo.png" in content
-        assert "image/png" in content
+        # Image attachments are kept inline AND get XML metadata injected
         assert result[0].custom_content.attachments[0].type == "image/png"
         assert result[0].custom_content.attachments[0].title == "photo.png"
 
@@ -105,4 +118,123 @@ class Test_AttachmentFilter:
         second_content = str(second_pass[0].content)
 
         assert first_content == second_content
-        assert first_content.count("Attachment doc.pdf") == 1
+        assert first_content.count("<title>doc.pdf</title>") == 1
+
+    # --- Multi-message tests ---
+
+    def test_multi_message_each_filtered_independently(self):
+        transformer = _AttachmentFilter()
+        msg1 = _user_msg(
+            "first",
+            [
+                _attachment("doc.pdf", "/files/doc.pdf", "application/pdf"),
+                _attachment("photo.png", "/files/photo.png", "image/png"),
+            ],
+        )
+        msg2 = _user_msg(
+            "second",
+            [_attachment("data.csv", "/files/data.csv", "text/csv")],
+        )
+        result = transformer.filter_attachments([msg1, msg2])
+
+        # First message: image kept, pdf removed
+        assert len(result[0].custom_content.attachments) == 1
+        assert result[0].custom_content.attachments[0].type == "image/png"
+        content0 = str(result[0].content)
+        assert "<title>doc.pdf</title>" in content0
+        assert "<title>photo.png</title>" in content0
+
+        # Second message: csv removed
+        assert len(result[1].custom_content.attachments) == 0
+        content1 = str(result[1].content)
+        assert "<title>data.csv</title>" in content1
+
+    def test_multi_message_non_attachment_messages_unchanged(self):
+        transformer = _AttachmentFilter()
+        plain_msg = _user_msg("just text")
+        attach_msg = _user_msg(
+            "with file",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        result = transformer.filter_attachments([plain_msg, attach_msg])
+
+        # Plain message is passed through as-is (same object, no deepcopy)
+        assert result[0] is plain_msg
+        assert result[0].content == "just text"
+
+        # Attachment message is filtered
+        assert "<title>doc.pdf</title>" in str(result[1].content)
+
+    # --- Role-based tests ---
+
+    def test_assistant_message_image_attachments_stripped(self):
+        transformer = _AttachmentFilter()
+        msg = _msg(
+            Role.ASSISTANT,
+            "response",
+            [_attachment("photo.png", "/files/photo.png", "image/png")],
+        )
+        result = transformer.filter_attachments([msg])
+        # Non-USER roles: images are NOT kept inline
+        assert len(result[0].custom_content.attachments) == 0
+        content = str(result[0].content)
+        assert "<title>photo.png</title>" in content
+
+    def test_tool_message_attachments_stripped(self):
+        transformer = _AttachmentFilter()
+        msg = _msg(
+            Role.TOOL,
+            "tool output",
+            [_attachment("result.png", "/files/result.png", "image/png")],
+        )
+        result = transformer.filter_attachments([msg])
+        assert len(result[0].custom_content.attachments) == 0
+        content = str(result[0].content)
+        assert "<title>result.png</title>" in content
+
+    # --- Edge case tests ---
+
+    def test_empty_message_list(self):
+        transformer = _AttachmentFilter()
+        result = transformer.filter_attachments([])
+        assert result == []
+
+    def test_content_none_with_attachments(self):
+        transformer = _AttachmentFilter()
+        msg = _msg(
+            Role.USER,
+            None,
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        result = transformer.filter_attachments([msg])
+        content = str(result[0].content)
+        assert "<attachments>" in content
+        assert "<title>doc.pdf</title>" in content
+
+    def test_reference_url_conditional_absent(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "test",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        result = transformer.filter_attachments([msg])
+        content = str(result[0].content)
+        # reference_url is None by default → no element
+        assert "<reference_url>" not in content
+
+    def test_reference_url_conditional_present(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "test",
+            [
+                _attachment(
+                    "doc.pdf",
+                    "/files/doc.pdf",
+                    "application/pdf",
+                    reference_url="/refs/doc.pdf",
+                )
+            ],
+        )
+        result = transformer.filter_attachments([msg])
+        content = str(result[0].content)
+        assert "<reference_url>/refs/doc.pdf</reference_url>" in content
