@@ -11,11 +11,12 @@ if __name__ == '__main__':
 
 import json
 
+from quickapp.common.dial_schema import DialJSONSchemaExtensions
 from quickapp.config.application import ApplicationConfig
 
 DIAL_SCHEMA_PROPERTIES = {
-    "dial:applicationTypeCompletionEndpoint": "http://<app-host>/openai/deployments/quick_apps/chat/completions",
-    "dial:applicationTypeConfigurationEndpoint": "http://<app-host>/openai/deployments/quick_apps/configuration",
+    DialJSONSchemaExtensions.COMPLETION_ENDPOINT: "<quickapps_base_url>/openai/deployments/quick_apps/chat/completions",
+    DialJSONSchemaExtensions.CONFIGURATION_ENDPOINT: "<quickapps_base_url>/openai/deployments/quick_apps/configuration",
 }
 
 
