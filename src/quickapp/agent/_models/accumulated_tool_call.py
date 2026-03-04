@@ -1,5 +1,9 @@
+import json
+
 from aidial_sdk.chat_completion import FunctionCall, ToolCall
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
+
+from quickapp.common.file_reference_pattern import strip_file_prefix
 
 
 class AccumulatedToolCall:
@@ -38,10 +42,24 @@ class AccumulatedToolCall:
             self._arguments = append_field(self._arguments, delta.function.arguments)
 
     def to_sdk_tool_call(self):
+        raw_args = self.arguments
+        try:
+            parsed = json.loads(raw_args)
+            if isinstance(parsed, dict):
+                for k, v in parsed.items():
+                    if isinstance(v, str):
+                        parsed[k] = strip_file_prefix(v)
+                    elif isinstance(v, list):
+                        parsed[k] = [
+                            strip_file_prefix(item) if isinstance(item, str) else item for item in v
+                        ]
+                raw_args = json.dumps(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
         return ToolCall(
             id=self.id,
             type="function",
-            function=FunctionCall(name=self.name, arguments=self.arguments),
+            function=FunctionCall(name=self.name, arguments=raw_args),
         )
 
     @staticmethod
