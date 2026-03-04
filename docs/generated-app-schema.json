@@ -1,11 +1,12 @@
 {
-  "dial:applicationTypeCompletionEndpoint": "http://<app-host>/openai/deployments/quick_apps/chat/completions",
-  "dial:applicationTypeConfigurationEndpoint": "http://<app-host>/openai/deployments/quick_apps/configuration",
+  "dial:applicationTypeCompletionEndpoint": "<quickapps_base_url>/openai/deployments/quick_apps/chat/completions",
+  "dial:applicationTypeConfigurationEndpoint": "<quickapps_base_url>/openai/deployments/quick_apps/configuration",
+  "dial:applicationTypeDisplayName": "Quick App 2.0",
+  "dial:appendApplicationPropertiesHeader": false,
+  "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
   "type": "object",
   "$id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
-  "dial:applicationTypeDisplayName": "Quick App 2.0",
-  "dial:appendApplicationPropertiesHeader": false,
   "title": "ApplicationConfig",
   "$defs": {
     "ApiKeyAuthorization": {
