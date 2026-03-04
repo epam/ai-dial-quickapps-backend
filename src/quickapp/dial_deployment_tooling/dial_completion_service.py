@@ -18,6 +18,7 @@ from injector import inject
 from quickapp.common import CompletionResult, ForwardedHeaders
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
+from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.common.utils import to_plain_dict
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
@@ -249,7 +250,7 @@ class DialCompletionService:
 
     async def _resolve_attachment(self, file_relative_url: str) -> AttachmentParam:
         metadata: AsyncMetadata = self.__dial_client.metadata
-        fileinfo = await metadata.get("files", file_relative_url)
+        fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
         return AttachmentParam(
             type=fileinfo.content_type or "",
             title=fileinfo.name,
