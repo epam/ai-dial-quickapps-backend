@@ -268,6 +268,53 @@ async def test_history_with_custom_content_passed_through(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_relative_url, expected_stripped_url",
+    [
+        # base64:: prefix — binary/encoded content
+        ("file:base64::files/images/chart.png", "files/images/chart.png"),
+        # text:: prefix — plain-text content
+        ("file:text::files/code/main.py", "files/code/main.py"),
+        # url:: prefix — bare URL pass-through (lowercase)
+        ("file:url::files/docs/report.pdf", "files/docs/report.pdf"),
+        # url:: prefix — case-insensitive match per the convention
+        ("file:URL::files/abc/photo.png", "files/abc/photo.png"),
+        # bare file: with no type prefix — still strips the file: marker
+        ("file:files/abc/photo.png", "files/abc/photo.png"),
+    ],
+)
+async def test_resolve_attachment_strips_file_prefix(dial_client, file_relative_url, expected_stripped_url):
+    """_resolve_attachment must strip any file:{prefix}:: marker before querying metadata."""
+    fileinfo = MagicMock()
+    fileinfo.content_type = "image/png"
+    fileinfo.name = "photo.png"
+    fileinfo.url = expected_stripped_url
+    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+
+    service = DialCompletionService(dial_client, None)
+    result = await service._resolve_attachment(file_relative_url)
+
+    dial_client.metadata.get.assert_called_once_with("files", expected_stripped_url)
+    assert result == AttachmentParam(type="image/png", title="photo.png", url=expected_stripped_url)
+
+
+@pytest.mark.asyncio
+async def test_resolve_attachment_without_prefix(dial_client):
+    """_resolve_attachment must pass the URL unchanged when there is no file: prefix."""
+    fileinfo = MagicMock()
+    fileinfo.content_type = "application/pdf"
+    fileinfo.name = "report.pdf"
+    fileinfo.url = "files/xyz/report.pdf"
+    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+
+    service = DialCompletionService(dial_client, None)
+    result = await service._resolve_attachment("files/xyz/report.pdf")
+
+    dial_client.metadata.get.assert_called_once_with("files", "files/xyz/report.pdf")
+    assert result == AttachmentParam(type="application/pdf", title="report.pdf", url="files/xyz/report.pdf")
+
+
+@pytest.mark.asyncio
 async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_stage_wrapper):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}

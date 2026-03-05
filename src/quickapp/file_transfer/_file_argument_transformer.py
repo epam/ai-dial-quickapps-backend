@@ -1,19 +1,15 @@
 import logging
-import re
 from typing import Any
 
 from injector import inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.file_reference_pattern import FILE_PATTERN
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
 logger = logging.getLogger(__name__)
-
-_FILE_PATTERN = re.compile(
-    r"^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$", re.IGNORECASE
-)
 
 
 @inject
@@ -53,7 +49,7 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
         return resolved_value
 
     async def _resolve_value(self, key: str, value: str) -> str:
-        m = _FILE_PATTERN.match(value)
+        m = FILE_PATTERN.match(value)
         if not m:
             return value
 

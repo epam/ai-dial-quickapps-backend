@@ -8,6 +8,7 @@ from quickapp.common.base_config import (
     DialConfigField,
     DialFileConfigField,
 )
+from quickapp.common.dial_schema import DialJSONSchemaExtensions
 
 
 class TestInitSubclass:
@@ -80,22 +81,22 @@ class TestModelJsonSchema:
         # Check DIAL-specific root properties
         assert schema["$id"] == "https://mydial.epam.com/custom_application_schemas/quickapps2"
         assert schema["$schema"] == "https://dial.epam.com/application_type_schemas/schema#"
-        assert schema["dial:applicationTypeDisplayName"] == "Quick App 2.0"
-        assert schema["dial:appendApplicationPropertiesHeader"] is False
+        assert schema[DialJSONSchemaExtensions.DISPLAY_NAME] == "Quick App 2.0"
+        assert schema[DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER] is False
 
         # Check properties have dial:meta
         assert "name" in schema["properties"]
-        assert schema["properties"]["name"]["dial:meta"] == {
-            "dial:propertyKind": "server",
-            "dial:propertyOrder": 1,
+        assert schema["properties"]["name"][DialJSONSchemaExtensions.META] == {
+            DialJSONSchemaExtensions.PROPERTY_KIND: "server",
+            DialJSONSchemaExtensions.PROPERTY_ORDER: 1,
         }
-        assert schema["properties"]["enabled"]["dial:meta"] == {
-            "dial:propertyKind": "server",
-            "dial:propertyOrder": 2,
+        assert schema["properties"]["enabled"][DialJSONSchemaExtensions.META] == {
+            DialJSONSchemaExtensions.PROPERTY_KIND: "server",
+            DialJSONSchemaExtensions.PROPERTY_ORDER: 2,
         }
-        assert schema["properties"]["max_tokens"]["dial:meta"] == {
-            "dial:propertyKind": "server",
-            "dial:propertyOrder": 3,
+        assert schema["properties"]["max_tokens"][DialJSONSchemaExtensions.META] == {
+            DialJSONSchemaExtensions.PROPERTY_KIND: "server",
+            DialJSONSchemaExtensions.PROPERTY_ORDER: 3,
         }
 
     def test_schema_with_override_append_header(self):
@@ -109,7 +110,7 @@ class TestModelJsonSchema:
             field: str
 
         schema = TestConfig.model_json_schema()
-        assert schema["dial:appendApplicationPropertiesHeader"] is True
+        assert schema[DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER] is True
 
     def test_schema_attribute_ordering(self):
         """Test that schema attributes are ordered correctly."""
@@ -126,11 +127,12 @@ class TestModelJsonSchema:
 
         # Check order of known attributes
         expected_order = [
+            DialJSONSchemaExtensions.DISPLAY_NAME,
+            DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER,
+            DialJSONSchemaExtensions.ASSISTANT_ATTACHMENTS_IN_REQUEST,
             "type",
             "$id",
             "$schema",
-            "dial:applicationTypeDisplayName",
-            "dial:appendApplicationPropertiesHeader",
             "title",
             "properties",
             "required",
@@ -161,7 +163,7 @@ class TestModelJsonSchema:
         nested_schema = schema["properties"]["nested"]
 
         # The nested field should have dial:meta
-        assert "dial:meta" in nested_schema
+        assert DialJSONSchemaExtensions.META in nested_schema
 
         # Check if $defs is removed or cleaned up properly
         if "$defs" in schema:
@@ -310,9 +312,9 @@ class TestIntegration:
             1,
         ):
             assert field_name in schema["properties"]
-            assert schema["properties"][field_name]["dial:meta"] == {
-                "dial:propertyKind": "server",
-                "dial:propertyOrder": idx,
+            assert schema["properties"][field_name][DialJSONSchemaExtensions.META] == {
+                DialJSONSchemaExtensions.PROPERTY_KIND: "server",
+                DialJSONSchemaExtensions.PROPERTY_ORDER: idx,
             }
 
         # Verify required fields
@@ -353,9 +355,11 @@ def test_dial_config_field_property_kind():
 
     schema = TestConfig.model_json_schema()
 
-    assert schema["properties"]["server_field"]["dial:meta"]["dial:propertyKind"] == "server"
-    assert schema["properties"]["client_field"]["dial:meta"]["dial:propertyKind"] == "client"
-    assert schema["properties"]["default_field"]["dial:meta"]["dial:propertyKind"] == "server"
+    META = DialJSONSchemaExtensions.META
+    KIND = DialJSONSchemaExtensions.PROPERTY_KIND
+    assert schema["properties"]["server_field"][META][KIND] == "server"
+    assert schema["properties"]["client_field"][META][KIND] == "client"
+    assert schema["properties"]["default_field"][META][KIND] == "server"
 
 
 def test_dial_config_field_with_other_parameters():
@@ -376,7 +380,9 @@ def test_dial_config_field_with_other_parameters():
     schema = TestConfig.model_json_schema()
     field_schema = schema["properties"]["field"]
 
-    assert field_schema["dial:meta"]["dial:propertyKind"] == "client"
+    META = DialJSONSchemaExtensions.META
+    KIND = DialJSONSchemaExtensions.PROPERTY_KIND
+    assert field_schema[META][KIND] == "client"
     assert field_schema["description"] == "Test field"
     assert field_schema["minLength"] == 3
     assert field_schema["maxLength"] == 10
@@ -394,9 +400,9 @@ class TestDialFileConfigField:
         schema = TestConfig.model_json_schema()
         file_schema = schema["properties"]["file_url"]
 
-        assert file_schema["dial:file"] is True
+        assert file_schema[DialJSONSchemaExtensions.FILE] is True
         assert file_schema["format"] == "dial-file-encoded"
-        assert "dial:meta" in file_schema
+        assert DialJSONSchemaExtensions.META in file_schema
 
     def test_dial_file_config_field_with_other_parameters(self):
         class TestConfig(BaseApplicationTypeConfig):
@@ -411,7 +417,7 @@ class TestDialFileConfigField:
         schema = TestConfig.model_json_schema()
         file_schema = schema["properties"]["file_url"]
 
-        assert file_schema["dial:file"] is True
+        assert file_schema[DialJSONSchemaExtensions.FILE] is True
         assert file_schema["format"] == "dial-file-encoded"
         assert file_schema["description"] == "A file URL"
         assert file_schema["minLength"] == 10
