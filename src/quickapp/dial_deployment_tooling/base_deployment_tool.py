@@ -65,7 +65,9 @@ class BaseDeploymentTool(StagedBaseTool):
         if not self.__content_propagation or not self.__content_propagation.propagate_history:
             return open_ai_tool
         func = open_ai_tool.function
-        func.description = (func.description or "").strip() + _CONVERSATION_HISTORY_DESCRIPTION_SUFFIX
+        func.description = (
+            func.description or ""
+        ).strip() + _CONVERSATION_HISTORY_DESCRIPTION_SUFFIX
         return open_ai_tool
 
     async def _run_in_stage_async(
