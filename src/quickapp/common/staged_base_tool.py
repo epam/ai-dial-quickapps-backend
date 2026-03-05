@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any, Optional, TypeVar
 
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
+from quickapp.config.tools.base import OpenAiToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .completion_result import CompletionResult
@@ -17,6 +18,8 @@ from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type
 
 logger = logging.getLogger(__name__)
+
+_OpenAiToolConfigT = TypeVar("_OpenAiToolConfigT", bound=OpenAiToolConfig)
 
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
@@ -39,6 +42,10 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     @property
     def tool_config(self):
         return self._tool_config
+
+    def enrich_openai_tool_schema(self, open_ai_tool: _OpenAiToolConfigT) -> _OpenAiToolConfigT:
+        """Override to add tool-specific schema extensions (e.g. conversation_mode). Default: no-op."""
+        return open_ai_tool
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(

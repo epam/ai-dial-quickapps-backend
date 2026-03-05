@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional, cast
+from typing import Any, Optional, TypeVar, cast
 
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -17,6 +17,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
+from quickapp.config.tools.base import OpenAiToolConfig
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
@@ -24,6 +25,11 @@ from quickapp.dial_deployment_tooling.dial_completion_service import DialComplet
 from .deployment_stage_wrapper import DeploymentStageWrapper
 
 logger = logging.getLogger(__name__)
+
+_OpenAiToolConfigT = TypeVar("_OpenAiToolConfigT", bound=OpenAiToolConfig)
+
+# Description suffix for tools with propagate_history=True (orchestrator awareness, no param)
+_CONVERSATION_HISTORY_DESCRIPTION_SUFFIX = "\n\nThis tool supports conversation history: on each new call, prior assistant and tool messages for this tool are sent automatically."
 
 
 class BaseDeploymentTool(StagedBaseTool):
@@ -53,6 +59,14 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__dial_completion_service: DialCompletionService = dial_completion_service
         self.__content_propagation: Optional[ContentPropagation] = content_propagation
         self.__messages: list[Message] = messages
+
+    def enrich_openai_tool_schema(self, open_ai_tool: _OpenAiToolConfigT) -> _OpenAiToolConfigT:
+        """Append description suffix when propagate_history is True so the orchestrator knows history is sent."""
+        if not self.__content_propagation or not self.__content_propagation.propagate_history:
+            return open_ai_tool
+        func = open_ai_tool.function
+        func.description = (func.description or "").strip() + _CONVERSATION_HISTORY_DESCRIPTION_SUFFIX
+        return open_ai_tool
 
     async def _run_in_stage_async(
         self,

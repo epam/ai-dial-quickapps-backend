@@ -7,10 +7,24 @@ from quickapp.common.file_reference_pattern import strip_file_prefix
 
 
 class AccumulatedToolCall:
+    _REPR_ARGS_MAX_LEN = 120
+
     def __init__(self) -> None:
         self._id: str | None = None
         self._name: str | None = None
         self._arguments: str | None = None
+
+    def __repr__(self) -> str:
+        id_str = self._id if self._id is not None else "<pending>"
+        name_str = self._name if self._name is not None else "<pending>"
+        args_preview: str
+        if self._arguments is None:
+            args_preview = "<pending>"
+        elif len(self._arguments) <= self._REPR_ARGS_MAX_LEN:
+            args_preview = self._arguments
+        else:
+            args_preview = f"{self._arguments[:self._REPR_ARGS_MAX_LEN]}..."
+        return f"AccumulatedToolCall(id={id_str!r}, name={name_str!r}, arguments={args_preview!r})"
 
     @property
     def id(self) -> str:

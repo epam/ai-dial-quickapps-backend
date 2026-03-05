@@ -93,6 +93,7 @@ class AgentModule(Module):
                     "deployment-tool"
                 ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
+                open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
 
