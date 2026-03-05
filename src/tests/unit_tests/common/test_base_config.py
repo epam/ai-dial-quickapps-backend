@@ -1,5 +1,4 @@
 import pytest
-from typing import Optional, List
 from pydantic import BaseModel, Field
 
 from quickapp.common.base_config import (
@@ -155,7 +154,7 @@ class TestModelJsonSchema:
 
             simple_field: str
             nested: NestedModel
-            optional_nested: Optional[NestedModel] = None
+            optional_nested: NestedModel | None = None
 
         schema = TestConfig.model_json_schema()
 
@@ -295,8 +294,8 @@ class TestIntegration:
             number_field: int
             float_field: float = 3.14
             bool_field: bool = True
-            optional_field: Optional[str] = None
-            list_field: List[str] = Field(default_factory=list)
+            optional_field: str | None = None
+            list_field: list[str] = Field(default_factory=list)
 
         schema = ComplexConfig.model_json_schema()
 

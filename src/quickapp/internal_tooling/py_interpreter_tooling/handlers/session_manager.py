@@ -1,5 +1,3 @@
-from typing import Dict, Optional
-
 from aidial_sdk.chat_completion import Message, Role
 from injector import inject
 
@@ -24,12 +22,12 @@ class SessionManager:
         for msg in reversed(self.__messages):
             if msg.role == Role.ASSISTANT and msg.custom_content:
                 state = msg.custom_content.state
-                if isinstance(state, Dict) and state.get(SESSION_ID_KEY):
+                if isinstance(state, dict) and state.get(SESSION_ID_KEY):
                     return state.get(SESSION_ID_KEY)
 
         return None
 
-    async def ensure_valid_session(self, session_id: Optional[str], open_session: bool) -> str:
+    async def ensure_valid_session(self, session_id: str | None, open_session: bool) -> str:
         """Ensures a valid session exists or creates a new one"""
         if not session_id:
             return await self._open_session()
