@@ -1,10 +1,10 @@
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field
 
 
 class CustomFieldsConfig(BaseModel):
-    configuration: Optional[dict[str, Any]] = Field(
+    configuration: dict[str, Any] | None = Field(
         default=None,
         description="The configuration for the custom fields.",
     )

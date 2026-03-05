@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from aidial_sdk.chat_completion import Request
 from aidial_sdk.chat_completion.choice import Choice
@@ -34,7 +33,7 @@ class _RequestContextSetup:
         return self.__config_resolver.resolve_config(application_config)
 
     async def setup(
-        self, request: Request | ConfigurationRequest, choice: Optional[Choice] = None
+        self, request: Request | ConfigurationRequest, choice: Choice | None = None
     ) -> None:
         context = self.__context_provider.get()
         context.api_key = SecretStr(request.api_key)

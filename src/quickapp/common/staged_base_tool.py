@@ -1,6 +1,6 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
-    stage_name_component: Optional[str] = Field(None)
+    stage_name_component: str | None = Field(None)
 
     def __init__(
         self,
@@ -42,7 +42,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
-        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
     ) -> CompletionResult: ...
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
@@ -93,7 +93,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     async def _run_in_stage_report_success(
         self,
         tool_call_id: str,
-        stage_wrapper: Optional[BaseStageWrapper],
+        stage_wrapper: BaseStageWrapper | None,
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:

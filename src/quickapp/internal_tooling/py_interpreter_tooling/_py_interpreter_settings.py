@@ -1,4 +1,4 @@
-from typing import Annotated, Optional
+from typing import Annotated
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -21,7 +21,7 @@ class _PyInterpreterSettings(BaseSettings):
         default=SecretStr(""),
         description="API key for local run of the PyInterpreter",
     )
-    default_session_id: Optional[str] = Field(
+    default_session_id: str | None = Field(
         default=None,
         description="Default session ID for the PyInterpreter",
     )

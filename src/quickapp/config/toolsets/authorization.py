@@ -21,7 +21,7 @@ class BaseAuthorization(BaseModel):
     type: AuthorizationType = Field(description="Type of authorization")
 
 
-from typing import Literal, Optional
+from typing import Literal
 
 from pydantic import Field
 
@@ -50,8 +50,8 @@ class ClientIdSecretAuthorization(BaseAuthorization):
     client_id: str
     client_secret: str
     token_url: str
-    scope: Optional[str] = None
-    aud: Optional[str] = None
+    scope: str | None = None
+    aud: str | None = None
 
 
 class ApiKeyAuthorization(BaseAuthorization):

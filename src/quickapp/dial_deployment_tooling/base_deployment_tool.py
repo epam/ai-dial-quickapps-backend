@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -33,7 +33,7 @@ class BaseDeploymentTool(StagedBaseTool):
         application_id: str,
         application_name: str,
         tool_config: DialDeploymentTool,
-        content_propagation: Optional[ContentPropagation],
+        content_propagation: ContentPropagation | None,
         dial_completion_service: DialCompletionService,
         messages: list[Message],
         perf_timer: PerformanceTimer,
@@ -51,13 +51,13 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__application_id: str = application_id
         self.__application_name: str = application_name
         self.__dial_completion_service: DialCompletionService = dial_completion_service
-        self.__content_propagation: Optional[ContentPropagation] = content_propagation
+        self.__content_propagation: ContentPropagation | None = content_propagation
         self.__messages: list[Message] = messages
 
     async def _run_in_stage_async(
         self,
-        stage_wrapper: Optional[BaseStageWrapper],
-        attachment_urls: Optional[list[str]] = None,
+        stage_wrapper: BaseStageWrapper | None,
+        attachment_urls: list[str] | None = None,
         **kwargs,
     ) -> CompletionResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)

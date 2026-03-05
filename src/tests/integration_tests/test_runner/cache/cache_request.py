@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional, Union, Any
+from typing import Optional, Union
 
 from pydantic.dataclasses import dataclass
 
@@ -12,7 +12,7 @@ class CacheRequest:
     model: str
     temperature: Optional[float]
     user_message: list
-    assistant_message: Optional[Union[str, List[Union[str, dict]]]]
+    assistant_message: Optional[Union[str, list[Union[str, dict]]]]
 
     def __init__(
         self,
@@ -20,7 +20,7 @@ class CacheRequest:
         model: str,
         temperature: Optional[float],
         user_message: list,
-        assistant_message: List[str | None],
+        assistant_message: list[str | None],
     ):
         self.system_message = system_message
         self.model = model

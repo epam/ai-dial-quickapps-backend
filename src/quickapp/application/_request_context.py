@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-from typing import Optional
 
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
@@ -14,7 +13,7 @@ from quickapp.config.application import ApplicationConfig
 # to other parts of the application during the request lifecycle.
 
 
-def _validate_response_format(response_format: Optional[ResponseFormat]) -> None:
+def _validate_response_format(response_format: ResponseFormat | None) -> None:
     """Validate that response_format has the correct structure."""
     if response_format is None:
         return
@@ -29,12 +28,12 @@ def _validate_response_format(response_format: Optional[ResponseFormat]) -> None
 
 @dataclass
 class _RequestContext(MessagesMixin):
-    __choice: Optional[Choice] = None
-    __api_key: Optional[DIAL_API_KEY] = None
-    __application_config: Optional[ApplicationConfig] = None
+    __choice: Choice | None = None
+    __api_key: DIAL_API_KEY | None = None
+    __application_config: ApplicationConfig | None = None
     __bearer_set: bool = False
     __bearer: DIAL_BEARER = None
-    __response_format: Optional[ResponseFormat] = None
+    __response_format: ResponseFormat | None = None
     __forwarded_headers: ForwardedHeaders = field(default=None)
 
     @property
@@ -87,11 +86,11 @@ class _RequestContext(MessagesMixin):
         self.__choice = choice
 
     @property
-    def response_format(self) -> Optional[ResponseFormat]:
+    def response_format(self) -> ResponseFormat | None:
         return self.__response_format
 
     @response_format.setter
-    def response_format(self, response_format: Optional[ResponseFormat]) -> None:
+    def response_format(self, response_format: ResponseFormat | None) -> None:
         if self.__response_format is not None:
             raise RuntimeError("Response format is already set")
         _validate_response_format(response_format)

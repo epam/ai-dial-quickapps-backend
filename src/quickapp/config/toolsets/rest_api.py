@@ -1,4 +1,4 @@
-from typing import Annotated, List, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -14,13 +14,11 @@ from quickapp.config.toolsets.authorization import (
 from quickapp.config.toolsets.base import BaseToolSet
 
 Authorization = Annotated[
-    Union[
-        BasicAuthorization,
-        BearerAuthorization,
-        ClientIdSecretAuthorization,
-        ApiKeyAuthorization,
-        ForwardAuthTokenAuthorization,
-    ],
+    BasicAuthorization
+    | BearerAuthorization
+    | ClientIdSecretAuthorization
+    | ApiKeyAuthorization
+    | ForwardAuthTokenAuthorization,
     Field(discriminator="type"),
 ]
 
@@ -32,6 +30,6 @@ class RestApiToolSet(BaseToolSet):
         default=None,
         description="Default response-as-attachment config for all tools in this toolset.",
     )
-    tools: List[RestApiTool | PredefinedTool] = Field(
+    tools: list[RestApiTool | PredefinedTool] = Field(
         description="Tools with their configurations."
     )

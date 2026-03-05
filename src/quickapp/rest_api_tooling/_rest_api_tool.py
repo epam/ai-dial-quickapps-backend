@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from aidial_sdk.chat_completion import Attachment
@@ -50,7 +50,7 @@ class _RestApiTool(StagedBaseTool):
         self.__forwarded_headers = forwarded_headers
 
     async def _run_in_stage_async(
-        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
     ) -> CompletionResult:
         request_details = (
             self.__request_details_builder.with_url(

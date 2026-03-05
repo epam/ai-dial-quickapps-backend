@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from injector import AssistedBuilder, inject
 
@@ -38,8 +38,8 @@ class _SkillReaderTool(StagedBaseTool):
 
     async def _run_in_stage_async(
         self,
-        stage_wrapper: Optional[BaseStageWrapper] = None,
-        skill_name: Optional[str] = None,
+        stage_wrapper: BaseStageWrapper | None = None,
+        skill_name: str | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:
