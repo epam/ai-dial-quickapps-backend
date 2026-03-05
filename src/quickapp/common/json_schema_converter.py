@@ -7,7 +7,9 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
 )
 
-_ConfigurableSchema = ConfigurableSchemaSimpleType | ConfigurableSchemaObject | ConfigurableSchemaArray
+_ConfigurableSchema = (
+    ConfigurableSchemaSimpleType | ConfigurableSchemaObject | ConfigurableSchemaArray
+)
 
 
 class JsonSchemaConverter:

@@ -1,4 +1,4 @@
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import Field
 
@@ -12,9 +12,9 @@ class DialMCPToolSet(BaseToolSet):
     type: Literal["dial-mcp"] = Field(default="dial-mcp", description="The type of the tool set.")
     # Override name of BaseToolSet. UI team doesn't send us this field.
     name: str = Field(default="untitled-mcp-toolset", description="default name of the toolset")
-    dial_id: str = DialResourceConfigField(
-        description="The Dial ID associated with this MCP toolset."
-    )
+    dial_id: Annotated[
+        str, DialResourceConfigField(description="The Dial ID associated with this MCP toolset.")
+    ]
     # Deprecated. This field is read from DialCore. This value is ignored and should be removed.
     transport: Literal["HTTP", "SSE"] = Field(
         default="HTTP", description="The transport type of the tool set."

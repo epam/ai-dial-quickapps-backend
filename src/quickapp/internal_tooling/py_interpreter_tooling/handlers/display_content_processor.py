@@ -93,7 +93,9 @@ class DisplayContentProcessor:
 
         return attachments
 
-    async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> dict[str, Any]:
+    async def _publish_to_bucket(
+        self, mime_type: str, data: str | dict[str, Any]
+    ) -> dict[str, Any]:
         async with DialCoreClient(
             api_key=self.__api_key, base_url=self.__dial_settings.url
         ) as dial_core:

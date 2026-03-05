@@ -145,7 +145,9 @@ class BaseDeploymentTool(StagedBaseTool):
         return user_msg
 
     @classmethod
-    def _build_assistant_message(cls, content: str, custom_content: CustomContent | None) -> AssistantMessageParam:
+    def _build_assistant_message(
+        cls, content: str, custom_content: CustomContent | None
+    ) -> AssistantMessageParam:
         assistant_msg = AssistantMessageParam(role="assistant", content=content)
 
         if custom_content:
