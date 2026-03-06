@@ -1,10 +1,8 @@
-from typing import Optional
-
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 from pydantic import PrivateAttr
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -14,7 +12,7 @@ from quickapp.config.application import ApplicationConfig
 # to other parts of the application during the request lifecycle.
 
 
-def _validate_response_format(response_format: Optional[ResponseFormat]) -> None:
+def _validate_response_format(response_format: ResponseFormat | None) -> None:
     """Validate that response_format has the correct structure."""
     if response_format is None:
         return
@@ -28,12 +26,13 @@ def _validate_response_format(response_format: Optional[ResponseFormat]) -> None
 
 
 class _RequestContext(MessagesMixin):
-    _choice: Optional[Choice] = PrivateAttr(default=None)
-    _api_key: Optional[DIAL_API_KEY] = PrivateAttr(default=None)
-    _application_config: Optional[ApplicationConfig] = PrivateAttr(default=None)
-    _bearer_set: bool = PrivateAttr(default=False)
-    _bearer: DIAL_BEARER = PrivateAttr(default=None)
-    _response_format: Optional[ResponseFormat] = PrivateAttr(default=None)
+    _choice: Choice | None = None
+    _api_key: DIAL_API_KEY | None = None
+    _application_config: ApplicationConfig | None = None
+    _bearer_set: bool = False
+    _bearer: DIAL_BEARER = None
+    _response_format: ResponseFormat | None = None
+    _forwarded_headers: ForwardedHeaders | None = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -85,12 +84,22 @@ class _RequestContext(MessagesMixin):
         self._choice = choice
 
     @property
-    def response_format(self) -> Optional[ResponseFormat]:
+    def response_format(self) -> ResponseFormat | None:
         return self._response_format
 
     @response_format.setter
-    def response_format(self, response_format: Optional[ResponseFormat]) -> None:
+    def response_format(self, response_format: ResponseFormat | None) -> None:
         if self._response_format is not None:
             raise RuntimeError("Response format is already set")
         _validate_response_format(response_format)
         self._response_format = response_format
+
+    @property
+    def forwarded_headers(self) -> ForwardedHeaders:
+        return self._forwarded_headers
+
+    @forwarded_headers.setter
+    def forwarded_headers(self, value: ForwardedHeaders) -> None:
+        if self._forwarded_headers is not None:
+            raise RuntimeError("Forwarded headers are already set")
+        self._forwarded_headers = value

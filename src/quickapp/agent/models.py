@@ -1,5 +1,5 @@
-from typing import Any
+from typing import Any, TypeAlias
 
 TOOL_EXECUTION_HISTORY: str = 'tool_execution_history'
 
-OpenAiToolConfigDict = dict[str, Any]
+OpenAiToolConfigDict: TypeAlias = dict[str, Any]

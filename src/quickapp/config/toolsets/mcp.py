@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -14,9 +14,7 @@ from quickapp.config.toolsets.base import BaseToolSet
 from quickapp.config.toolsets.rest_api import BearerAuthorization
 
 Authorization = Annotated[
-    Union[
-        BearerAuthorization, MCPApiKeyAuthorization, ClientIdSecretAuthorization, BasicAuthorization
-    ],
+    BearerAuthorization | MCPApiKeyAuthorization | ClientIdSecretAuthorization | BasicAuthorization,
     Field(discriminator="type"),
 ]
 

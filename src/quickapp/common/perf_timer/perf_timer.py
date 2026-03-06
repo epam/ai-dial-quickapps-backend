@@ -1,12 +1,19 @@
-from typing import Any, Dict, Optional
+from typing import Any, TypedDict
 
 from quickapp.common.perf_timer.period import Period
 
 
+class _PeriodData(TypedDict):
+    start_time: float | None
+    end_time: float | None
+    elapsed: float
+    milestones: list[tuple[str, float]]
+
+
 class PerformanceTimer:
-    def __init__(self, name: Optional[str] = None) -> None:
+    def __init__(self, name: str | None = None) -> None:
         self.name = name
-        self._periods: Dict[str, Period] = {}
+        self._periods: dict[str, Period] = {}
 
     def start_period(self, key: str, level: int = 1) -> None:
         p = self._periods.get(key)
@@ -30,7 +37,7 @@ class PerformanceTimer:
             raise KeyError(f"Period '{key}' does not exist.")
         return p
 
-    def get_data(self) -> Dict[str, Any]:
+    def get_data(self) -> dict[str, _PeriodData]:
         return {
             key: {
                 "start_time": p.start_time,
@@ -97,7 +104,7 @@ class PerformanceTimer:
             return round(val, 2) if val is not None else None
 
         now_monotonic = time.perf_counter()
-        report: Dict[str, Any] = {"periods": {}}
+        report: dict[str, Any] = {"periods": {}}
 
         for key, p in self._periods.items():
             start = p.start_time
@@ -109,7 +116,7 @@ class PerformanceTimer:
             else:
                 total_elapsed = period_end - start
 
-            period_entry: Dict[str, Any] = {
+            period_entry: dict[str, Any] = {
                 "start_time": _r(start),
                 "end_time": _r(end),
                 "total_elapsed": _r(total_elapsed),

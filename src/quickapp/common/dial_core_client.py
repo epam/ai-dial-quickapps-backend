@@ -1,7 +1,7 @@
 import json
 import logging
 from io import BytesIO
-from typing import Any, Dict, Optional
+from typing import Any
 
 import httpx
 from aidial_client.types.deployment import Features
@@ -66,7 +66,7 @@ class DialCoreClient:
         if self._client:
             await self._client.aclose()
 
-    async def _get_bucket_json(self) -> Dict[str, str]:
+    async def _get_bucket_json(self) -> dict[str, str]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -83,7 +83,7 @@ class DialCoreClient:
         else:
             raise ValueError("No appdata or bucket found")
 
-    async def get_metadata(self, path) -> Dict[str, Any]:
+    async def get_metadata(self, path) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -119,7 +119,7 @@ class DialCoreClient:
 
     async def put_file(
         self, name: str, mime_type: str, content: BytesIO, path: str | None = None
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         if not path:
             path = await self.get_bucket()
 
@@ -171,7 +171,7 @@ class DialCoreClient:
         response.raise_for_status()
         return response.content
 
-    async def get_deployment_info(self, deployment: str) -> Dict[str, Any]:
+    async def get_deployment_info(self, deployment: str) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -179,7 +179,7 @@ class DialCoreClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_toolset_info(self, toolset: str) -> Dict[str, Any]:
+    async def get_toolset_info(self, toolset: str) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -187,7 +187,7 @@ class DialCoreClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_application_info(self, deployment: str) -> Dict[str, Any]:
+    async def get_application_info(self, deployment: str) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -195,7 +195,7 @@ class DialCoreClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_deployment_config(self, deployment: str) -> Dict[str, Any]:
+    async def get_deployment_config(self, deployment: str) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -208,7 +208,7 @@ class DialCoreClient:
         to_json = file.decode(encoding='utf8')
         return json.loads(to_json)
 
-    async def get_model_pricing(self, model_name: str) -> Dict[str, Any]:
+    async def get_model_pricing(self, model_name: str) -> dict[str, Any]:
         assert (
             self._client is not None
         ), "HTTP client is not initialized. Use this class within a context manager."
@@ -226,9 +226,9 @@ class DialCoreClient:
         self,
         name: str,
         file_bytes: bytes,
-        mime_type: Optional[str] = None,
-        path: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        mime_type: str | None = None,
+        path: str | None = None,
+    ) -> dict[str, Any]:
         """
         Upload raw bytes as a file. MIME type defaults to 'application/octet-stream'
         if not provided.

@@ -25,6 +25,12 @@ class ContextEntry(BaseModel):
 
 class AvailableContextToolResponse(BaseModel):
     entries: list[ContextEntry] = Field()
+    disclaimer: str = Field(
+        default=(
+            "This information is related only to the files configured by admin. It does not contain any information "
+            "on attachments from user or from tool results."
+        )
+    )
 
 
 def build_context_entries(

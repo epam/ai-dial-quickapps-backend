@@ -93,7 +93,9 @@ class DisplayContentProcessor:
 
         return attachments
 
-    async def _publish_to_bucket(self, mime_type: str, data: Any) -> dict[str, Any]:
+    async def _publish_to_bucket(
+        self, mime_type: str, data: str | dict[str, Any]
+    ) -> dict[str, Any]:
         async with DialCoreClient(
             api_key=self.__api_key, base_url=self.__dial_settings.url
         ) as dial_core:
@@ -105,7 +107,7 @@ class DisplayContentProcessor:
                 content=self._prepare_content(mime_type, data),
             )
 
-    def _prepare_content(self, mime_type: str, data: Any) -> bytes:
+    def _prepare_content(self, mime_type: str, data: str | dict[str, Any]) -> bytes:
         """Prepares content for storage based on mime type"""
         if mime_type in (MediaTypes.PNG, MediaTypes.JPEG, MediaTypes.GIF):
             if isinstance(data, dict):

@@ -2,7 +2,7 @@ import copy
 
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
-from openai import AsyncAzureOpenAI
+from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
@@ -12,7 +12,7 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.dial_settings import DialSettings
@@ -70,12 +70,14 @@ class AgentModule(Module):
         dial_settings: DialSettings,
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
+        forwarded_headers: ForwardedHeaders,
     ) -> AsyncAzureOpenAI:
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             azure_deployment=config.orchestrator.deployment.name,
             api_version=dial_settings.api_version,
+            default_headers=forwarded_headers or None,
         )
         return azure_client
 

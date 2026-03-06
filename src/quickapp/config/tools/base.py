@@ -1,7 +1,7 @@
 import json
 from enum import Enum
 from hashlib import sha256
-from typing import Annotated, Any, Generic, List, Literal, Optional, TypeVar, Union
+from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -40,7 +40,7 @@ class JsonSchemaSimpleType(BaseModel):
         JsonTypeEnum.string, JsonTypeEnum.number, JsonTypeEnum.integer, JsonTypeEnum.boolean
     ]
     description: str | None = None
-    enum: Optional[List[Any]] = None
+    enum: list[Any] | None = None
 
 
 class JsonSchemaObject(BaseModel):
@@ -53,7 +53,7 @@ class JsonSchemaObject(BaseModel):
         ],
     ]
     description: str
-    required: Optional[List[str]] = None
+    required: list[str] | None = None
 
 
 class JsonSchemaArray(BaseModel):

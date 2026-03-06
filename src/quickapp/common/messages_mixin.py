@@ -1,5 +1,4 @@
 import logging
-from typing import List, Optional
 
 from aidial_sdk.chat_completion import Message
 from pydantic import BaseModel, PrivateAttr
@@ -12,7 +11,7 @@ class MessagesMixin(BaseModel):
     Mixin to handle message appending, extending, and access.
     """
 
-    _messages: Optional[list[Message]] = PrivateAttr(default=None)
+    _messages: list[Message] | None = None
 
     def append_message(self, message: Message) -> None:
         if not self._messages:
@@ -20,7 +19,7 @@ class MessagesMixin(BaseModel):
         self._messages.append(message)
         logger.debug("Appending messages")
 
-    def extend_messages(self, messages: List[Message]) -> None:
+    def extend_messages(self, messages: list[Message]) -> None:
         if not self._messages:
             raise RuntimeError("messages are not set")
         self._messages.extend(messages)

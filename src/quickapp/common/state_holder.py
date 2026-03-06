@@ -1,6 +1,6 @@
 import logging
 from hashlib import sha256
-from typing import Any, List, Optional
+from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, ToolCall
 from pydantic import BaseModel, Field, PrivateAttr
@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 
 
 class StateHolder(BaseModel):
-    attachments: List[Attachment] = Field(default_factory=list)
-    tool_calls: List[ToolCall] = Field(default_factory=list)
+    attachments: list[Attachment] = Field(default_factory=list)
+    tool_calls: list[ToolCall] = Field(default_factory=list)
     _state: dict[str, Any] = PrivateAttr(default_factory=dict)
     _file_data_dict: dict[str, bytes] = PrivateAttr(default_factory=dict)
 
@@ -22,9 +22,7 @@ class StateHolder(BaseModel):
         logger.debug(f"Read state {self._state}")
         return self._state
 
-    def get_file_data(
-        self, url: Optional[str] = None, key: Optional[str] = None
-    ) -> Optional[bytes]:
+    def get_file_data(self, url: str | None = None, key: str | None = None) -> bytes | None:
         if not url and not key:
             raise RuntimeError("Either url or key should be defined.")
         if not key and url:

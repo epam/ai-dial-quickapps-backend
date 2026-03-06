@@ -4,7 +4,7 @@ import json
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import pytest
 import uvicorn
@@ -127,7 +127,7 @@ class TestRunner:
     @staticmethod
     async def execute_test_case(
         client: TestClient, test_case: TstCase, ts: TestStats, app_config: ApplicationConfig
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         messages = []
         all_failures = []
         headers = create_request_headers(api_key=TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config)
@@ -243,7 +243,7 @@ class TestRunner:
         return all_failures
 
     @staticmethod
-    def collect_warnings(recwarn, ts: TestStats) -> List[Failure]:
+    def collect_warnings(recwarn, ts: TestStats) -> list[Failure]:
         failures = []
         specific_warnings = [
             w for w in recwarn.list if TestConfig.WARNING_MESSAGE in str(w.message)
@@ -254,7 +254,7 @@ class TestRunner:
         return failures
 
     @staticmethod
-    def check_test_outcome(failures: List[Failure]):
+    def check_test_outcome(failures: list[Failure]):
         if failures:
             error_message = "\n".join(map(str, failures))
             pytest.fail(f"Test failed with the following errors:\n{error_message}")
@@ -285,7 +285,7 @@ def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
     model: str = None,
-    models_applicable_for_test: List[str] = None,
+    models_applicable_for_test: list[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,

@@ -1,9 +1,8 @@
-import asyncio
 import logging
 import os
 from collections import defaultdict
 from enum import Enum
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 from pydantic import BaseModel, Field
@@ -62,7 +61,7 @@ class TestStats(BaseModel):
 
 
 class SuiteStats(BaseModel):
-    test_stat_list: List[TestStats] = Field(default_factory=list)
+    test_stat_list: list[TestStats] = Field(default_factory=list)
 
     @property
     def passed(self):

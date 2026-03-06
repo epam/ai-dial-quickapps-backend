@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -38,4 +37,4 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     orchestrator: OrchestratorConfig = Field(description="The configuration for the orchestrator.")
     contexts: list[Context] = Field(description="The list of contexts.")
     tool_sets: list[ToolSet] = Field(description="The list of tool sets.")
-    starters: Optional[list[str]] = Field(description="The list of starter buttons.", default=None)
+    starters: list[str] | None = Field(description="The list of starter buttons.", default=None)

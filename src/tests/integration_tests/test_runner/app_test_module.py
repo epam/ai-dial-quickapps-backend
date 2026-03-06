@@ -8,12 +8,20 @@ from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
+from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.file_transfer import FileTransferModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings, _PY_INTERPRETER_API_KEY
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
+    _PyInterpreterClient,
+)
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
+    _PyInterpreterSettings,
+    _PY_INTERPRETER_API_KEY,
+)
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.skills.skills_module import SkillsModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -33,7 +41,7 @@ class PyInterpreterTestModule(InternalToolModule):
     @singleton
     @provider
     def _provide_py_interpreter_settings(
-            self, dial_settings: DialSettings
+        self, dial_settings: DialSettings
     ) -> _PyInterpreterSettings:
         py_interpreter_settings = _PyInterpreterSettings()
         if not py_interpreter_settings.url:
@@ -43,7 +51,7 @@ class PyInterpreterTestModule(InternalToolModule):
     @request_scope
     @provider
     def _provide_api_key(
-            self, api_key: DIAL_API_KEY, py_interpreter_settings: _PyInterpreterSettings
+        self, api_key: DIAL_API_KEY, py_interpreter_settings: _PyInterpreterSettings
     ) -> _PY_INTERPRETER_API_KEY:
         if py_interpreter_settings.local_run:
             if not py_interpreter_settings.api_key:
@@ -65,11 +73,12 @@ class TestApp(FastAPI):
                 MCPToolingModule(),
                 PyInterpreterTestModule(),
                 AttachmentProcessingModule(),
+                DialCoreServicesModule(),
+                FileTransferModule(),
+                SkillsModule(),
             ]
         )
-        dial_settings = DialSettings(
-            url=TestConfig.get_mock_dial_core_url(port)
-        )
+        dial_settings = DialSettings(url=TestConfig.get_mock_dial_core_url(port))
         injector.binder.bind(DialSettings, to=dial_settings, scope=singleton)
 
         return injector.get(FastAPI)

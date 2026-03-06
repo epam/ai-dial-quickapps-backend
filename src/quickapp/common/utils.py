@@ -2,7 +2,7 @@ import logging
 import mimetypes
 import re
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 
@@ -58,7 +58,7 @@ def sanitize_filename(filename: str, replacement: str = "-") -> str:
     return sanitized
 
 
-def generate_attachment_filename(mime_type: Optional[str], base_filename: str = "quick-app"):
+def generate_attachment_filename(mime_type: str | None, base_filename: str = "quick-app"):
     extension = mimetypes.guess_extension(mime_type) if mime_type is not None else ""
     timestamp = datetime.now().isoformat(timespec='microseconds')
     filename = f"{base_filename}-{timestamp}{extension if extension is not None else ''}"

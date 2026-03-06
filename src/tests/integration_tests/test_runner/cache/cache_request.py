@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import List, Optional, Union, Any
+from typing import Optional, Union
 
 from pydantic import BaseModel
 
@@ -8,11 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 class CacheRequest(BaseModel):
-    system_message: Optional[str] = None
+    system_message: str | None = None
     model: str = ""
-    temperature: Optional[float] = None
+    temperature: float | None = None
     user_message: list = []
-    assistant_message: Optional[Union[str, List[Union[str, dict]]]] = None
+    assistant_message: Optional[Union[str, list[Union[str, dict]]]] = None
 
     @classmethod
     def from_request_body(cls, body: bytes) -> "CacheRequest":

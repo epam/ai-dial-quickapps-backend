@@ -1,7 +1,8 @@
 import datetime
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from collections.abc import Callable
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -10,10 +11,10 @@ from tests.integration_tests.test_runner.similarity_checker import get_similarit
 
 
 class Failure(BaseModel):
-    actual: Optional[Any] = None
-    expected: Optional[Any] = None
-    comment: Optional[str] = None
-    similarity: Optional[str] = None
+    actual: Any | None
+    expected: Any | None
+    comment: str | None
+    similarity: str = None
 
     def _format_expected(self):
         if isinstance(self.expected, str):
@@ -38,7 +39,7 @@ class BaseCheck(ABC):
         self.similarity_threshold = similarity_threshold
 
     @abstractmethod
-    def check(self, actual_value: Any) -> List[Failure]:
+    def check(self, actual_value: Any) -> list[Failure]:
         pass
 
 
@@ -57,7 +58,7 @@ class StrictArgument(Argument):
         super().__init__(name, **kwargs)
         self.expected_value = value
 
-    def check(self, actual_value: str) -> List[Failure]:
+    def check(self, actual_value: str) -> list[Failure]:
         if self.expected_value != actual_value:
             return [
                 Failure(
@@ -74,11 +75,11 @@ class StrictArgument(Argument):
 
 
 class SoftArgument(Argument):
-    def __init__(self, name: str, values: List[str], **kwargs):
+    def __init__(self, name: str, values: list[str], **kwargs):
         super().__init__(name, **kwargs)
         self.expected_values = values
 
-    def check(self, actual_value: str) -> List[Failure]:
+    def check(self, actual_value: str) -> list[Failure]:
         return check_multiple_alternatives(
             actual_value, self.expected_values, self.failure_message, self.similarity_threshold
         )
@@ -89,12 +90,12 @@ class SoftArgument(Argument):
 
 
 class CustomFunctionArgument(Argument):
-    def __init__(self, name: str, values: List[str], func: Callable[[str, str], bool], **kwargs):
+    def __init__(self, name: str, values: list[str], func: Callable[[str, str], bool], **kwargs):
         super().__init__(name, **kwargs)
         self.expected_values = values
         self.custom_function = func
 
-    def check(self, actual_value: str) -> List[Failure]:
+    def check(self, actual_value: str) -> list[Failure]:
         return [
             Failure(
                 actual=actual_value,
@@ -121,11 +122,11 @@ class ToolCall:
         self.name = name
         self.min_calls = min_calls
         self.max_calls = max_calls
-        self.arguments: Dict[str, Argument] = {}
+        self.arguments: dict[str, Argument] = {}
         self.similarity_threshold = similarity_threshold
 
     def add_soft_argument_check(
-        self, name: str, value: List[str], similarity_threshold: float = None
+        self, name: str, value: list[str], similarity_threshold: float = None
     ):
         if not similarity_threshold:
             similarity_threshold = self.similarity_threshold
@@ -137,7 +138,7 @@ class ToolCall:
         return self
 
     def add_custom_function_argument_check(
-        self, name: str, value: List[str], func: Callable[[str, str], bool]
+        self, name: str, value: list[str], func: Callable[[str, str], bool]
     ):
         self.arguments[name] = CustomFunctionArgument(name, value, func=func)
         return self
@@ -171,10 +172,10 @@ class UserMessage(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     user_message: str
-    attachments: List[Path] | None = None
-    tool_calls: List[ToolCall] | None = None
-    attachment_checks: List[AttachmentCheck] | None = None
-    answer: List[str] | None = None
+    attachments: list[Path] | None = None
+    tool_calls: list[ToolCall] | None = None
+    attachment_checks: list[AttachmentCheck] | None = None
+    answer: list[str] | None = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.attachments is None:
@@ -191,11 +192,11 @@ class TstCase:
         name: str,
         description: str,
         similarity_threshold: float = SimilarityThreshold.DEFAULT.value,
-        response_format: Dict[str, Any] | None = None,
+        response_format: dict[str, Any] | None = None,
     ):
         self.name = name
         self.description = description
-        self.messages: List[UserMessage] = []
+        self.messages: list[UserMessage] = []
         self.mock_date = datetime.date.today()
         self.similarity_threshold = similarity_threshold
         self.py_interpreter_session_flow = False
@@ -204,10 +205,10 @@ class TstCase:
     def add_user_message(
         self,
         user_message: str,
-        attachments: List[Path] | None = None,
-        tool_calls: List[ToolCall] | None = None,
-        attachment_checks: List[AttachmentCheck] | None = None,
-        answer: List[str] | None = None,
+        attachments: list[Path] | None = None,
+        tool_calls: list[ToolCall] | None = None,
+        attachment_checks: list[AttachmentCheck] | None = None,
+        answer: list[str] | None = None,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         self.messages.append(
@@ -221,7 +222,7 @@ class TstCase:
         )
         return self
 
-    def _adjust_thresholds(self, tool_calls: List[ToolCall], attachments: List[AttachmentCheck]):
+    def _adjust_thresholds(self, tool_calls: list[ToolCall], attachments: list[AttachmentCheck]):
         if tool_calls:
             for tool_call in tool_calls:
                 if tool_call.similarity_threshold == SimilarityThreshold.DEFAULT.value:
@@ -249,8 +250,8 @@ class TstCase:
 
 
 def check_multiple_alternatives(
-    actual_value: str, expected_values: List[str], failure_message: str, similarity_threshold: float
-) -> List[Failure]:
+    actual_value: str, expected_values: list[str], failure_message: str, similarity_threshold: float
+) -> list[Failure]:
     """
     Check if actual value matches any of the expected values within similarity threshold.
     """
@@ -272,7 +273,7 @@ def check_multiple_alternatives(
 
 def check_similarity(
     actual: str, expected: str, failure_message: str, similarity_threshold: float
-) -> List[Failure]:
+) -> list[Failure]:
     """
     Check similarity between actual and expected text.
     """

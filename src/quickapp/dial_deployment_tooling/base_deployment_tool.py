@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, Optional, cast
+from typing import Any, cast
 
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -8,14 +8,16 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from aidial_sdk.chat_completion import Message, Role
+from aidial_sdk.chat_completion import CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
+from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
@@ -32,29 +34,31 @@ class BaseDeploymentTool(StagedBaseTool):
         application_id: str,
         application_name: str,
         tool_config: DialDeploymentTool,
-        content_propagation: Optional[ContentPropagation],
+        content_propagation: ContentPropagation | None,
         dial_completion_service: DialCompletionService,
         messages: list[Message],
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
             **kwargs,
         )
         self.__application_id: str = application_id
         self.__application_name: str = application_name
         self.__dial_completion_service: DialCompletionService = dial_completion_service
-        self.__content_propagation: Optional[ContentPropagation] = content_propagation
+        self.__content_propagation: ContentPropagation | None = content_propagation
         self.__messages: list[Message] = messages
 
     async def _run_in_stage_async(
         self,
-        stage_wrapper: Optional[BaseStageWrapper],
-        attachment_urls: Optional[list[str]] = None,
+        stage_wrapper: BaseStageWrapper | None,
+        attachment_urls: list[str] | None = None,
         **kwargs,
     ) -> CompletionResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
@@ -87,7 +91,7 @@ class BaseDeploymentTool(StagedBaseTool):
             return []
 
         # Build map: tool_call_id -> (content, custom_content)
-        tool_result_by_id: dict[str, tuple[str, Any]] = {}
+        tool_result_by_id: dict[str, tuple[str, CustomContent | None]] = {}
         for msg in self.__messages:
             if msg.role == Role.TOOL and msg.tool_call_id and msg.content:
                 content = str(msg.content) if not isinstance(msg.content, str) else msg.content
@@ -141,7 +145,9 @@ class BaseDeploymentTool(StagedBaseTool):
         return user_msg
 
     @classmethod
-    def _build_assistant_message(cls, content: str, custom_content: Any) -> AssistantMessageParam:
+    def _build_assistant_message(
+        cls, content: str, custom_content: CustomContent | None
+    ) -> AssistantMessageParam:
         assistant_msg = AssistantMessageParam(role="assistant", content=content)
 
         if custom_content:
@@ -157,15 +163,14 @@ class BaseDeploymentTool(StagedBaseTool):
 
         return assistant_msg
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        kwargs = await super()._pre_process_params(**kwargs)
 
         prepared: dict[str, Any] = {}
 
         # If tool config defines defaults, normalize them first
-        if isinstance(self.tool_config, DialDeploymentTool):
-            tool_config = cast(DialDeploymentTool, self.tool_config)
-            params = tool_config.deployment.parameters
-            self._merge_to_prepared_params(params, prepared)
+        params = self.tool_config.deployment.parameters
+        self._merge_to_prepared_params(params, prepared)
 
         # Now process runtime kwargs - these should override defaults
         prepared.update(kwargs)
@@ -175,7 +180,7 @@ class BaseDeploymentTool(StagedBaseTool):
         return prepared
 
     @staticmethod
-    def _merge_to_prepared_params(params: Any, prepared: dict[str, Any]):
+    def _merge_to_prepared_params(params: DialDeploymentParameters, prepared: dict[str, Any]):
         """Merge deployment parameters into a plain dict. Grouping into extra_body is done in DialCompletionService."""
         params_dict = to_plain_dict(params)
         if isinstance(params_dict, dict):
