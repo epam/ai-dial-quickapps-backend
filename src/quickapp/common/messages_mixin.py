@@ -1,7 +1,7 @@
 import logging
 
 from aidial_sdk.chat_completion import Message
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
-from pydantic import PrivateAttr
 
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
