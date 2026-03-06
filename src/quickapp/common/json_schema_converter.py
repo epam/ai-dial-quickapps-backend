@@ -7,12 +7,16 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
 )
 
+_ConfigurableSchema = (
+    ConfigurableSchemaSimpleType | ConfigurableSchemaObject | ConfigurableSchemaArray
+)
+
 
 class JsonSchemaConverter:
     """Utility class for converting JSON schema dictionaries to ConfigurableSchema objects."""
 
     @staticmethod
-    def _normalize_type(type_field: Any) -> tuple[str | None, bool]:
+    def _normalize_type(type_field: str | list[str] | None) -> tuple[str | None, bool]:
         """
         Normalize the 'type' field which can be a str or a list (e.g. ['string', 'null']).
         Returns (primary_type_or_None, is_nullable).
@@ -77,7 +81,7 @@ class JsonSchemaConverter:
     @staticmethod
     def _build_schema_from_definition(
         def_dict: dict[str, Any], name: str | None = None, root_schema: dict[str, Any] | None = None
-    ) -> Any:
+    ) -> _ConfigurableSchema:
         """
         Build and return a ConfigurableSchema* instance from a single property/items definition.
         This centralizes the handling for simple types, objects and arrays (including nested arrays).
@@ -157,7 +161,7 @@ class JsonSchemaConverter:
     @staticmethod
     def convert_schema_to_properties(
         schema_dict: dict[str, Any], root_schema: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
+    ) -> dict[str, _ConfigurableSchema]:
         """
         Convert a JSON schema dictionary to ConfigurableSchema* properties.
 
@@ -169,7 +173,7 @@ class JsonSchemaConverter:
         Returns:
             Dictionary of converted properties compatible with OpenAiToolFunctionParameters
         """
-        properties: dict[str, Any] = {}
+        properties: dict[str, _ConfigurableSchema] = {}
 
         # Preserve the original root for resolving internal refs
         original_root = root_schema or schema_dict

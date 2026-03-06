@@ -111,7 +111,7 @@ class ToolConfigCoreService:
             ),
         )
 
-        properties: dict[str, Any] = {}
+        properties: dict[str, ConfigurableSchemaSimpleType | ConfigurableSchemaArray] = {}
         required_params: list[str] = []
         properties["query"] = ConfigurableSchemaSimpleType(
             type=JsonTypeEnum.string,

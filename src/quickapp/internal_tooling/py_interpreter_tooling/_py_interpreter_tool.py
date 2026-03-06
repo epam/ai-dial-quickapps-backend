@@ -129,7 +129,7 @@ class _PyInterpreterTool(StagedBaseTool):
 
         except _PyInterpreterError as e:
             result = CompletionResult(
-                content=e,
+                content=str(e),
                 content_type=MediaTypes.JSON,
                 attachments=None,
             )

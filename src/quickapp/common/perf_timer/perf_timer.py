@@ -1,6 +1,13 @@
-from typing import Any
+from typing import Any, TypedDict
 
 from quickapp.common.perf_timer.period import Period
+
+
+class _PeriodData(TypedDict):
+    start_time: float | None
+    end_time: float | None
+    elapsed: float
+    milestones: list[tuple[str, float]]
 
 
 class PerformanceTimer:
@@ -30,7 +37,7 @@ class PerformanceTimer:
             raise KeyError(f"Period '{key}' does not exist.")
         return p
 
-    def get_data(self) -> dict[str, Any]:
+    def get_data(self) -> dict[str, _PeriodData]:
         return {
             key: {
                 "start_time": p.start_time,

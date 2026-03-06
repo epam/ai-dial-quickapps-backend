@@ -65,7 +65,7 @@ DialPropertyKind = Literal["client", "server"]
 
 def _dial_config_field(
     default: Any = ..., *, property_kind: DialPropertyKind = "server", **kwargs
-) -> Any:
+) -> FieldInfo:
     """
     Create a Pydantic Field with DIAL-specific metadata.
 
@@ -96,7 +96,7 @@ def _dial_config_field(
     return Field(default, **kwargs)
 
 
-def _dial_resource_config_field(default: Any = ..., **kwargs) -> Any:
+def _dial_resource_config_field(default: Any = ..., **kwargs) -> FieldInfo:
     """
     Create a Pydantic Field to mark DIAL resources.
 
@@ -125,7 +125,7 @@ def _dial_resource_config_field(default: Any = ..., **kwargs) -> Any:
     return Field(default, **kwargs)
 
 
-def _dial_file_config_field(default: Any = ..., **kwargs) -> Any:
+def _dial_file_config_field(default: Any = ..., **kwargs) -> FieldInfo:
     """
     Create a Pydantic Field for DIAL file URLs with DIAL-specific metadata.
 

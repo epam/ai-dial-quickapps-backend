@@ -7,7 +7,7 @@ from quickapp.common.base_config import DialFileConfigField
 
 class FileContextConfig(BaseModel):
     type: Literal["file"] = Field(default="file", description="The type of the context.")
-    url: str = DialFileConfigField(description="Relative file URL in DIAL")
+    url: Annotated[str, DialFileConfigField(description="Relative file URL in DIAL")]
     description: str | None = Field(
         default=None, description="The description of the file context."
     )

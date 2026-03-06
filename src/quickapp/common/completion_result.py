@@ -8,7 +8,7 @@ from quickapp.common.deployment_usage import DeploymentUsage
 
 class CompletionResult(BaseModel):
     tool_call_id: str | None = None
-    content: Any
+    content: str
     content_type: str
     attachments: list[Attachment] | None = None
     state: dict[str, Any] | None = None
