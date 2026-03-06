@@ -46,7 +46,7 @@ class ResponseValidator:
         if not content or not content.strip():
             logger.warning("Response content is empty or only whitespace")
             ts.increment_failure(FailureReason.ANSWER)
-            failures.append(Failure(content, "non-empty JSON", "Response content is empty"))
+            failures.append(Failure(actual=content, expected="non-empty JSON", comment="Response content is empty"))
             return failures
 
         # Check if response is valid JSON
@@ -57,7 +57,7 @@ class ResponseValidator:
             logger.warning("Response is not valid JSON: %s", e)
             ts.increment_failure(FailureReason.ANSWER)
             failures.append(
-                Failure(content, "valid JSON", f"Response is not valid JSON: {str(e)}")
+                Failure(actual=content, expected="valid JSON", comment=f"Response is not valid JSON: {str(e)}")
             )
             return failures
 
@@ -107,9 +107,9 @@ class ResponseValidator:
                 ts.increment_failure(FailureReason.ANSWER)
                 failures.append(
                     Failure(
-                        type(data).__name__,
-                        schema_type,
-                        f"Type mismatch at {path}: expected {schema_type}",
+                        actual=type(data).__name__,
+                        expected=schema_type,
+                        comment=f"Type mismatch at {path}: expected {schema_type}",
                     )
                 )
                 return failures
@@ -122,9 +122,9 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ANSWER)
                     failures.append(
                         Failure(
-                            list(data.keys()),
-                            req_field,
-                            f"Required field '{req_field}' missing at {path}",
+                            actual=list(data.keys()),
+                            expected=req_field,
+                            comment=f"Required field '{req_field}' missing at {path}",
                         )
                     )
 
@@ -238,7 +238,9 @@ class ResponseValidator:
         failures = []
         similarity = get_similarity(actual, expected)
         if similarity < similarity_threshold:
-            failures.append(Failure(actual, expected, failure_message, str(similarity)))
+            failures.append(
+            Failure(actual=actual, expected=expected, comment=failure_message, similarity=str(similarity))
+        )
         return failures
 
     @staticmethod
@@ -315,18 +317,18 @@ class ResponseValidator:
             if call_count < expected.min_calls:
                 failures.append(
                     Failure(
-                        call_count,
-                        f"{expected.min_calls}-{expected.max_calls}",
-                        f"'{expected.name}' called {call_count} times (min {expected.min_calls} required)",
+                        actual=call_count,
+                        expected=f"{expected.min_calls}-{expected.max_calls}",
+                        comment=f"'{expected.name}' called {call_count} times (min {expected.min_calls} required)",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_COUNT)
             if call_count > expected.max_calls:
                 failures.append(
                     Failure(
-                        call_count,
-                        f"{expected.min_calls}-{expected.max_calls}",
-                        f"'{expected.name}' called {call_count} times (max {expected.max_calls} allowed)",
+                        actual=call_count,
+                        expected=f"{expected.min_calls}-{expected.max_calls}",
+                        comment=f"'{expected.name}' called {call_count} times (max {expected.max_calls} allowed)",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_COUNT)
@@ -383,9 +385,9 @@ class ResponseValidator:
             if actual.name not in expected_names:
                 failures.append(
                     Failure(
-                        actual.name,
-                        "No unexpected tools",
-                        f"Unexpected tool '{actual.name}' called",
+                        actual=actual.name,
+                        expected="No unexpected tools",
+                        comment=f"Unexpected tool '{actual.name}' called",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_MISMATCH)
@@ -414,7 +416,7 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ARGUMENTS)
             else:
                 failures.append(
-                    Failure(None, expected_value, f"Argument '{field}' missing in response")
+                    Failure(actual=None, expected=expected_value, comment=f"Argument '{field}' missing in response")
                 )
         return failures
 
@@ -455,9 +457,9 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ATTACHMENT)
                 failures.append(
                     Failure(
-                        [attachment.__dict__ for attachment in attachments],
-                        expected_attachment.__dict__,
-                        "Expected attachment not found in actual attachments",
+                        actual=[attachment.__dict__ for attachment in attachments],
+                        expected=expected_attachment.__dict__,
+                        comment="Expected attachment not found in actual attachments",
                     )
                 )
 

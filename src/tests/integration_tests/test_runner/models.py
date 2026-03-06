@@ -1,16 +1,16 @@
 import datetime
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any
+
+from pydantic import BaseModel, ConfigDict
 
 from tests.integration_tests.test_runner.config import SimilarityThreshold
 from tests.integration_tests.test_runner.similarity_checker import get_similarity, get_similarity_alternatives
 
 
-@dataclass
-class Failure:
+class Failure(BaseModel):
     actual: Any | None
     expected: Any | None
     comment: str | None
@@ -60,7 +60,13 @@ class StrictArgument(Argument):
 
     def check(self, actual_value: str) -> list[Failure]:
         if self.expected_value != actual_value:
-            return [Failure(actual_value, self.expected_value, self.failure_message)]
+            return [
+                Failure(
+                    actual=actual_value,
+                    expected=self.expected_value,
+                    comment=self.failure_message,
+                )
+            ]
         return []
 
     def __str__(self):
@@ -91,7 +97,11 @@ class CustomFunctionArgument(Argument):
 
     def check(self, actual_value: str) -> list[Failure]:
         return [
-            Failure(actual_value, self.expected_values, self.failure_message)
+            Failure(
+                actual=actual_value,
+                expected=self.expected_values,
+                comment=self.failure_message,
+            )
             for expected_value in self.expected_values
             if not self.custom_function(actual_value, expected_value)
         ]
@@ -143,8 +153,7 @@ class ToolCall:
         )
 
 
-@dataclass
-class AttachmentCheck:
+class AttachmentCheck(BaseModel):
     """Represents checks to perform on attachments."""
 
     title_strict: str | None = None
@@ -152,24 +161,29 @@ class AttachmentCheck:
     type: str | None = None
     similarity_threshold: float = SimilarityThreshold.DEFAULT.value
 
-    def __post_init__(self):
+    def model_post_init(self, __context: Any) -> None:
         if isinstance(self.title_soft, str):
-            self.title_soft = [self.title_soft]
+            object.__setattr__(self, "title_soft", [self.title_soft])
 
 
-@dataclass
-class UserMessage:
+class UserMessage(BaseModel):
     """Represents a user message with associated tool calls and attachment checks."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     user_message: str
-    attachments: list[Path]
+    attachments: list[Path] | None = None
     tool_calls: list[ToolCall] | None = None
     attachment_checks: list[AttachmentCheck] | None = None
     answer: list[str] | None = None
 
-    def __post_init__(self):
-        self.tool_calls = self.tool_calls or []
-        self.attachment_checks = self.attachment_checks or []
+    def model_post_init(self, __context: Any) -> None:
+        if self.attachments is None:
+            object.__setattr__(self, "attachments", [])
+        if self.tool_calls is None:
+            object.__setattr__(self, "tool_calls", [])
+        if self.attachment_checks is None:
+            object.__setattr__(self, "attachment_checks", [])
 
 
 class TstCase:
@@ -198,7 +212,13 @@ class TstCase:
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         self.messages.append(
-            UserMessage(user_message, attachments, tool_calls, attachment_checks, answer)
+            UserMessage(
+                user_message=user_message,
+                attachments=attachments,
+                tool_calls=tool_calls,
+                attachment_checks=attachment_checks,
+                answer=answer,
+            )
         )
         return self
 
@@ -260,5 +280,12 @@ def check_similarity(
     failures = []
     similarity = get_similarity(actual, expected)
     if similarity < similarity_threshold:
-        failures.append(Failure(actual, expected, failure_message, str(similarity)))
+        failures.append(
+            Failure(
+                actual=actual,
+                expected=expected,
+                comment=failure_message,
+                similarity=str(similarity),
+            )
+        )
     return failures

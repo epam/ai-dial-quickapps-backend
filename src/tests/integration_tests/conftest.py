@@ -1,11 +1,11 @@
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict
 
 import pytest
+from pydantic import BaseModel, Field
 import pytest_asyncio
 from _pytest.nodes import Node
 
@@ -33,13 +33,12 @@ class FailureReason(Enum):
         return self.value
 
 
-@dataclass
-class TestStats:
+class TestStats(BaseModel):
     name: str
     passed: int
     failed: int
     price: float = 0
-    failure_reasons: dict[FailureReason, int] = field(default_factory=dict)
+    failure_reasons: dict[FailureReason, int] = Field(default_factory=dict)
 
     @property
     def total(self):
@@ -61,11 +60,8 @@ class TestStats:
         self.failure_reasons[fr] = self.failure_reasons.get(fr, 0) + 1
 
 
-@dataclass
-class SuiteStats:
-    # passed: int = 0
-    # failed: int = 0
-    test_stat_list: list[TestStats] = field(default_factory=list)
+class SuiteStats(BaseModel):
+    test_stat_list: list[TestStats] = Field(default_factory=list)
 
     @property
     def passed(self):

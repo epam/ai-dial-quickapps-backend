@@ -1,13 +1,12 @@
 import logging
-from dataclasses import dataclass
 
 from aidial_sdk.chat_completion import Message
+from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
 
-@dataclass
-class MessagesMixin:
+class MessagesMixin(BaseModel):
     """
     Mixin to handle message appending, extending, and access.
     """

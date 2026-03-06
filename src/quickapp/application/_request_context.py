@@ -1,5 +1,3 @@
-from dataclasses import dataclass, field
-
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 
@@ -26,82 +24,81 @@ def _validate_response_format(response_format: ResponseFormat | None) -> None:
             )
 
 
-@dataclass
 class _RequestContext(MessagesMixin):
-    __choice: Choice | None = None
-    __api_key: DIAL_API_KEY | None = None
-    __application_config: ApplicationConfig | None = None
-    __bearer_set: bool = False
-    __bearer: DIAL_BEARER = None
-    __response_format: ResponseFormat | None = None
-    __forwarded_headers: ForwardedHeaders = field(default=None)
+    _choice: Choice | None = None
+    _api_key: DIAL_API_KEY | None = None
+    _application_config: ApplicationConfig | None = None
+    _bearer_set: bool = False
+    _bearer: DIAL_BEARER = None
+    _response_format: ResponseFormat | None = None
+    _forwarded_headers: ForwardedHeaders | None = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
-        if not self.__bearer_set:
+        if not self._bearer_set:
             raise RuntimeError("Bearer is not set")
-        return self.__bearer
+        return self._bearer
 
     @bearer.setter
     def bearer(self, bearer: DIAL_BEARER) -> None:
-        if self.__bearer_set:
+        if self._bearer_set:
             raise RuntimeError("Bearer is already set")
-        self.__bearer_set = True
-        self.__bearer = bearer
+        self._bearer_set = True
+        self._bearer = bearer
 
     @property
     def api_key(self) -> DIAL_API_KEY:
-        if not self.__api_key:
+        if not self._api_key:
             raise RuntimeError("API key is not set")
-        return self.__api_key
+        return self._api_key
 
     @api_key.setter
     def api_key(self, api_key: DIAL_API_KEY) -> None:
-        if self.__api_key:
+        if self._api_key:
             raise RuntimeError("API key is already set")
-        self.__api_key = api_key
+        self._api_key = api_key
 
     @property
     def application_config(self) -> ApplicationConfig:
-        if not self.__application_config:
+        if not self._application_config:
             raise RuntimeError("Application config is not set")
-        return self.__application_config
+        return self._application_config
 
     @application_config.setter
     def application_config(self, application_config: ApplicationConfig) -> None:
-        if self.__application_config:
+        if self._application_config:
             raise RuntimeError("Application config is already set")
-        self.__application_config = application_config
+        self._application_config = application_config
 
     @property
     def choice(self) -> Choice:
-        if not self.__choice:
+        if not self._choice:
             raise RuntimeError("Choice is not set")
-        return self.__choice
+        return self._choice
 
     @choice.setter
     def choice(self, choice: Choice) -> None:
-        if self.__choice:
+        if self._choice:
             raise RuntimeError("Choice is already set")
-        self.__choice = choice
+        self._choice = choice
 
     @property
     def response_format(self) -> ResponseFormat | None:
-        return self.__response_format
+        return self._response_format
 
     @response_format.setter
     def response_format(self, response_format: ResponseFormat | None) -> None:
-        if self.__response_format is not None:
+        if self._response_format is not None:
             raise RuntimeError("Response format is already set")
         _validate_response_format(response_format)
-        self.__response_format = response_format
+        self._response_format = response_format
 
     @property
     def forwarded_headers(self) -> ForwardedHeaders:
-        return self.__forwarded_headers
+        return self._forwarded_headers
 
     @forwarded_headers.setter
     def forwarded_headers(self, value: ForwardedHeaders) -> None:
-        if self.__forwarded_headers is not None:
+        if self._forwarded_headers is not None:
             raise RuntimeError("Forwarded headers are already set")
-        self.__forwarded_headers = value
+        self._forwarded_headers = value

@@ -1,14 +1,14 @@
 import time
-from dataclasses import dataclass, field
+
+from pydantic import BaseModel, Field
 
 
-@dataclass
-class Period:
+class Period(BaseModel):
     key: str
     level: int = 1
     start_time: float | None = None
     end_time: float | None = None
-    milestones: list[tuple[str, float]] = field(default_factory=list)
+    milestones: list[tuple[str, float]] = Field(default_factory=list)
 
     def start(self) -> None:
         if self.start_time is not None and self.end_time is None:
