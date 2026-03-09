@@ -236,50 +236,52 @@ async def test_configuration_with_binding_returns_config_response(make_request_c
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_http_error_appends_message(make_request_completion):
+async def test_chat_completion_http_error_appends_safe_message(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
 
     class OrchRaise:
         async def invoke(self):
-            raise HTTPError("http failure occurred")
+            raise HTTPError("http://internal-service/secret-endpoint failure")
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
     # Act
     await completion.chat_completion(request, response)
 
-    # Assert
-    assert any("http failure occurred" in c for c in choice.contents)
+    # Assert: a user-friendly message is shown and the raw internal URL is NOT leaked
+    assert any("http error" in c.lower() for c in choice.contents)
+    assert not any("http://internal-service" in c for c in choice.contents)
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_openai_internal_server_error_appends_formatted_message(make_request_completion, monkeypatch):
+async def test_chat_completion_openai_internal_server_error_appends_safe_message(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
 
-    class OpenAIInternalError(Exception):
-        def __init__(self, message="internal", status_code=500, request_obj="req"):
-            super().__init__(message)
-            self.message = message
-            self.status_code = status_code
-            self.request = request_obj
+    import httpx as _httpx
+    import openai as _openai
 
-    monkeypatch.setattr(quick_app_completion.openai, "InternalServerError", OpenAIInternalError, raising=False)
+    _request = _httpx.Request("GET", "http://internal-dial-core/api")
+    _response = _httpx.Response(500, request=_request)
 
     class OrchRaise:
         async def invoke(self):
-            raise OpenAIInternalError("upstream internal error", 502, "REQUEST_OBJ")
+            raise _openai.InternalServerError(
+                "upstream internal error", response=_response, body=None
+            )
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
     # Act
     await completion.chat_completion(request, response)
 
-    # Assert - check that message, status code and request representation are included
-    assert any("upstream internal error" in c and "502" in c and "REQUEST_OBJ" in c for c in choice.contents)
+    # Assert: clean message shown, raw internal details NOT exposed
+    assert any("internal error" in c.lower() for c in choice.contents)
+    assert not any("http://internal-dial-core" in c for c in choice.contents)
+    assert not any("upstream internal error" in c for c in choice.contents)
 
 
 @pytest.mark.asyncio
