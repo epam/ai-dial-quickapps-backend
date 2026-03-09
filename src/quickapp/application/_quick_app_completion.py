@@ -1,19 +1,17 @@
 import logging
 
-import openai
 from aidial_sdk.chat_completion import ChatCompletion, Request, Response
 from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
-from httpx import HTTPError
 from injector import Injector, inject
 
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 
+from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
@@ -71,14 +69,6 @@ class _QuickAppCompletion(ChatCompletion):
         return Configuration.from_list_of_configurations(configurations).to_configuration_response()
 
     @staticmethod
-    def __handle_exception(choice: Choice, e: Exception):
-        # TODO: exception stage?
-        logger.exception(f"exception {type(e)} occured. {e}")
-        if isinstance(e, HTTPError):
-            choice.append_content(str(e))
-        elif isinstance(e, OrchestratorExceedMaxIterationsException):
-            choice.append_content(str(e))
-        elif isinstance(e, openai.InternalServerError):
-            choice.append_content(f"{e.message} \n\r {e.status_code} {e.request} \n\r")
-        else:
-            choice.append_content("Something went wrong with the execution of your request")
+    def __handle_exception(choice: Choice, e: Exception) -> None:
+        logger.exception("Exception %s occurred. %s", type(e), e)
+        choice.append_content(resolve_exception_message(e))
