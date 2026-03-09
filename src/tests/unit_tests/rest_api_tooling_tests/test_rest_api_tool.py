@@ -1,4 +1,3 @@
-import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -6,7 +5,6 @@ from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
 from injector import Binder, InstanceProvider
-from parameterized import parameterized
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
@@ -63,280 +61,285 @@ def _make_rest_api_tool(url: str, method: str, **tool_kwargs) -> RestApiTool:
     )
 
 
-class TestWebApiToolV2(unittest.IsolatedAsyncioTestCase):
+@pytest.mark.asyncio
+@pytest.mark.parametrize("request_method,url", [("get", "https://auth@abc.example.com:2020/index")])
+@patch("httpx.AsyncClient")
+async def test_web_api_tool_2_make_correct_http_call(
+    mock_async_client, request_method, url
+):
+    mock_stage = MagicMock(spec=Stage)
+    response_data = {
+        "text": '{"some_key":"some value"}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
-    @parameterized.expand([("get", "https://auth@abc.example.com:2020/index")])
-    @patch("httpx.AsyncClient")
-    async def test_web_api_tool_2_make_correct_http_call(
-        self, request_method, url, mock_async_client
-    ):
-        mock_stage = MagicMock(spec=Stage)
-        response_data = {
-            "text": '{"some_key":"some value"}',
-            "headers": {"Content-Type": "application/json"},
-        }
-        mock_response = AsyncMock(**response_data)
-        mock_response.raise_for_status = MagicMock()
-        mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
-
-        rest_api_toolset = RestApiToolSet(
-            name="rest-api",
-            authorization=BearerAuthorization(token="test_token"),
-            tools=[
-                RestApiTool(
-                    rest_api_method_info=RestApiEndpointMethodInfo(
-                        method_url=url, method_type=request_method
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[
+            RestApiTool(
+                rest_api_method_info=RestApiEndpointMethodInfo(
+                    method_url=url, method_type=request_method
+                ),
+                open_ai_tool=OpenAiToolConfig(
+                    function=OpenAiToolFunction(
+                        name="test_function",
+                        description="Test function",
+                        parameters=OpenAiToolFunctionParameters(
+                            properties={
+                                "query_key": RestApiEndpointSimpleTypeParam(
+                                    type="string",
+                                    description="Query key",
+                                    parameter_info=RestApiEndpointHeaderParamInfo(
+                                        type=ToolEndpointParamType.query, key="query_key"
+                                    ),
+                                )
+                            },
+                            type="object",
+                        ),
                     ),
-                    open_ai_tool=OpenAiToolConfig(
-                        function=OpenAiToolFunction(
-                            name="test_function",
-                            description="Test function",
-                            parameters=OpenAiToolFunctionParameters(
-                                properties={
-                                    "query_key": RestApiEndpointSimpleTypeParam(
-                                        type="string",
-                                        description="Query key",
-                                        parameter_info=RestApiEndpointHeaderParamInfo(
-                                            type=ToolEndpointParamType.query, key="query_key"
-                                        ),
-                                    )
-                                },
-                                type="object",
-                            ),
-                        )
-                    ),
-                )
-            ],
-        )
+                ),
+            )
+        ],
+    )
 
-        def configure(binder: Binder):
-            binder.bind(DialSettings, DialSettings(url="https://core"))
-            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
-            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-            binder.bind(Stage, to=mock_stage)
-            binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
-            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-            binder.multibind(list[ToolArgumentTransformer], to=[])
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
 
-        app = create_test_app([RestApiToolingModule, configure])
+    app = create_test_app([RestApiToolingModule, configure])
 
-        @app.get("/")
-        async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
-            self.assertEqual(len(tools), 1)
-            tool = tools[0]
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        tool = tools[0]
 
-            result = await tool.arun("call-1", None, **{"query_key": "query_value"})
+        result = await tool.arun("call-1", None, **{"query_key": "query_value"})
 
-            # With default response_as_attachment (None/disabled), no attachment is created
-            self.assertEqual(result.tool_call_id, "call-1")
-            self.assertEqual(result.content, '{"some_key":"some value"}')
-            self.assertEqual(result.content_type, "application/json")
-            self.assertEqual(result.attachments, [])
+        # With default response_as_attachment (None/disabled), no attachment is created
+        assert result.tool_call_id == "call-1"
+        assert result.content == '{"some_key":"some value"}'
+        assert result.content_type == "application/json"
+        assert result.attachments == []
 
-            return {"message": "success"}
+        return {"message": "success"}
 
-        client = TestClient(app)
-        response = client.get("/")
+    client = TestClient(app)
+    response = client.get("/")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"message": "success"})
+    assert response.status_code == 200
+    assert response.json() == {"message": "success"}
 
-        expected_request_data = {
-            "url": url,
-            "method": request_method,
-            "params": QueryParams('query_key=query_value'),
-        }
+    expected_request_data = {
+        "url": url,
+        "method": request_method,
+        "params": QueryParams('query_key=query_value'),
+    }
 
-        actual_request_data = (
-            mock_async_client.return_value.__aenter__.return_value.request.call_args[1]
-        )
+    actual_request_data = (
+        mock_async_client.return_value.__aenter__.return_value.request.call_args[1]
+    )
 
-        self.assertEqual(expected_request_data["url"], actual_request_data["url"])
-        self.assertEqual(expected_request_data["params"], actual_request_data["params"])
-        self.assertEqual(
-            expected_request_data["method"].lower(), actual_request_data["method"].lower()
-        )
-        self.assertIn("authorization", actual_request_data["headers"])
-        self.assertEqual("Bearer test_token", actual_request_data["headers"]["authorization"])
+    assert expected_request_data["url"] == actual_request_data["url"]
+    assert expected_request_data["params"] == actual_request_data["params"]
+    assert (
+        expected_request_data["method"].lower() == actual_request_data["method"].lower()
+    )
+    assert "authorization" in actual_request_data["headers"]
+    assert "Bearer test_token" == actual_request_data["headers"]["authorization"]
 
-    @patch("httpx.AsyncClient")
-    async def test_response_as_attachment_enabled_creates_attachment(self, mock_async_client):
-        url = "https://example.com/api"
-        mock_stage = MagicMock(spec=Stage)
-        mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-        async def mock_upload(attachment):
-            return attachment
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_response_as_attachment_enabled_creates_attachment(mock_async_client):
+    url = "https://example.com/api"
+    mock_stage = MagicMock(spec=Stage)
+    mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-        mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-            side_effect=mock_upload
-        )
+    async def mock_upload(attachment):
+        return attachment
 
-        response_data = {
-            "text": '{"data": "value"}',
-            "headers": {"Content-Type": "application/json"},
-        }
-        mock_response = AsyncMock(**response_data)
-        mock_response.raise_for_status = MagicMock()
-        mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
+        side_effect=mock_upload
+    )
 
-        rest_api_toolset = RestApiToolSet(
-            name="rest-api",
-            authorization=BearerAuthorization(token="test_token"),
-            tools=[
-                _make_rest_api_tool(
-                    url,
-                    "get",
-                    response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
-                )
-            ],
-        )
+    response_data = {
+        "text": '{"data": "value"}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
-        def configure(binder: Binder):
-            binder.bind(DialSettings, DialSettings(url="https://core"))
-            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
-            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-            binder.bind(AttachmentService, mock_dial_attachment_service)
-            binder.bind(Stage, to=mock_stage)
-            binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
-            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-            binder.multibind(list[ToolArgumentTransformer], to=[])
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[
+            _make_rest_api_tool(
+                url,
+                "get",
+                response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
+            )
+        ],
+    )
 
-        app = create_test_app([RestApiToolingModule, configure])
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AttachmentService, mock_dial_attachment_service)
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
 
-        @app.get("/")
-        async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
-            self.assertEqual(len(tools), 1)
-            result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+    app = create_test_app([RestApiToolingModule, configure])
 
-            self.assertEqual(result.tool_call_id, "call-1")
-            self.assertEqual(result.content, '{"data": "value"}')
-            self.assertIsNotNone(result.attachments)
-            self.assertEqual(len(result.attachments), 1)
-            self.assertIsInstance(result.attachments[0], Attachment)
-            self.assertEqual(result.attachments[0].type, "application/json")
-            return {"message": "success"}
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
 
-        client = TestClient(app)
-        response = client.get("/")
-        self.assertEqual(response.status_code, 200)
+        assert result.tool_call_id == "call-1"
+        assert result.content == '{"data": "value"}'
+        assert result.attachments is not None
+        assert len(result.attachments) == 1
+        assert isinstance(result.attachments[0], Attachment)
+        assert result.attachments[0].type == "application/json"
+        return {"message": "success"}
 
-    @patch("httpx.AsyncClient")
-    async def test_response_as_attachment_include_body_as_content_false(self, mock_async_client):
-        url = "https://example.com/api"
-        mock_stage = MagicMock(spec=Stage)
-        mock_dial_attachment_service = MagicMock(spec=AttachmentService)
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
 
-        async def mock_upload(attachment):
-            return attachment
 
-        mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-            side_effect=mock_upload
-        )
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_response_as_attachment_include_body_as_content_false(mock_async_client):
+    url = "https://example.com/api"
+    mock_stage = MagicMock(spec=Stage)
+    mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-        response_data = {
-            "text": '{"data": "value"}',
-            "headers": {"Content-Type": "application/json"},
-        }
-        mock_response = AsyncMock(**response_data)
-        mock_response.raise_for_status = MagicMock()
-        mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
+    async def mock_upload(attachment):
+        return attachment
 
-        rest_api_toolset = RestApiToolSet(
-            name="rest-api",
-            authorization=BearerAuthorization(token="test_token"),
-            tools=[
-                _make_rest_api_tool(
-                    url,
-                    "get",
-                    response_as_attachment=ResponseAsAttachmentConfig(
-                        enabled=True, include_body_as_content=False
-                    ),
-                )
-            ],
-        )
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
+        side_effect=mock_upload
+    )
 
-        def configure(binder: Binder):
-            binder.bind(DialSettings, DialSettings(url="https://core"))
-            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
-            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-            binder.bind(AttachmentService, mock_dial_attachment_service)
-            binder.bind(Stage, to=mock_stage)
-            binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
-            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-            binder.multibind(list[ToolArgumentTransformer], to=[])
+    response_data = {
+        "text": '{"data": "value"}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
-        app = create_test_app([RestApiToolingModule, configure])
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[
+            _make_rest_api_tool(
+                url,
+                "get",
+                response_as_attachment=ResponseAsAttachmentConfig(
+                    enabled=True, include_body_as_content=False
+                ),
+            )
+        ],
+    )
 
-        @app.get("/")
-        async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
-            self.assertEqual(len(tools), 1)
-            result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AttachmentService, mock_dial_attachment_service)
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
 
-            self.assertEqual(result.tool_call_id, "call-1")
-            self.assertTrue(result.content.startswith("See attached file:"))
-            self.assertEqual(len(result.attachments), 1)
-            return {"message": "success"}
+    app = create_test_app([RestApiToolingModule, configure])
 
-        client = TestClient(app)
-        response = client.get("/")
-        self.assertEqual(response.status_code, 200)
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
 
-    @patch("httpx.AsyncClient")
-    async def test_toolset_level_response_as_attachment_propagation(self, mock_async_client):
-        url = "https://example.com/api"
-        mock_stage = MagicMock(spec=Stage)
-        mock_dial_attachment_service = MagicMock(spec=AttachmentService)
+        assert result.tool_call_id == "call-1"
+        assert result.content.startswith("See attached file:")
+        assert len(result.attachments) == 1
+        return {"message": "success"}
 
-        async def mock_upload(attachment):
-            return attachment
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
 
-        mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-            side_effect=mock_upload
-        )
 
-        response_data = {
-            "text": '{"data": "value"}',
-            "headers": {"Content-Type": "application/json"},
-        }
-        mock_response = AsyncMock(**response_data)
-        mock_response.raise_for_status = MagicMock()
-        mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
+async def test_toolset_level_response_as_attachment_propagation(mock_async_client):
+    url = "https://example.com/api"
+    mock_stage = MagicMock(spec=Stage)
+    mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-        # Tool does NOT set response_as_attachment, but toolset does
-        rest_api_toolset = RestApiToolSet(
-            name="rest-api",
-            authorization=BearerAuthorization(token="test_token"),
-            response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
-            tools=[_make_rest_api_tool(url, "get")],
-        )
+    async def mock_upload(attachment):
+        return attachment
 
-        def configure(binder: Binder):
-            binder.bind(DialSettings, DialSettings(url="https://core"))
-            binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
-            binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
-            binder.bind(AttachmentService, mock_dial_attachment_service)
-            binder.bind(Stage, to=mock_stage)
-            binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
-            binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-            binder.multibind(list[ToolArgumentTransformer], to=[])
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
+        side_effect=mock_upload
+    )
 
-        app = create_test_app([RestApiToolingModule, configure])
+    response_data = {
+        "text": '{"data": "value"}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
-        @app.get("/")
-        async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
-            self.assertEqual(len(tools), 1)
-            result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+    # Tool does NOT set response_as_attachment, but toolset does
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
+        tools=[_make_rest_api_tool(url, "get")],
+    )
 
-            self.assertEqual(result.tool_call_id, "call-1")
-            self.assertIsNotNone(result.attachments)
-            self.assertEqual(len(result.attachments), 1)
-            self.assertEqual(result.attachments[0].type, "application/json")
-            return {"message": "success"}
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AttachmentService, mock_dial_attachment_service)
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
 
-        client = TestClient(app)
-        response = client.get("/")
-        self.assertEqual(response.status_code, 200)
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+
+        assert result.tool_call_id == "call-1"
+        assert result.attachments is not None
+        assert len(result.attachments) == 1
+        assert result.attachments[0].type == "application/json"
+        return {"message": "success"}
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio

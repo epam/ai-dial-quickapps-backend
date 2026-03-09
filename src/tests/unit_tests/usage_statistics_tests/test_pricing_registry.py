@@ -1,39 +1,40 @@
-import unittest
 from unittest.mock import MagicMock
+
+import pytest
+
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing import _Pricing
 
 
-class TestPricingRegistry(unittest.TestCase):
+@pytest.fixture
+def registry():
+    return _PricingRegistry()
 
-    def setUp(self):
-        self.registry = _PricingRegistry()
 
-    def test_get_model_pricing_returns_pricing_if_not_expired(self):
-        mock_pricing = MagicMock(spec=_Pricing)
-        mock_pricing.is_expired.return_value = False
-        self.registry.set_model_pricing("test_model", mock_pricing)
+def test_get_model_pricing_returns_pricing_if_not_expired(registry):
+    mock_pricing = MagicMock(spec=_Pricing)
+    mock_pricing.is_expired.return_value = False
+    registry.set_model_pricing("test_model", mock_pricing)
 
-        result = self.registry.get_model_pricing("test_model")
+    result = registry.get_model_pricing("test_model")
 
-        self.assertIs(result, mock_pricing)
-        mock_pricing.is_expired.assert_called_once()
+    assert result is mock_pricing
+    mock_pricing.is_expired.assert_called_once()
 
-    def test_get_model_pricing_returns_none_if_expired(self):
-        mock_pricing = MagicMock(spec=_Pricing)
-        mock_pricing.is_expired.return_value = True
-        self.registry.set_model_pricing("test_model", mock_pricing)
 
-        result = self.registry.get_model_pricing("test_model")
+def test_get_model_pricing_returns_none_if_expired(registry):
+    mock_pricing = MagicMock(spec=_Pricing)
+    mock_pricing.is_expired.return_value = True
+    registry.set_model_pricing("test_model", mock_pricing)
 
-        self.assertIsNone(result)
-        mock_pricing.is_expired.assert_called_once()
+    result = registry.get_model_pricing("test_model")
 
-    def test_get_model_pricing_returns_none_if_not_in_cache(self):
-        result = self.registry.get_model_pricing("nonexistent_model")
-        self.assertIsNone(result)
+    assert result is None
+    mock_pricing.is_expired.assert_called_once()
 
-if __name__ == "__main__":
-    unittest.main()
+
+def test_get_model_pricing_returns_none_if_not_in_cache(registry):
+    result = registry.get_model_pricing("nonexistent_model")
+    assert result is None
