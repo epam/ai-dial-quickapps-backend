@@ -80,7 +80,7 @@ def _resolve_internal_error(e: Exception) -> str:
     return _FALLBACK_MESSAGE
 
 
-def resolve_user_message(e: Exception) -> str:
+def resolve_exception_message(e: Exception) -> str:
     """Return a safe, user-friendly message for any exception."""
     if isinstance(e, openai.OpenAIError):
         return _resolve_openai_error(e)
