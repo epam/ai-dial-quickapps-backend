@@ -2,7 +2,10 @@ import httpx
 import openai
 
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
-from quickapp.dial_core_services.exceptions import ToolsetForbiddenException, ToolsetNotFoundException
+from quickapp.dial_core_services.exceptions import (
+    ToolsetForbiddenException,
+    ToolsetNotFoundException,
+)
 
 _FALLBACK_MESSAGE = (
     "Something went wrong with the execution of your request. "
@@ -17,7 +20,9 @@ def _resolve_openai_error(e: openai.OpenAIError) -> str:
             "Please contact your administrator."
         )
     if isinstance(e, openai.AuthenticationError):
-        return "Authentication failed when accessing the AI model. Please contact your administrator."
+        return (
+            "Authentication failed when accessing the AI model. Please contact your administrator."
+        )
     if isinstance(e, openai.NotFoundError):
         return (
             "The AI model configured in this application could not be found. "
