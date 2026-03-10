@@ -1,6 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
@@ -110,6 +111,7 @@ async def test_web_api_tool_2_make_correct_http_call(
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
@@ -370,6 +372,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))

@@ -18,9 +18,6 @@ from aidial_client.types.chat.response import ChatCompletionResponse
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
@@ -46,13 +43,9 @@ class DisplayContentProcessor:
 
     def __init__(
         self,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
         dial_client: AsyncDial,
         py_interpreter_settings: _PyInterpreterSettings,
     ):
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
         self.__dial_client: AsyncDial = dial_client
         self.__additional_handling_model: str = py_interpreter_settings.additional_handling_model
         pio.defaults.chromium_args = [  # type: ignore[attr-defined]
@@ -79,8 +72,7 @@ class DisplayContentProcessor:
 
         for media_type, data in content_dict.items():
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
-                bucket_info = await self._publish_to_bucket(media_type, data)
-                bucket_url = bucket_info.get("url", "")
+                bucket_url = await self._publish_to_bucket(media_type, data)
 
                 if media_type and bucket_url:
                     # Create a temporary data-only attachment for title generation
@@ -93,21 +85,18 @@ class DisplayContentProcessor:
 
         return attachments
 
-    async def _publish_to_bucket(
-        self, mime_type: str, data: str | dict[str, Any]
-    ) -> dict[str, Any]:
-        async with DialCoreClient(
-            api_key=self.__api_key, base_url=self.__dial_settings.url
-        ) as dial_core:
-            filename = generate_attachment_filename(mime_type)
+    async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> str:
+        filename = generate_attachment_filename(mime_type)
+        bucket_resp = await self.__dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+        metadata = await self.__dial_client.files.upload(
+            url=f"files/{bucket}/{filename}",
+            file=(filename, self._prepare_content(mime_type, data), mime_type),
+        )
+        return metadata.url
 
-            return await dial_core.put_file(
-                name=filename,
-                mime_type=mime_type,
-                content=self._prepare_content(mime_type, data),
-            )
-
-    def _prepare_content(self, mime_type: str, data: str | dict[str, Any]) -> bytes:
+    @staticmethod
+    def _prepare_content(mime_type: str, data: str | dict[str, Any]) -> bytes:
         """Prepares content for storage based on mime type"""
         if mime_type in (MediaTypes.PNG, MediaTypes.JPEG, MediaTypes.GIF):
             if isinstance(data, dict):
@@ -169,19 +158,19 @@ class DisplayContentProcessor:
         fig = pio.from_json(attachment_param["data"])
         image_bytes = BytesIO()
         fig.write_image(image_bytes, format="png")
-        image_bytes.seek(0)
 
-        async with DialCoreClient(
-            api_key=self.__api_key, base_url=self.__dial_settings.url
-        ) as dial_core:
-            filename = generate_attachment_filename(MediaTypes.PNG)
-            bucket_info = await dial_core.put_file(
-                name=filename,
-                mime_type=MediaTypes.PNG,
-                content=image_bytes,
+        filename = generate_attachment_filename(MediaTypes.PNG)
+        bucket_resp = await self.__dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+        try:
+            metadata = await self.__dial_client.files.upload(
+                url=f"files/{bucket}/{filename}",
+                file=(filename, image_bytes.getvalue(), MediaTypes.PNG),
             )
 
-            return AttachmentParam(url=bucket_info.get("url"), type=MediaTypes.PNG)
+            return AttachmentParam(url=metadata.url, type=MediaTypes.PNG)
+        except Exception as e:
+            logger.exception(f"Exception during uploading plotly image to DIAL: {e}")
 
     def sanitize_display_content(
         self, execution_result: CodeExecutionResponse
