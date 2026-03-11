@@ -1,13 +1,8 @@
 import httpx
 import openai
-from aidial_sdk.exceptions import (
-    ContextLengthExceededError,
-    DeploymentNotFoundError,
-    HTTPException as AiDialHTTPException,
-    InvalidRequestError,
-    RequestValidationError,
-    ResourceNotFoundError,
-)
+from aidial_sdk.exceptions import ContextLengthExceededError, DeploymentNotFoundError
+from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
+from aidial_sdk.exceptions import InvalidRequestError, RequestValidationError, ResourceNotFoundError
 
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.dial_core_services.exceptions import (
@@ -42,17 +37,14 @@ _MSG_AI_MODEL_INVALID_REQUEST = (
 _MSG_AI_MODEL_INTERNAL_ERROR = (
     "The AI model service encountered an internal error. Please try again later."
 )
-_MSG_AI_MODEL_TIMEOUT = (
-    "The request to the AI model service timed out. Please try again later."
-)
+_MSG_AI_MODEL_TIMEOUT = "The request to the AI model service timed out. Please try again later."
 _MSG_AI_MODEL_CONTEXT_LENGTH = (
     "The request exceeds the maximum context length of the AI model. "
     "Please shorten your messages and try again."
 )
 
 _MSG_SERVICE_NO_PERMISSION = (
-    "You don't have permission to access a required service. "
-    "Please contact your administrator."
+    "You don't have permission to access a required service. " "Please contact your administrator."
 )
 _MSG_SERVICE_NOT_FOUND = (
     "A required service or resource could not be found. Please contact your administrator."
@@ -63,12 +55,9 @@ _MSG_SERVICE_RATE_LIMITED = (
 _MSG_SERVICE_INTERNAL_ERROR = (
     "A required service encountered an internal error. Please try again later."
 )
-_MSG_SERVICE_TIMEOUT = (
-    "A request to a required service timed out. Please try again later."
-)
+_MSG_SERVICE_TIMEOUT = "A request to a required service timed out. Please try again later."
 _MSG_SERVICE_NETWORK_ERROR = (
-    "A network error occurred while contacting a required service. "
-    "Please try again later."
+    "A network error occurred while contacting a required service. " "Please try again later."
 )
 _MSG_SERVICE_NO_CONNECTIVITY = (
     "Could not connect to the AI model service. "
