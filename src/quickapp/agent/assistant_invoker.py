@@ -3,9 +3,8 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
-from aidial_sdk.exceptions import InvalidRequestError
 from injector import inject
-from openai import AsyncStream, BadRequestError, RateLimitError
+from openai import AsyncStream
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
