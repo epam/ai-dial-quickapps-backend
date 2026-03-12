@@ -65,6 +65,12 @@ class BaseDeploymentTool(StagedBaseTool):
         history = None
         if self.__content_propagation and self.__content_propagation.propagate_history:
             history = await self._extract_tool_history(tool_config.open_ai_tool.function.name)
+        propagate_stages = bool(
+            self.__content_propagation and self.__content_propagation.propagate_stages
+        )
+        tool_stage_display_name: str | None = None
+        if tool_config.display and tool_config.display.stage:
+            tool_stage_display_name = tool_config.display.stage.name
         return await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
@@ -72,6 +78,8 @@ class BaseDeploymentTool(StagedBaseTool):
             stage_wrapper,
             attachment_urls,
             history=history,
+            propagate_stages=propagate_stages,
+            tool_stage_display_name=tool_stage_display_name,
         )
 
     @staticmethod

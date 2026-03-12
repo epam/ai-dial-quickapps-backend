@@ -16,6 +16,10 @@ class ContentPropagation(BaseModel):
         default=None,
         description="List of headers to propagate to the DIAL deployment. If None, the default headers will be used.",
     )
+    propagate_stages: bool = Field(
+        default=False,
+        description="When True, subagent stages from the deployment completion stream (delta.custom_content.stages) are propagated to the root QuickApp choice with prefixed names so the source is unambiguous.",
+    )
 
 
 class DialDeploymentTool(BaseOpenAITool):

@@ -8,3 +8,7 @@ ATTACHMENT_PARAM = "attachment_urls"
 EXTRA_BODY = "extra_body"
 EXTRA_HEADERS = "extra_headers"
 CONFIGURATION = "configuration"
+
+# Stage propagation: separator between tool display name and subagent stage name
+# so propagated stage names are readable and clearly attributed to the invoking tool.
+PROPAGATED_STAGE_NAME_SEPARATOR = " › "

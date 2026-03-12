@@ -10,7 +10,8 @@
   },
   "content_propagation": {
     "propagate_history": true,
-    "propagate_headers": []
+    "propagate_headers": [],
+    "propagate_stages": true
   },
   "open_ai_tool": {
     "type": "function",

@@ -1,13 +1,43 @@
 from typing import Any
 
 from aidial_client import DialException
+from aidial_sdk.chat_completion import Attachment, Choice, Stage
 from injector import inject
 
 from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.config.tools.base import BaseTool
 
 
 @inject
 class DeploymentStageWrapper(TimedStageWrapper):
+
+    def __init__(
+        self,
+        stage: Stage,
+        tool_config: BaseTool | None = None,
+        stage_name: str | None = None,
+        choice: Choice | None = None,
+    ) -> None:
+        super().__init__(stage=stage, tool_config=tool_config, stage_name=stage_name)
+        self.__choice: Choice | None = choice
+
+    def create_propagated_stage(
+        self,
+        name: str,
+        content: str,
+        attachments: list[Attachment],
+    ) -> None:
+        """Create a sibling stage on the choice with the given name and write content/attachments.
+
+        Used for subagent stage propagation. No-op if choice is not available.
+        """
+        if not self.__choice:
+            return
+        with self.__choice.create_stage(name) as st:
+            if content:
+                st.append_content(content)
+            for att in attachments:
+                st.add_attachment(**att.model_dump())
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         stage_params = "> #### Request:\n\r"

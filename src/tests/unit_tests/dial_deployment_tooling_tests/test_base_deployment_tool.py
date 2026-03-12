@@ -12,6 +12,8 @@ from aidial_sdk.chat_completion.request import (
 )
 from pydantic import StrictStr
 
+from quickapp.common import CompletionResult
+from quickapp.config.tools.deployment import ContentPropagation
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 
 
@@ -301,3 +303,117 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
     mock_service.resolve_attachment_urls.assert_awaited_once_with(["files/xyz/doc.pdf"])
+
+
+# --- Stage propagation: complete_request_async called with propagate_stages and tool_stage_display_name ---
+
+
+def _build_tool_for_run_in_stage(
+    content_propagation: ContentPropagation | None,
+    tool_config_display_stage_name: str | None,
+    dial_completion_service: Any,
+) -> BaseDeploymentTool:
+    """Build BaseDeploymentTool for testing _run_in_stage_async propagation args."""
+    tool_config = MagicMock()
+    tool_config.display = None
+    if tool_config_display_stage_name is not None:
+        tool_config.display = MagicMock()
+        tool_config.display.stage = MagicMock()
+        tool_config.display.stage.name = tool_config_display_stage_name
+    tool_config.attachment = MagicMock()
+    tool_config.attachment.supported_types = []
+    tool_config.attachment.propagate_types_to_choice = []
+    tool_config.fallback_configuration = None
+    tool_config.deployment = MagicMock()
+    tool_config.deployment.parameters = MagicMock()
+    tool_config.deployment.parameters.model_dump = lambda: {}
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=tool_config,
+        content_propagation=content_propagation,
+        dial_completion_service=dial_completion_service,
+        messages=[],
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_calls_complete_with_propagate_stages_and_display_name():
+    """When content_propagation.propagate_stages is True and display.stage.name is set, complete_request_async is called with propagate_stages=True and tool_stage_display_name."""
+    mock_service = MagicMock()
+    mock_service.complete_request_async = AsyncMock(
+        return_value=CompletionResult(content="ok", content_type="text/plain")
+    )
+    tool = _build_tool_for_run_in_stage(
+        content_propagation=ContentPropagation(propagate_stages=True),
+        tool_config_display_stage_name="Call my-app:",
+        dial_completion_service=mock_service,
+    )
+    stage_wrapper = MagicMock()
+
+    await tool._run_in_stage_async(stage_wrapper=stage_wrapper, query="hello")
+
+    mock_service.complete_request_async.assert_awaited_once()
+    call_kwargs = mock_service.complete_request_async.call_args[1]
+    assert call_kwargs["propagate_stages"] is True
+    assert call_kwargs["tool_stage_display_name"] == "Call my-app:"
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_propagate_stages_false_when_content_propagation_none():
+    """When content_propagation is None, complete_request_async is called with propagate_stages=False."""
+    mock_service = MagicMock()
+    mock_service.complete_request_async = AsyncMock(
+        return_value=CompletionResult(content="ok", content_type="text/plain")
+    )
+    tool = _build_tool_for_run_in_stage(
+        content_propagation=None,
+        tool_config_display_stage_name="Call my-app:",
+        dial_completion_service=mock_service,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=MagicMock(), query="hello")
+
+    call_kwargs = mock_service.complete_request_async.call_args[1]
+    assert call_kwargs["propagate_stages"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_propagate_stages_false_when_propagate_stages_disabled():
+    """When content_propagation.propagate_stages is False, complete_request_async is called with propagate_stages=False."""
+    mock_service = MagicMock()
+    mock_service.complete_request_async = AsyncMock(
+        return_value=CompletionResult(content="ok", content_type="text/plain")
+    )
+    tool = _build_tool_for_run_in_stage(
+        content_propagation=ContentPropagation(propagate_stages=False),
+        tool_config_display_stage_name="Call my-app:",
+        dial_completion_service=mock_service,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=MagicMock(), query="hello")
+
+    call_kwargs = mock_service.complete_request_async.call_args[1]
+    assert call_kwargs["propagate_stages"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_tool_stage_display_name_none_when_no_display_stage():
+    """When display or display.stage is missing, complete_request_async is called with tool_stage_display_name=None."""
+    mock_service = MagicMock()
+    mock_service.complete_request_async = AsyncMock(
+        return_value=CompletionResult(content="ok", content_type="text/plain")
+    )
+    tool = _build_tool_for_run_in_stage(
+        content_propagation=ContentPropagation(propagate_stages=True),
+        tool_config_display_stage_name=None,
+        dial_completion_service=mock_service,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=MagicMock(), query="hello")
+
+    call_kwargs = mock_service.complete_request_async.call_args[1]
+    assert call_kwargs["propagate_stages"] is True
+    assert call_kwargs["tool_stage_display_name"] is None

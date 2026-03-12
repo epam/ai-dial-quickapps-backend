@@ -26,13 +26,31 @@ from quickapp.dial_deployment_tooling.constants import (
     CONTENT_PARAM,
     EXTRA_BODY,
     EXTRA_HEADERS,
+    PROPAGATED_STAGE_NAME_SEPARATOR,
 )
+from quickapp.dial_deployment_tooling.stage_propagation_models import parse_stages
 
 logger = logging.getLogger(__name__)
 
 
 def _to_sdk_attachment(attachment: dial_client_models.Attachment) -> dial_sdk_models.Attachment:
     return dial_sdk_models.Attachment(**attachment.model_dump())
+
+
+def _to_sdk_attachments_from_any(attachments: list[Any] | None) -> list[dial_sdk_models.Attachment]:
+    """Convert attachment-like items (from subagent stage deltas) to SDK Attachment list."""
+    if not attachments:
+        return []
+    result: list[dial_sdk_models.Attachment] = []
+    for a in attachments:
+        try:
+            if hasattr(a, "model_dump"):
+                result.append(dial_sdk_models.Attachment(**a.model_dump()))
+            elif isinstance(a, dict):
+                result.append(dial_sdk_models.Attachment(**a))
+        except Exception:
+            continue
+    return result
 
 
 class _StreamResult(BaseModel):
@@ -78,6 +96,8 @@ class DialCompletionService:
         stage_wrapper: BaseStageWrapper | None,
         relative_attachment_urls: list[str] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
+        propagate_stages: bool = False,
+        tool_stage_display_name: str | None = None,
     ) -> CompletionResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -92,7 +112,12 @@ class DialCompletionService:
             params, deployment_id, messages, self.__forwarded_headers
         )
         chunks = await self.__dial_client.chat.completions.create(**chat_params)
-        result = await self._consume_stream(chunks, stage_wrapper)
+        result = await self._consume_stream(
+            chunks,
+            stage_wrapper,
+            propagate_stages=propagate_stages,
+            tool_stage_display_name=tool_stage_display_name,
+        )
 
         return CompletionResult(
             content=result.content,
@@ -147,9 +172,14 @@ class DialCompletionService:
         self,
         chunks: AsyncIterable[dial_client_models.ChatCompletionChunk],
         stage_wrapper: BaseStageWrapper | None,
+        propagate_stages: bool = False,
+        tool_stage_display_name: str | None = None,
     ) -> _StreamResult:
         result = _StreamResult()
         content_parts: list[str] = []
+        # Accumulate by stage index: same index = same stage (append name, content, attachments; set status)
+        # Value: (name_parts, content_parts, attachments, status)
+        propagated_stages: dict[int, tuple[list[str], list[str], list[Any], str | None]] = {}
 
         if stage_wrapper:
             stage_wrapper.append_stage_content("> #### Response:\n")
@@ -172,8 +202,31 @@ class DialCompletionService:
                         for attachment in attachments:
                             self._fix_attachment(attachment)
                             stage_wrapper.add_stage_attachment(_to_sdk_attachment(attachment))
-                elif delta.custom_content and delta.custom_content.state:
+                if delta.custom_content and delta.custom_content.state:
                     result.state = delta.custom_content.state
+
+                if propagate_stages and delta.custom_content:
+                    raw_stages = getattr(delta.custom_content, "stages", None)
+                    parsed = parse_stages(raw_stages)
+                    for i, sub in enumerate(parsed):
+                        # Subagent identifies stage by index; fall back to position in list when index is missing
+                        idx = sub.index if sub.index is not None else i
+                        if idx not in propagated_stages:
+                            propagated_stages[idx] = ([], [], [], None)
+                        name_parts, content_parts_list, atts, _ = propagated_stages[idx]
+                        if sub.name_part():
+                            name_parts.append(sub.name_part())
+                        if sub.content:
+                            content_parts_list.append(sub.content)
+                        if sub.attachments:
+                            atts.extend(sub.attachments)
+                        if sub.status is not None:
+                            propagated_stages[idx] = (
+                                name_parts,
+                                content_parts_list,
+                                atts,
+                                sub.status,
+                            )
 
             if chunk.usage:
                 result.usage = chunk.usage
@@ -182,6 +235,56 @@ class DialCompletionService:
             )
 
         result.content = "".join(content_parts)
+
+        if (
+            propagate_stages
+            and propagated_stages
+            and stage_wrapper
+            and hasattr(stage_wrapper, "create_propagated_stage")
+        ):
+            try:
+                prefix = (tool_stage_display_name or "").strip()
+                count = 0
+                for idx in sorted(propagated_stages.keys()):
+                    name_parts, content_parts_list, atts, _status = propagated_stages[idx]
+                    stage_name = "".join(name_parts).strip() if name_parts else f"Stage {idx + 1}"
+                    prefixed_name = (
+                        (prefix + PROPAGATED_STAGE_NAME_SEPARATOR + stage_name).strip()
+                        if prefix
+                        else stage_name
+                    )
+                    content = "".join(content_parts_list)
+                    sdk_attachments = _to_sdk_attachments_from_any(atts)
+                    stage_wrapper.create_propagated_stage(prefixed_name, content, sdk_attachments)
+                    count += 1
+                logger.debug(
+                    "Stage propagation: created %d propagated stage(s) for subagent",
+                    count,
+                )
+            except Exception as e:
+                logger.warning(
+                    "Stage propagation failed, falling back to single stage: %s",
+                    e,
+                    exc_info=True,
+                )
+                prefix_fb = (tool_stage_display_name or "").strip()
+                fallback_parts = []
+                for idx in sorted(propagated_stages.keys()):
+                    name_parts_fb, content_parts_list_fb, _, _ = propagated_stages[idx]
+                    stage_name_fb = "".join(name_parts_fb).strip() or f"Stage {idx + 1}"
+                    prefixed_name_fb = (
+                        (prefix_fb + PROPAGATED_STAGE_NAME_SEPARATOR + stage_name_fb).strip()
+                        if prefix_fb
+                        else stage_name_fb
+                    )
+                    fallback_parts.append(
+                        f"**{prefixed_name_fb}**\n{''.join(content_parts_list_fb)}"
+                    )
+                fallback_content = "\n\n".join(fallback_parts)
+                if stage_wrapper and fallback_content:
+                    stage_wrapper.append_stage_content("\n\n> #### Subagent stages\n\n")
+                    stage_wrapper.append_stage_content(fallback_content)
+
         return result
 
     @staticmethod

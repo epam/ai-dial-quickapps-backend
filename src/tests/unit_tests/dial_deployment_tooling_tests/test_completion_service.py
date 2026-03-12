@@ -332,3 +332,175 @@ async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_s
     extra_headers = call_args[EXTRA_HEADERS]
     assert extra_headers["X-Request-Id"] == "deploy-req-789"
     assert extra_headers["X-Deployment-Custom"] == "deploy-val"
+
+
+# --- Stage propagation: _consume_stream with delta.custom_content.stages ---
+
+
+async def _stream_with_stages(stages_payload: list, main_content: str = "Main"):
+    """Yield chunks: one with content, one with custom_content.stages."""
+    chunk1 = MagicMock()
+    chunk1.choices = [MagicMock()]
+    chunk1.choices[0].delta = MagicMock()
+    chunk1.choices[0].delta.content = main_content
+    chunk1.choices[0].delta.custom_content = None
+    chunk1.usage = None
+    chunk1.model_extra = {}
+    yield chunk1
+
+    chunk2 = MagicMock()
+    chunk2.choices = [MagicMock()]
+    chunk2.choices[0].delta = MagicMock()
+    chunk2.choices[0].delta.content = None
+    cc = MagicMock()
+    cc.attachments = None
+    cc.state = None
+    cc.stages = stages_payload
+    chunk2.choices[0].delta.custom_content = cc
+    chunk2.usage = None
+    chunk2.model_extra = {}
+    yield chunk2
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_propagates_stages_with_prefixed_names(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """With propagate_stages=True and stream containing delta.custom_content.stages, stages are created with prefixed names and content."""
+    stages = [
+        {"name": "Step 1", "content": "First step content"},
+        {"name": "Step 2", "content": "Second step content"},
+    ]
+    dial_client.chat.completions.create.return_value = _stream_with_stages(stages)
+    mock_stage_wrapper.create_propagated_stage = MagicMock()
+
+    await completion_service.complete_request_async(
+        params={"query": "Test"},
+        deployment_id="dep",
+        deployment_name="Dep",
+        stage_wrapper=mock_stage_wrapper,
+        propagate_stages=True,
+        tool_stage_display_name="Call RAG:",
+    )
+
+    assert mock_stage_wrapper.create_propagated_stage.call_count == 2
+    calls = mock_stage_wrapper.create_propagated_stage.call_args_list
+    assert calls[0][0][0] == "Call RAG: › Step 1"
+    assert calls[0][0][1] == "First step content"
+    assert calls[1][0][0] == "Call RAG: › Step 2"
+    assert calls[1][0][1] == "Second step content"
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_no_propagation_when_propagate_stages_false(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """With propagate_stages=False, create_propagated_stage is not called even if stream has stages."""
+    stages = [{"name": "Step 1", "content": "x"}]
+    dial_client.chat.completions.create.return_value = _stream_with_stages(stages)
+    mock_stage_wrapper.create_propagated_stage = MagicMock()
+
+    await completion_service.complete_request_async(
+        params={"query": "Test"},
+        deployment_id="dep",
+        deployment_name="Dep",
+        stage_wrapper=mock_stage_wrapper,
+        propagate_stages=False,
+        tool_stage_display_name="Call RAG:",
+    )
+
+    mock_stage_wrapper.create_propagated_stage.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_stage_propagation_writes_attachments(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """Subagent stage with attachments: create_propagated_stage receives attachments list."""
+    stages = [
+        {
+            "name": "Result",
+            "content": "Done",
+            "attachments": [{"type": "image/png", "title": "out.png", "url": "files/out.png"}],
+        },
+    ]
+    dial_client.chat.completions.create.return_value = _stream_with_stages(stages)
+    mock_stage_wrapper.create_propagated_stage = MagicMock()
+
+    await completion_service.complete_request_async(
+        params={"query": "Test"},
+        deployment_id="dep",
+        deployment_name="Dep",
+        stage_wrapper=mock_stage_wrapper,
+        propagate_stages=True,
+        tool_stage_display_name="Tool:",
+    )
+
+    mock_stage_wrapper.create_propagated_stage.assert_called_once()
+    call_args = mock_stage_wrapper.create_propagated_stage.call_args[0]
+    assert call_args[0] == "Tool: › Result"
+    assert call_args[1] == "Done"
+    assert len(call_args[2]) == 1
+    assert call_args[2][0].type == "image/png"
+    assert call_args[2][0].title == "out.png"
+
+
+# --- Stage propagation error handling: malformed stages or create_propagated_stage failure ---
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_malformed_stages_does_not_fail_completion(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """Malformed custom_content.stages (non-dict items) are skipped; completion returns and valid stages still propagated."""
+    stages = [
+        {"name": "Valid", "content": "ok"},
+        None,
+        "not a dict",
+        {"name": "Also valid", "content": "yes"},
+    ]
+    dial_client.chat.completions.create.return_value = _stream_with_stages(stages)
+    mock_stage_wrapper.create_propagated_stage = MagicMock()
+
+    result = await completion_service.complete_request_async(
+        params={"query": "Test"},
+        deployment_id="dep",
+        deployment_name="Dep",
+        stage_wrapper=mock_stage_wrapper,
+        propagate_stages=True,
+        tool_stage_display_name="App:",
+    )
+
+    assert result.content == "Main"
+    assert mock_stage_wrapper.create_propagated_stage.call_count == 2
+    calls = mock_stage_wrapper.create_propagated_stage.call_args_list
+    names = [c[0][0] for c in calls]
+    assert "App: › Valid" in names
+    assert "App: › Also valid" in names
+
+
+@pytest.mark.asyncio
+async def test_consume_stream_create_propagated_stage_failure_falls_back(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """When create_propagated_stage raises, completion does not fail; fallback content is appended to stage."""
+    stages = [{"name": "Step 1", "content": "one"}, {"name": "Step 2", "content": "two"}]
+    dial_client.chat.completions.create.return_value = _stream_with_stages(stages)
+    mock_stage_wrapper.create_propagated_stage = MagicMock(side_effect=RuntimeError("SDK error"))
+
+    result = await completion_service.complete_request_async(
+        params={"query": "Test"},
+        deployment_id="dep",
+        deployment_name="Dep",
+        stage_wrapper=mock_stage_wrapper,
+        propagate_stages=True,
+        tool_stage_display_name="Call RAG:",
+    )
+
+    assert result.content == "Main"
+    # Fallback: append_stage_content called with "Subagent stages" header and prefixed stage content
+    append_calls = [c[0][0] for c in mock_stage_wrapper.append_stage_content.call_args_list]
+    full_append = " ".join(str(c) for c in append_calls)
+    assert "Subagent stages" in full_append
+    assert "**Call RAG: › Step 1**" in full_append
+    assert "**Call RAG: › Step 2**" in full_append
