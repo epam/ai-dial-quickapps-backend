@@ -1,4 +1,5 @@
-SRC_DIRS = src/quickapp src/scripts
+SRC_DIRS = src/quickapp src/scripts src/tests
+MYPY_DIRS = src/quickapp src/scripts
 POETRY ?= poetry
 PYTHON ?= python3
 
@@ -33,11 +34,11 @@ lint: install_dev
 	$(POETRY) run black $(SRC_DIRS) --check
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
 	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 
 mypy: install_dev
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
 
 format: install_dev
 	$(POETRY) run autoflake $(SRC_DIRS)

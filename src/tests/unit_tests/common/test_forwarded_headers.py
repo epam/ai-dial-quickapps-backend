@@ -3,8 +3,6 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 
 

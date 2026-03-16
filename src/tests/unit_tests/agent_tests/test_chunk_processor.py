@@ -95,9 +95,7 @@ async def test_content_streamed_to_destination():
     )
 
     content_calls = [
-        call.args[0]
-        for call in destination.append_content.call_args_list
-        if call.args[0] != "\n\r"
+        call.args[0] for call in destination.append_content.call_args_list if call.args[0] != "\n\r"
     ]
     assert content_calls == ["hello ", "world"]
 

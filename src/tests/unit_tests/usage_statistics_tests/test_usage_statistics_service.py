@@ -1,7 +1,9 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from quickapp.common.deployment_usage import DeploymentUsage
+
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing import _Pricing
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
@@ -28,7 +30,9 @@ def service(mock_choice, mock_pricing_service):
 
 @pytest.mark.asyncio
 async def test_process_usage_statistics_empty_list(service, mock_choice):
-    with patch("quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer") as mock_renderer:
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
         await service.process_usage_statistics([])
 
         mock_renderer.render_usage_statistics_table.assert_not_called()
@@ -40,19 +44,23 @@ from unittest.mock import patch
 
 
 @pytest.mark.asyncio
-async def test_process_usage_statistics_single_deployment(service, mock_pricing_service, mock_choice):
+async def test_process_usage_statistics_single_deployment(
+    service, mock_pricing_service, mock_choice
+):
     # Setup
     usage = DeploymentUsage(
         deployment_id="deploy1",
         deployment_name="Model A",
         model_name="gpt-4",
         prompt_tokens=100,
-        completion_tokens=50
+        completion_tokens=50,
     )
     mock_pricing_service.get_price.return_value = _Pricing(0.01, 0.02)
 
     # Mock the renderer
-    with patch("quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer") as mock_renderer:
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
         # Execute
         await service.process_usage_statistics([usage])
 
@@ -74,15 +82,13 @@ async def test_process_usage_statistics_single_deployment(service, mock_pricing_
 @pytest.mark.asyncio
 async def test_process_usage_statistics_orchestrator(service, mock_pricing_service, mock_choice):
     # Setup
-    usage = DeploymentUsage(
-        prompt_tokens=100,
-        completion_tokens=50,
-        model_name="gpt-4"
-    )
+    usage = DeploymentUsage(prompt_tokens=100, completion_tokens=50, model_name="gpt-4")
     mock_pricing_service.get_price.return_value = _Pricing(0.01, 0.02)
 
     # Mock the renderer
-    with patch("quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer") as mock_renderer:
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
         # Execute
         await service.process_usage_statistics([usage])
 
@@ -102,7 +108,9 @@ async def test_process_usage_statistics_orchestrator(service, mock_pricing_servi
 
 
 @pytest.mark.asyncio
-async def test_process_usage_statistics_multiple_deployments(service, mock_pricing_service, mock_choice):
+async def test_process_usage_statistics_multiple_deployments(
+    service, mock_pricing_service, mock_choice
+):
     # Setup
     usages = [
         DeploymentUsage(  # Orchestrator
@@ -110,29 +118,29 @@ async def test_process_usage_statistics_multiple_deployments(service, mock_prici
             deployment_name="Orchestrator",
             model_name="gpt-4",
             prompt_tokens=100,
-            completion_tokens=50
+            completion_tokens=50,
         ),
         DeploymentUsage(  # Orchestrator
             deployment_id="Orchestrator",
             deployment_name="Orchestrator",
             model_name="gpt-4",
             prompt_tokens=50,
-            completion_tokens=25
+            completion_tokens=25,
         ),
         DeploymentUsage(  # Model 1
             deployment_id="deploy1",
             deployment_name="Model A",
             model_name="gpt-4-mini",
             prompt_tokens=1000,
-            completion_tokens=1000
+            completion_tokens=1000,
         ),
         DeploymentUsage(  # Another instance of Model 1
             deployment_id="deploy2",
             deployment_name="Model A",
             model_name="gpt-4-mini",
             prompt_tokens=100,
-            completion_tokens=100
-        )
+            completion_tokens=100,
+        ),
     ]
 
     # Mock pricing service to return different values for different models
@@ -146,7 +154,9 @@ async def test_process_usage_statistics_multiple_deployments(service, mock_prici
     mock_pricing_service.get_price.side_effect = get_price_side_effect
 
     # Mock the renderer
-    with patch("quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer") as mock_renderer:
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
         # Execute
         await service.process_usage_statistics(usages)
 
@@ -174,21 +184,26 @@ async def test_process_usage_statistics_multiple_deployments(service, mock_prici
         assert model_a.total_completion_tokens == "-"  # Not tracked for deployments
         assert model_a.total_cost == 7.7
 
+
 @pytest.mark.asyncio
-async def test_process_usage_statistics_no_price_for_model(service, mock_pricing_service, mock_choice):
+async def test_process_usage_statistics_no_price_for_model(
+    service, mock_pricing_service, mock_choice
+):
     # Setup
     usage = DeploymentUsage(
         deployment_id="deploy1",
         deployment_name="Model A",
         model_name="unknown-model",
         prompt_tokens=100,
-        completion_tokens=50
+        completion_tokens=50,
     )
 
     mock_pricing_service.get_price.return_value = _Pricing("-", "-")
 
     # Mock the renderer
-    with patch("quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer") as mock_renderer:
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
         # Execute
         await service.process_usage_statistics([usage])
 

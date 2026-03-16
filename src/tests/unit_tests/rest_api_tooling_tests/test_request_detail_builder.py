@@ -4,11 +4,24 @@ import pytest
 from pydantic import BaseModel
 
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
-from quickapp.config.tools.rest_api import  RestApiEndpointSimpleTypeParam, \
-    RestApiEndpointHeaderParamInfo, ToolEndpointParamType, RestApiEndpointConstParam, RestApiEndpointArrayParam, \
-    RestApiEndpointObjectParam, ConfigurableSchemaSimpleType, ConfigurableSchemaObject
-from quickapp.config.toolsets.authorization import BasicAuthorization, BearerAuthorization, ClientIdSecretAuthorization, \
-    ApiKeyAuthorization, AuthorizationLocation
+from quickapp.config.tools.rest_api import (
+    ConfigurableSchemaObject,
+    ConfigurableSchemaSimpleType,
+    RestApiEndpointArrayParam,
+    RestApiEndpointConstParam,
+    RestApiEndpointHeaderParamInfo,
+    RestApiEndpointObjectParam,
+    RestApiEndpointSimpleTypeParam,
+    ToolEndpointParamType,
+)
+from quickapp.config.toolsets.authorization import (
+    ApiKeyAuthorization,
+    AuthorizationLocation,
+    BasicAuthorization,
+    BearerAuthorization,
+    ClientIdSecretAuthorization,
+)
+
 # noinspection PyProtectedMember
 from quickapp.rest_api_tooling._request_detail_builder import _RequestDetailsBuilder
 
@@ -67,6 +80,7 @@ async def test_with_auth_client_id_secret(builder):
     result = builder.build()
     assert result.headers["Authorization"] == "Bearer test_token"
 
+
 @pytest.mark.asyncio
 async def test_with_api_key(builder):
     builder.with_url("https://example.com").with_method("GET")
@@ -78,6 +92,7 @@ async def test_with_api_key(builder):
     await builder.with_auth(auth_info)
     result = builder.build()
     assert result.headers["key_name"] == "key"
+
 
 @pytest.mark.asyncio
 async def test_with_api_key_query(builder):
@@ -104,80 +119,120 @@ async def test_with_api_key_body(builder):
     result = builder.build()
     assert result.data["key_name"] == "key"
 
+
 def test_with_parameters(builder):
     builder.with_url("https://example.com/{key4}").with_method("GET")
     parameters = {
         "param1": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="key1"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="key1"
+            ),
             type="string",
-            description="Query parameter"
+            description="Query parameter",
         ),
         "param2": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.header, key="key2"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.header, key="key2"
+            ),
             type="string",
-            description="Header parameter"
+            description="Header parameter",
         ),
         "param3": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.body, key="key3"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.body, key="key3"
+            ),
             type="string",
-            description="Body parameter"
+            description="Body parameter",
         ),
         "param4": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.url, key="key4"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.url, key="key4"
+            ),
             type="string",
-            description="URL parameter"
+            description="URL parameter",
         ),
         "param5": RestApiEndpointConstParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="key5"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="key5"
+            ),
             type=None,
-            const="const_value"
+            const="const_value",
         ),
         "param6": RestApiEndpointArrayParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="key6"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="key6"
+            ),
             type="array",
             description="List parameter",
-            items=ConfigurableSchemaSimpleType(type="string", description="List parameter")
+            items=ConfigurableSchemaSimpleType(type="string", description="List parameter"),
         ),
         "param7": RestApiEndpointObjectParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="key7"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="key7"
+            ),
             type="object",
             description="Dictionary parameter",
-            properties={"key8": ConfigurableSchemaObject(
-                type="object",
-                description="Object parameter",
-                properties={"nested": ConfigurableSchemaSimpleType(type="string", description="Nested object parameter")}
-            )}
+            properties={
+                "key8": ConfigurableSchemaObject(
+                    type="object",
+                    description="Object parameter",
+                    properties={
+                        "nested": ConfigurableSchemaSimpleType(
+                            type="string", description="Nested object parameter"
+                        )
+                    },
+                )
+            },
         ),
         "param8": RestApiEndpointObjectParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="key9"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="key9"
+            ),
             type="object",
             description="BaseModel parameter",
-            properties={"key9": ConfigurableSchemaObject(
-                type="object",
-                description="Base model parameter",
-                properties={"nested": ConfigurableSchemaSimpleType(type="string", description="List parameter")}
-            )}
+            properties={
+                "key9": ConfigurableSchemaObject(
+                    type="object",
+                    description="Base model parameter",
+                    properties={
+                        "nested": ConfigurableSchemaSimpleType(
+                            type="string", description="List parameter"
+                        )
+                    },
+                )
+            },
         ),
         "param9": RestApiEndpointObjectParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.body, key="key10"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.body, key="key10"
+            ),
             type="object",
             description="BaseModel parameter",
-            properties={"key10": ConfigurableSchemaObject(
-                type="object",
-                description="Base model parameter",
-                properties={"nested": ConfigurableSchemaSimpleType(type="string", description="Nested Object parameter")}
-            )}
+            properties={
+                "key10": ConfigurableSchemaObject(
+                    type="object",
+                    description="Base model parameter",
+                    properties={
+                        "nested": ConfigurableSchemaSimpleType(
+                            type="string", description="Nested Object parameter"
+                        )
+                    },
+                )
+            },
         ),
         "param_none": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.query, key="param_none"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.query, key="param_none"
+            ),
             type="string",
-            description="Body parameter"
+            description="Body parameter",
         ),
     }
 
     class TestModel(BaseModel):
         field1: str
         field2: int
+
     model_instance = TestModel(field1="value1", field2=123)
 
     builder.with_parameters(
@@ -190,7 +245,7 @@ def test_with_parameters(builder):
         param7={"key8": {"nested": "value"}},
         param8=model_instance,
         param9=model_instance,
-        param_none=None
+        param_none=None,
     )
     result = builder.build()
 
@@ -211,26 +266,35 @@ def test_with_parameters(builder):
     # Check URL parameters
     assert str(result.url) == "https://example.com/value4"
 
+
 def test_add_url_param_value_none(builder):
     builder.with_url("https://example.com/{key1}").with_method("GET")
     parameters = {
         "param1": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.url, key="key1"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.url, key="key1"
+            ),
             type="string",
-            description="URL parameter"
+            description="URL parameter",
         ),
     }
     with pytest.raises(ValueError, match="Missing required URL parameter: key1"):
         builder.with_parameters(parameters, param1=None)
 
+
 def test_add_url_param_unsupported_type(builder):
     builder.with_url("https://example.com/{key1}").with_method("GET")
     parameters = {
         "param1": RestApiEndpointSimpleTypeParam(
-            parameter_info=RestApiEndpointHeaderParamInfo(type=ToolEndpointParamType.url, key="key1"),
+            parameter_info=RestApiEndpointHeaderParamInfo(
+                type=ToolEndpointParamType.url, key="key1"
+            ),
             type="string",
-            description="URL parameter"
+            description="URL parameter",
         ),
     }
-    with pytest.raises(TypeError, match="URL parameter 'key1' must be one of the types: str, bool, int, float. Got list"):
+    with pytest.raises(
+        TypeError,
+        match="URL parameter 'key1' must be one of the types: str, bool, int, float. Got list",
+    ):
         builder.with_parameters(parameters, param1=["unsupported"])

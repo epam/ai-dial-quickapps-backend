@@ -81,9 +81,7 @@ class TestGrantPermissions:
         svc = _make_service()
 
         with _mock_dial_core_client() as mock_client:
-            await svc.grant_permissions_to_files(
-                ["files/a.txt", "files/b.txt"], "my-toolset"
-            )
+            await svc.grant_permissions_to_files(["files/a.txt", "files/b.txt"], "my-toolset")
 
         mock_client.grant_permissions.assert_awaited_once_with(
             ["files/a.txt", "files/b.txt"], "my-toolset"

@@ -4,12 +4,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_sdk.chat_completion import Message, Role
-from aidial_sdk.chat_completion.request import (
-    Attachment as SdkAttachment,
-    CustomContent,
-    FunctionCall,
-    ToolCall,
-)
+from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
+from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
@@ -82,13 +78,17 @@ async def test_extract_single_tool_history():
     """Single tool with two prior interactions extracts correctly."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Help me")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "First question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "First question"),
+            ]
+        ),
         _make_tool_result("tc1", "First answer"),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc2", "my_tool", "Second question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc2", "my_tool", "Second question"),
+            ]
+        ),
         _make_tool_result("tc2", "Second answer"),
     ]
 
@@ -111,10 +111,12 @@ async def test_extract_filters_by_tool_name():
     """Only interactions for the target tool are included; other tools are excluded."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Start")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc_a1", "tool_a", "question for A"),
-            _make_tool_call("tc_b1", "tool_b", "question for B"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc_a1", "tool_a", "question for A"),
+                _make_tool_call("tc_b1", "tool_b", "question for B"),
+            ]
+        ),
         _make_tool_result("tc_a1", "answer from A"),
         _make_tool_result("tc_b1", "answer from B"),
     ]
@@ -132,14 +134,18 @@ async def test_extract_excludes_current_call():
     """Tool call without a TOOL result yet is excluded (current invocation)."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "old question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "old question"),
+            ]
+        ),
         _make_tool_result("tc1", "old answer"),
         # Current call — no TOOL result appended yet
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc2", "my_tool", "current question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc2", "my_tool", "current question"),
+            ]
+        ),
     ]
 
     tool = _build_tool(messages)
@@ -160,9 +166,11 @@ async def test_extract_live_mutations():
 
     # Simulate orchestrator appending messages after list creation
     messages.append(
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc_late", "my_tool", "late question"),
-        ])
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc_late", "my_tool", "late question"),
+            ]
+        )
     )
     messages.append(_make_tool_result("tc_late", "late answer"))
 
@@ -179,9 +187,11 @@ async def test_extract_empty_when_no_matches():
     """No matching tool calls returns empty list."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "other_tool", "question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "other_tool", "question"),
+            ]
+        ),
         _make_tool_result("tc1", "answer"),
     ]
 
@@ -216,9 +226,11 @@ async def test_extract_preserves_response_attachments():
     )
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "describe image"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "describe image"),
+            ]
+        ),
         _make_tool_result(
             "tc1",
             "It shows a chart",
@@ -249,9 +261,11 @@ async def test_extract_preserves_response_state():
     state_data = {"cursor": 42, "mode": "streaming"}
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "continue"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "continue"),
+            ]
+        ),
         _make_tool_result(
             "tc1",
             "partial result",
@@ -280,11 +294,13 @@ async def test_extract_resolves_request_attachments():
 
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call(
-                "tc1", "my_tool", "summarize this", attachment_urls=["files/xyz/doc.pdf"]
-            ),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call(
+                    "tc1", "my_tool", "summarize this", attachment_urls=["files/xyz/doc.pdf"]
+                ),
+            ]
+        ),
         _make_tool_result("tc1", "Summary of the doc"),
     ]
 
