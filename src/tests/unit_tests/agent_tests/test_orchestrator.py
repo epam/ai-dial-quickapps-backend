@@ -6,7 +6,7 @@ from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, Tool
 
 from quickapp.agent._models import AccumulatedToolCall
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
 
 
@@ -81,7 +81,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
 
     await orchestrator.invoke()
 
-    # No tool calls means no tool execution history — state_holder.add_state should NOT be called
+    # No tool calls and no stream state: nothing to add (no tool_execution_history, no orchestrator state)
     state_holder.add_state.assert_not_called()
 
     # choice.set_state should be called with the state from state_holder
@@ -195,7 +195,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     attach.model_dump.assert_called()
     choice.add_attachment.assert_called_once_with(**attach.model_dump())
 
-    # state_holder.add_state should be called once at the end with the full history
+    # state_holder.add_state called once in finally with tool_execution_history (no stream state in mocks)
     state_holder.add_state.assert_called_once()
     key, value = state_holder.add_state.call_args[0]
     assert key == TOOL_EXECUTION_HISTORY
@@ -204,6 +204,79 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assert len(value) == 2
     assert value[0]["role"] == "assistant"
     assert value[1]["role"] == "tool"
+
+
+@pytest.mark.asyncio
+async def test_invoke_with_stream_state_puts_only_response_state_under_orchestrator():
+    """state.orchestrator contains only response state (e.g. claude_message_content), not stages."""
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = Mock()
+    choice.add_attachment = Mock()
+    choice.set_state = Mock()
+
+    stream_state = {"claude_message_content": "thinking output"}
+    assistant_result = SimpleNamespace(
+        content="response",
+        attachments=[],
+        tool_calls=[],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
+        state=stream_state,
+        stages=[{"name": "Thinking", "content": "..."}],  # stages must not appear in state
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    chunk_processor = Mock()
+    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
+    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        chunk_processor_provider=chunk_processor_provider,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(name="m"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+    )
+
+    await orchestrator.invoke()
+
+    # Appended message has state.orchestrator = response state only (no "stages")
+    assert len(messages_list) == 1
+    msg = messages_list[0]
+    assert msg.custom_content is not None
+    state = msg.custom_content.state
+    assert state is not None
+    assert STATE_KEY_ORCHESTRATOR in state
+    orch = state[STATE_KEY_ORCHESTRATOR]
+    assert orch == {"claude_message_content": "thinking output"}
+    assert "stages" not in orch
+
+    # state_holder received orchestrator state (response state only)
+    state_holder.add_state.assert_called()
+    orch_calls = [c[0] for c in state_holder.add_state.call_args_list if c[0][0] == STATE_KEY_ORCHESTRATOR]
+    assert len(orch_calls) == 1
+    assert orch_calls[0][1] == stream_state
 
 
 @pytest.mark.asyncio

@@ -4,6 +4,7 @@ from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from quickapp.agent._stage_delta_types import get_stage_index
+
 from .accumulated_tool_call import AccumulatedToolCall
 
 
@@ -94,10 +95,7 @@ class AssistantCallResult:
         """Stages accumulated from stream, sorted by index."""
         if not self.__stages_by_index:
             return []
-        return [
-            self.__stages_by_index[idx].to_dict(idx)
-            for idx in sorted(self.__stages_by_index)
-        ]
+        return [self.__stages_by_index[idx].to_dict(idx) for idx in sorted(self.__stages_by_index)]
 
     def append_stage_delta(self, item: dict[str, Any], position: int) -> None:
         """Merge a stage delta into the stage at the given index."""

@@ -2655,6 +2655,12 @@
           "description": "The max count of orchestrator(agent) operations. Default: 15",
           "title": "Max Iterations",
           "type": "integer"
+        },
+        "propagate_stages": {
+          "default": true,
+          "description": "When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
+          "title": "Propagate Stages",
+          "type": "boolean"
         }
       },
       "required": [

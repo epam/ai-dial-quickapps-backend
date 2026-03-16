@@ -2,13 +2,13 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
+from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
@@ -19,7 +19,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
-from ._models import AccumulatedToolCall, AssistantCallResult
+from ._models import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +65,7 @@ class Orchestrator:
             exc_to_reraise = exc
             logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
         finally:
+            # Store history in state.tool_execution_history for restoring on next request
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
@@ -105,12 +106,20 @@ class Orchestrator:
 
         tool_calls = assistant_call_result.tool_calls
 
+        # state.orchestrator = only state returned in the orchestrator response (e.g. claude_message_content).
+        # Thinking stages stay in custom_content (streamed to choice), not in state.
+        stream_state = dict(assistant_call_result.state or {})
+        state: dict[str, object] | None = (
+            {STATE_KEY_ORCHESTRATOR: stream_state} if stream_state else None
+        )
+
         custom_content_kwargs: dict[str, object] = {
             "attachments": assistant_call_result.attachments,
         }
-        state = getattr(assistant_call_result, "state", None)
         if state:
             custom_content_kwargs["state"] = state
+            for key, value in state.items():
+                self.__state_holder.add_state(key, value)
 
         self.__messages_context.append_message(
             Message(
@@ -120,9 +129,6 @@ class Orchestrator:
                 tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
-
-        for key, value in (getattr(assistant_call_result, "state", None) or {}).items():
-            self.__state_holder.add_state(key, value)
 
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
             self.__usage_statistics_list.append(

@@ -23,5 +23,3 @@ def get_stage_index(item: dict[str, Any], position: int) -> int:
     if "index" in item and isinstance(item["index"], int):
         return int(item["index"])
     return position
-
-

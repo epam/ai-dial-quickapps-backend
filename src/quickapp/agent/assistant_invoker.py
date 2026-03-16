@@ -12,7 +12,7 @@ from openai.types.chat import ChatCompletionChunk
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
-from quickapp.agent.models import OpenAiToolConfigDict
+from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
@@ -104,4 +104,22 @@ class AssistantInvoker:
 
     def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         filtered_messages = self.__attachment_filter.filter_attachments(messages)
-        return [message.model_dump(exclude_none=True, mode="json") for message in filtered_messages]
+        result: list[dict[str, Any]] = []
+        for message in filtered_messages:
+            msg_dict = message.model_dump(exclude_none=True, mode="json")
+            self.__promote_orchestrator_state_to_top_level(msg_dict)
+            result.append(msg_dict)
+        return result
+
+    @staticmethod
+    def __promote_orchestrator_state_to_top_level(msg_dict: dict[str, Any]) -> None:
+        """Before calling the model, promote state.orchestrator to top-level state."""
+        custom = msg_dict.get("custom_content")
+        if not isinstance(custom, dict):
+            return
+        state = custom.get("state")
+        if not isinstance(state, dict) or STATE_KEY_ORCHESTRATOR not in state:
+            return
+        orch = state.pop(STATE_KEY_ORCHESTRATOR, None)
+        if isinstance(orch, dict):
+            state.update(orch)
