@@ -4,8 +4,9 @@
 
 - **Storage backend**: DIAL file storage (the platform's built-in object store, analogous to S3).
 - **Memory store**: Single LanceDB table (`memory.lance/`) holding all memory rows — both core facts and episodic history — distinguished by a `memory_type` column.
+- **Memory scopes**: Two per-user memory stores — one scoped to a specific QuickApp (`app`), one shared across all QuickApps for the same user (`user`). Both live inside the user's folder in DIAL file storage; there is no cross-user sharing.
 - **Core fact storage**: Append-only rows. No key/value replacement. Facts coexist and retrieval is context-aware.
-- **Core injection**: Two-tier semantic retrieval on every request — universal facts by importance (Tier 1) plus context-specific facts by FTS/vector match to the current user message (Tier 2).
+- **Core injection**: Two-tier semantic retrieval on every request — universal facts by importance (Tier 1) plus context-specific facts by FTS/vector match to the current user message (Tier 2). When both memory scopes are active, results from each path are merged before injection.
 - **Agent tools**: `store_memory` (append-only, both types) and `search_archive` (episodic search on demand).
 - **Architecture**: Memory lives in a **separate MCP server project**; the current project (`quickapps-backend`) consumes it as an MCP toolset and adds pre-request hooks and post-response persistence.
 
@@ -23,14 +24,16 @@ All persistent data is stored in **DIAL file storage** — the platform's built-
 
 ### 0.2 Memory scope extensibility
 
-Memory is always associated with a **scope** that determines who owns it and how the storage path is derived.
+Memory is always associated with a **scope** that determines who owns it and how the storage path is derived. There are two per-user memory scopes — both stored inside the user's folder in DIAL file storage. There is no cross-user sharing at any scope level.
 
 | Scope | Description | Path pattern | Status |
 |-------|-------------|--------------|--------|
-| `user` | Per-user memory across all deployments | `users/{user_id}/memory/` | First iteration (hardcoded `test/` for now) |
-| `deployment` | Shared memory for a specific QuickApp deployment | `deployments/{deployment_id}/memory/` | Future |
+| `app` | Per-user memory scoped to a specific QuickApp. Stores facts and history relevant only to that application. | `users/{user_id}/apps/{quickapp_id}/memory/` | First iteration (hardcoded `test/` for now) |
+| `user` | Per-user memory shared across **all** QuickApps. Stores universal facts (name, language, global preferences) that any QuickApp can read and enrich. | `users/{user_id}/memory/` | Second iteration |
 
 **Design rule**: the Memory MCP server accepts a `path` parameter on every request and is path-agnostic — it never interprets what a path means semantically. For the first iteration the path is hardcoded (`test/memory`). Scope resolution is added by changing how the **caller** computes `path`.
+
+When both scopes are active, quickapps-backend fetches from both paths independently and merges results before injection. App-scoped memory takes precedence over global user memory when facts conflict.
 
 ### 0.3 Unified storage schema
 
@@ -74,6 +77,8 @@ stale — they reflect what was stored in past sessions.
 - User corrects or adds nuance to a fact: "actually that's a different project"
 - A clear preference is established: "always respond in English"
 - Set context to scope the fact: context="project-alpha", context="user-prefs"
+- Store universal facts (name, language preference) to the global user memory scope so all QuickApps benefit
+- Store app-specific facts (project details, workflow preferences) to the QuickApp-scoped memory
 - NEVER overwrite — always store as a new row; retrieval handles context
 
 ### Importance guide for core facts:
@@ -179,13 +184,14 @@ No code changes needed in the tooling layer — only configuration.
 
 ```python
 class MemoryConfig(BaseModel):
-    base_url: str | None = None           # Memory MCP server HTTP base URL
-    memory_path: str = "test/memory"      # Scope path within the memory store
-    core_always_limit: int = 5            # Tier 1: top-N by importance
-    core_context_limit: int = 10          # Tier 2: top-M by semantic match
+    base_url: str | None = None            # Memory MCP server HTTP base URL
+    app_memory_path: str = "test/memory"   # QuickApp-specific memory path (users/{id}/apps/{app_id}/memory)
+    user_memory_path: str | None = None    # Global user memory path (users/{id}/memory); None disables it
+    core_always_limit: int = 5             # Tier 1: top-N by importance
+    core_context_limit: int = 10           # Tier 2: top-M by semantic match
 ```
 
-All components are no-ops when `base_url` is `None`.
+All components are no-ops when `base_url` is `None`. When `user_memory_path` is set, `_MemoryInitializer` fetches from both paths concurrently and merges the deduplicated results before injection.
 
 ### 1.7 Request flow
 
@@ -305,12 +311,14 @@ final_score = cosine_similarity * (0.5 + importance * 0.5)
 
 ### 2.5 Scope extensibility
 
-The server accepts `path` on every request. In the first iteration this is the hardcoded `test/memory` string. Future scope resolution is added by changing how the **caller** computes `path`:
+The server accepts `path` on every request and is fully path-agnostic. Scope resolution is the responsibility of the caller (quickapps-backend). Both memory scopes are stored inside the user's folder — there is no cross-user sharing.
 
-| Future scope | Path computed by | Example path |
+| Scope | Path computed by | Example path |
 |---|---|---|
-| `user` | quickapps-backend resolves user identity from request headers | `users/abc123/memory` |
-| `deployment` | quickapps-backend resolves deployment ID from app config | `deployments/my-quickapp/memory` |
+| `app` (first iteration) | quickapps-backend combines user identity + QuickApp ID | `users/abc123/apps/my-quickapp/memory` |
+| `user` / global (second iteration) | quickapps-backend resolves user identity only | `users/abc123/memory` |
+
+When global user memory is enabled, quickapps-backend calls the Memory MCP server twice (once per path), merges and deduplicates results by `id`, and injects a single unified context block. The Memory MCP server is called identically in both cases — only the `path` argument differs.
 
 ### 2.6 Project layout
 
@@ -336,6 +344,8 @@ ai-dial-memory-mcp/
 | Single LanceDB table for all memory types | One schema, one sync mechanism, one code path; type distinction is a column value not a file split |
 | Append-only core facts | Prevents silent overwrite of still-valid facts from different contexts; both facts coexist and the right one surfaces via retrieval |
 | `context` field on core rows | Enables scoped disambiguation without encoding context into key names |
+| Two per-user memory scopes (`app` + `user`) | App-scoped memory holds QuickApp-specific facts; global user memory holds universal facts (name, preferences) reusable by any QuickApp. Both live inside the user's folder — no cross-user sharing at any level |
+| No `deployment`-shared memory | Sharing memory between users of the same QuickApp was rejected in favour of portable per-user memory. Each user owns their own data exclusively |
 | Per-request injection | Topic shifts within a conversation are reflected immediately; no stale facts from the first turn persist for the whole session |
 | Two-tier injection | Tier 1 guarantees universal facts (name, preferences) are always present; Tier 2 adds contextually relevant facts without token-wasting noise |
 | `importance` as the single control knob | Drives both Tier 1 threshold and Tier 2 score weighting; no separate `sticky` flag needed |
