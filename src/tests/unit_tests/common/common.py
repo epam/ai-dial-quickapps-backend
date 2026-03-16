@@ -1,5 +1,6 @@
 import json
-from typing import Callable, Iterable, Optional, Type, Union
+from collections.abc import Callable, Iterable
+from typing import TypeAlias
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
@@ -13,7 +14,7 @@ from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
 
-MODULE_TYPE = Union[Callable[[Binder], None], Module, Type[Module]]
+MODULE_TYPE: TypeAlias = Callable[[Binder], None] | Module | type[Module]
 
 
 def create_test_app(module_or_modules: MODULE_TYPE | Iterable[MODULE_TYPE]) -> FastAPI:
@@ -28,7 +29,7 @@ def create_test_app(module_or_modules: MODULE_TYPE | Iterable[MODULE_TYPE]) -> F
     return app
 
 
-def create_request_headers(api_key: str, starters: Optional[list[str]]) -> dict[str, str]:
+def create_request_headers(api_key: str, starters: list[str] | None) -> dict[str, str]:
     return {
         "Api-Key": api_key,
         "Content-Type": "application/json",

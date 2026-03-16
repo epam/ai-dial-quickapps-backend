@@ -1,9 +1,10 @@
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from injector import AssistedBuilder, inject
 
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
@@ -23,20 +24,22 @@ class _SkillReaderTool(StagedBaseTool):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         skills_provider: AgentSkillsProvider,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            argument_transformers=argument_transformers,
             **kwargs,
         )
         self.__skills_provider = skills_provider
 
     async def _run_in_stage_async(
         self,
-        stage_wrapper: Optional[BaseStageWrapper] = None,
-        skill_name: Optional[str] = None,
+        stage_wrapper: BaseStageWrapper | None = None,
+        skill_name: str | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:

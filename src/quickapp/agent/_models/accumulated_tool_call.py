@@ -23,7 +23,7 @@ class AccumulatedToolCall:
     @property
     def arguments(self) -> str:
         if self._arguments is None:
-            raise ValueError("Tool call arguments have not been received yet")
+            return "{}"
         return self._arguments
 
     def append_delta(self, delta: ChoiceDeltaToolCall) -> None:

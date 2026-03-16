@@ -26,19 +26,18 @@ class ChunkProcessor:
         destination.append_content("\n\r")
 
         async for chunk in chat_completion:
-            if not chunk.choices:
-                continue
-            for ch in chunk.choices:
-                if (content := ch.delta.content) and stream_content:
-                    destination.append_content(content)
-                    self.__assistant_call_result.append_content(content)
+            if chunk.choices:
+                for ch in chunk.choices:
+                    if (content := ch.delta.content) and stream_content:
+                        destination.append_content(content)
+                        self.__assistant_call_result.append_content(content)
 
-                if custom_content := getattr(ch.delta, 'custom_content', None):
-                    self.__process_custom_content(custom_content, destination)
+                    if custom_content := getattr(ch.delta, 'custom_content', None):
+                        self.__process_custom_content(custom_content, destination)
 
-                if tool_calls_deltas_list := getattr(ch.delta, 'tool_calls', None):
-                    for delta in tool_calls_deltas_list:
-                        self.__assistant_call_result.append_tool_call_delta(delta)
+                    if tool_calls_deltas_list := ch.delta.tool_calls:
+                        for delta in tool_calls_deltas_list:
+                            self.__assistant_call_result.append_tool_call_delta(delta)
             if chunk.usage:
                 self.__assistant_call_result.set_usage(
                     Usage(

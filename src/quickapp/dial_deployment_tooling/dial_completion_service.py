@@ -1,7 +1,6 @@
 import logging
 from collections.abc import AsyncIterable, Iterable
-from dataclasses import dataclass, field
-from typing import Any, Dict, List, Tuple
+from typing import Any
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
@@ -14,16 +13,19 @@ from aidial_client.types.chat.request_param import (
 )
 from aidial_sdk import chat_completion as dial_sdk_models
 from injector import inject
+from pydantic import BaseModel, Field
 
-from quickapp.common import CompletionResult
+from quickapp.common import CompletionResult, ForwardedHeaders
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
+from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.common.utils import to_plain_dict
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
     EXTRA_BODY,
+    EXTRA_HEADERS,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,13 +35,12 @@ def _to_sdk_attachment(attachment: dial_client_models.Attachment) -> dial_sdk_mo
     return dial_sdk_models.Attachment(**attachment.model_dump())
 
 
-@dataclass
-class _StreamResult:
+class _StreamResult(BaseModel):
     content: str = ""
     attachments: list[dial_sdk_models.Attachment] | None = None
     state: dict[str, Any] | None = None
     usage: dial_client_models.CompletionUsage | None = None
-    statistics: dict[str, Any] = field(default_factory=dict)
+    statistics: dict[str, Any] = Field(default_factory=dict)
 
     def extend_attachments(self, attachments: list[dial_client_models.Attachment]) -> None:
         if self.attachments is None:
@@ -50,11 +51,12 @@ class _StreamResult:
 @inject
 class DialCompletionService:
 
-    def __init__(self, dial_client: AsyncDial):
+    def __init__(self, dial_client: AsyncDial, forwarded_headers: ForwardedHeaders) -> None:
         self.__dial_client: AsyncDial = dial_client
+        self.__forwarded_headers: ForwardedHeaders = forwarded_headers
 
     @staticmethod
-    def _prepare_custom_fields(items: Iterable[Tuple[str, Any]]) -> Dict[str, Any] | None:
+    def _prepare_custom_fields(items: Iterable[tuple[str, Any]]) -> dict[str, Any] | None:
         # kept for backward compatibility in rare cases
         normalized: dict[str, Any] = {}
         for k, v in items:
@@ -70,7 +72,7 @@ class DialCompletionService:
 
     async def complete_request_async(
         self,
-        params: Dict[str, Any],
+        params: dict[str, Any],
         deployment_id: str,
         deployment_name: str,
         stage_wrapper: BaseStageWrapper | None,
@@ -86,7 +88,9 @@ class DialCompletionService:
             )
 
         messages = await self.__build_request_messages(content, relative_attachment_urls, history)
-        chat_params = self._build_chat_completion_params(params, deployment_id, messages)
+        chat_params = self._build_chat_completion_params(
+            params, deployment_id, messages, self.__forwarded_headers
+        )
         chunks = await self.__dial_client.chat.completions.create(**chat_params)
         result = await self._consume_stream(chunks, stage_wrapper)
 
@@ -102,9 +106,10 @@ class DialCompletionService:
 
     @staticmethod
     def _build_chat_completion_params(
-        params: Dict[str, Any],
+        params: dict[str, Any],
         deployment_id: str,
         messages: list[UserMessageParam | AssistantMessageParam],
+        forwarded_headers: ForwardedHeaders,
     ) -> dict[str, Any]:
         chat_completion_params: dict[str, Any] = {
             "deployment_name": deployment_id,
@@ -122,6 +127,10 @@ class DialCompletionService:
             extra_body[k] = v
         if extra_body:
             chat_completion_params[EXTRA_BODY] = extra_body
+
+        if forwarded_headers:
+            chat_completion_params[EXTRA_HEADERS] = forwarded_headers
+            logger.debug("##{}", chat_completion_params)
 
         return chat_completion_params
 
@@ -181,7 +190,7 @@ class DialCompletionService:
         statistics: dict | None,
         deployment_id: str,
         deployment_name: str,
-    ) -> List[DeploymentUsage] | None:
+    ) -> list[DeploymentUsage] | None:
         if statistics:
             result = []
             for model_usage in statistics:
@@ -240,7 +249,7 @@ class DialCompletionService:
 
     async def _resolve_attachment(self, file_relative_url: str) -> AttachmentParam:
         metadata: AsyncMetadata = self.__dial_client.metadata
-        fileinfo = await metadata.get("files", file_relative_url)
+        fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
         return AttachmentParam(
             type=fileinfo.content_type or "",
             title=fileinfo.name,

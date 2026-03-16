@@ -133,7 +133,7 @@ All tools inherit from a common base class that defines:
 
 - A standardized execution interface
 - Lifecycle management with stage wrappers
-- Parameter preprocessing hooks
+- Parameter preprocessing via a chain of `ToolArgumentTransformer` instances (e.g. `file:` prefix resolution)
 - Attachment filtering based on `supported_types` configuration (single canonical filter point)
 - Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
 - Performance timing
@@ -297,9 +297,9 @@ The processor builds an aggregated result containing all accumulated data for th
 
 The system uses two separate mechanisms to inform the agent about available files:
 
-- **User attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends text metadata to user message
-  content (e.g., `Attachment X, of type Y, url Z`). This is simple, direct, and preserves the natural conversation
-  flow.
+- **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
+  (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
+  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
@@ -402,7 +402,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 11 specialized DI modules:
+The application is composed of 13 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -414,7 +414,9 @@ The application is composed of 11 specialized DI modules:
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration
-11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+13. **Skills Module**: Skill reader tool, agent skills provider
 
 ### Scoping
 

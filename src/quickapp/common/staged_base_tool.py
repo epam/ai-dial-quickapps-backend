@@ -1,10 +1,11 @@
 import logging
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Any
 
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
@@ -19,19 +20,21 @@ logger = logging.getLogger(__name__)
 
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
-    stage_name_component: Optional[str] = Field(None)
+    stage_name_component: str | None = Field(None)
 
     def __init__(
         self,
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         perf_timer: PerformanceTimer,
         tool_config: _BaseToolConfig,
+        argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
         self.__stage_wrapper_builder: AssistedBuilder[BaseStageWrapper] = stage_wrapper_builder
         self._tool_config: _BaseToolConfig = tool_config
         self.__perf_timer: PerformanceTimer = perf_timer
+        self.__argument_transformers: list[ToolArgumentTransformer] = argument_transformers or []
 
     @property
     def tool_config(self):
@@ -39,7 +42,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
-        self, stage_wrapper: Optional[BaseStageWrapper], *args: Any, **kwargs: Any
+        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
     ) -> CompletionResult: ...
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
@@ -82,14 +85,15 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     )
                 return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
-    async def _pre_process_params(self, **kwargs: Any) -> Any:
-        # No preprocessing of parameters by default. return parameters "as is"
+    async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        for transformer in self.__argument_transformers:
+            kwargs = await transformer.transform(kwargs)
         return kwargs
 
     async def _run_in_stage_report_success(
         self,
         tool_call_id: str,
-        stage_wrapper: Optional[BaseStageWrapper],
+        stage_wrapper: BaseStageWrapper | None,
         *args: Any,
         **kwargs: Any,
     ) -> CompletionResult:

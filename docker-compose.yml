@@ -60,11 +60,12 @@ services:
       DIAL_URL: "http://core:8080"
       LOG_LEVEL: "INFO"
 
-  quick_apps:
-    build:
-        context: .
-        dockerfile: ./Dockerfile
-    environment:
-      DIAL_URL: "http://core:8080"
-      SHOW_USAGE_STATISTICS: "true"
-      QUICKAPP_LOG_LEVEL: "DEBUG"
+  # If you want to run Quick Apps in Docker instead of on the host, uncomment the following section and update the quick-apps host in application-schemas.json.
+  # quick-apps:
+  #   build:
+  #       context: .
+  #       dockerfile: ./Dockerfile
+  #   environment:
+  #     DIAL_URL: "http://core:8080"
+  #     SHOW_USAGE_STATISTICS: "true"
+  #     QUICKAPP_LOG_LEVEL: "DEBUG"

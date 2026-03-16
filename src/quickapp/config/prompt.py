@@ -1,4 +1,4 @@
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,7 @@ class PredefinedSystemPromptConfig(BaseModel):
         default="predefined", description="The type of the system prompt."
     )
     template: str = Field(description="The predefined template name for a system prompt")
-    content: Optional[str] = Field(description="The loaded prompt from template", default=None)
+    content: str | None = Field(description="The loaded prompt from template", default=None)
 
 
 class CustomSystemPromptConfig(VariablesConfig):
@@ -25,10 +25,10 @@ class DialSystemPromptConfig(BaseModel):
     path: str = Field(
         description="Relative path to the the system prompt in DIAL, including bucket"
     )
-    variables: Optional[dict[str, str]] = Field(
+    variables: dict[str, str] | None = Field(
         default=None, description="Variables to be used in the DIAL system prompt"
     )
-    content: Optional[str] = Field(description="The loaded prompt from template", default=None)
+    content: str | None = Field(description="The loaded prompt from template", default=None)
 
 
 AgentSystemPromptConfig = Annotated[

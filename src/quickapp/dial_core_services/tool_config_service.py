@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
@@ -43,12 +43,12 @@ class ToolConfigCoreService:
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
 
     async def get_basic_tool_config(
-        self, deployment: str, api_key: Optional[SecretStr] = None
+        self, deployment: str, api_key: SecretStr | None = None
     ) -> DialDeploymentTool:
         api_key = api_key or self.__api_key_provider.get()
         async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
-            deployment_model: Optional[Deployment] = None
-            application_model: Optional[Application] = None
+            deployment_model: Deployment | None = None
+            application_model: Application | None = None
             try:
                 logger.debug(f"Getting deployment tool config for {deployment}")
                 info_dict = await dial_core.get_deployment_info(deployment)
@@ -81,7 +81,7 @@ class ToolConfigCoreService:
 
     @staticmethod
     def _convert_to_openai_tool_format(
-        deployment: Deployment | Application, config: Optional[Dict[str, Any]] = None
+        deployment: Deployment | Application, config: dict[str, Any] | None = None
     ) -> DialDeploymentTool:
         """
         Converts DIAL API responses into a structured OpenAI-like tool definition.
@@ -111,7 +111,7 @@ class ToolConfigCoreService:
             ),
         )
 
-        properties: dict[str, Any] = {}
+        properties: dict[str, ConfigurableSchemaSimpleType | ConfigurableSchemaArray] = {}
         required_params: list[str] = []
         properties["query"] = ConfigurableSchemaSimpleType(
             type=JsonTypeEnum.string,
@@ -162,7 +162,7 @@ class ToolConfigCoreService:
 
         return output_tool
 
-    async def get_basic_toolset_config(self, toolset_dial_id: str) -> Optional[ToolsetInfo]:
+    async def get_basic_toolset_config(self, toolset_dial_id: str) -> ToolsetInfo | None:
         api_key = self.__api_key_provider.get()
         if api_key is None:
             raise RuntimeError("API-KEY must be set")

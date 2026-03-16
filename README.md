@@ -56,6 +56,19 @@ file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
+### Forwarding headers
+
+Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound
+calls made during that chat completion. No configuration is required.
+
+- **Orchestrator (Azure OpenAI):** forwarded headers are sent on each chat completion request.
+- **MCP tools:** forwarded headers are merged into the HTTP/SSE headers used when connecting to MCP servers.
+- **DIAL deployment tools:** forwarded headers are sent as `extra_headers` when calling DIAL chat completions.
+- **REST API tools:** forwarded headers are merged into the outgoing HTTP request headers.
+
+Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
+your gateways or downstream services expect.
+
 ### Environment Variables
 
 | Variable                                   | Default                    | Required | Description                                                                                                  |
@@ -137,7 +150,7 @@ file:
     - Windows - recommended way to install poetry is to
       use [official installer](https://python-poetry.org/docs/#installing-with-the-official-installer)
     - Make sure that `poetry` is in the PATH and works properly (run `poetry --version`).
-    - Alternative - venv-specific (using `pip`):  
+    - Alternative - venv-specific (using `pip`):
       make sure the correct python venv is activated `make install_poetry`
 
 ### Setup
@@ -178,13 +191,23 @@ file:
     - Use this if you want to bring up DIAL Core, chat UI, redis, themes and adapters locally for end-to-end development
       and testing.
     - This docker-compose setup launches multiple services and uses internal hostnames (for example core, redis,
-      themes). Example:
+      themes).
+    - Setup expects the Quick Apps service to run on your host machine at `host.docker.internal:5000`
+
+      ```bash
+      python3 ./src/quickapp/app.py
+      ```
+
+    - Then start the local stack:
 
       ```bash
       docker compose up -d
       ```
 
     - Notes:
+        - If you want to run Quick Apps in Docker instead of on the host, update
+          [application-schemas.json](docker_compose_files/core/configuration/application-schemas.json) and change the Quick
+          Apps host from `host.docker.internal:5000` to `quick-apps:5000`.
         - When running via docker-compose the compose files set service hostnames (for example DIAL URL inside
           containers is http://core:8080). Those container-internal hostnames are not valid from your host machine — use
           the exposed ports (for example http://localhost:8090) when calling services from the host.
@@ -238,9 +261,9 @@ file:
 
    This command will set up the git hook scripts.
 
-## E2E & Integration tests:
+## E2E & Integration tests
 
-    refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
+Refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
 
 ## More
 

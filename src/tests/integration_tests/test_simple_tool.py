@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
         "Image generation test case",
         similarity_threshold=0.8,
     ).add_user_message(
-        user_message="Draw an image of a dinosaur. It should looks like super real with super quality image in size 1792x1024. When you ll be ready, please show me the image and say: Here is the image of a dinosaur. Do you like it?",
+        user_message="Draw an image of a dinosaur. It should looks like super real with super quality image in size 1536x1024. When you ll be ready, please show me the image and say: Here is the image of a dinosaur. Do you like it?",
         tool_calls=[
             ToolCall(ToolNames.IMAGE_GENERATION_TOOL.value)
             .add_soft_argument_check(

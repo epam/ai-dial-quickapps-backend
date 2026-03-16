@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 from aidial_sdk.chat_completion import Request
 from aidial_sdk.chat_completion.choice import Choice
@@ -7,6 +6,7 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
+from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
@@ -33,7 +33,7 @@ class _RequestContextSetup:
         return self.__config_resolver.resolve_config(application_config)
 
     async def setup(
-        self, request: Request | ConfigurationRequest, choice: Optional[Choice] = None
+        self, request: Request | ConfigurationRequest, choice: Choice | None = None
     ) -> None:
         context = self.__context_provider.get()
         context.api_key = SecretStr(request.api_key)
@@ -44,6 +44,7 @@ class _RequestContextSetup:
         )
         if isinstance(request, Request):
             context.messages = self.__messages_setup.setup(request.messages)
+            context.forwarded_headers = extract_x_headers_from_request(request)
         if choice:
             context.choice = choice
 

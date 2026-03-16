@@ -4,16 +4,15 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
-from aidial_sdk.exceptions import InvalidRequestError
 from injector import inject
-from openai import AsyncStream, BadRequestError, RateLimitError
+from openai import AsyncStream
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.common import RESPONSE_FORMAT
+from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
@@ -34,6 +33,7 @@ class AssistantInvoker:
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         agent_settings: AgentSettings,
+        forwarded_headers: ForwardedHeaders,
     ) -> None:
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__messages: list[Message] = messages
@@ -44,6 +44,7 @@ class AssistantInvoker:
         self.__response_format = response_format
         self.__presentation_settings = presentation_settings
         self.__agent_settings = agent_settings
+        self.__forwarded_headers = forwarded_headers
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         completion_config = self.__prepare_chat_completion_config()
@@ -79,6 +80,9 @@ class AssistantInvoker:
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}
 
+        if self.__forwarded_headers:
+            payload["extra_headers"] = self.__forwarded_headers
+
         chat_completion_config.update(payload)
         logger.debug(f"Chat completion config: {chat_completion_config}")
         return chat_completion_config
@@ -88,11 +92,6 @@ class AssistantInvoker:
     ) -> AsyncStream[ChatCompletionChunk]:
         try:
             chat_completion = await self.__azure_client.chat.completions.create(**completion_config)
-        except (BadRequestError, RateLimitError) as e:
-            raise InvalidRequestError(
-                message=e.code or "Unknown error",
-                display_message=e.body["message"] if isinstance(e.body, dict) else e.body,
-            )
         except Exception:
             logger.exception("Error during chat completion")
             raise

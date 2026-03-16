@@ -1,6 +1,7 @@
 import logging
 import time
-from typing import Awaitable, Callable, Dict, Generic, Optional, TypeVar
+from collections.abc import Awaitable, Callable
+from typing import Generic, TypeVar
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +21,9 @@ class CacheEntry(Generic[T]):
 
 class Cache(Generic[T]):
     def __init__(self):
-        self._store: Dict[str, CacheEntry[T]] = {}
+        self._store: dict[str, CacheEntry[T]] = {}
 
-    def get(self, key) -> Optional[CacheEntry[T]]:
+    def get(self, key) -> CacheEntry[T] | None:
         return self._store.get(key, None)
 
     def put(self, key, entry: CacheEntry):
@@ -35,8 +36,8 @@ class CacheService(Generic[T]):
         self._ttl: float = ttl
 
     async def get(
-        self, key: str, loader: Callable[..., Awaitable[Optional[T]]], *args, **kwargs
-    ) -> Optional[T]:
+        self, key: str, loader: Callable[..., Awaitable[T | None]], *args, **kwargs
+    ) -> T | None:
         entry = self._cache.get(key)
         if entry is not None and not entry.is_expired():
             logger.debug(f"{key} value loaded from cache")

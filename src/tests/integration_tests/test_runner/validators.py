@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Dict, List, NamedTuple, Any
+from typing import Any, NamedTuple
 
 from aidial_sdk.chat_completion.request import Message, Role
 
@@ -16,7 +16,7 @@ class ParsedToolCall(NamedTuple):
     """A simple data structure to hold the essential information from a tool call."""
 
     name: str
-    args: Dict[str, Any]
+    args: dict[str, Any]
     result: str
 
 
@@ -27,18 +27,18 @@ class ResponseValidator:
 
     @staticmethod
     def validate_json_schema_response(
-        content: str, response_format: Dict[str, Any], ts: TestStats
-    ) -> List[Failure]:
+        content: str, response_format: dict[str, Any], ts: TestStats
+    ) -> list[Failure]:
         """
         Validates that the response content is valid JSON and optionally matches a schema.
 
         Args:
             content (str): The response content to validate
-            response_format (Dict): The response format specification with type and optional json_schema
+            response_format (dict): The response format specification with type and optional json_schema
             ts (TestStats): Test statistics tracker
 
         Returns:
-            List[Failure]: List of validation failures
+            list[Failure]: List of validation failures
         """
         logger.debug("validate_json_schema_response called with response_format: %s", response_format)
         failures = []
@@ -46,7 +46,7 @@ class ResponseValidator:
         if not content or not content.strip():
             logger.warning("Response content is empty or only whitespace")
             ts.increment_failure(FailureReason.ANSWER)
-            failures.append(Failure(content, "non-empty JSON", "Response content is empty"))
+            failures.append(Failure(actual=content, expected="non-empty JSON", comment="Response content is empty"))
             return failures
 
         # Check if response is valid JSON
@@ -57,7 +57,7 @@ class ResponseValidator:
             logger.warning("Response is not valid JSON: %s", e)
             ts.increment_failure(FailureReason.ANSWER)
             failures.append(
-                Failure(content, "valid JSON", f"Response is not valid JSON: {str(e)}")
+                Failure(actual=content, expected="valid JSON", comment=f"Response is not valid JSON: {str(e)}")
             )
             return failures
 
@@ -84,8 +84,8 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_against_schema(
-        data: Any, schema: Dict[str, Any], ts: TestStats, path: str = "root"
-    ) -> List[Failure]:
+        data: Any, schema: dict[str, Any], ts: TestStats, path: str = "root"
+    ) -> list[Failure]:
         """
         Validates data against a JSON schema (basic validation).
 
@@ -96,7 +96,7 @@ class ResponseValidator:
             path: Current path in the data structure (for error messages)
 
         Returns:
-            List[Failure]: List of validation failures
+            list[Failure]: List of validation failures
         """
         failures = []
 
@@ -107,9 +107,9 @@ class ResponseValidator:
                 ts.increment_failure(FailureReason.ANSWER)
                 failures.append(
                     Failure(
-                        type(data).__name__,
-                        schema_type,
-                        f"Type mismatch at {path}: expected {schema_type}",
+                        actual=type(data).__name__,
+                        expected=schema_type,
+                        comment=f"Type mismatch at {path}: expected {schema_type}",
                     )
                 )
                 return failures
@@ -122,9 +122,9 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ANSWER)
                     failures.append(
                         Failure(
-                            list(data.keys()),
-                            req_field,
-                            f"Required field '{req_field}' missing at {path}",
+                            actual=list(data.keys()),
+                            expected=req_field,
+                            comment=f"Required field '{req_field}' missing at {path}",
                         )
                     )
 
@@ -171,7 +171,7 @@ class ResponseValidator:
         return isinstance(data, expected_type)
 
     @staticmethod
-    def _parse_intermediate_steps(state: Dict) -> List[ParsedToolCall]:
+    def _parse_intermediate_steps(state: dict) -> list[ParsedToolCall]:
         """Parse tool execution history from state.
 
         Expects message-based format: list of serialized Message objects.
@@ -222,7 +222,7 @@ class ResponseValidator:
     @staticmethod
     def check_similarity(
         actual: str, expected: str, failure_message: str, similarity_threshold: float
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         """
         Checks if the similarity between actual and expected text meets the threshold.
 
@@ -233,18 +233,20 @@ class ResponseValidator:
             similarity_threshold (float): Minimum similarity required.
 
         Returns:
-            List[Failure]: List of failures if similarity is below threshold.
+            list[Failure]: List of failures if similarity is below threshold.
         """
         failures = []
         similarity = get_similarity(actual, expected)
         if similarity < similarity_threshold:
-            failures.append(Failure(actual, expected, failure_message, str(similarity)))
+            failures.append(
+            Failure(actual=actual, expected=expected, comment=failure_message, similarity=str(similarity))
+        )
         return failures
 
     @staticmethod
     def check_tool_calls(
-            state: Dict, expected_tool_calls: List[ToolCall], ts: TestStats
-    ) -> List[Failure]:
+            state: dict, expected_tool_calls: list[ToolCall], ts: TestStats
+    ) -> list[Failure]:
         """
         Validates tool calls in the response against expected calls.
         """
@@ -277,8 +279,8 @@ class ResponseValidator:
 
     @staticmethod
     def _filter_py_code_interpreter(
-            tool_call_history: List[ParsedToolCall],
-    ) -> List[ParsedToolCall]:
+            tool_call_history: list[ParsedToolCall],
+    ) -> list[ParsedToolCall]:
         """
         Filters out failed py_code_interpreter tool calls.
         Adapted to use the ParsedToolCall structure.
@@ -298,10 +300,10 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_tool_call_counts(
-            tool_call_history: List[ParsedToolCall],
-            expected_tool_calls: List[ToolCall],
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
             ts: TestStats,
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         """
         Validates the count of each tool call.
         Adapted to use the ParsedToolCall structure.
@@ -315,18 +317,18 @@ class ResponseValidator:
             if call_count < expected.min_calls:
                 failures.append(
                     Failure(
-                        call_count,
-                        f"{expected.min_calls}-{expected.max_calls}",
-                        f"'{expected.name}' called {call_count} times (min {expected.min_calls} required)",
+                        actual=call_count,
+                        expected=f"{expected.min_calls}-{expected.max_calls}",
+                        comment=f"'{expected.name}' called {call_count} times (min {expected.min_calls} required)",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_COUNT)
             if call_count > expected.max_calls:
                 failures.append(
                     Failure(
-                        call_count,
-                        f"{expected.min_calls}-{expected.max_calls}",
-                        f"'{expected.name}' called {call_count} times (max {expected.max_calls} allowed)",
+                        actual=call_count,
+                        expected=f"{expected.min_calls}-{expected.max_calls}",
+                        comment=f"'{expected.name}' called {call_count} times (max {expected.max_calls} allowed)",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_COUNT)
@@ -334,10 +336,10 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_tool_call_arguments(
-            tool_call_history: List[ParsedToolCall],
-            expected_tool_calls: List[ToolCall],
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
             ts: TestStats,
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         """
         Validates the arguments of each tool call.
         Adapted to use the ParsedToolCall structure.
@@ -370,10 +372,10 @@ class ResponseValidator:
 
     @staticmethod
     def _check_unexpected_tools(
-            tool_call_history: List[ParsedToolCall],
-            expected_tool_calls: List[ToolCall],
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
             ts: TestStats,
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         """
         Checks for unexpected tool calls.
         """
@@ -383,9 +385,9 @@ class ResponseValidator:
             if actual.name not in expected_names:
                 failures.append(
                     Failure(
-                        actual.name,
-                        "No unexpected tools",
-                        f"Unexpected tool '{actual.name}' called",
+                        actual=actual.name,
+                        expected="No unexpected tools",
+                        comment=f"Unexpected tool '{actual.name}' called",
                     )
                 )
                 ts.increment_failure(FailureReason.TOOL_CALL_MISMATCH)
@@ -394,9 +396,9 @@ class ResponseValidator:
     @staticmethod
     def check_arguments(
             actual_tool_call: ParsedToolCall,
-            expected_arguments: Dict[str, Argument],
+            expected_arguments: dict[str, Argument],
             ts: TestStats,
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         """
         Validates the arguments of a tool call against expected arguments.
         Adapted to use the ParsedToolCall structure.
@@ -414,24 +416,24 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ARGUMENTS)
             else:
                 failures.append(
-                    Failure(None, expected_value, f"Argument '{field}' missing in response")
+                    Failure(actual=None, expected=expected_value, comment=f"Argument '{field}' missing in response")
                 )
         return failures
 
     @staticmethod
     def check_attachments(
-        attachments: List[Any], expected_attachments: List[AttachmentCheck], ts: TestStats
-    ) -> List[Failure]:
+        attachments: list[Any], expected_attachments: list[AttachmentCheck], ts: TestStats
+    ) -> list[Failure]:
         """
         Validates attachments against expected attachments.
 
         Args:
-            attachments (List[Attachment]): Actual attachments.
-            expected_attachments (List[AttachmentCheck]): Expected attachments.
+            attachments (list[Attachment]): Actual attachments.
+            expected_attachments (list[AttachmentCheck]): Expected attachments.
             ts (TestStats): Test statistics.
 
         Returns:
-            List[Failure]: List of failures if attachments do not match.
+            list[Failure]: List of failures if attachments do not match.
         """
         failures = []
         if attachments is None:
@@ -455,9 +457,9 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ATTACHMENT)
                 failures.append(
                     Failure(
-                        [attachment.__dict__ for attachment in attachments],
-                        expected_attachment.__dict__,
-                        "Expected attachment not found in actual attachments",
+                        actual=[attachment.__dict__ for attachment in attachments],
+                        expected=expected_attachment.__dict__,
+                        comment="Expected attachment not found in actual attachments",
                     )
                 )
 

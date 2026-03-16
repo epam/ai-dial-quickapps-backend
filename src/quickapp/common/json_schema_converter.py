@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -7,12 +7,16 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
 )
 
+_ConfigurableSchema = (
+    ConfigurableSchemaSimpleType | ConfigurableSchemaObject | ConfigurableSchemaArray
+)
+
 
 class JsonSchemaConverter:
     """Utility class for converting JSON schema dictionaries to ConfigurableSchema objects."""
 
     @staticmethod
-    def _normalize_type(type_field: Any) -> Tuple[Optional[str], bool]:
+    def _normalize_type(type_field: str | list[str] | None) -> tuple[str | None, bool]:
         """
         Normalize the 'type' field which can be a str or a list (e.g. ['string', 'null']).
         Returns (primary_type_or_None, is_nullable).
@@ -25,7 +29,7 @@ class JsonSchemaConverter:
         return (type_field, False) if type_field is not None else (None, False)
 
     @staticmethod
-    def _resolve_ref(ref: str, root_schema: Dict[str, Any]) -> Dict[str, Any]:
+    def _resolve_ref(ref: str, root_schema: dict[str, Any]) -> dict[str, Any]:
         """
         Resolve an internal JSON Pointer ref like '#/$defs/Name' or '#/definitions/Name'
         by traversing the root_schema. Returns the referenced dictionary.
@@ -47,8 +51,8 @@ class JsonSchemaConverter:
 
     @staticmethod
     def _pick_variant_from_anyof(
-        variants: List[Dict[str, Any]], root_schema: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        variants: list[dict[str, Any]], root_schema: dict[str, Any]
+    ) -> dict[str, Any]:
         """
         Pick the most relevant variant from anyOf/oneOf:
         - prefer a non-null typed variant
@@ -76,8 +80,8 @@ class JsonSchemaConverter:
 
     @staticmethod
     def _build_schema_from_definition(
-        def_dict: Dict[str, Any], name: str | None = None, root_schema: Dict[str, Any] | None = None
-    ) -> Any:
+        def_dict: dict[str, Any], name: str | None = None, root_schema: dict[str, Any] | None = None
+    ) -> _ConfigurableSchema:
         """
         Build and return a ConfigurableSchema* instance from a single property/items definition.
         This centralizes the handling for simple types, objects and arrays (including nested arrays).
@@ -156,8 +160,8 @@ class JsonSchemaConverter:
 
     @staticmethod
     def convert_schema_to_properties(
-        schema_dict: Dict[str, Any], root_schema: Dict[str, Any] | None = None
-    ) -> Dict[str, Any]:
+        schema_dict: dict[str, Any], root_schema: dict[str, Any] | None = None
+    ) -> dict[str, _ConfigurableSchema]:
         """
         Convert a JSON schema dictionary to ConfigurableSchema* properties.
 
@@ -169,7 +173,7 @@ class JsonSchemaConverter:
         Returns:
             Dictionary of converted properties compatible with OpenAiToolFunctionParameters
         """
-        properties: Dict[str, Any] = {}
+        properties: dict[str, _ConfigurableSchema] = {}
 
         # Preserve the original root for resolving internal refs
         original_root = root_schema or schema_dict

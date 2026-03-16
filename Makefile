@@ -45,7 +45,7 @@ format: install_dev
 	$(POETRY) run isort $(SRC_DIRS)
 	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
-install_pre_commit_hooks: poetry-boot
+install_pre_commit_hooks:
 	pre-commit install
 
 run_chat: install_dev
@@ -95,4 +95,3 @@ integration_test_run:
 
 e2e_test: install_integration
 	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"
-

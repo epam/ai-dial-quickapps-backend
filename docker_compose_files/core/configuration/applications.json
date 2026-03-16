@@ -19,6 +19,10 @@
             "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nAlways format your responses in markdown."
           }
         },
+        "starters": [
+          "Hello",
+          "Goodbye"
+        ],
         "contexts": [],
         "tool_sets": [
           {
@@ -111,7 +115,20 @@
             "type": "predefined",
             "template_name": "current_timestamp"
           }
-        ]
+        ],
+        "conversation_starters": {
+          "intro_text": "What would you like to talk about?",
+          "starters": [
+            {
+              "title": "Find latest news about AI",
+              "text": "Find latest news about AI using web search tool, focusing on major players in generative AI"
+            },
+            {
+              "title": "Generate an image of a futuristic city",
+              "text": "Generate an image of a futuristic city using image generation tool. The city should have flying cars, tall skyscrapers with greenery, and a vibrant atmosphere."
+            }
+          ]
+        }
       }
     },
     "root_quick_app": {

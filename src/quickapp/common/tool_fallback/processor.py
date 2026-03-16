@@ -1,4 +1,4 @@
-from typing import Any, Type
+from typing import Any
 
 from quickapp.common import CompletionResult
 from quickapp.common.tool_fallback.applicable_mixin import ApplicableStrategyMixin
@@ -31,7 +31,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
     def _handle_fallback_strategy(
         strategy_config: ToolFallbackStrategyModel, error: Exception
     ) -> str:
-        handler_cls: Type[BaseStrategy[Any]] | None = STRATEGY_TYPE_TO_HANDLER.get(
+        handler_cls: type[BaseStrategy[Any]] | None = STRATEGY_TYPE_TO_HANDLER.get(
             strategy_config.type
         )
         if not handler_cls:

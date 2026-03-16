@@ -4,7 +4,7 @@ import json
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 from unittest.mock import patch
 
 import pytest
@@ -127,7 +127,7 @@ class TestRunner:
     @staticmethod
     async def execute_test_case(
         client: TestClient, test_case: TstCase, ts: TestStats, app_config: ApplicationConfig
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         messages = []
         all_failures = []
         headers = create_request_headers(api_key=TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config)
@@ -173,8 +173,8 @@ class TestRunner:
                 ts.increment_failure(FailureReason.HTTP_STATUS)
                 all_failures.extend(
                     [
-                        Failure(response.status_code, 200, "Status code"),
-                        Failure(response.text, None, "Content"),
+                        Failure(actual=response.status_code, expected=200, comment="Status code"),
+                        Failure(actual=response.text, expected=None, comment="Content"),
                     ]
                 )
                 break
@@ -187,9 +187,9 @@ class TestRunner:
                 ts.increment_failure(FailureReason.ROLE)
                 all_failures.append(
                     Failure(
-                        response_message.role,
-                        Role.ASSISTANT,
-                        "Message role differs from expected",
+                        actual=response_message.role,
+                        expected=Role.ASSISTANT,
+                        comment="Message role differs from expected",
                     )
                 )
                 break
@@ -243,18 +243,18 @@ class TestRunner:
         return all_failures
 
     @staticmethod
-    def collect_warnings(recwarn, ts: TestStats) -> List[Failure]:
+    def collect_warnings(recwarn, ts: TestStats) -> list[Failure]:
         failures = []
         specific_warnings = [
             w for w in recwarn.list if TestConfig.WARNING_MESSAGE in str(w.message)
         ]
         if specific_warnings:
             ts.increment_failure(FailureReason.LLM_CACHE_MISSING)
-            failures.append(Failure("", "", TestConfig.FAILURE_MESSAGE))
+            failures.append(Failure(actual="", expected="", comment=TestConfig.FAILURE_MESSAGE))
         return failures
 
     @staticmethod
-    def check_test_outcome(failures: List[Failure]):
+    def check_test_outcome(failures: list[Failure]):
         if failures:
             error_message = "\n".join(map(str, failures))
             pytest.fail(f"Test failed with the following errors:\n{error_message}")
@@ -291,7 +291,7 @@ def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
     model: str = None,
-    models_applicable_for_test: List[str] = None,
+    models_applicable_for_test: list[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
@@ -342,7 +342,7 @@ def e2e_test(
 
 
                # Run the test multiple times according to the runs parameter
-            ts = TestStats(f"{test_name}[{model_to_use}]", 0, 0)
+            ts = TestStats(name=f"{test_name}[{model_to_use}]", passed=0, failed=0)
             for run_index in range(runs):
                 logger.info(f"Running test iteration {run_index + 1}/{runs}")
                 failures = await prepare_and_execute_test(
@@ -402,10 +402,10 @@ def e2e_test(
                     test_stats.failed += 1
                     run_failures_with_index = [
                         Failure(
-                            f"{test_stats.name}[{run_index+1}]: {failure.actual}",
-                            failure.expected,
-                            failure.comment,
-                        )  # Using comment instead of message
+                            actual=f"{test_stats.name}[{run_index+1}]: {failure.actual}",
+                            expected=failure.expected,
+                            comment=failure.comment,
+                        )
                         for failure in run_failures
                     ]
                     return run_failures_with_index

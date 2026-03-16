@@ -215,7 +215,7 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
 
 def test_exception_handling_in_format_response(mock_stage, wrapper, params):
     result = CompletionResult(
-        content={"content": "response content"}, content_type="application/json"
+        content="{'content': 'response content'}", content_type="application/json"
     )
 
     expected_params = """> ##### Request:

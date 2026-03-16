@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # The skill name to inject (file transfer formatting instructions)
 BUILTIN_FILE_TRANSFER_SKILL = "tool-call-file-parameter-formatting"
-SYNTHETIC_TOOL_CALL_ID = "synthetic_file_transfer_instruction"
+SYNTHETIC_TOOL_CALL_ID = "call_synthetic_file_transfer_0001"
 
 
 class _InjectFileTransferInstructionTransformer(MessagesSetupTransformer):
