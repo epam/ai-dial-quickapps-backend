@@ -56,11 +56,13 @@ class TestFileArgumentTransformer:
     @pytest.mark.asyncio
     async def test_multiple_file_params(self, transformer, mock_file_service):
         mock_file_service.download_file.return_value = b"content"
-        result = await transformer.transform({
-            "a": "file:text::files/a.txt",
-            "b": "file:url::https://example.com/b.pdf",
-            "c": "normal_value",
-        })
+        result = await transformer.transform(
+            {
+                "a": "file:text::files/a.txt",
+                "b": "file:url::https://example.com/b.pdf",
+                "c": "normal_value",
+            }
+        )
         assert result["a"] == "content"
         assert result["b"] == "https://example.com/b.pdf"
         assert result["c"] == "normal_value"
@@ -79,13 +81,15 @@ class TestFileArgumentTransformer:
     @pytest.mark.asyncio
     async def test_list_with_multiple_file_references(self, transformer, mock_file_service):
         mock_file_service.download_file.return_value = b"content"
-        result = await transformer.transform({
-            "docs": [
-                "file:base64::files/a.png",
-                "file:text::files/b.txt",
-                "file:url::https://example.com/c.pdf",
-            ]
-        })
+        result = await transformer.transform(
+            {
+                "docs": [
+                    "file:base64::files/a.png",
+                    "file:text::files/b.txt",
+                    "file:url::https://example.com/c.pdf",
+                ]
+            }
+        )
         assert result["docs"][0] == base64.b64encode(b"content").decode()
         assert result["docs"][1] == "content"
         assert result["docs"][2] == "https://example.com/c.pdf"
@@ -93,18 +97,16 @@ class TestFileArgumentTransformer:
     @pytest.mark.asyncio
     async def test_list_with_mixed_file_and_plain_strings(self, transformer, mock_file_service):
         mock_file_service.download_file.return_value = b"data"
-        result = await transformer.transform({
-            "items": ["file:base64::files/img.png", "plain string", "another plain"]
-        })
+        result = await transformer.transform(
+            {"items": ["file:base64::files/img.png", "plain string", "another plain"]}
+        )
         assert result["items"][0] == base64.b64encode(b"data").decode()
         assert result["items"][1] == "plain string"
         assert result["items"][2] == "another plain"
 
     @pytest.mark.asyncio
     async def test_list_with_non_string_elements(self, transformer):
-        result = await transformer.transform({
-            "mixed": [42, True, "plain", None]
-        })
+        result = await transformer.transform({"mixed": [42, True, "plain", None]})
         assert result["mixed"] == [42, True, "plain", None]
 
     @pytest.mark.asyncio

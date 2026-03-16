@@ -4,7 +4,6 @@ from typing import TypeAlias
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
-
 from injector import Binder, Injector, Module
 
 from quickapp.common import CompletionResult
@@ -75,7 +74,9 @@ def create_request_body(message_content: str) -> dict[str, str]:
 def create_app_configuration(toolsets: list[ToolSet]) -> ApplicationConfig:
     return ApplicationConfig(
         orchestrator=OrchestratorConfig(
-            deployment=DialDeploymentConfig(name="gpt-4o-mini-2024-07-18", parameters=DialDeploymentParameters()),
+            deployment=DialDeploymentConfig(
+                name="gpt-4o-mini-2024-07-18", parameters=DialDeploymentParameters()
+            ),
             system_prompt=CustomSystemPromptConfig(
                 type="custom", content="test", variables={"test": "test"}
             ),

@@ -1,15 +1,18 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import httpx
+import pytest
 
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
+
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing import _Pricing
+
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
+
 # noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing_service import _PricingService
 
@@ -56,15 +59,19 @@ async def test_get_price_from_cache(pricing_service, mock_registry):
 @pytest.mark.asyncio
 async def test_get_price_fetch_from_api(pricing_service, mock_registry):
     mock_response = MagicMock()
-    mock_response.json = MagicMock(return_value={
-        "pricing": {
-            "prompt": "0.01",
-            "completion": "0.02",
+    mock_response.json = MagicMock(
+        return_value={
+            "pricing": {
+                "prompt": "0.01",
+                "completion": "0.02",
+            }
         }
-    })
+    )
     mock_response.raise_for_status = MagicMock()
 
-    with patch("quickapp.common.dial_core_client.DialCoreClient.__aenter__", autospec=True) as mock_aenter:
+    with patch(
+        "quickapp.common.dial_core_client.DialCoreClient.__aenter__", autospec=True
+    ) as mock_aenter:
         client_instance = DialCoreClient(api_key="testkey", base_url="http://test")
 
         client_instance._client = MagicMock()
@@ -117,7 +124,9 @@ async def test_get_price_missing_pricing_data(pricing_service, mock_registry):
 
 @pytest.mark.asyncio
 async def test_get_price_http_error(pricing_service, mock_registry):
-    err = httpx.HTTPStatusError(message="Not Found", request=MagicMock(), response=MagicMock(status_code=404))
+    err = httpx.HTTPStatusError(
+        message="Not Found", request=MagicMock(), response=MagicMock(status_code=404)
+    )
 
     mock_response = AsyncMock()
     mock_response.raise_for_status = AsyncMock(side_effect=err)

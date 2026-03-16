@@ -15,7 +15,9 @@ def load_or_download_model(model_name: str, local_dir: Path) -> SentenceTransfor
     try:
         if local_dir.exists() and any(local_dir.iterdir()):
             logger.info(f"Loading model from local directory: {local_dir}")
-            return SentenceTransformer(str(local_dir / model_name), cache_folder=str(local_dir.absolute()))
+            return SentenceTransformer(
+                str(local_dir / model_name), cache_folder=str(local_dir.absolute())
+            )
     except Exception:
         logger.info(f"Local model not found. Downloading '{model_name}' from Hugging Face...")
 

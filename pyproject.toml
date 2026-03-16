@@ -47,13 +47,13 @@ package-mode = false
 requires-poetry = '>=2.0.0,<3.0.0'
 
 [tool.poetry.group.dev.dependencies]
-black = { version = "^24.4.0", extras = ["jupyter"] }
+black = { version = "^26.3.1", extras = ["jupyter"] }
 isort = "^5.13.2"
 mypy = "^1.19.1"
 fastmcp = "^2.12.5"
 types-requests = "^2.31.0.20240406"
 pre-commit = "^3.8.0"
-flake8 = "^7.1.2"
+flake8 = "^7.3.0"
 autoflake = "^2.3.1"
 pyright = "^1.1.394"
 pandas-stubs = "^3.0.0.260204"
