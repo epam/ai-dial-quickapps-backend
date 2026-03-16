@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any
 
@@ -83,7 +84,7 @@ class AssistantInvoker:
             payload["extra_headers"] = self.__forwarded_headers
 
         chat_completion_config.update(payload)
-        logger.debug(f"Chat completion config: {chat_completion_config}")
+        logger.debug(f"Chat completion config: {json.dumps(chat_completion_config)}")
         return chat_completion_config
 
     async def __create_chat_completion(

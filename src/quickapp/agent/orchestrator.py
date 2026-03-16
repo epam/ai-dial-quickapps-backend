@@ -2,7 +2,7 @@ import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
-from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 
@@ -19,7 +19,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
-from ._models import AccumulatedToolCall
+from ._models import AccumulatedToolCall, AssistantCallResult
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ class Orchestrator:
         self.__iterations_counter = 0
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
+        self.__propagate_orchestrator_stages: bool = app_config.orchestrator.propagate_stages
         self.__usage_statistics_list: list[DeploymentUsage] = []
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
@@ -95,21 +96,34 @@ class Orchestrator:
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
         assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
-            chat_completion=chat_completion_stream, destination=self.__choice
+            chat_completion=chat_completion_stream,
+            destination=self.__choice,
+            propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
         )
         if assistant_call_result is None:
             raise RuntimeError("Assistant invocation returned no result.")
 
         tool_calls = assistant_call_result.tool_calls
 
+        custom_content_kwargs: dict[str, object] = {
+            "attachments": assistant_call_result.attachments,
+        }
+        state = getattr(assistant_call_result, "state", None)
+        if state:
+            custom_content_kwargs["state"] = state
+
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
                 content=assistant_call_result.content or " ",
-                custom_content=CustomContent(attachments=assistant_call_result.attachments),
+                custom_content=CustomContent(**custom_content_kwargs),
                 tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
+
+        for key, value in (getattr(assistant_call_result, "state", None) or {}).items():
+            self.__state_holder.add_state(key, value)
+
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
             self.__usage_statistics_list.append(
                 DeploymentUsage(
