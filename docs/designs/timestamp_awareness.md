@@ -54,10 +54,6 @@ Two tools give the agent direct control over time:
 
 **Current Timestamp Tool** returns the current date and time with provenance labels. The content includes the IANA timezone name and source (server default vs. user-provided), so the agent can present time accurately and honestly to the user. The tool also pre-sets its own metadata in state, ensuring the enrichment pipeline preserves these values rather than overwriting them.
 
-**Set Timezone Tool** allows the agent to store the user's timezone when the user mentions it in conversation. The timezone is validated against the IANA database and stored in message state under a well-known key. It supports reset to clear a previously set timezone. The tool's stage is hidden in the UI since it's a background action.
-
-Both tools are packaged as predefined tools and bundled into a single toolset, so applications can enable timestamp awareness by adding one toolset reference to their configuration.
-
 ### 2. Enrichment Pipeline
 
 The `CompletionResultEnricher` abstraction handles metadata enrichment at the infrastructure level, outside of individual tools. As each tool completes execution inside `ToolExecutor`, its result is immediately passed through a chain of enrichers before any other tool finishes. This ensures each result's timestamp reflects its actual completion moment, not the moment the slowest parallel tool finishes.
@@ -87,40 +83,6 @@ If the user has set a timezone via the set timezone tool, all timestamps are con
 ```
 
 The transformer skips non-text content types (e.g. JSON from context tools) to avoid corrupting structured output.
-
-### 4. Timezone Lifecycle
-
-Timezone information flows through the system at two levels:
-
-**Request-level timezone** is set when the request arrives (e.g. extracted from request headers). It determines the `TimeProvider`'s timezone and provenance source for the duration of that request. If no timezone is provided, the server defaults to UTC with source `SERVER`.
-
-**Conversation-level timezone** is set by the agent via the set timezone tool. It's stored in message state and persists across turns through the tool execution history packing/unpacking mechanism. The annotation transformer scans the message history for the most recent timezone setting and applies it when formatting annotations.
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Agent
-    participant SetTimezoneTool
-    participant History
-    participant Transformer
-
-    User->>Agent: "I'm in Warsaw"
-    Agent->>SetTimezoneTool: set_user_timezone("Europe/Warsaw")
-    SetTimezoneTool->>History: Store {_user_timezone: "Europe/Warsaw"} in TOOL message state
-    Note over History: Packed into TOOL_EXECUTION_HISTORY at end of turn
-
-    User->>Agent: (next turn)
-    History->>Transformer: Unpacked messages with timezone in state
-    Transformer->>Transformer: Scan for most recent _user_timezone
-    Transformer->>Agent: All TOOL annotations use Europe/Warsaw
-
-    User->>Agent: "Forget my timezone"
-    Agent->>SetTimezoneTool: set_user_timezone("reset")
-    SetTimezoneTool->>History: Store {_user_timezone: null}
-    Note over Transformer: Falls back to each message's own timezone
-```
-
-The two levels are complementary: request-level timezone affects tool execution (what time the current timestamp tool reports), while conversation-level timezone affects presentation (how timestamps are displayed to the LLM in annotations).
 
 ## Message Transformer Hierarchy
 

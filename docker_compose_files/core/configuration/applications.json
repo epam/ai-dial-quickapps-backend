@@ -57,10 +57,6 @@
             "template_name": "py_interpreter"
           },
           {
-            "type": "predefined",
-            "template_name": "current_timestamp"
-          },
-          {
             "name": "mcp-toolset",
             "description": "Fetch MCP tool",
             "type": "mcp",
@@ -110,10 +106,6 @@
                 "template_name": "image_generation"
               }
             ]
-          },
-          {
-            "type": "predefined",
-            "template_name": "current_timestamp"
           }
         ],
         "conversation_starters": {
@@ -221,10 +213,6 @@
                 }
               }
             ]
-          },
-          {
-            "type": "predefined",
-            "template_name": "current_timestamp"
           }
         ]
       }

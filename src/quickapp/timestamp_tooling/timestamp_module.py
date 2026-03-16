@@ -11,7 +11,6 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.timestamp_tooling._current_timestamp_tool import _CurrentTimestampTool
-from quickapp.timestamp_tooling._set_timezone_tool import _SetTimezoneTool
 from quickapp.timestamp_tooling._timestamp_enrichment_transformer import (
     _TimestampEnrichmentTransformer,
 )
@@ -24,14 +23,12 @@ class TimestampModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_CurrentTimestampTool, to=_CurrentTimestampTool, scope=request_scope)
-        binder.bind(_SetTimezoneTool, to=_SetTimezoneTool, scope=request_scope)
 
     @multiprovider
     def _provide_timestamp_tools(
         self,
         app_config: ApplicationConfig,
         ct_builder: AssistedBuilder[_CurrentTimestampTool],
-        stz_builder: AssistedBuilder[_SetTimezoneTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
         for tool_set in app_config.tool_sets:
@@ -47,14 +44,6 @@ class TimestampModule(Module):
                     elif tool_config.open_ai_tool.function.name.startswith("current_timestamp"):
                         tools.append(
                             ct_builder.build(
-                                tool_config=tool_config,
-                                name=tool_config.open_ai_tool.function.name,
-                                description=tool_config.open_ai_tool.function.description,
-                            )
-                        )
-                    elif tool_config.open_ai_tool.function.name.startswith("set_user_timezone"):
-                        tools.append(
-                            stz_builder.build(
                                 tool_config=tool_config,
                                 name=tool_config.open_ai_tool.function.name,
                                 description=tool_config.open_ai_tool.function.description,
