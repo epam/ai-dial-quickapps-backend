@@ -53,7 +53,7 @@ def tool1():
     tool = MagicMock(name="tool1")
     tool.name = "tool1"
     tool.description = "desc1"
-    tool.args_schema = {}
+    tool.inputSchema = {"type": "object", "properties": {}}
     return tool
 
 
@@ -62,7 +62,7 @@ def tool2():
     tool = MagicMock(name="tool2")
     tool.name = "tool2"
     tool.description = "desc2"
-    tool.args_schema = {}
+    tool.inputSchema = {"type": "object", "properties": {}}
     return tool
 
 
@@ -336,3 +336,19 @@ async def test_no_exception_if_toolset_list_is_empty():
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
+
+
+def test_convert_to_openai_tool_dereferences_refs():
+    schema = {
+        "type": "object",
+        "properties": {"addr": {"$ref": "#/$defs/Address"}},
+        "$defs": {
+            "Address": {
+                "type": "object",
+                "description": "Address",
+                "properties": {"city": {"type": "string"}},
+            }
+        },
+    }
+    result = _MCPToolInitializer._convert_to_openai_tool("test_tool", "A test tool", schema)
+    assert "addr" in result.function.parameters.properties

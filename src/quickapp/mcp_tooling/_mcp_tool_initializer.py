@@ -79,7 +79,9 @@ class _MCPToolInitializer(CompletionInitializer):
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
-    def _convert_to_openai_tool(name: str, description: str | None, input_schema: dict[str, Any]):
+    def _convert_to_openai_tool(
+        name: str, description: str | None, input_schema: dict[str, Any]
+    ) -> OpenAiToolConfig:
         return OpenAiToolConfig(
             function=OpenAiToolFunction.model_construct(  # model_construct to prevent double @model_validator execution for name
                 name=name,
