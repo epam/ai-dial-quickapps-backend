@@ -1,7 +1,7 @@
-import pytest
 from types import SimpleNamespace
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, Mock
 
+import pytest
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
 from quickapp.agent._models import AccumulatedToolCall

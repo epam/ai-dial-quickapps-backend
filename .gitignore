@@ -19,6 +19,7 @@ build
 dist
 venv
 /models/
+/reports/
 /docker_compose_files/core/data/
 /docker_compose_files/core/logs/
 /docker_compose_files/core/configuration/generated/

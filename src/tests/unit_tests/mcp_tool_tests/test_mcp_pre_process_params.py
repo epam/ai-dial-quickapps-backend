@@ -66,9 +66,7 @@ class TestPreProcessParams:
         raw = b"binary data"
         file_service.download_file.return_value = raw
 
-        result = await tool._pre_process_params(
-            image="file:base64::files/photo.png"
-        )
+        result = await tool._pre_process_params(image="file:base64::files/photo.png")
 
         file_service.download_file.assert_awaited_once_with("files/photo.png")
         assert result["image"] == base64.b64encode(raw).decode()
@@ -78,34 +76,24 @@ class TestPreProcessParams:
         tool, file_service = _make_tool()
         file_service.download_file.return_value = b"decoded text"
 
-        result = await tool._pre_process_params(
-            content="file:text::files/doc.txt"
-        )
+        result = await tool._pre_process_params(content="file:text::files/doc.txt")
 
         file_service.download_file.assert_awaited_once_with("files/doc.txt")
         assert result["content"] == "decoded text"
 
     @pytest.mark.asyncio
     async def test_url_prefix_no_dial_url(self):
-        tool, _ = _make_tool(
-            input_schema={"properties": {"link": {"type": "string"}}}
-        )
-        result = await tool._pre_process_params(
-            link="file:url::https://example.com/data"
-        )
+        tool, _ = _make_tool(input_schema={"properties": {"link": {"type": "string"}}})
+        result = await tool._pre_process_params(link="file:url::https://example.com/data")
         assert result["link"] == "https://example.com/data"
 
     @pytest.mark.asyncio
     async def test_url_prefix_with_dial_url_true(self):
         tool, file_service = _make_tool(
-            input_schema={
-                "properties": {"doc_url": {"type": "string", "dial_url": True}}
-            },
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
             dial_toolset_id="my-toolset",
         )
-        result = await tool._pre_process_params(
-            doc_url="file:url::files/report.pdf"
-        )
+        result = await tool._pre_process_params(doc_url="file:url::files/report.pdf")
         assert result["doc_url"] == "files/report.pdf"
         file_service.grant_permissions_to_files.assert_awaited_once_with(
             ["files/report.pdf"], "my-toolset"
@@ -114,13 +102,9 @@ class TestPreProcessParams:
     @pytest.mark.asyncio
     async def test_url_prefix_with_dial_url_false(self):
         tool, file_service = _make_tool(
-            input_schema={
-                "properties": {"doc_url": {"type": "string", "dial_url": False}}
-            },
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": False}}},
         )
-        result = await tool._pre_process_params(
-            doc_url="file:url::files/report.pdf"
-        )
+        result = await tool._pre_process_params(doc_url="file:url::files/report.pdf")
         assert result["doc_url"] == "files/report.pdf"
         file_service.grant_permissions_to_files.assert_not_awaited()
 
@@ -148,9 +132,7 @@ class TestPreProcessParams:
         tool, file_service = _make_tool()
         file_service.download_file.return_value = b"encoded"
 
-        result = await tool._pre_process_params(
-            image="file:BASE64::files/photo.png"
-        )
+        result = await tool._pre_process_params(image="file:BASE64::files/photo.png")
 
         assert result["image"] == base64.b64encode(b"encoded").decode()
 

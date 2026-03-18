@@ -1,4 +1,5 @@
-SRC_DIRS = src/quickapp src/scripts
+SRC_DIRS = src/quickapp src/scripts src/tests
+MYPY_DIRS = src/quickapp src/scripts
 POETRY ?= poetry
 PYTHON ?= python3
 
@@ -33,11 +34,11 @@ lint: install_dev
 	$(POETRY) run black $(SRC_DIRS) --check
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
 	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 
 mypy: install_dev
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
 
 format: install_dev
 	$(POETRY) run autoflake $(SRC_DIRS)
@@ -45,7 +46,7 @@ format: install_dev
 	$(POETRY) run isort $(SRC_DIRS)
 	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
-install_pre_commit_hooks: poetry-boot
+install_pre_commit_hooks:
 	pre-commit install
 
 run_chat: install_dev
@@ -95,4 +96,3 @@ integration_test_run:
 
 e2e_test: install_integration
 	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"
-

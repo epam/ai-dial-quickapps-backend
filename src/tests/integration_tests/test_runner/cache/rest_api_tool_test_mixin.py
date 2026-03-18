@@ -12,8 +12,17 @@ class RestApiToolTestMixin:
         if self._box_for_shapes is None:
             return Response(content="The box not created", status_code=404)
         query = request.query_params.get("shape")
-        found = next((item for item in self._box_for_shapes.get_shapes() if str(query).lower() in str(item).lower()), None)
-        return Response(content="Shape is not in the box" if not found else str(found), media_type="text/plain")
+        found = next(
+            (
+                item
+                for item in self._box_for_shapes.get_shapes()
+                if str(query).lower() in str(item).lower()
+            ),
+            None,
+        )
+        return Response(
+            content="Shape is not in the box" if not found else str(found), media_type="text/plain"
+        )
 
     async def rest_test_post(self, request: Request):
         body = await request.body()
@@ -27,7 +36,10 @@ class RestApiToolTestMixin:
                 self._box_for_shapes = _BoxForShapes(capacity, shapes)
                 return Response(content="Box created", status_code=201)
             else:
-                return Response(content="Invalid data: expected object with capacity and shapes", status_code=400)
+                return Response(
+                    content="Invalid data: expected object with capacity and shapes",
+                    status_code=400,
+                )
         except Exception:
             return Response(content="Invalid JSON", status_code=400)
 
@@ -53,6 +65,7 @@ class RestApiToolTestMixin:
             return Response(content="Removed", status_code=200)
         else:
             return Response(content="Shapes to remove not found in the box", status_code=404)
+
 
 class _BoxForShapes:
     def __init__(self, capacity, shapes: list[str]):

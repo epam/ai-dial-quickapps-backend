@@ -3,9 +3,10 @@ from unittest.mock import MagicMock
 import pytest
 
 # noinspection PyProtectedMember
-from quickapp.usage_statistics._pricing_registry import _PricingRegistry
-# noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing import _Pricing
+
+# noinspection PyProtectedMember
+from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 
 
 @pytest.fixture

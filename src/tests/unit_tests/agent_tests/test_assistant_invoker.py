@@ -25,26 +25,32 @@ class FakeMessage:
     def dict(self):
         return {"role": "user", "content": self.content}
 
+
 class DummyParams:
     def model_dump(self, exclude_none=True):
         # base config returned before payload update
         return {"base_param": "value"}
+
 
 class DummyDeployment:
     def __init__(self):
         self.parameters = DummyParams()
         self.name = "test-model"
 
+
 class DummyOrchestrator:
     def __init__(self):
         self.deployment = DummyDeployment()
+
 
 class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
+
 mock_filter = Mock()
 mock_filter.filter_attachments.side_effect = lambda messages: messages
+
 
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
@@ -53,7 +59,6 @@ async def test_invoke_without_show_usage(monkeypatch):
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
-
 
     tools = [{"name": "t1"}]
     invoker = AssistantInvoker(
@@ -66,7 +71,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         attachment_filter=mock_filter,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -86,6 +91,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
+
 @pytest.mark.asyncio
 async def test_invoke_with_show_usage_true(monkeypatch):
     create_mock = AsyncMock(return_value="stream-result")
@@ -104,7 +110,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -118,6 +124,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert called_kwargs["tools"] is tools
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
+
 
 @pytest.mark.asyncio
 async def test_invoke_propagates_exceptions():

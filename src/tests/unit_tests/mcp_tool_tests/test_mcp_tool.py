@@ -6,18 +6,24 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
-from mcp.types import ImageContent, EmbeddedResource, TextResourceContents, BlobResourceContents
+from mcp.types import BlobResourceContents, EmbeddedResource, ImageContent, TextResourceContents
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import CompletionResult, DIAL_API_KEY, StagedBaseTool, DIAL_BEARER, ForwardedHeaders
+from quickapp.common import (
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    CompletionResult,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import AttachmentConfig
-from quickapp.config.toolsets.mcp import MCPToolSet, MCPServerInfo, MCPProtocol
+from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app

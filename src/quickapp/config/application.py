@@ -7,6 +7,7 @@ from quickapp.common.base_config import BaseApplicationTypeConfig
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
+from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.toolsets.toolset import ToolSet
 
 logger = logging.getLogger(__name__)
@@ -41,4 +42,11 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     orchestrator: OrchestratorConfig = Field(description="The configuration for the orchestrator.")
     contexts: list[Context] = Field(description="The list of contexts.")
     tool_sets: list[ToolSet] = Field(description="The list of tool sets.")
-    starters: list[str] | None = Field(description="The list of starter buttons.", default=None)
+    starters: list[str] | None = Field(
+        description="**Deprecated, use conversation_starters**. The list of starters, which can be used to start the conversation with the agent.",
+        default=None,
+        deprecated="This field is deprecated and will be removed in future versions. Please use 'conversation_starters' instead.",
+    )
+    conversation_starters: ConversationStartersConfig | None = Field(
+        description="The configuration for conversation starters.", default=None
+    )

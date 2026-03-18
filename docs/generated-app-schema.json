@@ -507,6 +507,56 @@
       "title": "ContinueStrategyModel",
       "type": "object"
     },
+    "ConversationStarter": {
+      "properties": {
+        "title": {
+          "description": "The title of the conversation starter button.",
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "description": "The text to populate in the chat input when the button is clicked.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "text"
+      ],
+      "title": "ConversationStarter",
+      "type": "object"
+    },
+    "ConversationStartersConfig": {
+      "properties": {
+        "intro_text": {
+          "default": "Select an action",
+          "description": "The introductory text shown above the conversation starters.",
+          "title": "Intro Text",
+          "type": "string"
+        },
+        "chat_message_input_disabled": {
+          "default": false,
+          "description": "Whether to disable the chat message input when using conversation starters. If true, users can only interact with the agent through the conversation starter buttons.",
+          "title": "Chat Message Input Disabled",
+          "type": "boolean"
+        },
+        "starters": {
+          "description": "The list of conversation starters.",
+          "items": {
+            "$ref": "#/$defs/ConversationStarter"
+          },
+          "minItems": 1,
+          "title": "Starters",
+          "type": "array"
+        }
+      },
+      "required": [
+        "starters"
+      ],
+      "title": "ConversationStartersConfig",
+      "type": "object"
+    },
     "CustomFieldsConfig": {
       "properties": {
         "configuration": {
@@ -2756,11 +2806,28 @@
         }
       ],
       "default": null,
-      "description": "The list of starter buttons.",
+      "deprecated": true,
+      "description": "**Deprecated, use conversation_starters**. The list of starters, which can be used to start the conversation with the agent.",
       "title": "Starters",
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 4
+      }
+    },
+    "conversation_starters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConversationStartersConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The configuration for conversation starters.",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 5
       }
     }
   },

@@ -5,13 +5,12 @@ from enum import Enum
 from pathlib import Path
 
 from pydantic import SecretStr
+from pydantic.type_adapter import TypeAdapter
 
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.toolsets.toolset import ToolSet
-from pydantic.type_adapter import TypeAdapter
-
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
 logger = logging.getLogger(__name__)
@@ -19,8 +18,9 @@ logger = logging.getLogger(__name__)
 file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
     "integration_simple": ["test_tool_set_chat_hub"],
-    "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"]
+    "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
 }
+
 
 class SimilarityThreshold(Enum):
     DEFAULT = 0.9
@@ -67,11 +67,13 @@ class TestConfig:
 
         return ApplicationConfig(
             orchestrator=OrchestratorConfig(
-                deployment=DialDeploymentConfig(name=model, parameters=DialDeploymentParameters(temperature=temperature)),
+                deployment=DialDeploymentConfig(
+                    name=model, parameters=DialDeploymentParameters(temperature=temperature)
+                ),
                 system_prompt=PredefinedSystemPromptConfig(template=template),
             ),
             contexts=[],
-            tool_sets=toolsets
+            tool_sets=toolsets,
         )
 
     @classmethod

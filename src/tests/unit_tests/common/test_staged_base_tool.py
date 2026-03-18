@@ -3,10 +3,9 @@ from unittest.mock import Mock
 
 import pytest
 from aidial_sdk.chat_completion import Attachment
-
 from injector import AssistedBuilder
 
-from quickapp.common import StagedBaseTool, CompletionResult
+from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.base import AttachmentConfig
@@ -53,6 +52,7 @@ def mock_stage_wrapper_factory():
     factory = Mock()
     factory.build = Mock(return_value=mock_stage_wrapper)
     return factory
+
 
 @pytest.fixture
 def mock_tool_config():
