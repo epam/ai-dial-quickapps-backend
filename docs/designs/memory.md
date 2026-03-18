@@ -77,8 +77,6 @@ what is not. For example, they may want to exclude certain types of information 
 
 The core of the document. Break this into subsections that map to the distinct concerns or components being changed.
 
-### Concern 1
-
 For each concern, cover:
 
 - **What** is being introduced or changed (field, class, method).
@@ -86,9 +84,95 @@ For each concern, cover:
 - **Semantics** — how it works at runtime.
 - **Change** — what specifically changes relative to the current codebase.
 
-### Concern 2
 
-###
+### Concern 1: How AI agents interact with memory?
+
+Agents interact with memory through two complementary mechanisms: a **memory skill** that governs decision-making, and **MCP tools** that perform the actual read/write operations.
+
+#### Memory Skill
+
+A skill file (`config/predefined/skills/memory/SKILL.md`) is loaded by the existing `AgentSkillsProvider` + `PredefinedContentProvider` pipeline — no changes to the skills loader are needed. It instructs the agent **when** and **how** to use the memory tools:
+
+- **`store_memory` with `memory_type=core`** — when the user states a permanent fact, corrects a fact, or establishes a preference. Facts are always appended (never overwritten); retrieval handles context disambiguation.
+- **`store_memory` with `memory_type=episodic`** — when a significant decision, bug fix, or repeatable workflow is established during the session and should be recallable in a future one.
+- **`search_archive`** — when the user references past events ("last time", "remember when") and the answer is not in the current context window.
+- **Never store**: intermediate debug steps, general knowledge, or file contents (that is RAG's job).
+
+Importance guide for core facts stored by the agent:
+
+| Importance | Meaning |
+|------------|---------|
+| 0.9 + | Universal facts (name, language preference) — always injected regardless of topic |
+| 0.7 – 0.9 | Project/context-specific facts — injected when contextually relevant |
+| < 0.7 | Low-priority hints |
+
+#### MCP Tools
+
+The Memory MCP server is deployed as a **DIAL application** with an MCP endpoint, registered in DIAL Core's application schema (enabled by [epam/ai-dial-core#1382](https://github.com/epam/ai-dial-core/issues/1382), already shipped). This is a no-code, admin-level configuration — no changes to quickapps-backend code are needed to wire the tools.
+
+Because the Memory MCP server is a proper DIAL application, it participates in the same access-control, routing, and observability as any other DIAL entity. A single deployed instance can serve multiple QuickApps simultaneously.
+
+| Tool | Description | Arguments |
+|------|-------------|-----------|
+| `store_memory` | Append a new memory row. Strictly append-only — never overwrites. | `content: str`, `memory_type: Literal["core","episodic"]`, `context: str`, `importance: float` |
+| `search_archive` | Search episodic history. Use when user references past events not in the current context. | `query: str` |
+
+**Append-only invariant**: if the agent stores "project-alpha is in Python" and later "project-alpha is in Rust", both rows coexist. Retrieval surfaces the contextually appropriate one. If the model sees two conflicting facts injected for the same query, it asks the user to clarify — which is the correct behavior.
+
+
+### Concern 2: How UI clients interact with memory?
+
+UI clients (e.g. DIAL Chat, custom frontends) interact with memory through **custom REST API routes** exposed by the Memory MCP server. Memory creation is intentionally excluded — only agents create memories via `store_memory`. The UI role is limited to **read, update, and delete**.
+
+#### Why no Create from UI?
+
+Facts stored in memory carry semantic metadata (`importance`, `context`, `embedding`) that the agent computes at storage time based on conversation context. A UI form cannot reproduce that reasoning reliably. The agent is the only writer.
+
+#### REST Routes
+
+The Memory MCP server exposes management routes alongside its MCP endpoint. Per [epam/ai-dial-core#1382](https://github.com/epam/ai-dial-core/issues/1382) (already shipped), DIAL applications can declare custom HTTP routes in their application schema — these are routed through DIAL Core and subject to the same access control as any other DIAL entity.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/memory?path=` | List all memory rows for the given scope path. Supports filtering by `memory_type`. |
+| `GET` | `/memory/{id}?path=` | Get a single memory row by ID. |
+| `PATCH` | `/memory/{id}` | Update `content`, `importance`, or `context` of an existing row. Embedding is re-computed on update if a vector model is configured. |
+| `DELETE` | `/memory/{id}?path=` | Hard-delete a memory row. |
+
+The `path` parameter determines the memory scope (app-scoped or user-scoped) — the same path-agnostic contract used by the MCP tools and the HTTP management API.
+
+#### Access Control
+
+Routes are proxied through DIAL Core. The caller's identity is resolved by DIAL Core and forwarded to the Memory MCP server via a header. The server validates that the requested `path` belongs to the authenticated user — cross-user access is rejected.
+
+#### Relationship to Concern 5
+
+The route design here is the **server contract**. How the UI surfaces these operations (memory panel, inline editing, bulk delete) is addressed in Concern 5.
+
+
+### Concern 3: What is memory in terms of DIAL entities?
+
+
+### Concern 4: How memory is stored in DIAL file storage?
+
+
+### Concern 5: How user can view and manage memory?
+
+
+### Concern 6: How memory is scoped?
+
+
+### Concern 7: How user provides consent for saving information to memory?
+
+
+### Concern 8: How memory is structured? (Facts, their lifecycle)
+
+
+### Concern 9: How the system can be adjusted about what is saved to memory and what is not?
+
+
+### Concern 10: How can we later improve and evolve the system?
+
 
 ...
 
