@@ -118,6 +118,7 @@ class Orchestrator:
         }
         if state:
             custom_content_kwargs["state"] = state
+            # Persist orchestrator response state so it's available for the next request.
             for key, value in state.items():
                 self.__state_holder.add_state(key, value)
 

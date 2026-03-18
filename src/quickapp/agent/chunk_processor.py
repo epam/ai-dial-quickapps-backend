@@ -1,13 +1,20 @@
 import logging
 from typing import Any
 
-from aidial_sdk.chat_completion import Choice, Stage
+from aidial_sdk.chat_completion import Attachment, Choice, Stage
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 
 from ._models import AssistantCallResult, Usage
-from ._stage_delta_types import get_stage_index
+from ._stage_delta_types import (
+    StageDeltaItem,
+    as_stage_delta,
+    attachment_kwargs,
+    get_stage_index,
+    normalize_attachment,
+    stage_display_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -56,8 +63,8 @@ class ChunkProcessor:
                     )
                 )
 
-        if propagate_orchestrator_stages:
-            self.__close_streaming_stage()
+        # Always close streaming stage if we ever opened one (we only open when propagate_orchestrator_stages).
+        self.__close_streaming_stage()
 
         self.__log_assistant_call_result(self.__assistant_call_result)
         return self.__assistant_call_result
@@ -71,47 +78,34 @@ class ChunkProcessor:
     ) -> None:
         if attachments := custom_content.get("attachments"):
             for attachment in attachments:
-                # bugfix issue#16 - if attachment has no data and no url, but has reference_url, use it as url
-                if attachment.get("data") is None and attachment.get("url") is None:
-                    if attachment.get("reference_url") is None:
-                        attachment["data"] = ""
-                    else:
-                        attachment["url"] = attachment.get("reference_url")
-                destination.add_attachment(
-                    type=attachment.get("type"),
-                    title=attachment.get("title"),
-                    data=attachment.get("data"),
-                    url=attachment.get("url"),
-                    reference_url=attachment.get("reference_url"),
-                    reference_type=attachment.get("reference_type"),
-                )
-                self.__assistant_call_result.append_attachment(attachment)
+                if isinstance(attachment, dict):
+                    normalize_attachment(attachment)
+                    kwargs = attachment_kwargs(attachment)
+                    destination.add_attachment(**kwargs)
+                    self.__assistant_call_result.append_attachment(Attachment(**kwargs))
 
-        if (
-            propagate_orchestrator_stages
-            and isinstance(destination, Choice)
-            and (stages := custom_content.get("stages"))
-            and isinstance(stages, list)
-        ):
-            for position, item in enumerate(stages):
-                if isinstance(item, dict):
-                    self.__assistant_call_result.append_stage_delta(item, position)
-                    self.__stream_stage_delta(destination, item, position)
+        if (stages := custom_content.get("stages")) and isinstance(stages, list):
+            for position, raw in enumerate(stages):
+                if isinstance(raw, dict):
+                    delta = as_stage_delta(raw)
+                    self.__assistant_call_result.append_stage_delta(delta, position)
+                    if propagate_orchestrator_stages and isinstance(destination, Choice):
+                        self.__stream_stage_delta(destination, delta, position)
 
         if state := custom_content.get("state"):
             if isinstance(state, dict):
                 self.__assistant_call_result.merge_state(state)
 
     def __stream_stage_delta(
-        self, destination: Choice, item: dict[str, Any], position: int
+        self, destination: Choice, delta: StageDeltaItem, position: int
     ) -> None:
-        """Stream a single stage delta to the choice: ensure the right stage is open and append to it."""
-        idx = get_stage_index(item, position)
+        """Stream a single stage delta to the choice; delta is already StageDeltaItem from boundary."""
+        idx = get_stage_index(delta, position)
         if self.__streaming_stage_index is not None and self.__streaming_stage_index != idx:
             self.__close_streaming_stage()
         just_created = False
         if self.__streaming_stage is None or self.__streaming_stage_index != idx:
-            name = (item.get("name") or item.get("title") or "").strip() or f"Stage {idx + 1}"
+            name = stage_display_name(delta, idx)
             try:
                 cm = destination.create_stage(name)
                 self.__streaming_stage = cm.__enter__()
@@ -130,27 +124,20 @@ class ChunkProcessor:
         if self.__streaming_stage is None:
             return
         stage = self.__streaming_stage
-        # Avoid duplicating name/title when we just used them for create_stage
         if not just_created:
-            if item.get("name") is not None:
-                stage.append_name(str(item["name"]))
-            if item.get("title") is not None:
-                stage.append_name(str(item["title"]))
-        if item.get("content"):
-            stage.append_content(str(item["content"]))
-        for att in item.get("attachments") or []:
-            if isinstance(att, dict):
-                try:
-                    stage.add_attachment(
-                        type=att.get("type"),
-                        title=att.get("title"),
-                        data=att.get("data"),
-                        url=att.get("url"),
-                        reference_url=att.get("reference_url"),
-                        reference_type=att.get("reference_type"),
-                    )
-                except Exception as e:
-                    logger.warning("Failed to add attachment to streaming stage: %s", e)
+            if "name" in delta and delta["name"] is not None:
+                stage.append_name(str(delta["name"]))
+            if "title" in delta and delta["title"] is not None:
+                stage.append_name(str(delta["title"]))
+        if "content" in delta and delta["content"]:
+            stage.append_content(str(delta["content"]))
+        if "attachments" in delta and delta["attachments"]:
+            for att in delta["attachments"]:
+                if isinstance(att, dict):
+                    try:
+                        stage.add_attachment(**attachment_kwargs(att))
+                    except Exception as e:
+                        logger.warning("Failed to add attachment to streaming stage: %s", e)
 
     def __close_streaming_stage(self) -> None:
         """Close the currently open streaming stage context, if any."""

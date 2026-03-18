@@ -38,6 +38,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         attachments=[],
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7),
+        state=None,
     )
 
     assistant_invoker = Mock()
@@ -116,12 +117,14 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         attachments=[],
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
     )
     assistant_result_no_tools = SimpleNamespace(
         content="final",
         attachments=[],
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
+        state=None,
     )
 
     assistant_invoker = Mock()
@@ -298,6 +301,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         attachments=[],
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
     )
 
     assistant_invoker = Mock()
