@@ -5,8 +5,8 @@ import pytest
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
 from quickapp.agent._models import AccumulatedToolCall
-from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
 
 
@@ -277,7 +277,9 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
 
     # state_holder received orchestrator state (response state only)
     state_holder.add_state.assert_called()
-    orch_calls = [c[0] for c in state_holder.add_state.call_args_list if c[0][0] == STATE_KEY_ORCHESTRATOR]
+    orch_calls = [
+        c[0] for c in state_holder.add_state.call_args_list if c[0][0] == STATE_KEY_ORCHESTRATOR
+    ]
     assert len(orch_calls) == 1
     assert orch_calls[0][1] == stream_state
 

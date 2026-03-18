@@ -188,7 +188,9 @@ async def test_custom_content_stages_propagate_false():
     destination.append_content = Mock()
     destination.create_stage = Mock()
 
-    chunk = _chunk_with_custom_content(content="", stages=[{"index": 0, "name": "Thinking", "content": "x"}])
+    chunk = _chunk_with_custom_content(
+        content="", stages=[{"index": 0, "name": "Thinking", "content": "x"}]
+    )
 
     result = await processor.process_chunks(
         chat_completion=_mock_stream([chunk]),  # type: ignore[arg-type]
