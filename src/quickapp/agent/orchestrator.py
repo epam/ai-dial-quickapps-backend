@@ -106,7 +106,6 @@ class Orchestrator:
 
         tool_calls = assistant_call_result.tool_calls
 
-        # state.orchestrator = only state returned in the orchestrator response (e.g. claude_message_content).
         # Thinking stages stay in custom_content (streamed to choice), not in state.
         stream_state = dict(assistant_call_result.state or {})
         state: dict[str, object] | None = (

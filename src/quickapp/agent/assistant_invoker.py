@@ -84,7 +84,8 @@ class AssistantInvoker:
             payload["extra_headers"] = self.__forwarded_headers
 
         chat_completion_config.update(payload)
-        logger.debug(f"Chat completion config: {json.dumps(chat_completion_config)}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("Chat completion config: %s", json.dumps(chat_completion_config))
         return chat_completion_config
 
     async def __create_chat_completion(
