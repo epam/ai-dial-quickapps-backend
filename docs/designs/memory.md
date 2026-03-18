@@ -152,17 +152,110 @@ The route design here is the **server contract**. How the UI surfaces these oper
 
 ### Concern 3: What is memory in terms of DIAL entities?
 
+Memory maps to three distinct DIAL entities: a shared application, per-user storage objects, and a per-user config object.
+
+#### 3.1 Memory MCP Server — DIAL-native application (single instance)
+
+The Memory MCP server is registered in DIAL Core as a **DIAL-native application without a schema** — a single deployment shared across all users. There is no per-user or per-QuickApp instance. User isolation is achieved entirely through storage paths, not through separate server instances.
+
+The application registers three interfaces in DIAL Core:
+
+| Interface | Purpose |
+|-----------|---------|
+| MCP endpoint | Agent-callable tools (`store_memory`, `search_archive`) — Concern 1 |
+| Custom REST routes | User-facing CRUD API for memory rows — Concern 2 |
+| `viewerUrl` | Memory management UI shown inside DIAL Chat — Concern 5 |
+
+A full **Application Type** (schema-rich, with no-code wizard) is intentionally not used. Memory is infrastructure — users do not create memory instances. The `viewerUrl` gives the necessary UI footprint without the schema overhead.
+
+#### 3.2 Per-user memory data — DIAL file storage objects
+
+Each user's memory is stored as a **LanceDB table** (`memory.lance/`) inside their personal bucket in DIAL file storage. The server never touches another user's bucket.
+
+| Scope | Path in DIAL file storage |
+|-------|--------------------------|
+| App-scoped memory | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` |
+| Global user memory | `users/{user_id}/memory/memory.lance/` |
+
+These objects are standard DIAL file storage entries — no special DIAL entity type. The Memory MCP server syncs them down before read/write and syncs up after write, keeping the server stateless.
+
+#### 3.3 Per-user memory config — DIAL file storage object
+
+Each user also has a **memory config file** stored in their bucket:
+
+```
+users/{user_id}/memory/config.json
+```
+
+This config controls memory behavior for that specific user — what categories of information may be saved, consent flags, scope enablement, and future adjustment knobs. It is readable and writable via the viewer UI (Concern 5) and constrains what the Memory MCP server will accept at write time (Concern 9).
+
+Admins can define deployment-level defaults and hard restrictions that take precedence over the per-user config — see Concern 9.
+
 
 ### Concern 4: How memory is stored in DIAL file storage?
+
+DIAL does not require a centralized database. The Memory MCP server follows the same principle — all persistent state lives in DIAL file storage (cloud-agnostic BLOB). The server itself is fully stateless.
+
+#### 4.1 BLOB storage — LanceDB tables and config
+
+DIAL file storage is cloud-agnostic: AWS S3, Google Cloud Storage, Azure Blob Storage, or a local file system for self-hosted deployments. The Memory MCP server stores two types of objects per user in DIAL file storage:
+
+| Object | Path | Description |
+|--------|------|-------------|
+| Memory table | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` | App-scoped LanceDB table (core facts + episodic history) |
+| Memory table | `users/{user_id}/memory/memory.lance/` | Global user-scoped LanceDB table |
+| User config | `users/{user_id}/memory/config.json` | Per-user memory config (consent, scope flags, adjustment knobs) |
+
+No external database is required. All state is in BLOB storage and the server can be restarted or scaled without data loss.
+
+#### 4.2 LanceDB sync pattern — stateless server
+
+LanceDB operates on local files. Since BLOB storage is not a local filesystem, the Memory MCP server uses a **sync-down / sync-up** pattern:
+
+1. **Before read or write**: sync the relevant `memory.lance/` directory from BLOB to a local `/tmp` cache.
+2. **Perform the LanceDB operation** (query or append) locally.
+3. **After write**: sync the modified `memory.lance/` directory back up to BLOB storage.
+
+This keeps the server stateless — any instance can handle any request by syncing from BLOB first.
 
 
 ### Concern 5: How user can view and manage memory?
 
+Memory management is surfaced to the user as a **dedicated section in DIAL Chat's settings/configuration area** — not inside a conversation. This section has two responsibilities:
+
+1. **Memory config** — user-facing controls for their personal `config.json` (scope enablement, consent flags, and other adjustment knobs defined in Concern 9).
+2. **Memory browser** — a UI to read, update, and delete individual memory rows, backed by the REST routes defined in Concern 2.
+
+The section is rendered via the `viewerUrl` registered on the Memory MCP server DIAL application (Concern 3). DIAL Chat loads it as an embedded view within the settings panel.
+
+> Detailed UI design (layout, components, interaction flows) is deferred to a separate UI design pass.
+
 
 ### Concern 6: How memory is scoped?
 
+**Scope is defined entirely by the path to the `memory.lance/` file in DIAL file storage.** The Memory MCP server is path-agnostic — it never interprets what a path means semantically. Scope resolution is the sole responsibility of the caller (quickapps-backend).
+
+| Scope | Path | Computed by |
+|-------|------|-------------|
+| App-scoped | `users/{user_id}/apps/{quickapp_id}/memory/` | quickapps-backend combines user identity + QuickApp ID |
+| Global user | `users/{user_id}/memory/` | quickapps-backend resolves user identity only |
+
+This means:
+- Adding a new scope requires no changes to the Memory MCP server — only the caller changes how it computes the path.
+- There is no cross-user sharing at any scope level. Every path is rooted under the user's own folder.
+- When both scopes are active, quickapps-backend calls the server twice (once per path), then merges and deduplicates results by `id` before injection.
+
 
 ### Concern 7: How user provides consent for saving information to memory?
+
+Two options are on the table:
+
+| Option | When consent is given | UX cost | Risk |
+|--------|-----------------------|---------|------|
+| **One-time** | User enables memory in settings (Concern 5). From that point the agent stores silently. | Low — one action, no interruptions. | User may be surprised by what gets stored. |
+| **Per-store** | Agent asks the user for confirmation each time it decides to call `store_memory`. | High — interrupts the conversation every time. | None, but poor UX at scale. |
+
+> Decision deferred. Both options are viable; the right choice depends on regulatory requirements and UX research. The per-user `config.json` (Concern 3.3) is the natural place to store the consent flag whichever option is chosen.
 
 
 ### Concern 8: How memory is structured? (Facts, their lifecycle)
