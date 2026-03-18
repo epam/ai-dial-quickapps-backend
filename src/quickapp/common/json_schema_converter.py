@@ -47,11 +47,16 @@ class JsonSchemaConverter:
 
     @staticmethod
     def _build_schema_from_definition(
-        def_dict: dict[str, Any], name: str | None = None
+        def_dict: dict[str, Any],
+        name: str | None = None,
+        seen: set[int] | None = None,
     ) -> _ConfigurableSchema:
         """
         Build and return a ConfigurableSchema* instance from a single property/items definition.
         This centralizes the handling for simple types, objects and arrays (including nested arrays).
+
+        ``seen`` tracks ``id()`` of dicts already on the call stack to break
+        circular Python references produced by ``dereference_refs``.
         """
         if "$ref" in def_dict:
             raise ValueError(
@@ -94,7 +99,7 @@ class JsonSchemaConverter:
                 default=default_value,
             )
         elif prop_type == "object":
-            nested_properties = JsonSchemaConverter.convert_schema_to_properties(def_dict)
+            nested_properties = JsonSchemaConverter._convert_properties(def_dict, seen)
             return ConfigurableSchemaObject(
                 type=JsonTypeEnum.object,
                 properties=nested_properties,
@@ -104,7 +109,9 @@ class JsonSchemaConverter:
             )
         elif prop_type == "array":
             items_def = def_dict.get("items", {})
-            items_schema = JsonSchemaConverter._build_schema_from_definition(items_def, name=name)
+            items_schema = JsonSchemaConverter._build_schema_from_definition(
+                items_def, name=name, seen=seen
+            )
             return ConfigurableSchemaArray(
                 type=JsonTypeEnum.array,
                 items=items_schema,
@@ -113,6 +120,46 @@ class JsonSchemaConverter:
             )
         else:
             raise ValueError(f"Unsupported property type: {prop_type!r} for property {name!r}")
+
+    @staticmethod
+    def _convert_properties(
+        schema_dict: dict[str, Any],
+        seen: set[int] | None = None,
+    ) -> dict[str, _ConfigurableSchema]:
+        """Internal recursive conversion with cycle detection (no ref resolution)."""
+        if seen is None:
+            seen = set()
+
+        # Handle top-level anyOf/oneOf
+        if "anyOf" in schema_dict or "oneOf" in schema_dict:
+            variants = schema_dict.get("anyOf") or schema_dict.get("oneOf")
+            if not isinstance(variants, list) or not variants:
+                raise ValueError("anyOf/oneOf must be a non-empty list")
+            picked = JsonSchemaConverter._pick_variant_from_anyof(variants)
+            schema_dict = {
+                **picked,
+                **{k: v for k, v in schema_dict.items() if k not in ("anyOf", "oneOf")},
+            }
+
+        schema_properties = schema_dict.get("properties", {})
+
+        properties: dict[str, _ConfigurableSchema] = {}
+        for prop_name, prop_def in schema_properties.items():
+            dict_id = id(prop_def)
+            if dict_id in seen:
+                # Circular reference — represent as an opaque object
+                properties[prop_name] = ConfigurableSchemaObject(
+                    type=JsonTypeEnum.object,
+                    properties={},
+                    description=prop_def.get("description", ""),
+                )
+                continue
+            seen.add(dict_id)
+            properties[prop_name] = JsonSchemaConverter._build_schema_from_definition(
+                prop_def, name=prop_name, seen=seen
+            )
+
+        return properties
 
     @staticmethod
     def convert_schema_to_properties(
@@ -131,23 +178,4 @@ class JsonSchemaConverter:
         """
         schema_dict = dereference_refs(schema_dict)
 
-        # Handle top-level anyOf/oneOf
-        if "anyOf" in schema_dict or "oneOf" in schema_dict:
-            variants = schema_dict.get("anyOf") or schema_dict.get("oneOf")
-            if not isinstance(variants, list) or not variants:
-                raise ValueError("anyOf/oneOf must be a non-empty list")
-            picked = JsonSchemaConverter._pick_variant_from_anyof(variants)
-            schema_dict = {
-                **picked,
-                **{k: v for k, v in schema_dict.items() if k not in ("anyOf", "oneOf")},
-            }
-
-        schema_properties = schema_dict.get("properties", {})
-
-        properties: dict[str, _ConfigurableSchema] = {}
-        for prop_name, prop_def in schema_properties.items():
-            properties[prop_name] = JsonSchemaConverter._build_schema_from_definition(
-                prop_def, name=prop_name
-            )
-
-        return properties
+        return JsonSchemaConverter._convert_properties(schema_dict)
