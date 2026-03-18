@@ -369,6 +369,124 @@ class TestAnyOfOneOf:
         assert "x" in result
 
 
+class TestCircularRefs:
+    """Tests that verify the converter handles circular $ref schemas without recursion.
+
+    dereference_refs creates a copy of the referenced dict on the first encounter,
+    so the circular Python reference only appears at the *second* occurrence.
+    The first copy is fully converted; the second is truncated to an opaque object.
+    """
+
+    def test_direct_self_reference(self):
+        """A property whose $ref resolves back to itself (A -> A cycle)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "node": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "integer"},
+                        "self_ref": {"$ref": "#/properties/node"},
+                    },
+                },
+            },
+        }
+        result = JsonSchemaConverter.convert_schema_to_properties(schema)
+        node = result["node"]
+        assert isinstance(node, ConfigurableSchemaObject)
+        assert isinstance(node.properties["value"], ConfigurableSchemaSimpleType)
+
+        # First copy is fully resolved
+        self_ref = node.properties["self_ref"]
+        assert isinstance(self_ref, ConfigurableSchemaObject)
+        assert isinstance(self_ref.properties["value"], ConfigurableSchemaSimpleType)
+
+        # Second occurrence is truncated (circular Python reference detected)
+        nested_ref = self_ref.properties["self_ref"]
+        assert isinstance(nested_ref, ConfigurableSchemaObject)
+        assert nested_ref.properties == {}
+
+    def test_indirect_circular_reference(self):
+        """A -> B -> A cycle (mirrors OneNote parentNotebook <-> sectionGroups pattern)."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "notebook": {
+                    "type": "object",
+                    "description": "A notebook",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "sections": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "title": {"type": "string"},
+                                    "parentNotebook": {"$ref": "#/properties/notebook"},
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        }
+        result = JsonSchemaConverter.convert_schema_to_properties(schema)
+        notebook = result["notebook"]
+        assert isinstance(notebook, ConfigurableSchemaObject)
+        assert isinstance(notebook.properties["name"], ConfigurableSchemaSimpleType)
+
+        sections = notebook.properties["sections"]
+        assert isinstance(sections, ConfigurableSchemaArray)
+        assert isinstance(sections.items, ConfigurableSchemaObject)
+
+        section_props = sections.items.properties
+        assert isinstance(section_props["title"], ConfigurableSchemaSimpleType)
+
+        # First copy of notebook is fully resolved
+        parent_nb = section_props["parentNotebook"]
+        assert isinstance(parent_nb, ConfigurableSchemaObject)
+        assert isinstance(parent_nb.properties["name"], ConfigurableSchemaSimpleType)
+
+        # Second occurrence (inside the copy) is truncated
+        nested_sections = parent_nb.properties["sections"]
+        assert isinstance(nested_sections, ConfigurableSchemaArray)
+        nested_parent = nested_sections.items.properties["parentNotebook"]
+        assert isinstance(nested_parent, ConfigurableSchemaObject)
+        assert nested_parent.properties == {}
+
+    def test_non_circular_siblings_converted_normally(self):
+        """Non-circular properties alongside circular ones are converted normally."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "node": {
+                    "type": "object",
+                    "properties": {
+                        "value": {"type": "integer", "description": "Node value"},
+                        "parent": {"$ref": "#/properties/node"},
+                    },
+                },
+                "label": {"type": "string", "description": "A label"},
+            },
+        }
+        result = JsonSchemaConverter.convert_schema_to_properties(schema)
+        # Top-level non-circular property
+        assert isinstance(result["label"], ConfigurableSchemaSimpleType)
+        assert result["label"].description == "A label"
+
+        # Nested non-circular property
+        node = result["node"]
+        assert isinstance(node, ConfigurableSchemaObject)
+        assert isinstance(node.properties["value"], ConfigurableSchemaSimpleType)
+        assert node.properties["value"].description == "Node value"
+
+        # First copy is fully resolved; second is truncated
+        parent = node.properties["parent"]
+        assert isinstance(parent, ConfigurableSchemaObject)
+        assert isinstance(parent.properties["value"], ConfigurableSchemaSimpleType)
+        assert parent.properties["parent"].properties == {}
+
+
 class TestUnsupportedType:
     def test_unsupported_type_raises(self):
         schema = {
