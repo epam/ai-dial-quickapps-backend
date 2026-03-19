@@ -33,11 +33,13 @@ def test_supported_types_defaults_to_all_when_empty_input_attachment_types():
     assert result.attachment.supported_types == [ALL_MIME_TYPES]
 
 
-def test_propagate_types_to_choice_is_empty_for_deployment_tools():
+def test_propagate_types_to_choice_is_default_for_deployment_tools():
     deployment = _make_deployment(input_attachment_types=["image/*"])
     result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
 
-    assert result.attachment.propagate_types_to_choice == []
+    assert len(result.attachment.propagate_types_to_choice) == 2
+    assert "image/*" in result.attachment.propagate_types_to_choice
+    assert "application/vnd.plotly.v1+json" in result.attachment.propagate_types_to_choice
 
 
 def test_input_attachment_types_adds_attachment_urls_param():
