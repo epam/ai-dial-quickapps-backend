@@ -10,6 +10,7 @@ Focus on observable symptoms (bugs, duplication, semantic mismatches) rather tha
 ## Design Goals
 
 Address:
+
 - How AI agents interact with memory?
 - How UI clients interact with memory?
 - What is memory in terms of DIAL entities?
@@ -30,6 +31,7 @@ What is DIAL memory for? What are the use cases we want to support?
 ### Use case 1: Basic facts about the user and their preferences
 
 We'd like the system to remember basic facts about the user, such as their:
+
 - name
 - age
 - location
@@ -84,7 +86,6 @@ For each concern, cover:
 - **Semantics** — how it works at runtime.
 - **Change** — what specifically changes relative to the current codebase.
 
-
 ### Concern 1: How AI agents interact with memory?
 
 Agents interact with memory through two complementary mechanisms: a **memory skill** that governs decision-making, and **MCP tools** that perform the actual read/write operations.
@@ -93,18 +94,20 @@ Agents interact with memory through two complementary mechanisms: a **memory ski
 
 A skill file (`config/predefined/skills/memory/SKILL.md`) is loaded by the existing `AgentSkillsProvider` + `PredefinedContentProvider` pipeline — no changes to the skills loader are needed. It instructs the agent **when** and **how** to use the memory tools:
 
-- **`store_memory` with `memory_type=core`** — when the user states a permanent fact, corrects a fact, or establishes a preference. Facts are always appended (never overwritten); retrieval handles context disambiguation.
-- **`store_memory` with `memory_type=episodic`** — when a significant decision, bug fix, or repeatable workflow is established during the session and should be recallable in a future one.
-- **`search_archive`** — when the user references past events ("last time", "remember when") and the answer is not in the current context window.
+- `**store_memory` with `memory_type=core`** — when the user states a permanent fact, corrects a fact, or establishes a preference. Facts are always appended (never overwritten); retrieval handles context disambiguation.
+- `**store_memory` with `memory_type=episodic**` — when a significant decision, bug fix, or repeatable workflow is established during the session and should be recallable in a future one.
+- `**search_archive**` — when the user references past events ("last time", "remember when") and the answer is not in the current context window.
 - **Never store**: intermediate debug steps, general knowledge, or file contents (that is RAG's job).
 
 Importance guide for core facts stored by the agent:
 
-| Importance | Meaning |
-|------------|---------|
-| 0.9 + | Universal facts (name, language preference) — always injected regardless of topic |
-| 0.7 – 0.9 | Project/context-specific facts — injected when contextually relevant |
-| < 0.7 | Low-priority hints |
+
+| Importance | Meaning                                                                           |
+| ---------- | --------------------------------------------------------------------------------- |
+| 0.9 +      | Universal facts (name, language preference) — always injected regardless of topic |
+| 0.7 – 0.9  | Project/context-specific facts — injected when contextually relevant              |
+| < 0.7      | Low-priority hints                                                                |
+
 
 #### MCP Tools
 
@@ -112,13 +115,14 @@ The Memory MCP server is deployed as a **DIAL application** with an MCP endpoint
 
 Because the Memory MCP server is a proper DIAL application, it participates in the same access-control, routing, and observability as any other DIAL entity. A single deployed instance can serve multiple QuickApps simultaneously.
 
-| Tool | Description | Arguments |
-|------|-------------|-----------|
-| `store_memory` | Append a new memory row. Strictly append-only — never overwrites. | `content: str`, `memory_type: Literal["core","episodic"]`, `context: str`, `importance: float` |
-| `search_archive` | Search episodic history. Use when user references past events not in the current context. | `query: str` |
+
+| Tool             | Description                                                                               | Arguments                                                                                      |
+| ---------------- | ----------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `store_memory`   | Append a new memory row. Strictly append-only — never overwrites.                         | `content: str`, `memory_type: Literal["core","episodic"]`, `context: str`, `importance: float` |
+| `search_archive` | Search episodic history. Use when user references past events not in the current context. | `query: str`                                                                                   |
+
 
 **Append-only invariant**: if the agent stores "project-alpha is in Python" and later "project-alpha is in Rust", both rows coexist. Retrieval surfaces the contextually appropriate one. If the model sees two conflicting facts injected for the same query, it asks the user to clarify — which is the correct behavior.
-
 
 ### Concern 2: How UI clients interact with memory?
 
@@ -132,12 +136,14 @@ Facts stored in memory carry semantic metadata (`importance`, `context`, `embedd
 
 The Memory MCP server exposes management routes alongside its MCP endpoint. Per [epam/ai-dial-core#1382](https://github.com/epam/ai-dial-core/issues/1382) (already shipped), DIAL applications can declare custom HTTP routes in their application schema — these are routed through DIAL Core and subject to the same access control as any other DIAL entity.
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/memory?path=` | List all memory rows for the given scope path. Supports filtering by `memory_type`. |
-| `GET` | `/memory/{id}?path=` | Get a single memory row by ID. |
-| `PATCH` | `/memory/{id}` | Update `content`, `importance`, or `context` of an existing row. Embedding is re-computed on update if a vector model is configured. |
-| `DELETE` | `/memory/{id}?path=` | Hard-delete a memory row. |
+
+| Method   | Path                 | Description                                                                                                                          |
+| -------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/memory?path=`      | List all memory rows for the given scope path. Supports filtering by `memory_type`.                                                  |
+| `GET`    | `/memory/{id}?path=` | Get a single memory row by ID.                                                                                                       |
+| `PATCH`  | `/memory/{id}`       | Update `content`, `importance`, or `context` of an existing row. Embedding is re-computed on update if a vector model is configured. |
+| `DELETE` | `/memory/{id}?path=` | Hard-delete a memory row.                                                                                                            |
+
 
 The `path` parameter determines the memory scope (app-scoped or user-scoped) — the same path-agnostic contract used by the MCP tools and the HTTP management API.
 
@@ -149,7 +155,6 @@ Routes are proxied through DIAL Core. The caller's identity is resolved by DIAL 
 
 The route design here is the **server contract**. How the UI surfaces these operations (memory panel, inline editing, bulk delete) is addressed in Concern 5.
 
-
 ### Concern 3: What is memory in terms of DIAL entities?
 
 Memory maps to three distinct DIAL entities: a shared application, per-user storage objects, and a per-user config object.
@@ -160,11 +165,13 @@ The Memory MCP server is registered in DIAL Core as a **DIAL-native application 
 
 The application registers three interfaces in DIAL Core:
 
-| Interface | Purpose |
-|-----------|---------|
-| MCP endpoint | Agent-callable tools (`store_memory`, `search_archive`) — Concern 1 |
-| Custom REST routes | User-facing CRUD API for memory rows — Concern 2 |
-| `viewerUrl` | Memory management UI shown inside DIAL Chat — Concern 5 |
+
+| Interface          | Purpose                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| MCP endpoint       | Agent-callable tools (`store_memory`, `search_archive`) — Concern 1 |
+| Custom REST routes | User-facing CRUD API for memory rows — Concern 2                    |
+| `viewerUrl`        | Memory management UI shown inside DIAL Chat — Concern 5             |
+
 
 A full **Application Type** (schema-rich, with no-code wizard) is intentionally not used. Memory is infrastructure — users do not create memory instances. The `viewerUrl` gives the necessary UI footprint without the schema overhead.
 
@@ -172,10 +179,12 @@ A full **Application Type** (schema-rich, with no-code wizard) is intentionally 
 
 Each user's memory is stored as a **LanceDB table** (`memory.lance/`) inside their personal bucket in DIAL file storage. The server never touches another user's bucket.
 
-| Scope | Path in DIAL file storage |
-|-------|--------------------------|
-| App-scoped memory | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` |
-| Global user memory | `users/{user_id}/memory/memory.lance/` |
+
+| Scope              | Path in DIAL file storage                                 |
+| ------------------ | --------------------------------------------------------- |
+| App-scoped memory  | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` |
+| Global user memory | `users/{user_id}/memory/memory.lance/`                    |
+
 
 These objects are standard DIAL file storage entries — no special DIAL entity type. The Memory MCP server syncs them down before read/write and syncs up after write, keeping the server stateless.
 
@@ -191,7 +200,6 @@ This config controls memory behavior for that specific user — what categories 
 
 Admins can define deployment-level defaults and hard restrictions that take precedence over the per-user config — see Concern 9.
 
-
 ### Concern 4: How memory is stored in DIAL file storage?
 
 DIAL does not require a centralized database. The Memory MCP server follows the same principle — all persistent state lives in DIAL file storage (cloud-agnostic BLOB). The server itself is fully stateless.
@@ -200,11 +208,13 @@ DIAL does not require a centralized database. The Memory MCP server follows the 
 
 DIAL file storage is cloud-agnostic: AWS S3, Google Cloud Storage, Azure Blob Storage, or a local file system for self-hosted deployments. The Memory MCP server stores two types of objects per user in DIAL file storage:
 
-| Object | Path | Description |
-|--------|------|-------------|
-| Memory table | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` | App-scoped LanceDB table (core facts + episodic history) |
-| Memory table | `users/{user_id}/memory/memory.lance/` | Global user-scoped LanceDB table |
-| User config | `users/{user_id}/memory/config.json` | Per-user memory config (consent, scope flags, adjustment knobs) |
+
+| Object       | Path                                                      | Description                                                     |
+| ------------ | --------------------------------------------------------- | --------------------------------------------------------------- |
+| Memory table | `users/{user_id}/apps/{quickapp_id}/memory/memory.lance/` | App-scoped LanceDB table (core facts + episodic history)        |
+| Memory table | `users/{user_id}/memory/memory.lance/`                    | Global user-scoped LanceDB table                                |
+| User config  | `users/{user_id}/memory/config.json`                      | Per-user memory config (consent, scope flags, adjustment knobs) |
+
 
 No external database is required. All state is in BLOB storage and the server can be restarted or scaled without data loss.
 
@@ -218,7 +228,6 @@ LanceDB operates on local files. Since BLOB storage is not a local filesystem, t
 
 This keeps the server stateless — any instance can handle any request by syncing from BLOB first.
 
-
 ### Concern 5: How user can view and manage memory?
 
 Memory management is surfaced to the user as a **dedicated section in DIAL Chat's settings/configuration area** — not inside a conversation. This section has two responsibilities:
@@ -230,42 +239,41 @@ The section is rendered via the `viewerUrl` registered on the Memory MCP server 
 
 > Detailed UI design (layout, components, interaction flows) is deferred to a separate UI design pass.
 
-
 ### Concern 6: How memory is scoped?
 
 **Scope is defined entirely by the path to the `memory.lance/` file in DIAL file storage.** The Memory MCP server is path-agnostic — it never interprets what a path means semantically. Scope resolution is the sole responsibility of the caller (quickapps-backend).
 
-| Scope | Path | Computed by |
-|-------|------|-------------|
-| App-scoped | `users/{user_id}/apps/{quickapp_id}/memory/` | quickapps-backend combines user identity + QuickApp ID |
-| Global user | `users/{user_id}/memory/` | quickapps-backend resolves user identity only |
+
+| Scope       | Path                                         | Computed by                                            |
+| ----------- | -------------------------------------------- | ------------------------------------------------------ |
+| App-scoped  | `users/{user_id}/apps/{quickapp_id}/memory/` | quickapps-backend combines user identity + QuickApp ID |
+| Global user | `users/{user_id}/memory/`                    | quickapps-backend resolves user identity only          |
+
 
 This means:
+
 - Adding a new scope requires no changes to the Memory MCP server — only the caller changes how it computes the path.
 - There is no cross-user sharing at any scope level. Every path is rooted under the user's own folder.
 - When both scopes are active, quickapps-backend calls the server twice (once per path), then merges and deduplicates results by `id` before injection.
-
 
 ### Concern 7: How user provides consent for saving information to memory?
 
 Two options are on the table:
 
-| Option | When consent is given | UX cost | Risk |
-|--------|-----------------------|---------|------|
-| **One-time** | User enables memory in settings (Concern 5). From that point the agent stores silently. | Low — one action, no interruptions. | User may be surprised by what gets stored. |
-| **Per-store** | Agent asks the user for confirmation each time it decides to call `store_memory`. | High — interrupts the conversation every time. | None, but poor UX at scale. |
+
+|              | Option                                                                                  | When consent is given                                                             | UX cost                                        | Risk                        |
+| ------------ | --------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------- | --------------------------- |
+| **One-time** | User enables memory in settings (Concern 5). From that point the agent stores silently. | Low — one action, no interruptions.                                               | User may be surprised by what gets stored.     |                             |
+|              | **Per-store**                                                                           | Agent asks the user for confirmation each time it decides to call `store_memory`. | High — interrupts the conversation every time. | None, but poor UX at scale. |
+
 
 > Decision deferred. Both options are viable; the right choice depends on regulatory requirements and UX research. The per-user `config.json` (Concern 3.3) is the natural place to store the consent flag whichever option is chosen.
 
-
 ### Concern 8: How memory is structured? (Facts, their lifecycle)
-
 
 ### Concern 9: How the system can be adjusted about what is saved to memory and what is not?
 
-
 ### Concern 10: How can we later improve and evolve the system?
-
 
 ...
 
