@@ -24,10 +24,7 @@ class ChunkProcessor:
 
     def __init__(self):
         self.__assistant_call_result = AssistantCallResult()
-        # Streaming stages: at most one stage context open at a time; we stream into it as deltas arrive.
-        self.__streaming_stage_cm: Any = None
-        self.__streaming_stage: Stage | None = None
-        self.__streaming_stage_index: int | None = None
+        self.__streaming_stages: dict[int, Stage] = {}
 
     async def process_chunks(
         self,
@@ -63,8 +60,7 @@ class ChunkProcessor:
                     )
                 )
 
-        # Always close streaming stage if we ever opened one (we only open when propagate_orchestrator_stages).
-        self.__close_streaming_stage()
+        self.__close_all_streaming_stages()
 
         self.__log_assistant_call_result(self.__assistant_call_result)
         return self.__assistant_call_result
@@ -99,18 +95,15 @@ class ChunkProcessor:
     def __stream_stage_delta(
         self, destination: Choice, delta: StageDeltaItem, position: int
     ) -> None:
-        """Stream a single stage delta to the choice; delta is already StageDeltaItem from boundary."""
+        """Stream a single stage delta to the choice; supports interleaved deltas by index."""
         idx = get_stage_index(delta, position)
-        if self.__streaming_stage_index is not None and self.__streaming_stage_index != idx:
-            self.__close_streaming_stage()
         just_created = False
-        if self.__streaming_stage is None or self.__streaming_stage_index != idx:
+        if idx not in self.__streaming_stages:
             name = stage_display_name(delta, idx)
             try:
-                cm = destination.create_stage(name)
-                self.__streaming_stage = cm.__enter__()
-                self.__streaming_stage_cm = cm
-                self.__streaming_stage_index = idx
+                stage = destination.create_stage(name)
+                stage.open()
+                self.__streaming_stages[idx] = stage
                 just_created = True
             except Exception as e:
                 logger.warning(
@@ -121,14 +114,9 @@ class ChunkProcessor:
                     exc_info=True,
                 )
                 return
-        if self.__streaming_stage is None:
-            return
-        stage = self.__streaming_stage
-        if not just_created:
-            if "name" in delta and delta["name"] is not None:
-                stage.append_name(str(delta["name"]))
-            if "title" in delta and delta["title"] is not None:
-                stage.append_name(str(delta["title"]))
+        stage = self.__streaming_stages[idx]
+        if not just_created and "name" in delta and delta["name"] is not None:
+            stage.append_name(str(delta["name"]))
         if "content" in delta and delta["content"]:
             stage.append_content(str(delta["content"]))
         if "attachments" in delta and delta["attachments"]:
@@ -138,24 +126,27 @@ class ChunkProcessor:
                         stage.add_attachment(**attachment_kwargs(att))
                     except Exception as e:
                         logger.warning("Failed to add attachment to streaming stage: %s", e)
+        if "status" in delta and delta["status"] is not None:
+            self.__close_streaming_stage_at_index(idx)
 
-    def __close_streaming_stage(self) -> None:
-        """Close the currently open streaming stage context, if any."""
-        if self.__streaming_stage_cm is None:
+    def __close_streaming_stage_at_index(self, idx: int) -> None:
+        """Close the streaming stage for the given index and remove it from the dict."""
+        stage = self.__streaming_stages.pop(idx, None)
+        if stage is None:
             return
         try:
-            self.__streaming_stage_cm.__exit__(None, None, None)
-            if self.__streaming_stage_index is not None:
-                logger.debug(
-                    "Orchestrator stage propagation: closed streaming stage (index %s)",
-                    self.__streaming_stage_index,
-                )
+            stage.close()
+            logger.debug(
+                "Orchestrator stage propagation: closed streaming stage (index %s)",
+                idx,
+            )
         except Exception as e:
             logger.warning("Error closing streaming stage: %s", e, exc_info=True)
-        finally:
-            self.__streaming_stage_cm = None
-            self.__streaming_stage = None
-            self.__streaming_stage_index = None
+
+    def __close_all_streaming_stages(self) -> None:
+        """Close all open streaming stages (e.g. at stream end)."""
+        for idx in sorted(self.__streaming_stages.keys()):
+            self.__close_streaming_stage_at_index(idx)
 
     @staticmethod
     def __log_assistant_call_result(result: AssistantCallResult) -> None:

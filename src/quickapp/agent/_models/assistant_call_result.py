@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -6,6 +7,8 @@ from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
 
 from .accumulated_tool_call import AccumulatedToolCall
+
+logger = logging.getLogger(__name__)
 
 
 class _AccumulatedStageData:
@@ -19,13 +22,12 @@ class _AccumulatedStageData:
         self.attachments: list[dict[str, Any]] = []
         self.status: str | None = None
 
-    def append_delta(self, item: StageDeltaItem | dict[str, Any]) -> None:
+    def append_delta(self, item: StageDeltaItem) -> None:
+        logger.debug(f"Appending stage delta to index {get_stage_index(item, -1)}: {item}")
         if not isinstance(item, dict):
             return
         if "name" in item and item["name"] is not None:
             self.name_parts.append(str(item["name"]))
-        if "title" in item and item["title"] is not None:
-            self.name_parts.append(str(item["title"]))
         if "content" in item and item["content"] is not None:
             self.content += str(item["content"])
         if "attachments" in item and item["attachments"]:
@@ -99,7 +101,7 @@ class AssistantCallResult:
             return []
         return [self.__stages_by_index[idx].to_dict(idx) for idx in sorted(self.__stages_by_index)]
 
-    def append_stage_delta(self, item: StageDeltaItem | dict[str, Any], position: int) -> None:
+    def append_stage_delta(self, item: StageDeltaItem, position: int) -> None:
         """Merge a stage delta into the stage at the given index."""
         idx = get_stage_index(item, position)
         if idx not in self.__stages_by_index:

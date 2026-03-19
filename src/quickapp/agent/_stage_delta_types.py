@@ -14,7 +14,6 @@ class StageDeltaItem(TypedDict, total=False):
 
     index: int
     name: str
-    title: str
     content: str
     attachments: list[dict[str, Any]]
     status: str
@@ -49,8 +48,6 @@ def stage_display_name(item: StageDeltaItem, index: int) -> str:
     name = ""
     if "name" in item and item["name"] is not None:
         name = str(item["name"]).strip()
-    if not name and "title" in item and item["title"] is not None:
-        name = str(item["title"]).strip()
     return name or f"Stage {index + 1}"
 
 
