@@ -6,11 +6,11 @@
       "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
       "applicationProperties": {
         "orchestrator": {
+          "propagate_stages": true,
           "deployment": {
-            "name": "gpt-5-2025-08-07",
+            "name": "us.anthropic.claude-3-7-sonnet-20250219-v1-with-thinking",
             "parameters": {
-              "temperature": 1.0,
-              "seed": 820288
+              "temperature": 1.0
             }
           },
           "system_prompt": {

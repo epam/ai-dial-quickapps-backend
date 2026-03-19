@@ -6,6 +6,10 @@ from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.agent._orchestrator_default_tools import (
+    OrchestratorDefaultToolsCacheService,
+    OrchestratorDefaultToolsService,
+)
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
@@ -63,6 +67,16 @@ class AgentModule(Module):
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
+        binder.bind(
+            OrchestratorDefaultToolsCacheService,
+            to=OrchestratorDefaultToolsCacheService,
+            scope=singleton,
+        )
+        binder.bind(
+            OrchestratorDefaultToolsService,
+            to=OrchestratorDefaultToolsService,
+            scope=singleton,
+        )
 
     @provider
     def provide_openai_client(

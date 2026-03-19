@@ -9,6 +9,7 @@ from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._orchestrator_default_tools import OrchestratorDefaultToolsService
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import OpenAiToolConfigDict
@@ -33,6 +34,7 @@ class AssistantInvoker:
         presentation_settings: PresentationSettings,
         agent_settings: AgentSettings,
         forwarded_headers: ForwardedHeaders,
+        default_tools_service: OrchestratorDefaultToolsService,
     ) -> None:
         self.__attachment_filter = attachment_filter
         self.__messages: list[Message] = messages
@@ -44,13 +46,27 @@ class AssistantInvoker:
         self.__presentation_settings = presentation_settings
         self.__agent_settings = agent_settings
         self.__forwarded_headers = forwarded_headers
+        self.__default_tools_service = default_tools_service
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        completion_config = self.__prepare_chat_completion_config()
+        deployment = self.__config.orchestrator.deployment.name
+        default_tools = await self.__default_tools_service.get_default_tools(deployment)
+        merged_tools: list[dict[str, Any]] = list(default_tools) + list(self.__tools)
+        if default_tools:
+            logger.info(
+                "Merged %d default tool(s) for deployment %s with %d app tool(s)",
+                len(default_tools),
+                deployment,
+                len(self.__tools),
+            )
+        completion_config = self.__prepare_chat_completion_config(tools=merged_tools)
         return await self.__create_chat_completion(completion_config)
 
-    def __prepare_chat_completion_config(self) -> dict[str, Any]:
-
+    def __prepare_chat_completion_config(
+        self,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        tools_to_use = tools if tools is not None else self.__tools
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
@@ -59,7 +75,7 @@ class AssistantInvoker:
             "messages": prepared_messages,
             "stream": True,
             "model": self.__config.orchestrator.deployment.name,
-            "tools": self.__tools,
+            "tools": tools_to_use,
         }
 
         if self.__response_format:

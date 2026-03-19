@@ -6,6 +6,13 @@ import pytest
 from quickapp.agent.assistant_invoker import AssistantInvoker
 
 
+def _default_tools_service_empty():
+    """Mock OrchestratorDefaultToolsService that returns no default tools."""
+    svc = Mock()
+    svc.get_default_tools = AsyncMock(return_value=[])
+    return svc
+
+
 # Minimal test helpers
 def _presentation_settings(show_usage: bool):
     return SimpleNamespace(show_usage_statistics=show_usage)
@@ -72,6 +79,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        default_tools_service=_default_tools_service_empty(),
     )
 
     result = await invoker.invoke()
@@ -87,7 +95,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     assert called_kwargs["model"] == "test-model"
     assert called_kwargs["stream"] is True
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello"}]
-    assert called_kwargs["tools"] is tools
+    assert called_kwargs["tools"] == tools
     # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
@@ -111,6 +119,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        default_tools_service=_default_tools_service_empty(),
     )
 
     result = await invoker.invoke()
@@ -121,7 +130,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert "stream_options" in called_kwargs
     assert called_kwargs["stream_options"] == {"include_usage": True}
     # other keys still correct
-    assert called_kwargs["tools"] is tools
+    assert called_kwargs["tools"] == tools
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
 
@@ -146,6 +155,7 @@ async def test_invoke_propagates_exceptions():
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        default_tools_service=_default_tools_service_empty(),
     )
 
     with pytest.raises(RuntimeError, match="upstream failure"):
