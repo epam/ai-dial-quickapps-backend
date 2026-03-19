@@ -1,17 +1,20 @@
-import asyncio
 import logging
 import os
 from collections import defaultdict
-from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List
+from typing import Dict
 
 import pytest
 import pytest_asyncio
 from _pytest.nodes import Node
+from pydantic import BaseModel, Field
 
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
+    _PyInterpreterClient,
+)
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
+    _PyInterpreterSettings,
+)
 from quickapp.internal_tooling.py_interpreter_tooling.model.common import PyInterpreterSession
 
 logger = logging.getLogger(__name__)
@@ -34,13 +37,12 @@ class FailureReason(Enum):
         return self.value
 
 
-@dataclass
-class TestStats:
+class TestStats(BaseModel):
     name: str
     passed: int
     failed: int
     price: float = 0
-    failure_reasons: dict[FailureReason, int] = field(default_factory=dict)
+    failure_reasons: dict[FailureReason, int] = Field(default_factory=dict)
 
     @property
     def total(self):
@@ -62,11 +64,8 @@ class TestStats:
         self.failure_reasons[fr] = self.failure_reasons.get(fr, 0) + 1
 
 
-@dataclass
-class SuiteStats:
-    # passed: int = 0
-    # failed: int = 0
-    test_stat_list: List[TestStats] = field(default_factory=list)
+class SuiteStats(BaseModel):
+    test_stat_list: list[TestStats] = Field(default_factory=list)
 
     @property
     def passed(self):
@@ -139,11 +138,11 @@ async def session_fixture():
     logger.info("Starting session_fixture")
     _settings = _PyInterpreterSettings()
 
-    async with _PyInterpreterClient(
-        api_key=_settings.api_key, base_url=_settings.url
-    ) as client:
+    async with _PyInterpreterClient(api_key=_settings.api_key, base_url=_settings.url) as client:
         if _settings.default_session_id:
-            if not client.check_session_opened(request=PyInterpreterSession(sessionId=_settings.default_session_id)):
+            if not client.check_session_opened(
+                request=PyInterpreterSession(sessionId=_settings.default_session_id)
+            ):
                 _settings.default_session_id = None
 
         if not _settings.default_session_id:
@@ -179,7 +178,9 @@ def unique_port(worker_id):
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "requires_session: mark test as requiring a py_interpreter session")
+    config.addinivalue_line(
+        "markers", "requires_session: mark test as requiring a py_interpreter session"
+    )
     if not hasattr(config, "workerinput"):
         config.test_stats = []
 

@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, MagicMock, call
+
 import pytest
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -5,9 +7,7 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from unittest.mock import AsyncMock, MagicMock, call
 
-from quickapp.common import ForwardedHeaders
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
@@ -150,10 +150,7 @@ async def test_stage_wrapper_content_streaming(completion_service, dial_client, 
     )
 
     # Assert - Check that both calls were made: first the header, then the content
-    expected_calls = [
-        call("> #### Response:\n"),
-        call("Test response")
-    ]
+    expected_calls = [call("> #### Response:\n"), call("Test response")]
     mock_stage_wrapper.append_stage_content.assert_has_calls(expected_calls)
 
 
@@ -265,6 +262,57 @@ async def test_history_with_custom_content_passed_through(
     # Current query is the last message
     assert msgs[2]["content"] == "Follow up question"
     assert msgs[2]["role"] == "user"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "file_relative_url, expected_stripped_url",
+    [
+        # base64:: prefix — binary/encoded content
+        ("file:base64::files/images/chart.png", "files/images/chart.png"),
+        # text:: prefix — plain-text content
+        ("file:text::files/code/main.py", "files/code/main.py"),
+        # url:: prefix — bare URL pass-through (lowercase)
+        ("file:url::files/docs/report.pdf", "files/docs/report.pdf"),
+        # url:: prefix — case-insensitive match per the convention
+        ("file:URL::files/abc/photo.png", "files/abc/photo.png"),
+        # bare file: with no type prefix — still strips the file: marker
+        ("file:files/abc/photo.png", "files/abc/photo.png"),
+    ],
+)
+async def test_resolve_attachment_strips_file_prefix(
+    dial_client, file_relative_url, expected_stripped_url
+):
+    """_resolve_attachment must strip any file:{prefix}:: marker before querying metadata."""
+    fileinfo = MagicMock()
+    fileinfo.content_type = "image/png"
+    fileinfo.name = "photo.png"
+    fileinfo.url = expected_stripped_url
+    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+
+    service = DialCompletionService(dial_client, None)
+    result = await service._resolve_attachment(file_relative_url)
+
+    dial_client.metadata.get.assert_called_once_with("files", expected_stripped_url)
+    assert result == AttachmentParam(type="image/png", title="photo.png", url=expected_stripped_url)
+
+
+@pytest.mark.asyncio
+async def test_resolve_attachment_without_prefix(dial_client):
+    """_resolve_attachment must pass the URL unchanged when there is no file: prefix."""
+    fileinfo = MagicMock()
+    fileinfo.content_type = "application/pdf"
+    fileinfo.name = "report.pdf"
+    fileinfo.url = "files/xyz/report.pdf"
+    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+
+    service = DialCompletionService(dial_client, None)
+    result = await service._resolve_attachment("files/xyz/report.pdf")
+
+    dial_client.metadata.get.assert_called_once_with("files", "files/xyz/report.pdf")
+    assert result == AttachmentParam(
+        type="application/pdf", title="report.pdf", url="files/xyz/report.pdf"
+    )
 
 
 @pytest.mark.asyncio

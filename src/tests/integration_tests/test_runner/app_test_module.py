@@ -1,7 +1,6 @@
-from injector import provider, Injector, singleton
-from fastapi_injector import request_scope
-
 from fastapi import FastAPI
+from fastapi_injector import request_scope
+from injector import Injector, provider, singleton
 
 from quickapp.agent.agent_module import AgentModule
 from quickapp.application import AppModule
@@ -11,15 +10,15 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.file_transfer import FileTransferModule
-from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
-    _PyInterpreterSettings,
     _PY_INTERPRETER_API_KEY,
+    _PyInterpreterSettings,
 )
+from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from tests.integration_tests.test_runner.config import TestConfig

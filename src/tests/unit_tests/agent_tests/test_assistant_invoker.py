@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.common import ForwardedHeaders
 
 
 # Minimal test helpers
@@ -26,26 +25,32 @@ class FakeMessage:
     def dict(self):
         return {"role": "user", "content": self.content}
 
+
 class DummyParams:
     def model_dump(self, exclude_none=True):
         # base config returned before payload update
         return {"base_param": "value"}
+
 
 class DummyDeployment:
     def __init__(self):
         self.parameters = DummyParams()
         self.name = "test-model"
 
+
 class DummyOrchestrator:
     def __init__(self):
         self.deployment = DummyDeployment()
+
 
 class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
+
 mock_filter = Mock()
 mock_filter.filter_attachments.side_effect = lambda messages: messages
+
 
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
@@ -54,7 +59,6 @@ async def test_invoke_without_show_usage(monkeypatch):
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
-
 
     tools = [{"name": "t1"}]
     invoker = AssistantInvoker(
@@ -67,7 +71,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         attachment_filter=mock_filter,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -87,6 +91,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
+
 @pytest.mark.asyncio
 async def test_invoke_with_show_usage_true(monkeypatch):
     create_mock = AsyncMock(return_value="stream-result")
@@ -105,7 +110,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -120,30 +125,12 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
 
-# python
+
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "exc_body, expected_display",
-    [
-        ({"message": "bad request"}, "bad request"),
-        ("rate limited", "rate limited"),
-    ],
-)
-async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, exc_body, expected_display):
-    class FakeOpenAIError(Exception):
-        def __init__(self, code, body):
-            super().__init__(str(body))
-            self.code = code
-            self.body = body
-
-    import quickapp.agent.assistant_invoker as ai_mod
-
-    # Replace the exception types in the module so the except block matches our fake error
-    monkeypatch.setattr(ai_mod, "BadRequestError", FakeOpenAIError)
-    monkeypatch.setattr(ai_mod, "RateLimitError", FakeOpenAIError)
-
-    # Make the azure client raise the fake error
-    create_mock = AsyncMock(side_effect=FakeOpenAIError("ERR_CODE", exc_body))
+async def test_invoke_propagates_exceptions():
+    """Exceptions from the azure client are re-raised without transformation.
+    Error-to-message translation is handled upstream by _exception_message_resolver."""
+    create_mock = AsyncMock(side_effect=RuntimeError("upstream failure"))
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
@@ -158,14 +145,10 @@ async def test_invoke_translates_openai_errors_to_invalid_request(monkeypatch, e
         response_format=None,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
-    from aidial_sdk.exceptions import InvalidRequestError
-    with pytest.raises(InvalidRequestError) as excinfo:
+    with pytest.raises(RuntimeError, match="upstream failure"):
         await invoker.invoke()
 
-    # Ensure the original error code and derived display message are propagated
-    assert excinfo.value.message == "ERR_CODE"
-    assert excinfo.value.display_message == expected_display
     assert create_mock.await_count == 1

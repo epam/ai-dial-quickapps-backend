@@ -28,7 +28,7 @@ class TestSetNameValidator:
         func1 = _make_function("my_tool", description="desc A")
         func2 = _make_function("my_tool", description="desc B")
         assert func1.name != func2.name
-        assert func1.name[:len("my_tool")] == func2.name[:len("my_tool")]
+        assert func1.name[: len("my_tool")] == func2.name[: len("my_tool")]
 
     def test_idempotent_on_revalidation(self):
         func = _make_function("my_tool")
@@ -67,7 +67,7 @@ class TestSetNameValidator:
         """A name ending with 4 hex chars (without underscore) must still get hashed."""
         func = _make_function("tool_setup")
         # Extract the hash that would be computed
-        suffix = func.name[len("tool_setup"):]
+        suffix = func.name[len("tool_setup") :]
         assert suffix.startswith("_")
         # The full name should be base + _hash, not the original
         assert func.name != "tool_setup"

@@ -2,7 +2,6 @@ import hashlib
 import json
 import logging
 from pathlib import Path
-from typing import List, Optional, Set
 
 from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
@@ -24,7 +23,7 @@ class LlmCache:
     def __init__(self, cache_path: Path, enable_cache=True):
         self.cache_path = Path(cache_path)
         self.enable_cache = enable_cache
-        self.cache_responses: List[CacheResponse] = []
+        self.cache_responses: list[CacheResponse] = []
         self.used_cache_responses: set = set()
 
         if self.enable_cache:
@@ -50,13 +49,13 @@ class LlmCache:
             except (json.JSONDecodeError, FileNotFoundError, TypeError) as e:
                 logger.error(f"Error loading cache file {file_path}: {e}")
 
-    def get_cache_response(self, request: CacheRequest) -> Optional[CacheResponse]:
+    def get_cache_response(self, request: CacheRequest) -> CacheResponse | None:
         """
         Iterates through all CacheResponses and checks if it matches with the given CacheRequest object.
         Returns the top-scoring CacheResponse and its score.
         """
         top_score = -1.0
-        top_response: Optional[CacheResponse] = None
+        top_response: CacheResponse | None = None
 
         for cached_response in self.cache_responses:
             score = self._compare_requests(request, cached_response.request)
@@ -105,7 +104,7 @@ class LlmCache:
         logger.debug(f"Overall score: {overall_score}")
         return overall_score
 
-    def _calculate_average_similarity(self, list1: List[str], list2: List[str]) -> float:
+    def _calculate_average_similarity(self, list1: list[str], list2: list[str]) -> float:
         """Calculates the average similarity score between two lists of strings."""
         if not list1 or not list2:
             # If either list is empty, consider it a perfect match (or handle differently as needed)
@@ -136,7 +135,7 @@ class LlmCache:
         file_path = self.cache_path / f"{cache_key}.response"
         return file_path
 
-    def cleanup(self, to_delete: Set[CacheResponse]):
+    def cleanup(self, to_delete: set[CacheResponse]):
         file_path = ""
         for response in to_delete:
             try:

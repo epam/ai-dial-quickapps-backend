@@ -1,5 +1,5 @@
 import json
-from typing import Any, Optional
+from typing import Any
 
 from httpx import URL, Headers, QueryParams
 from injector import inject
@@ -42,8 +42,8 @@ class _RequestDetailsBuilder:
         self.__headers: Headers = Headers(self.DEFAULT_HEADERS)
         self.__params: QueryParams = QueryParams()
         self.__data: dict[str, Any] = {}
-        self.__url: Optional[URL] = None
-        self.__method: Optional[str] = None
+        self.__url: URL | None = None
+        self.__method: str | None = None
 
     @staticmethod
     def __process_value(value: Any) -> Any:

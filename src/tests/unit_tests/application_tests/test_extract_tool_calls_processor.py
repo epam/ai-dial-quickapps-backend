@@ -163,7 +163,11 @@ class TestExtractToolCallsFromStateProcessor:
         legacy_history = [
             {
                 "tool_call": tc.model_dump(mode="json"),
-                "tool_execution_result": {"role": "tool", "content": "output", "tool_call_id": "tc-1"},
+                "tool_execution_result": {
+                    "role": "tool",
+                    "content": "output",
+                    "tool_call_id": "tc-1",
+                },
             }
         ]
 

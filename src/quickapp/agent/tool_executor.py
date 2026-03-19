@@ -1,7 +1,6 @@
 import asyncio
 import json
 import logging
-from typing import Dict, List
 
 from injector import inject
 
@@ -21,7 +20,7 @@ class ToolExecutor:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
-    async def execute(self, tool_call_list: List[AccumulatedToolCall]) -> List[CompletionResult]:
+    async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[CompletionResult]:
         tasks = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)
@@ -37,7 +36,7 @@ class ToolExecutor:
         return results
 
     @staticmethod
-    def __build_tool_dict(tools: List[StagedBaseTool]) -> Dict[str, StagedBaseTool]:
+    def __build_tool_dict(tools: list[StagedBaseTool]) -> dict[str, StagedBaseTool]:
         tool_dict = {}
         for tool in tools:
             tool_config = getattr(tool, '_tool_config', None)

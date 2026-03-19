@@ -1,4 +1,4 @@
-from typing import Any, Optional
+from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from pydantic import BaseModel, Field
@@ -7,12 +7,12 @@ from quickapp.common.deployment_usage import DeploymentUsage
 
 
 class CompletionResult(BaseModel):
-    tool_call_id: Optional[str] = None
-    content: Any
+    tool_call_id: str | None = None
+    content: str
     content_type: str
-    attachments: Optional[list[Attachment]] = None
+    attachments: list[Attachment] | None = None
     state: dict[str, Any] | None = None
-    usage: Optional[list[DeploymentUsage]] = None
+    usage: list[DeploymentUsage] | None = None
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
 

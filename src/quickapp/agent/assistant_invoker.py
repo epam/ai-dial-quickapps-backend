@@ -3,9 +3,8 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
-from aidial_sdk.exceptions import InvalidRequestError
 from injector import inject
-from openai import AsyncStream, BadRequestError, RateLimitError
+from openai import AsyncStream
 from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
@@ -92,11 +91,6 @@ class AssistantInvoker:
     ) -> AsyncStream[ChatCompletionChunk]:
         try:
             chat_completion = await self.__azure_client.chat.completions.create(**completion_config)
-        except (BadRequestError, RateLimitError) as e:
-            raise InvalidRequestError(
-                message=e.code or "Unknown error",
-                display_message=e.body["message"] if isinstance(e.body, dict) else e.body,
-            )
         except Exception:
             logger.exception("Error during chat completion")
             raise

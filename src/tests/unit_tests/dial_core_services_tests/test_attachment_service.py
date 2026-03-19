@@ -3,10 +3,10 @@ from io import BytesIO
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from aidial_client.types.chat.response import Attachment
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
-from aidial_client.types.chat.response import Attachment
 from quickapp.dial_core_services.attachment_service import AttachmentService
 
 
@@ -25,7 +25,9 @@ async def test_upload_attachment_success_with_title():
     mock_ctx.__aenter__.return_value = mock_client
     mock_ctx.__aexit__.return_value = None
 
-    with patch("quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx) as mock_dc:
+    with patch(
+        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
+    ) as mock_dc:
         svc = AttachmentService(dial_settings, api_key)
         result = await svc.upload_attachment_to_core(attachment)
 
@@ -54,8 +56,13 @@ async def test_upload_attachment_generates_name_when_no_title():
     mock_ctx.__aenter__.return_value = mock_client
     mock_ctx.__aexit__.return_value = None
 
-    with patch("quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx):
-        with patch("quickapp.dial_core_services.attachment_service.generate_attachment_filename", return_value="generated.bin"):
+    with patch(
+        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
+    ):
+        with patch(
+            "quickapp.dial_core_services.attachment_service.generate_attachment_filename",
+            return_value="generated.bin",
+        ):
             svc = AttachmentService(dial_settings, api_key)
             result = await svc.upload_attachment_to_core(attachment)
 
@@ -75,16 +82,20 @@ async def test_upload_attachment_on_exception_keeps_data():
 
     mock_ctx = AsyncMock()
     mock_client = AsyncMock()
-    mock_client.put_file.side_effect = Exception("upload failed as expected in test case, just ignore this message")
+    mock_client.put_file.side_effect = Exception(
+        "upload failed as expected in test case, just ignore this message"
+    )
     mock_ctx.__aenter__.return_value = mock_client
     mock_ctx.__aexit__.return_value = None
 
-    with patch("quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx):
+    with patch(
+        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
+    ):
         svc = AttachmentService(dial_settings, api_key)
         # noinspection PyBroadException
         try:
             result = await svc.upload_attachment_to_core(attachment)
         except Exception:
-            pass # Suppress exception for test
+            pass  # Suppress exception for test
     assert result.data == "rawdata"
     assert result.url is None

@@ -4,15 +4,13 @@ import json
 import logging
 import mimetypes
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import pytest
 import uvicorn
-from aidial_sdk.chat_completion import Role
-from aidial_sdk.chat_completion import Message
-from starlette.testclient import TestClient
-
+from aidial_sdk.chat_completion import Message, Role
 from pydantic import SecretStr
+from starlette.testclient import TestClient
 
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.config.application import ApplicationConfig
@@ -21,7 +19,10 @@ from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.utils import bool_env_var
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
-from tests.integration_tests.test_runner.cache.cache_middleware import CacheMiddlewareApp, CacheMiddlewareConfig
+from tests.integration_tests.test_runner.cache.cache_middleware import (
+    CacheMiddlewareApp,
+    CacheMiddlewareConfig,
+)
 from tests.integration_tests.test_runner.config import TestConfig, TestDialCoreConfig
 from tests.integration_tests.test_runner.models import Failure, TstCase, check_multiple_alternatives
 from tests.integration_tests.test_runner.utils.string_utils import extract_total_price
@@ -48,9 +49,7 @@ API_KEY_HEADER = "Api-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
 
 
-def create_request_headers(
-        api_key: SecretStr, app_config: ApplicationConfig
-) -> dict[str, str]:
+def create_request_headers(api_key: SecretStr, app_config: ApplicationConfig) -> dict[str, str]:
     return {
         API_KEY_HEADER: api_key.get_secret_value(),
         CONTENT_TYPE_HEADER: "application/json",
@@ -127,10 +126,12 @@ class TestRunner:
     @staticmethod
     async def execute_test_case(
         client: TestClient, test_case: TstCase, ts: TestStats, app_config: ApplicationConfig
-    ) -> List[Failure]:
+    ) -> list[Failure]:
         messages = []
         all_failures = []
-        headers = create_request_headers(api_key=TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config)
+        headers = create_request_headers(
+            api_key=TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config
+        )
 
         for i, test_message_data in enumerate(test_case.messages):
             message = {"role": "user", "content": test_message_data.user_message}
@@ -138,7 +139,9 @@ class TestRunner:
             if test_message_data.attachments:
                 attachment_objects = []
                 for attachment in test_message_data.attachments:
-                    url = await TestRunner.get_attachment_url(TestDialCoreConfig.REMOTE_DIAL_URL, headers, attachment)
+                    url = await TestRunner.get_attachment_url(
+                        TestDialCoreConfig.REMOTE_DIAL_URL, headers, attachment
+                    )
                     attachment_object = {
                         "type": mimetypes.guess_type(attachment.name)[0],
                         "title": attachment.name,
@@ -173,8 +176,8 @@ class TestRunner:
                 ts.increment_failure(FailureReason.HTTP_STATUS)
                 all_failures.extend(
                     [
-                        Failure(response.status_code, 200, "Status code"),
-                        Failure(response.text, None, "Content"),
+                        Failure(actual=response.status_code, expected=200, comment="Status code"),
+                        Failure(actual=response.text, expected=None, comment="Content"),
                     ]
                 )
                 break
@@ -187,9 +190,9 @@ class TestRunner:
                 ts.increment_failure(FailureReason.ROLE)
                 all_failures.append(
                     Failure(
-                        response_message.role,
-                        Role.ASSISTANT,
-                        "Message role differs from expected",
+                        actual=response_message.role,
+                        expected=Role.ASSISTANT,
+                        comment="Message role differs from expected",
                     )
                 )
                 break
@@ -219,13 +222,19 @@ class TestRunner:
 
             # Check tool calls and attachments
             state = None
-            if response_message.custom_content and hasattr(response_message.custom_content, "state"):
+            if response_message.custom_content and hasattr(
+                response_message.custom_content, "state"
+            ):
                 state = response_message.custom_content.state
             logger.debug(f"state:{state}")
             all_failures.extend(
                 ResponseValidator.check_tool_calls(state, test_message_data.tool_calls, ts)
             )
-            attachments = getattr(response_message.custom_content, "attachments", None) if response_message.custom_content else None
+            attachments = (
+                getattr(response_message.custom_content, "attachments", None)
+                if response_message.custom_content
+                else None
+            )
             all_failures.extend(
                 ResponseValidator.check_attachments(
                     attachments,
@@ -243,31 +252,38 @@ class TestRunner:
         return all_failures
 
     @staticmethod
-    def collect_warnings(recwarn, ts: TestStats) -> List[Failure]:
+    def collect_warnings(recwarn, ts: TestStats) -> list[Failure]:
         failures = []
         specific_warnings = [
             w for w in recwarn.list if TestConfig.WARNING_MESSAGE in str(w.message)
         ]
         if specific_warnings:
             ts.increment_failure(FailureReason.LLM_CACHE_MISSING)
-            failures.append(Failure("", "", TestConfig.FAILURE_MESSAGE))
+            failures.append(Failure(actual="", expected="", comment=TestConfig.FAILURE_MESSAGE))
         return failures
 
     @staticmethod
-    def check_test_outcome(failures: List[Failure]):
+    def check_test_outcome(failures: list[Failure]):
         if failures:
             error_message = "\n".join(map(str, failures))
             pytest.fail(f"Test failed with the following errors:\n{error_message}")
 
 
 async def execute_single_test_run(
-    client: TestClient, test_case: TstCase, ts: TestStats, recwarn, func, app_config: ApplicationConfig, *args, **kwargs
+    client: TestClient,
+    test_case: TstCase,
+    ts: TestStats,
+    recwarn,
+    func,
+    app_config: ApplicationConfig,
+    *args,
+    **kwargs,
 ) -> tuple[list[Failure], Any]:
     """Executes a single test run and returns failures."""
     run_failures = []
     if test_case:
-    #     with patch('chat_v2.agents.chat_hub_agent.get_today') as mock_date:
-    #         mock_date.return_value = test_case.mock_date
+        #     with patch('chat_v2.agents.chat_hub_agent.get_today') as mock_date:
+        #         mock_date.return_value = test_case.mock_date
         run_failures.extend(await TestRunner.execute_test_case(client, test_case, ts, app_config))
 
     # Call the test itself, in most cases it would be empty
@@ -285,7 +301,7 @@ def e2e_test(
     test_case: TstCase = None,
     app_config_path: Path = None,
     model: str = None,
-    models_applicable_for_test: List[str] = None,
+    models_applicable_for_test: list[str] = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
@@ -321,22 +337,24 @@ def e2e_test(
                 logger.debug(f"Using model from parameter defined in test: {model_to_use}")
             elif request.config.getoption("--model"):
                 cli_model = request.config.getoption("--model")
-                if models_applicable_for_test is None or len(
-                        models_applicable_for_test) == 0 or cli_model in models_applicable_for_test:
+                if (
+                    models_applicable_for_test is None
+                    or len(models_applicable_for_test) == 0
+                    or cli_model in models_applicable_for_test
+                ):
                     model_to_use = cli_model
                     logger.debug(f"Using model from CLI option: {model_to_use}")
                 else:
                     logger.debug(
-                        f"Model '{cli_model}' is not in the applicable models list: {models_applicable_for_test}")
+                        f"Model '{cli_model}' is not in the applicable models list: {models_applicable_for_test}"
+                    )
                     pytest.skip(f"Model '{cli_model}' is not applicable for this test")
             else:
                 logger.debug("No model specified")
                 pytest.fail("No model specified for test")
 
-
-
-               # Run the test multiple times according to the runs parameter
-            ts = TestStats(f"{test_name}[{model_to_use}]", 0, 0)
+            # Run the test multiple times according to the runs parameter
+            ts = TestStats(name=f"{test_name}[{model_to_use}]", passed=0, failed=0)
             for run_index in range(runs):
                 logger.info(f"Running test iteration {run_index + 1}/{runs}")
                 failures = await prepare_and_execute_test(
@@ -371,7 +389,9 @@ def e2e_test(
             run_index,
         ):
             tool_sets = TestConfig.load_tools_config(unique_port, config_file_set)
-            app_config: ApplicationConfig = TestConfig.create_app_configuration(toolsets=tool_sets, model=execution_model)
+            app_config: ApplicationConfig = TestConfig.create_app_configuration(
+                toolsets=tool_sets, model=execution_model
+            )
 
             app = TestApp.get_app(port=unique_port)
 
@@ -386,7 +406,7 @@ def e2e_test(
                 test_name=test_name,
                 refresh=refresh,
                 port=unique_port,
-                no_cache=effective_no_cache
+                no_cache=effective_no_cache,
             )
             try:
                 run_failures, test_result = await execute_single_test_run(
@@ -396,10 +416,10 @@ def e2e_test(
                     test_stats.failed += 1
                     run_failures_with_index = [
                         Failure(
-                            f"{test_stats.name}[{run_index+1}]: {failure.actual}",
-                            failure.expected,
-                            failure.comment,
-                        )  # Using comment instead of message
+                            actual=f"{test_stats.name}[{run_index + 1}]: {failure.actual}",
+                            expected=failure.expected,
+                            comment=failure.comment,
+                        )
                         for failure in run_failures
                     ]
                     return run_failures_with_index

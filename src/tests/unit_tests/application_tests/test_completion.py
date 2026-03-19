@@ -1,11 +1,11 @@
 from types import SimpleNamespace
-from typing import Mapping
 from unittest.mock import Mock
 
 import fastapi
 import pytest
-from aidial_sdk.chat_completion import Request, Message, Role
+from aidial_sdk.chat_completion import Message, Request, Role
 from httpx import HTTPError
+
 import quickapp.application._quick_app_completion as quick_app_completion
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.application._request_context import _RequestContext
@@ -85,21 +85,30 @@ async def valid_app_props(*args, **kwargs):
         "orchestrator": {
             "type": "default",
             "deployment": {"id": "default-deployment", "name": "default"},
-            "system_prompt": {"type": "custom", "content": "You are a helpful assistant.", "variables": {}},
+            "system_prompt": {
+                "type": "custom",
+                "content": "You are a helpful assistant.",
+                "variables": {},
+            },
         },
         "contexts": [],
         "tool_sets": [],
     }
 
 
-
-
-
 @pytest.fixture
 def make_request_completion():
     def _make(orchestrator=None, api_key="k", has_binding=True, extra_mapping=None):
-        request = Request(api_key_secret=api_key, messages=[Message(content="123", role=Role.USER), Message(content="456", role=Role.USER)], deployment_id="default-deployment",
-                          headers={"1":"2"}, original_request=fastapi.Request(scope={"type": "http"}))
+        request = Request(
+            api_key_secret=api_key,
+            messages=[
+                Message(content="123", role=Role.USER),
+                Message(content="456", role=Role.USER),
+            ],
+            deployment_id="default-deployment",
+            headers={"1": "2"},
+            original_request=fastapi.Request(scope={"type": "http"}),
+        )
         request.request_dial_application_properties = valid_app_props
 
         init_handler = SimpleNamespace(handle_initialization_errors=lambda: None)
@@ -134,9 +143,7 @@ def make_request_completion():
         mapping[quick_app_completion.PresentationSettings] = presentation_settings
 
         injector = FakeInjector(mapping, has_binding=has_binding)
-        completion = quick_app_completion._QuickAppCompletion(
-            injector, presentation_settings
-        )
+        completion = quick_app_completion._QuickAppCompletion(injector, presentation_settings)
         return request, completion, injector
 
     return _make
@@ -199,7 +206,9 @@ async def test_chat_completion_generic_exception_appends_generic_message(make_re
     await completion.chat_completion(request, response)
 
     # Assert
-    assert any("Something went wrong with the execution of your request" in c for c in choice.contents)
+    assert any(
+        "Something went wrong with the execution of your request" in c for c in choice.contents
+    )
 
 
 @pytest.mark.asyncio
@@ -215,18 +224,26 @@ async def test_configuration_no_binding_returns_empty_response(make_request_comp
 
 
 @pytest.mark.asyncio
-async def test_configuration_with_binding_returns_config_response(make_request_completion, monkeypatch):
+async def test_configuration_with_binding_returns_config_response(
+    make_request_completion, monkeypatch
+):
     # Arrange
     fake_configs = ["cfg1", "cfg2"]
     extra = {list[quick_app_completion.Configuration]: fake_configs}
-    request, completion, _ = make_request_completion(None, api_key="k", has_binding=True, extra_mapping=extra)
+    request, completion, _ = make_request_completion(
+        None, api_key="k", has_binding=True, extra_mapping=extra
+    )
 
     # monkeypatch Configuration.from_list_of_configurations to return object with to_configuration_response
     class FakeConfigured:
         def to_configuration_response(self):
             return {"ok": True}
 
-    monkeypatch.setattr(quick_app_completion.Configuration, "from_list_of_configurations", staticmethod(lambda cfgs: FakeConfigured()))
+    monkeypatch.setattr(
+        quick_app_completion.Configuration,
+        "from_list_of_configurations",
+        staticmethod(lambda cfgs: FakeConfigured()),
+    )
 
     # Act
     resp = await completion.configuration(request)
@@ -236,54 +253,60 @@ async def test_configuration_with_binding_returns_config_response(make_request_c
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_http_error_appends_message(make_request_completion):
+async def test_chat_completion_http_error_appends_safe_message(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
 
     class OrchRaise:
         async def invoke(self):
-            raise HTTPError("http failure occurred")
+            raise HTTPError("http://internal-service/secret-endpoint failure")
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
     # Act
     await completion.chat_completion(request, response)
 
-    # Assert
-    assert any("http failure occurred" in c for c in choice.contents)
+    # Assert: a user-friendly message is shown and the raw internal URL is NOT leaked
+    assert any("http error" in c.lower() for c in choice.contents)
+    assert not any("http://internal-service" in c for c in choice.contents)
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_openai_internal_server_error_appends_formatted_message(make_request_completion, monkeypatch):
+async def test_chat_completion_openai_internal_server_error_appends_safe_message(
+    make_request_completion,
+):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
 
-    class OpenAIInternalError(Exception):
-        def __init__(self, message="internal", status_code=500, request_obj="req"):
-            super().__init__(message)
-            self.message = message
-            self.status_code = status_code
-            self.request = request_obj
+    import httpx as _httpx
+    import openai as _openai
 
-    monkeypatch.setattr(quick_app_completion.openai, "InternalServerError", OpenAIInternalError, raising=False)
+    _request = _httpx.Request("GET", "http://internal-dial-core/api")
+    _response = _httpx.Response(500, request=_request)
 
     class OrchRaise:
         async def invoke(self):
-            raise OpenAIInternalError("upstream internal error", 502, "REQUEST_OBJ")
+            raise _openai.InternalServerError(
+                "upstream internal error", response=_response, body=None
+            )
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
     # Act
     await completion.chat_completion(request, response)
 
-    # Assert - check that message, status code and request representation are included
-    assert any("upstream internal error" in c and "502" in c and "REQUEST_OBJ" in c for c in choice.contents)
+    # Assert: clean message shown, raw internal details NOT exposed
+    assert any("internal error" in c.lower() for c in choice.contents)
+    assert not any("http://internal-dial-core" in c for c in choice.contents)
+    assert not any("upstream internal error" in c for c in choice.contents)
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_sets_context_messages_when_request_is_request(make_request_completion, monkeypatch):
+async def test_chat_completion_sets_context_messages_when_request_is_request(
+    make_request_completion, monkeypatch
+):
     # Arrange: treat SimpleNamespace instances as Request so isinstance check passes
     monkeypatch.setattr(quick_app_completion, "Request", SimpleNamespace, raising=False)
 

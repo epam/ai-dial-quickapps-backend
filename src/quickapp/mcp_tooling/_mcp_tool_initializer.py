@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import unquote
 
 import httpx
@@ -79,7 +79,9 @@ class _MCPToolInitializer(CompletionInitializer):
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
-    def _convert_to_openai_tool(name: str, description: str | None, input_schema: dict[str, Any]):
+    def _convert_to_openai_tool(
+        name: str, description: str | None, input_schema: dict[str, Any]
+    ) -> OpenAiToolConfig:
         return OpenAiToolConfig(
             function=OpenAiToolFunction.model_construct(  # model_construct to prevent double @model_validator execution for name
                 name=name,
@@ -113,7 +115,7 @@ class _MCPToolInitializer(CompletionInitializer):
         try:
             # Resolve DialMCPToolSet data asynchronously if needed
             if isinstance(toolset_info, DialMCPToolSet):
-                dial_toolset_info: Optional[ToolsetInfo] = await self.__mcp_cache.get(
+                dial_toolset_info: ToolsetInfo | None = await self.__mcp_cache.get(
                     f"mcp_toolset_{toolset_info.dial_id}",
                     self.__tool_config_service.get_basic_toolset_config,
                     toolset_info.dial_id,

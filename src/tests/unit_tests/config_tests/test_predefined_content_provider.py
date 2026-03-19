@@ -52,7 +52,9 @@ class TestReadText:
         assert len(content) > 0
 
     def test_read_skill_returns_string(self, builtin_provider: PredefinedContentProvider):
-        content = builtin_provider.read_text(ContentType.SKILL, "tool-call-file-parameter-formatting")
+        content = builtin_provider.read_text(
+            ContentType.SKILL, "tool-call-file-parameter-formatting"
+        )
         assert isinstance(content, str)
         assert len(content) > 0
 
@@ -199,18 +201,14 @@ class TestExtraLayers:
         settings = PredefinedSettings(extra_paths=[str(tmp_path)])
         provider = PredefinedContentProvider(settings)
 
-        content = provider.read_text(
-            ContentType.SKILL, "tool-call-file-parameter-formatting"
-        )
+        content = provider.read_text(ContentType.SKILL, "tool-call-file-parameter-formatting")
         assert content == "Overridden skill content"
 
 
 class TestLayersInfo:
     """Tests for get_layers_info()."""
 
-    def test_builtin_only_returns_single_layer(
-        self, builtin_provider: PredefinedContentProvider
-    ):
+    def test_builtin_only_returns_single_layer(self, builtin_provider: PredefinedContentProvider):
         layers = builtin_provider.get_layers_info()
         assert len(layers) == 1
         assert ContentType.PROMPT in layers[0].content_counts
