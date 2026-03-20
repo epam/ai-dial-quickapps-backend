@@ -35,13 +35,19 @@ class _QuickAppApplication(DIALApp):
             await invoke_initializers(injector, InitializerType.startup)
 
             for resource in lifecycle_resources:
+                resource_name = type(resource).__name__
+                logger.info(f"Starting lifecycle resource: {resource_name}")
                 await resource.start()
+                logger.info(f"Lifecycle resource started: {resource_name}")
 
             logger.info("All modules successfully configured")
             yield
 
             for resource in lifecycle_resources:
+                resource_name = type(resource).__name__
+                logger.info(f"Stopping lifecycle resource: {resource_name}")
                 await resource.stop()
+                logger.info(f"Lifecycle resource stopped: {resource_name}")
 
         super().__init__(
             dial_url=dial_settings.url,
