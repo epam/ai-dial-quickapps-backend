@@ -7,10 +7,9 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-5-2025-08-07",
+            "name": "gpt-5-2025-08-07-reasoning",
             "parameters": {
-              "temperature": 1.0,
-              "seed": 820288
+              "temperature": 1.0
             }
           },
           "system_prompt": {

@@ -81,8 +81,9 @@ class _MessagesSetup:
     def extract_tool_calls(self, messages: list[Message]) -> list[Message]:
         """Unpack tool execution history from state into message sequence.
 
-        Expands ASSISTANT messages with tool_execution_history state into
-        the full sequence of ASSISTANT and TOOL messages.
+        Restores from state.tool_execution_history: expands ASSISTANT messages
+        that have custom_content.state[TOOL_EXECUTION_HISTORY] into the full
+        sequence of ASSISTANT and TOOL messages.
         """
         updated_messages: list[Message] = []
 

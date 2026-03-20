@@ -8,7 +8,7 @@ from injector import ProviderOf, inject
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.chunk_processor import ChunkProcessor
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
@@ -51,6 +51,7 @@ class Orchestrator:
         self.__iterations_counter = 0
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
+        self.__propagate_orchestrator_stages: bool = app_config.orchestrator.propagate_stages
         self.__usage_statistics_list: list[DeploymentUsage] = []
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
@@ -64,6 +65,7 @@ class Orchestrator:
             exc_to_reraise = exc
             logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
         finally:
+            # Store history in state.tool_execution_history for restoring on next request
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
@@ -95,21 +97,39 @@ class Orchestrator:
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
         assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
-            chat_completion=chat_completion_stream, destination=self.__choice
+            chat_completion=chat_completion_stream,
+            destination=self.__choice,
+            propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
         )
         if assistant_call_result is None:
             raise RuntimeError("Assistant invocation returned no result.")
 
         tool_calls = assistant_call_result.tool_calls
 
+        # Thinking stages stay in custom_content (streamed to choice), not in state.
+        stream_state = dict(assistant_call_result.state or {})
+        state: dict[str, object] | None = (
+            {STATE_KEY_ORCHESTRATOR: stream_state} if stream_state else None
+        )
+
+        custom_content_kwargs: dict[str, object] = {
+            "attachments": assistant_call_result.attachments,
+        }
+        if state:
+            custom_content_kwargs["state"] = state
+            # Persist orchestrator response state so it's available for the next request.
+            for key, value in state.items():
+                self.__state_holder.add_state(key, value)
+
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
                 content=assistant_call_result.content or " ",
-                custom_content=CustomContent(attachments=assistant_call_result.attachments),
+                custom_content=CustomContent(**custom_content_kwargs),
                 tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
+
         if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
             self.__usage_statistics_list.append(
                 DeploymentUsage(
