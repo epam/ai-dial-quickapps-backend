@@ -59,8 +59,8 @@ class ChunkProcessor:
                         completion_tokens=chunk.usage.completion_tokens,
                     )
                 )
-
-        self.__close_all_streaming_stages()
+        # Close any remaining open stages at the end of the stream; mark as failed since they weren't explicitly completed.
+        self.__close_all_streaming_stages(status=Status.FAILED)
 
         self.__log_assistant_call_result(self.__assistant_call_result)
         return self.__assistant_call_result
@@ -127,15 +127,16 @@ class ChunkProcessor:
                     except Exception as e:
                         logger.warning("Failed to add attachment to streaming stage: %s", e)
         if "status" in delta and delta["status"] is not None:
-            self.__close_streaming_stage_at_index(idx)
+            status = Status.COMPLETED if str(delta["status"]).lower() == Status.COMPLETED.value else Status.FAILED
+            self.__close_streaming_stage_at_index(idx, status)
 
-    def __close_streaming_stage_at_index(self, idx: int) -> None:
+    def __close_streaming_stage_at_index(self, idx: int, stage_status: Status) -> None:
         """Close the streaming stage for the given index and remove it from the dict."""
         stage = self.__streaming_stages.pop(idx, None)
         if stage is None:
             return
         try:
-            stage.close(status=Status.COMPLETED)
+            stage.close(status=stage_status)
             logger.debug(
                 "Orchestrator stage propagation: closed streaming stage (index %s)",
                 idx,
@@ -143,10 +144,10 @@ class ChunkProcessor:
         except Exception as e:
             logger.warning("Error closing streaming stage: %s", e, exc_info=True)
 
-    def __close_all_streaming_stages(self) -> None:
+    def __close_all_streaming_stages(self, status: Status) -> None:
         """Close all open streaming stages (e.g. at stream end)."""
         for idx in sorted(self.__streaming_stages.keys()):
-            self.__close_streaming_stage_at_index(idx)
+            self.__close_streaming_stage_at_index(idx, status)
 
     @staticmethod
     def __log_assistant_call_result(result: AssistantCallResult) -> None:
