@@ -1,4 +1,7 @@
 name: Slash Command Dispatch
+permissions:
+  contents: read
+
 on:
   issue_comment:
     types: [created]

@@ -1,7 +1,50 @@
+import logging
+from typing import Any
+
 from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
+from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
+
 from .accumulated_tool_call import AccumulatedToolCall
+
+logger = logging.getLogger(__name__)
+
+
+class _AccumulatedStageData:
+    """Accumulates stage deltas by index (name parts, content, attachments, status)."""
+
+    __slots__ = ("name_parts", "content", "attachments", "status")
+
+    def __init__(self) -> None:
+        self.name_parts: list[str] = []
+        self.content = ""
+        self.attachments: list[dict[str, Any]] = []
+        self.status: str | None = None
+
+    def append_delta(self, item: StageDeltaItem) -> None:
+        logger.debug("Appending stage delta to index %s: %s", get_stage_index(item, -1), item)
+        if not isinstance(item, dict):
+            return
+        if "name" in item and item["name"] is not None:
+            self.name_parts.append(str(item["name"]))
+        if "content" in item and item["content"] is not None:
+            self.content += str(item["content"])
+        if "attachments" in item and item["attachments"]:
+            self.attachments.extend(item["attachments"])
+        if "status" in item and item["status"] is not None:
+            self.status = str(item["status"])
+
+    def to_dict(self, index: int | None = None) -> dict[str, Any]:
+        name = " ".join(self.name_parts).strip() if self.name_parts else ""
+        if not name and index is not None:
+            name = f"Stage {index + 1}"
+        return {
+            "name": name or "Stage",
+            "content": self.content,
+            "attachments": self.attachments,
+            "status": self.status,
+        }
 
 
 class Usage:
@@ -16,6 +59,8 @@ class AssistantCallResult:
         self.__attachments: list[Attachment] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
         self.__usage: Usage | None = None
+        self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
+        self.__state: dict[str, Any] = {}
 
     @property
     def content(self):
@@ -48,3 +93,27 @@ class AssistantCallResult:
 
     def set_usage(self, usage: Usage) -> None:
         self.__usage = usage
+
+    @property
+    def stages(self) -> list[dict[str, Any]]:
+        """Stages accumulated from stream, sorted by index."""
+        if not self.__stages_by_index:
+            return []
+        return [self.__stages_by_index[idx].to_dict(idx) for idx in sorted(self.__stages_by_index)]
+
+    def append_stage_delta(self, item: StageDeltaItem, position: int) -> None:
+        """Merge a stage delta into the stage at the given index."""
+        idx = get_stage_index(item, position)
+        if idx not in self.__stages_by_index:
+            self.__stages_by_index[idx] = _AccumulatedStageData()
+        self.__stages_by_index[idx].append_delta(item)
+
+    @property
+    def state(self) -> dict[str, Any]:
+        """State captured from the assistant stream (copy)."""
+        return dict(self.__state)
+
+    def merge_state(self, state_update: dict[str, Any]) -> None:
+        """Merge state updates from a chunk into captured state."""
+        if state_update:
+            self.__state.update(state_update)

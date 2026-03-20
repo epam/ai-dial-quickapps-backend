@@ -145,6 +145,10 @@ ignore_missing_imports = false
 module = ["aidial_sdk.*", "aidial_client.*"]
 follow_untyped_imports = true
 
+[[tool.mypy.overrides]]
+module = ["kaleido", "kaleido.*"]
+follow_untyped_imports = true
+
 [tool.poetry.group.dev]
 optional = true
 
