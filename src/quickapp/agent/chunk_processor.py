@@ -99,7 +99,7 @@ class ChunkProcessor:
         idx = get_stage_index(delta, position)
         just_created = False
         if idx not in self.__streaming_stages:
-            name = stage_display_name(delta, idx)
+            name = stage_display_name(delta)
             try:
                 stage = destination.create_stage(name)
                 stage.open()

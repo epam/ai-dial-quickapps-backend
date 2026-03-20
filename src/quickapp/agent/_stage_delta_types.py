@@ -22,7 +22,7 @@ class StageDeltaItem(TypedDict, total=False):
 def as_stage_delta(item: dict[str, Any]) -> StageDeltaItem:
     """Convert a stream dict to StageDeltaItem. Call at the boundary only.
     No structural validation; caller must only pass trusted stream dicts."""
-    return cast(StageDeltaItem, cast(object, item))
+    return cast(StageDeltaItem, item)
 
 
 def get_stage_index(item: StageDeltaItem | dict[str, Any], position: int) -> int:
@@ -32,12 +32,12 @@ def get_stage_index(item: StageDeltaItem | dict[str, Any], position: int) -> int
     return position
 
 
-def stage_display_name(item: StageDeltaItem, index: int) -> str:
+def stage_display_name(item: StageDeltaItem) -> str:
     """Display name for a stage from delta item; fallback to 'Stage {index+1}'."""
-    name = ""
+    name = None
     if "name" in item and item["name"] is not None:
         name = str(item["name"]).strip()
-    return name or f"Stage {index + 1}"
+    return name
 
 
 def attachment_kwargs(att: dict[str, Any]) -> dict[str, Any]:
