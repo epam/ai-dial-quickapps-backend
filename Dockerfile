@@ -24,9 +24,7 @@ WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYDANTIC_V2=True \
-    BROWSER_PATH=/usr/bin/chromium \
-    CHROME_BIN=/usr/bin/chromium
+    PYDANTIC_V2=True
 
 # Copy the sources and virtual env. No poetry.
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
