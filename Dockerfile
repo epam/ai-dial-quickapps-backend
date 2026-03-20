@@ -19,15 +19,14 @@ FROM python:3.13-alpine AS runtime
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib
 
 RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
-ENV CHROME_BIN=/usr/bin/chromium
-
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYDANTIC_V2=True \
-    CHROME_BIN=/home/appuser/.cache/kaleido/chrome
+    BROWSER_PATH=/usr/bin/chromium \
+    CHROME_BIN=/usr/bin/chromium
 
 # Copy the sources and virtual env. No poetry.
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
