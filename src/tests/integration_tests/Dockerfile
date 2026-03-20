@@ -1,8 +1,9 @@
-FROM python:3.13-alpine AS test-builder
+FROM python:3.13-slim AS test-builder
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
-RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
-RUN pip install poetry==2.1.1
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc build-essential git \
+    && rm -rf /var/lib/apt/lists/*
+RUN pip install poetry==2.2.1
 
 WORKDIR /app
 
@@ -23,13 +24,13 @@ COPY ./integration_tests ./integration_tests
 
 
 # Stage 2: Test runtime (reuse app runtime base for infra)
-FROM python:3.13-alpine AS test-runtime
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
+FROM python:3.13-slim AS test-runtime
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 CHROME_BIN=/usr/bin/chromium
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
-RUN adduser -u 1001 --disabled-password --gecos "" appuser
+RUN useradd -u 1001 -r -s /sbin/nologin appuser
 COPY --chown=appuser --from=test-builder /app .
 
 COPY --chown=appuser << 'EOF' /docker_test_entrypoint.sh && chmod +x /docker_test_entrypoint.sh
