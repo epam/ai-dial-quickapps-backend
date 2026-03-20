@@ -2,10 +2,8 @@ import base64
 import json
 import logging
 import uuid
-from io import BytesIO
 from typing import Any
 
-import plotly.io as pio
 from aidial_client import AsyncDial
 from aidial_client.types.chat.request_param import (
     AttachmentParam,
@@ -26,6 +24,7 @@ from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
 )
+from quickapp.internal_tooling.py_interpreter_tooling._kaleido_service import _KaleidoService
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )
@@ -50,17 +49,13 @@ class DisplayContentProcessor:
         api_key: DIAL_API_KEY,
         dial_client: AsyncDial,
         py_interpreter_settings: _PyInterpreterSettings,
+        kaleido_service: _KaleidoService,
     ):
         self.__dial_settings: DialSettings = dial_settings
         self.__api_key: DIAL_API_KEY = api_key
         self.__dial_client: AsyncDial = dial_client
         self.__additional_handling_model: str = py_interpreter_settings.additional_handling_model
-        pio.defaults.chromium_args = [  # type: ignore[attr-defined]
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--disable-setuid-sandbox",
-        ]
+        self.__kaleido_service: _KaleidoService = kaleido_service
 
     async def process_display_content(
         self,
@@ -166,10 +161,7 @@ class DisplayContentProcessor:
         return message
 
     async def _get_plotly_as_img(self, attachment_param: AttachmentParam) -> AttachmentParam:
-        fig = pio.from_json(attachment_param["data"])
-        image_bytes = BytesIO()
-        fig.write_image(image_bytes, format="png")
-        image_bytes.seek(0)
+        image_data = await self.__kaleido_service.render_figure_as_png(attachment_param["data"])
 
         async with DialCoreClient(
             api_key=self.__api_key, base_url=self.__dial_settings.url
@@ -178,7 +170,7 @@ class DisplayContentProcessor:
             bucket_info = await dial_core.put_file(
                 name=filename,
                 mime_type=MediaTypes.PNG,
-                content=image_bytes,
+                content=image_data,
             )
 
             return AttachmentParam(url=bucket_info.get("url"), type=MediaTypes.PNG)

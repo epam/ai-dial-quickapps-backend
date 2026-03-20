@@ -11,6 +11,7 @@ from injector import Injector, inject
 from quickapp.application._otel_settings import _OtelSettings
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.lifecycle_resource import LifecycleResource
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,20 @@ class _QuickAppApplication(DIALApp):
         completion: ChatCompletion,
         dial_settings: DialSettings,
         otel_settings: _OtelSettings,
+        lifecycle_resources: list[LifecycleResource],
     ):
         @asynccontextmanager
         async def lifespan(app: FastAPI):  # noqa: ARG001
             await invoke_initializers(injector, InitializerType.startup)
+
+            for resource in lifecycle_resources:
+                await resource.start()
+
             logger.info("All modules successfully configured")
             yield
+
+            for resource in lifecycle_resources:
+                await resource.stop()
 
         super().__init__(
             dial_url=dial_settings.url,
