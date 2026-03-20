@@ -32,7 +32,7 @@ def get_stage_index(item: StageDeltaItem | dict[str, Any], position: int) -> int
     return position
 
 
-def stage_display_name(item: StageDeltaItem) -> str:
+def stage_display_name(item: StageDeltaItem) -> str | None:
     """Display name for a stage from delta item; fallback to 'Stage {index+1}'."""
     name = None
     if "name" in item and item["name"] is not None:
