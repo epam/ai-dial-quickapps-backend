@@ -43,7 +43,7 @@ class _QuickAppApplication(DIALApp):
             logger.info("All modules successfully configured")
             yield
 
-            for resource in lifecycle_resources:
+            for resource in reversed(lifecycle_resources):
                 resource_name = type(resource).__name__
                 logger.info(f"Stopping lifecycle resource: {resource_name}")
                 await resource.stop()

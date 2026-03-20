@@ -33,8 +33,9 @@ class _KaleidoService(LifecycleResource):
             async with self._lock:
                 if self._kaleido is None:
                     logger.info("Starting Kaleido service (lazy init)")
-                    self._kaleido = Kaleido(n=1, timeout=90)
-                    await self._kaleido.__aenter__()
+                    kaleido = Kaleido(n=1, timeout=90)
+                    await kaleido.__aenter__()
+                    self._kaleido = kaleido
                     logger.info("Kaleido service started")
         return self._kaleido
 
