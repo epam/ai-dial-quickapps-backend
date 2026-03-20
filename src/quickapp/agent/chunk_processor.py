@@ -127,7 +127,11 @@ class ChunkProcessor:
                     except Exception as e:
                         logger.warning("Failed to add attachment to streaming stage: %s", e)
         if "status" in delta and delta["status"] is not None:
-            status = Status.COMPLETED if str(delta["status"]).lower() == Status.COMPLETED.value else Status.FAILED
+            status = (
+                Status.COMPLETED
+                if str(delta["status"]).lower() == Status.COMPLETED.value
+                else Status.FAILED
+            )
             self.__close_streaming_stage_at_index(idx, status)
 
     def __close_streaming_stage_at_index(self, idx: int, stage_status: Status) -> None:

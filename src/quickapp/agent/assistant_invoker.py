@@ -85,7 +85,9 @@ class AssistantInvoker:
 
         chat_completion_config.update(payload)
         if logger.isEnabledFor(logging.DEBUG):
-            logger.debug("Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False))
+            logger.debug(
+                "Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False)
+            )
         return chat_completion_config
 
     async def __create_chat_completion(
