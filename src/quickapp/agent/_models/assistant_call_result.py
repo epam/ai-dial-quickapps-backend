@@ -23,7 +23,7 @@ class _AccumulatedStageData:
         self.status: str | None = None
 
     def append_delta(self, item: StageDeltaItem) -> None:
-        logger.debug(f"Appending stage delta to index {get_stage_index(item, -1)}: {item}")
+        logger.debug("Appending stage delta to index %s: %s", get_stage_index(item, -1), item)
         if not isinstance(item, dict):
             return
         if "name" in item and item["name"] is not None:

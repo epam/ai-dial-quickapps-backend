@@ -19,17 +19,6 @@ class StageDeltaItem(TypedDict, total=False):
     status: str
 
 
-class AttachmentDelta(TypedDict, total=False):
-    """Attachment dict as in custom_content.attachments or stage item attachments."""
-
-    type: str
-    title: str
-    data: str | bytes
-    url: str
-    reference_url: str
-    reference_type: str
-
-
 def as_stage_delta(item: dict[str, Any]) -> StageDeltaItem:
     """Convert a stream dict to StageDeltaItem. Call at the boundary only.
     No structural validation; caller must only pass trusted stream dicts."""

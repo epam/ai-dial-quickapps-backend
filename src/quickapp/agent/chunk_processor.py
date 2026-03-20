@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage
+from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
@@ -135,7 +135,7 @@ class ChunkProcessor:
         if stage is None:
             return
         try:
-            stage.close()
+            stage.close(status=Status.COMPLETED)
             logger.debug(
                 "Orchestrator stage propagation: closed streaming stage (index %s)",
                 idx,
