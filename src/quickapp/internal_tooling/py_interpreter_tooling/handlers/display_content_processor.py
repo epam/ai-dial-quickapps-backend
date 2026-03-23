@@ -158,15 +158,16 @@ class DisplayContentProcessor:
         try:
             metadata = await self.__dial_client.files.upload(
                 url=f"files/{bucket}/{filename}",
-                file=(filename, image_data.getvalue(), MediaTypes.PNG),
+                file=(filename, image_data, MediaTypes.PNG),
             )
 
             return AttachmentParam(url=metadata.url, type=MediaTypes.PNG)
         except Exception as e:
             logger.exception(f"Exception during uploading plotly image to DIAL: {e}")
 
+    @staticmethod
     def sanitize_display_content(
-        self, execution_result: CodeExecutionResponse
+            execution_result: CodeExecutionResponse
     ) -> CodeExecutionResponse:
         """Sanitizes display content in the execution result"""
         if execution_result.display:
