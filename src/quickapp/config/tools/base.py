@@ -192,6 +192,13 @@ class AttachmentConfig(BaseModel):
             return DEFAULT_PROPAGATE_TO_CHOICE
         return v
 
+    @field_validator("media_type_substitution", mode="before")
+    @classmethod
+    def coerce_none_type_substitution(cls, v: dict[str, str] | None) -> dict[str, str]:
+        if v is None:
+            return {}
+        return v
+
 
 class OpenAiToolConfig(
     BaseModel,
