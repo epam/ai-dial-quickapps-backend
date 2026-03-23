@@ -8,7 +8,7 @@ from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.dial_core_client import ToolsetInfo
+from aidial_client import ToolsetInfo
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.tool_initialization_exception import ToolInitializationException

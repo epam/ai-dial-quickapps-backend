@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
@@ -116,6 +117,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(AsyncDial, to=InstanceProvider(AsyncDial(api_key="some_api_key", base_url="https://core")))
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(
             ApplicationConfig,
@@ -281,6 +283,7 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(AsyncDial, to=InstanceProvider(AsyncDial(api_key="some_api_key", base_url="https://core")))
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(
             ApplicationConfig,

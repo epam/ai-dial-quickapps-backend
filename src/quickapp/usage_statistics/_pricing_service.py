@@ -1,11 +1,9 @@
 import logging
 from datetime import timedelta
 
+from aidial_client import AsyncDial
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
 from quickapp.usage_statistics._pricing import _Pricing
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 
@@ -17,15 +15,9 @@ class _PricingService:
     VALID_PRICING_EXPIRATION_WINDOW: timedelta = timedelta(days=1)
     ERROR_PRICING_EXPIRATION_WINDOW: timedelta = timedelta(minutes=10)
 
-    def __init__(
-        self,
-        pricing_registry: _PricingRegistry,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
-    ):
+    def __init__(self, pricing_registry: _PricingRegistry, dial_client: AsyncDial):
         self.__pricing_registry: _PricingRegistry = pricing_registry
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
+        self.__dial_client: AsyncDial = dial_client
 
     async def get_price(self, model_name: str) -> _Pricing:
         try:
@@ -42,19 +34,14 @@ class _PricingService:
 
     async def __fetch_pricing_from_api(self, model_name: str) -> _Pricing:
         try:
-            async with DialCoreClient(
-                api_key=self.__api_key, base_url=self.__dial_settings.url
-            ) as dial_core:
-                json_response = await dial_core.get_model_pricing(model_name)
-                fetched_pricing = json_response.get("pricing")
+            model_info = await self.__dial_client.model.get(model_name)
+            if not model_info.pricing:
+                return _Pricing()
 
-                if not fetched_pricing:
-                    return _Pricing()
-
-                return _Pricing(
-                    input_token_price=float(fetched_pricing.get("prompt")),
-                    output_token_price=float(fetched_pricing.get("completion")),
-                )
+            return _Pricing(
+                input_token_price=float(model_info.pricing.prompt),
+                output_token_price=float(model_info.pricing.completion),
+            )
         except Exception:
             logging.exception(f"Exception while fetching pricing for model {model_name}")
             return _Pricing()
