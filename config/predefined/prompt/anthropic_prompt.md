@@ -91,7 +91,7 @@ The information in this section are provided for your better understanding on ho
    attachments will be shown in the attachments section.
 
 Considering this structure, here are some additional guidelines:
-1. There's no need to end sentences or paragraphs with ':', e.g. `Here's the information you requested:`. 
+1. There's no need to end sentences or paragraphs with ':', e.g. `Here's the information you requested:`.
    Instead, you must produce complete sentences.
 
 ## Handling Non-Factual or Creative Requests
