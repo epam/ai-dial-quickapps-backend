@@ -781,6 +781,7 @@ Do not show parameter with value in stage while tool call:
 |---------------------------|----------|---------------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------|---------------|
 | supported_types           | No       | Array[String] | List of supported attachment MIME types                                                                              | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[*/*]`       |
 | propagate_types_to_choice | No       | Array[String] | List of supported attachment MIME types that will be shown in main chat (propagated from tool call result to choice) | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[]`          |
+| media_type_substitution   | No       | dict[str, str] | Maps original MIME type to substitute. Key is a original mime_type, value is desired mime type. | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `{}` |
 
 <details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
@@ -794,7 +795,10 @@ Do not show parameter with value in stage while tool call:
     "image/png",
     "image/jpeg",
     "application/vnd.plotly.v1+json"
-  ]
+  ],
+  "media_type_substitution": {
+    "application/json": "application/vnd.plotly.v1+json"
+  }
 }
 ```
 

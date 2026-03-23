@@ -32,6 +32,16 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
     return False
 
 
+def substitute_media_type(
+    mime_type: str | None,
+    mapping: dict[str, str],
+) -> str | None:
+    """Apply media type substitution"""
+    if mime_type is None:
+        return None
+    return mapping.get(mime_type, mime_type)
+
+
 def sanitize_toolname(input_str: str) -> str:
     """
     Sanitizes a string to match the pattern ^[a-zA-Z0-9_-]{1,64}$
