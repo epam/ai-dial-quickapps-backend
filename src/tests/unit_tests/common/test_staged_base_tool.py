@@ -126,3 +126,108 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     # so it should NOT appear in propagate_to_choice
     assert len(result.propagate_to_choice) == 1
     assert result.propagate_to_choice[0].type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_applied(mock_stage_wrapper_factory):
+    """Attachments that pass supported_types should have their type substituted
+    according to media_type_substitution mapping."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/png", title="photo.png", data="img_data")
+
+    result_to_return = CompletionResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/webp"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_not_applied_when_no_match(mock_stage_wrapper_factory):
+    """Attachments whose type is not in the substitution mapping keep their original type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/jpeg", title="photo.jpg", data="img_data")
+
+    result_to_return = CompletionResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/jpeg"
+
+
+@pytest.mark.asyncio
+async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
+    """After substitution, propagate_types_to_choice should match against the NEW type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["application/custom"],
+        media_type_substitution={"image/png": "application/custom"},
+    )
+
+    attachment = Attachment(type="image/png", title="chart.png", data="img_data")
+
+    result_to_return = CompletionResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    # The attachment survives (image/png passes supported_types=["image/*"])
+    assert len(result.attachments) == 1
+    # Its type was substituted
+    assert result.attachments[0].type == "application/custom"
+    # Propagation check uses the substituted type, which matches propagate_types_to_choice
+    assert len(result.propagate_to_choice) == 1
+    assert result.propagate_to_choice[0].type == "application/custom"
