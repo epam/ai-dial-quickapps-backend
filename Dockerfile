@@ -1,8 +1,7 @@
-FROM python:3.13-slim AS builder
+FROM python:3.13-alpine AS builder
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc build-essential git \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 zlib
+RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
 RUN pip install poetry==2.2.1
 
 WORKDIR /app
@@ -15,22 +14,20 @@ COPY  ./src/quickapp /app/quickapp
 COPY  ./config/predefined /app/predefined
 RUN poetry install --no-interaction --no-ansi --no-cache --only main
 
-FROM python:3.13-slim AS runtime
+FROM python:3.13-alpine AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    chromium fonts-freefont-ttf wget \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib
+
+RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYDANTIC_V2=True \
-    BROWSER_PATH=/usr/bin/chromium \
-    CHROME_BIN=/usr/bin/chromium
+    PYDANTIC_V2=True
 
 # Copy the sources and virtual env. No poetry.
-RUN useradd -u 1001 -r -s /sbin/nologin appuser
+RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=builder /app .
 
 RUN echo '#!/bin/sh' > /docker_entrypoint.sh && \
