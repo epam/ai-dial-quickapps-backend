@@ -88,6 +88,7 @@ class _PyInterpreterTool(StagedBaseTool):
             open_session: bool = kwargs.get("open_session", False)
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")
             data_sample_config: DataSampleConfig | None = kwargs.get("data_sample_config")
+            display_title: str | None = kwargs.get("display_title")
 
             async with self.__client as client:
                 session_id = (
@@ -115,7 +116,7 @@ class _PyInterpreterTool(StagedBaseTool):
                 attachments = []
                 if execution_result.display:
                     attachments = await self.__display_content_processor.process_display_content(
-                        execution_result.display
+                        execution_result.display, display_title=display_title
                     )
                     execution_result = self.__display_content_processor.sanitize_display_content(
                         execution_result

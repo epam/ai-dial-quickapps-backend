@@ -27,7 +27,7 @@ FROM python:3.13-alpine AS test-runtime
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
 
 WORKDIR /app
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 CHROME_BIN=/usr/bin/chromium
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=test-builder /app .

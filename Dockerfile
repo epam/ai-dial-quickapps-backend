@@ -18,8 +18,6 @@ FROM python:3.13-alpine AS runtime
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib
 
-RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
-
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
