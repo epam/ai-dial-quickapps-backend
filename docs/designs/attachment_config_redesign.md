@@ -224,4 +224,3 @@ field.
 - Stop mapping `input_attachment_types` → `supported_types`; default to `["*/*"]`
 - Keep `propagate_types_to_choice = []` (intentional for deployment tools)
 - Use `input_attachment_types` only for controlling which attachments are forwarded to the deployment
-
