@@ -2,12 +2,12 @@ import base64
 import io
 
 from fastmcp import FastMCP
-from fastmcp.utilities.types import Image
 from fastmcp.server.dependencies import get_http_request
+from fastmcp.utilities.types import Image
 from mcp.types import BlobResourceContents, EmbeddedResource
+from PIL import Image as PILImage
 from pydantic import AnyUrl
 from starlette.requests import Request
-from PIL import Image as PILImage
 
 mcp = FastMCP("TEST_MCP_SERVER")
 
@@ -42,6 +42,7 @@ def convert_png_to_jpg(image_data: str):
     )
     return image_resource
 
+
 @mcp.tool(name="Invert_String", title="Invert string", description="Inverts the input string")
 async def invert_string(incoming: str):
     request: Request = get_http_request()
@@ -75,6 +76,7 @@ def __get_file_data(file_path: str) -> str:
 def __get_file_raw_data(file_path: str) -> bytes:
     with open(file_path, "rb") as file:
         return file.read()
+
 
 def __get_file_name(file_url: str) -> str:
     return file_url.split("/")[-1]

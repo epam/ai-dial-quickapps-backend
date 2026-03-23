@@ -28,6 +28,10 @@ class OrchestratorConfig(BaseModel):
         default_factory=get_max_iterations,
         description="The max count of orchestrator(agent) operations. Default: 15",
     )
+    propagate_stages: bool = Field(
+        default=True,
+        description="When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
+    )
 
 
 class ApplicationConfig(BaseApplicationTypeConfig):

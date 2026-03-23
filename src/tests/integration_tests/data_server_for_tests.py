@@ -1,10 +1,9 @@
 import asyncio
+
 import uvicorn
-
-from test_runner.mcp_server.mcp_http_test_server import mcp
 from fastapi import FastAPI, Request
-
 from test_runner.cache.rest_api_tool_test_mixin import RestApiToolTestMixin
+from test_runner.mcp_server.mcp_http_test_server import mcp
 
 
 class RestTestServer(RestApiToolTestMixin, FastAPI):

@@ -5,12 +5,16 @@ from enum import Enum
 from typing import Dict
 
 import pytest
-from pydantic import BaseModel, Field
 import pytest_asyncio
 from _pytest.nodes import Node
+from pydantic import BaseModel, Field
 
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import _PyInterpreterClient
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import _PyInterpreterSettings
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
+    _PyInterpreterClient,
+)
+from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
+    _PyInterpreterSettings,
+)
 from quickapp.internal_tooling.py_interpreter_tooling.model.common import PyInterpreterSession
 
 logger = logging.getLogger(__name__)
@@ -134,11 +138,11 @@ async def session_fixture():
     logger.info("Starting session_fixture")
     _settings = _PyInterpreterSettings()
 
-    async with _PyInterpreterClient(
-        api_key=_settings.api_key, base_url=_settings.url
-    ) as client:
+    async with _PyInterpreterClient(api_key=_settings.api_key, base_url=_settings.url) as client:
         if _settings.default_session_id:
-            if not client.check_session_opened(request=PyInterpreterSession(sessionId=_settings.default_session_id)):
+            if not client.check_session_opened(
+                request=PyInterpreterSession(sessionId=_settings.default_session_id)
+            ):
                 _settings.default_session_id = None
 
         if not _settings.default_session_id:
@@ -174,7 +178,9 @@ def unique_port(worker_id):
 
 
 def pytest_configure(config):
-    config.addinivalue_line("markers", "requires_session: mark test as requiring a py_interpreter session")
+    config.addinivalue_line(
+        "markers", "requires_session: mark test as requiring a py_interpreter session"
+    )
     if not hasattr(config, "workerinput"):
         config.test_stats = []
 

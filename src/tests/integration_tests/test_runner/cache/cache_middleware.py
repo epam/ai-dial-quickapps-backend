@@ -11,10 +11,11 @@ import httpx
 import pytest
 from fastapi import APIRouter, FastAPI, Request, Response
 from pydantic import BaseModel, SecretStr
+
 from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
-from tests.integration_tests.test_runner.config import TestConfig
 from tests.integration_tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
+from tests.integration_tests.test_runner.config import TestConfig
 
 llm_cache = None
 
@@ -35,7 +36,7 @@ AGENT_MODELS = [
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
     "us.anthropic.claude-3-7-sonnet-20250219-v1",
-    "anthropic.claude-v4-5-sonnet-v1"
+    "anthropic.claude-v4-5-sonnet-v1",
 ]
 
 
@@ -85,8 +86,7 @@ class CacheMiddlewareApp(FastAPI):
         self.add_event_handler("shutdown", self.close_resources)
 
         self.http_client = httpx.AsyncClient(
-            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50),
-            timeout=600.0
+            limits=httpx.Limits(max_keepalive_connections=20, max_connections=50), timeout=600.0
         )
 
     def track_task(self, task: asyncio.Task):
@@ -225,7 +225,7 @@ class CacheMiddlewareApp(FastAPI):
         body = await request.body()
         messages = json.loads(body).get("messages", [])
         if messages[0].get("role", "").lower() == "system" and messages[0].get("content", None):
-            messages[0]["content"] = messages[0]["content"][:30]+"..."
+            messages[0]["content"] = messages[0]["content"][:30] + "..."
         logger.info(f"Receive POST request to {request.url.path}:")
         logger.info(f"## messages: {messages}:")
 
@@ -253,7 +253,9 @@ class CacheMiddlewareApp(FastAPI):
             if cache_response is None:
                 warnings.warn(TestConfig.WARNING_MESSAGE)
                 if self.refresh:
-                    logger.debug(f"No cache for POST request. Send to {self.target_url}{request.url.path}")
+                    logger.debug(
+                        f"No cache for POST request. Send to {self.target_url}{request.url.path}"
+                    )
                     cache_response = await self.send_post(request, body)
                     if cache_response.status_code == 200:
                         self.llm_cache.store(cache_response)
@@ -343,6 +345,3 @@ class CacheMiddlewareApp(FastAPI):
             self.llm_cache.cleanup(
                 set(self.llm_cache.cache_responses).difference(self.used_cache_responses)
             )
-
-
-

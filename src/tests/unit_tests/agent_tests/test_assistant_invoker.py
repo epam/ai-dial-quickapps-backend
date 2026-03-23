@@ -25,26 +25,32 @@ class FakeMessage:
     def dict(self):
         return {"role": "user", "content": self.content}
 
+
 class DummyParams:
     def model_dump(self, exclude_none=True):
         # base config returned before payload update
         return {"base_param": "value"}
+
 
 class DummyDeployment:
     def __init__(self):
         self.parameters = DummyParams()
         self.name = "test-model"
 
+
 class DummyOrchestrator:
     def __init__(self):
         self.deployment = DummyDeployment()
+
 
 class DummyConfig:
     def __init__(self):
         self.orchestrator = DummyOrchestrator()
 
+
 mock_filter = Mock()
 mock_filter.filter_attachments.side_effect = lambda messages: messages
+
 
 @pytest.mark.asyncio
 async def test_invoke_without_show_usage(monkeypatch):
@@ -53,7 +59,6 @@ async def test_invoke_without_show_usage(monkeypatch):
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
     )
-
 
     tools = [{"name": "t1"}]
     invoker = AssistantInvoker(
@@ -66,7 +71,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         attachment_filter=mock_filter,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -86,6 +91,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
+
 @pytest.mark.asyncio
 async def test_invoke_with_show_usage_true(monkeypatch):
     create_mock = AsyncMock(return_value="stream-result")
@@ -104,7 +110,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
-        forwarded_headers=None
+        forwarded_headers=None,
     )
 
     result = await invoker.invoke()
@@ -118,6 +124,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert called_kwargs["tools"] is tools
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
+
 
 @pytest.mark.asyncio
 async def test_invoke_propagates_exceptions():
@@ -145,3 +152,76 @@ async def test_invoke_propagates_exceptions():
         await invoker.invoke()
 
     assert create_mock.await_count == 1
+
+
+def test_promote_orchestrator_state_to_top_level():
+    """Before the next orchestrator call, state.orchestrator (response state only) is promoted to top-level."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    msg = {
+        "role": "assistant",
+        "content": "ok",
+        "custom_content": {
+            "state": {
+                "tool_execution_history": [{"role": "assistant"}],
+                ORCH: {"claude_message_content": "some content"},
+            },
+        },
+    }
+    AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level(msg)
+    state = msg["custom_content"]["state"]
+    assert ORCH not in state
+    assert state["tool_execution_history"] == [{"role": "assistant"}]
+    assert state["claude_message_content"] == "some content"
+
+
+def test_promote_orchestrator_state_no_op_no_custom_content():
+    """Message without custom_content is unchanged."""
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {"role": "user", "content": "hi"}
+    promote(msg)
+    assert "custom_content" not in msg
+
+
+def test_promote_orchestrator_state_no_op_custom_content_not_dict():
+    """custom_content that is not a dict is left unchanged (no crash)."""
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {"role": "assistant", "custom_content": None}
+    promote(msg)
+    assert msg["custom_content"] is None
+
+    msg2 = {"role": "assistant", "custom_content": "invalid"}
+    promote(msg2)
+    assert msg2["custom_content"] == "invalid"
+
+
+def test_promote_orchestrator_state_no_op_no_orchestrator_key():
+    """State without 'orchestrator' key is unchanged."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {
+        "custom_content": {
+            "state": {"tool_execution_history": [], "other": "x"},
+        },
+    }
+    promote(msg)
+    assert msg["custom_content"]["state"] == {"tool_execution_history": [], "other": "x"}
+    assert ORCH not in msg["custom_content"]["state"]
+
+
+def test_promote_orchestrator_state_orchestrator_non_dict_removes_key_only():
+    """If state.orchestrator is not a dict, key is removed but state is not updated (no crash)."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {
+        "custom_content": {
+            "state": {"other": "keep", ORCH: [{"stages": "invalid"}]},
+        },
+    }
+    promote(msg)
+    state = msg["custom_content"]["state"]
+    assert ORCH not in state
+    assert state["other"] == "keep"
+    assert "stages" not in state

@@ -3,12 +3,10 @@ from pathlib import Path
 import pytest
 
 from quickapp.config.predefined_content_provider import (
-    ContentType,
     PredefinedContentProvider,
     PredefinedSettings,
 )
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
-
 
 # ---------------------------------------------------------------------------
 # _parse_frontmatter unit tests

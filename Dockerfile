@@ -1,6 +1,6 @@
 FROM python:3.13-alpine AS builder
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 zlib
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
 RUN pip install poetry==2.2.1
 
@@ -16,18 +16,15 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 
 FROM python:3.13-alpine AS runtime
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib
 
 RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
-ENV CHROME_BIN=/usr/bin/chromium
-
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYDANTIC_V2=True \
-    CHROME_BIN=/home/appuser/.cache/kaleido/chrome
+    PYDANTIC_V2=True
 
 # Copy the sources and virtual env. No poetry.
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
@@ -47,4 +44,4 @@ ENTRYPOINT ["/docker_entrypoint.sh"]
 HEALTHCHECK --interval=10s --timeout=5s --start-period=30s --retries=6 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:5000/health || exit 1
 
-CMD ["uvicorn", "quickapp.app:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "quickapp.app:app", "--host", "0.0.0.0", "--port", "5000", "--lifespan", "on"]

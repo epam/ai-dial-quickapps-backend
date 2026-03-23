@@ -2,12 +2,13 @@ import json
 from types import SimpleNamespace
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+
 from quickapp.attachment_processing._attachment_notification_injector import (
     _AttachmentNotificationInjector,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
-from quickapp.config.context import FileContextConfig, Context
+from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import CustomSystemPromptConfig
 

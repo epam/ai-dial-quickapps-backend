@@ -2,10 +2,8 @@ import base64
 import json
 import logging
 import uuid
-from io import BytesIO
 from typing import Any
 
-import plotly.io as pio
 from aidial_client import AsyncDial
 from aidial_client.types.chat.request_param import (
     AttachmentParam,
@@ -23,6 +21,7 @@ from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
 )
+from quickapp.internal_tooling.py_interpreter_tooling._kaleido_service import _KaleidoService
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )
@@ -45,15 +44,11 @@ class DisplayContentProcessor:
         self,
         dial_client: AsyncDial,
         py_interpreter_settings: _PyInterpreterSettings,
+        kaleido_service: _KaleidoService,
     ):
         self.__dial_client: AsyncDial = dial_client
         self.__additional_handling_model: str = py_interpreter_settings.additional_handling_model
-        pio.defaults.chromium_args = [  # type: ignore[attr-defined]
-            "--no-sandbox",
-            "--disable-gpu",
-            "--disable-dev-shm-usage",
-            "--disable-setuid-sandbox",
-        ]
+        self.__kaleido_service: _KaleidoService = kaleido_service
 
     async def process_display_content(
         self,
@@ -155,9 +150,7 @@ class DisplayContentProcessor:
         return message
 
     async def _get_plotly_as_img(self, attachment_param: AttachmentParam) -> AttachmentParam:
-        fig = pio.from_json(attachment_param["data"])
-        image_bytes = BytesIO()
-        fig.write_image(image_bytes, format="png")
+        image_data = await self.__kaleido_service.render_figure_as_png(attachment_param["data"])
 
         filename = generate_attachment_filename(MediaTypes.PNG)
         bucket_resp = await self.__dial_client.bucket.get_raw()
@@ -165,7 +158,7 @@ class DisplayContentProcessor:
         try:
             metadata = await self.__dial_client.files.upload(
                 url=f"files/{bucket}/{filename}",
-                file=(filename, image_bytes.getvalue(), MediaTypes.PNG),
+                file=(filename, image_data.getvalue(), MediaTypes.PNG),
             )
 
             return AttachmentParam(url=metadata.url, type=MediaTypes.PNG)

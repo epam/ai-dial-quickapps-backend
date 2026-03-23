@@ -12,7 +12,6 @@ from quickapp.common.dial_core_client import DialCoreClient, ToolsetInfo
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
-    AttachmentConfig,
     ConfigurableSchemaArray,
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -96,9 +95,6 @@ class ToolConfigCoreService:
         output_tool = DialDeploymentTool(
             display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment.id}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
-            attachment=AttachmentConfig(
-                propagate_types_to_choice=[],
-            ),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
