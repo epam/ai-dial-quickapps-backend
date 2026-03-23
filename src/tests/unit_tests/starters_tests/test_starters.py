@@ -29,15 +29,18 @@ class TestConversationStarterConfig:
         )
         assert config.intro_text == "Select an action"
         assert config.chat_message_input_disabled is False
+        assert config.auto_submit is True
 
     def test_valid_config_custom_fields(self):
         config = ConversationStartersConfig(
             intro_text="Pick one",
             chat_message_input_disabled=True,
+            auto_submit=False,
             starters=[ConversationStarter(title="A", text="B")],
         )
         assert config.intro_text == "Pick one"
         assert config.chat_message_input_disabled is True
+        assert config.auto_submit is False
 
     def test_empty_starters_list_rejected(self):
         with pytest.raises(ValidationError, match="starters"):
@@ -100,7 +103,7 @@ class TestCreateDialButtons:
             ConversationStarter(title="Hello", text="Say hello"),
             ConversationStarter(title="Help", text="I need help"),
         ]
-        buttons = _create_dial_buttons(starters)
+        buttons = _create_dial_buttons(starters, auto_submit=True)
 
         assert len(buttons) == 2
         assert buttons[0].const == 1
@@ -111,11 +114,24 @@ class TestCreateDialButtons:
         assert buttons[1].const == 2
         assert buttons[1].title == "Help"
         assert buttons[1].populateText == "I need help"
+        assert buttons[1].submit is True
 
     def test_single_starter(self):
-        buttons = _create_dial_buttons([ConversationStarter(title="Go", text="go")])
+        buttons = _create_dial_buttons(
+            [ConversationStarter(title="Go", text="go")], auto_submit=True
+        )
         assert len(buttons) == 1
         assert buttons[0].const == 1
+
+    def test_auto_submit_false(self):
+        starters = [
+            ConversationStarter(title="Hello", text="Say hello"),
+        ]
+        buttons = _create_dial_buttons(starters, auto_submit=False)
+
+        assert len(buttons) == 1
+        assert buttons[0].submit is False
+        assert buttons[0].populateText == "Say hello"
 
 
 class TestCreateStartersConfiguration:
@@ -157,6 +173,26 @@ class TestCreateStartersConfiguration:
         )
         schema = create_starters_configuration(config)
         assert schema["dial:chatMessageInputDisabled"] is True
+
+    def test_auto_submit_default(self):
+        config = ConversationStartersConfig(
+            starters=[ConversationStarter(title="A", text="a")],
+        )
+        schema = create_starters_configuration(config)
+        opts = schema["properties"]["starter"]["oneOf"][0]["dial:widgetOptions"]
+        assert opts["submit"] is True
+
+    def test_auto_submit_false(self):
+        config = ConversationStartersConfig(
+            auto_submit=False,
+            starters=[
+                ConversationStarter(title="A", text="a"),
+                ConversationStarter(title="B", text="b"),
+            ],
+        )
+        schema = create_starters_configuration(config)
+        for entry in schema["properties"]["starter"]["oneOf"]:
+            assert entry["dial:widgetOptions"]["submit"] is False
 
 
 def _make_app_config(
