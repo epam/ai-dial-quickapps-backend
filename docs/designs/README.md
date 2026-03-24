@@ -22,6 +22,7 @@ Use [`template.md`](template.md) as a starting point. Every design doc should in
 |------------------------------------|-------------------------------------------------------------------------|
 | **Problem Statement**              | What is broken or missing today. Focus on symptoms, not solutions.      |
 | **Design Goals**                   | Concrete, verifiable outcomes the design must achieve.                  |
+| **Use Cases**                      | Concrete scenarios showing trigger, behavior, and observable outcome.   |
 | **Proposed Design**                | The core proposal, broken into orthogonal concerns or components.       |
 | **Secondary Fixes**                | Smaller follow-on changes that fall out of the main design.             |
 | **Out of Scope**                   | What was considered but intentionally deferred, and why.                |
