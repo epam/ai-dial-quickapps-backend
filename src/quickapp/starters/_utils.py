@@ -8,20 +8,25 @@ from pydantic import BaseModel
 from quickapp.config.starters import ConversationStarter, ConversationStartersConfig
 
 
-def _create_dial_buttons(starter_configs: list[ConversationStarter]) -> list[Button]:
+def _create_dial_buttons(
+    starter_configs: list[ConversationStarter], auto_submit: bool
+) -> list[Button]:
     return [
         Button(
             const=const,
             title=starter_config.title,
             populateText=starter_config.text,
-            submit=True,
+            submit=auto_submit,
         )
         for const, starter_config in enumerate(starter_configs, start=1)
     ]
 
 
 def create_starters_configuration(config: ConversationStartersConfig) -> dict[str, Any]:
-    buttons = _create_dial_buttons(config.starters)
+    buttons = _create_dial_buttons(
+        starter_configs=config.starters,
+        auto_submit=config.auto_submit,
+    )
 
     class _QuickAppStartersConfig(BaseModel, metaclass=FormMetaclass):
         model_config = DialConfigDict(
