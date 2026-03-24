@@ -243,7 +243,8 @@ double null checks in code:
 ```python
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(
-        default=None, description="Timestamp awareness configuration."
+        default_factory=ToolCallTimestampConfig,
+        description="Timestamp awareness configuration.",
     )
 
 class ApplicationConfig(BaseApplicationTypeConfig):
