@@ -22,4 +22,4 @@ jobs:
     secrets: inherit
     with:
       python-version: "3.13"
-      poetry-version: "2.2.1"
+      poetry-version: "2.3.2"
