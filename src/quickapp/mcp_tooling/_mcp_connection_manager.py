@@ -1,6 +1,7 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+import httpx
 from injector import inject
 from mcp import ClientSession, Tool
 from mcp.client.sse import sse_client
@@ -17,6 +18,7 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 MAX_ITERATIONS = 1000
 
@@ -74,28 +76,35 @@ class _MCPConnectionManager:
         Async context manager that yields an initialized ClientSession for the given server_info.
         Automatically builds headers, opens the underlying connection (SSE or streamable HTTP),
         initializes the session, and ensures clean teardown.
-        """
-        headers = await self.__build_headers(self.__toolset_info.mcp_server_info)
 
-        if self.__toolset_info.mcp_server_info.protocol == MCPProtocol.streamable_http:
-            async with streamablehttp_client(
-                self.__toolset_info.mcp_server_info.url, headers=headers
-            ) as (read_stream, write_stream, _):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    yield session
-        elif self.__toolset_info.mcp_server_info.protocol == MCPProtocol.sse:
-            async with sse_client(self.__toolset_info.mcp_server_info.url, headers=headers) as (
-                read_stream,
-                write_stream,
-            ):
-                async with ClientSession(read_stream, write_stream) as session:
-                    await session.initialize()
-                    yield session
-        else:
-            raise ValueError(
-                f"Unsupported protocol: {self.__toolset_info.mcp_server_info.protocol}"
-            )
+        Raises MCPUnauthorizedException if the MCP server returns HTTP 401.
+        """
+        try:
+            headers = await self.__build_headers(self.__toolset_info.mcp_server_info)
+
+            if self.__toolset_info.mcp_server_info.protocol == MCPProtocol.streamable_http:
+                async with streamablehttp_client(
+                    self.__toolset_info.mcp_server_info.url, headers=headers
+                ) as (read_stream, write_stream, _):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        yield session
+            elif self.__toolset_info.mcp_server_info.protocol == MCPProtocol.sse:
+                async with sse_client(self.__toolset_info.mcp_server_info.url, headers=headers) as (
+                    read_stream,
+                    write_stream,
+                ):
+                    async with ClientSession(read_stream, write_stream) as session:
+                        await session.initialize()
+                        yield session
+            else:
+                raise ValueError(
+                    f"Unsupported protocol: {self.__toolset_info.mcp_server_info.protocol}"
+                )
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 401:
+                raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from e
+            raise
 
     async def get_tools_list(self) -> list[Tool]:
         """Return the tool list from the MCP server."""
@@ -130,5 +139,7 @@ class _MCPConnectionManager:
                 if kwargs is None:
                     return await session.call_tool(tool_name)
                 return await session.call_tool(tool_name, kwargs)
+        except MCPUnauthorizedException:
+            raise
         except Exception as e:
             raise RuntimeError(f"Error calling MCP tool '{tool_name}': {e}") from e

@@ -87,6 +87,7 @@ def mcp_tool1(
         perf_timer=Mock(),
         file_service=MagicMock(),
         dial_toolset_id=None,
+        login_service=MagicMock(),
     )
 
 
@@ -111,6 +112,7 @@ def mcp_tool2(
         perf_timer=Mock(),
         file_service=MagicMock(),
         dial_toolset_id=None,
+        login_service=MagicMock(),
     )
 
 
@@ -142,6 +144,7 @@ def builder_mock():
             perf_timer=Mock(),
             file_service=MagicMock(),
             dial_toolset_id=None,
+            login_service=MagicMock(),
         )
 
     m = MagicMock()
@@ -169,6 +172,7 @@ def initializer_factory(builder_mock, connection_manager_builder):
             connection_manager_builder,
             MagicMock(),  # dial_mcp_cache
             MagicMock(),  # tool_config_service
+            MagicMock(),  # login_service
         )
         return initializer, mcp_context
 
@@ -252,6 +256,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         connection_manager_builder,
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
+        MagicMock(),  # login_service
     )
 
     await initializer.initialize()
@@ -333,6 +338,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # connection_manager_builder
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
+        MagicMock(),  # login_service
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()

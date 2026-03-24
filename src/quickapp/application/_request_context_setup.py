@@ -6,9 +6,20 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
+from quickapp.common._di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+
+
+def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CHANNEL_ID:
+    """Extract the client channel ID from forwarded headers (case-insensitive)."""
+    if forwarded_headers:
+        for key, value in forwarded_headers.items():
+            if key.lower() == CLIENT_CHANNEL_HEADER.lower():
+                return value
+    return None
+
 
 from ._messages_setup import _MessagesSetup
 from ._request_context import _RequestContext
@@ -45,6 +56,9 @@ class _RequestContextSetup:
         if isinstance(request, Request):
             context.messages = self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
+            context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
+        else:
+            context.client_channel_id = None
         if choice:
             context.choice = choice
 

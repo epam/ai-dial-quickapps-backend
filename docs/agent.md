@@ -65,6 +65,13 @@ Completion initializers are invoked to prepare the request for orchestration. Th
   After this step, messages are fully expanded and ready for the orchestrator.
 - **Tool construction**: Each tool module's initializer constructs tool instances based on the application
   configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+- **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
+  `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
+  to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
+  as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
+  401 from `_MCPConnectionManager`, requests sign-in, and retries the call once. The
+  `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
+  the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
 ### 5. Error Handling
 
@@ -324,7 +331,7 @@ The application is composed of 12 specialized DI modules:
 6. **Internal Tool Module**: Python interpreter, content downloader
 7. **Starters Module**: UI starter button configuration
 8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration
+9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
 10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
 11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 12. **Skills Module**: Skill reader tool, agent skills provider

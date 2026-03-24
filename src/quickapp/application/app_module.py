@@ -4,8 +4,13 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
-from quickapp.common._di_types import ForwardedHeaders
+from quickapp.common import (
+    CLIENT_CHANNEL_ID,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    RESPONSE_FORMAT,
+    ForwardedHeaders,
+)
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -77,6 +82,10 @@ class AppModule(Module):
     @provider
     def __provide_forwarded_headers(self, context: _RequestContext) -> ForwardedHeaders:
         return context.forwarded_headers
+
+    @provider
+    def __provide_client_channel_id(self, context: _RequestContext) -> CLIENT_CHANNEL_ID:
+        return context.client_channel_id
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:
