@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from aidial_client import AsyncDial
-
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
@@ -12,10 +11,6 @@ from quickapp.common.media_types import MediaTypes
 from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
-)
-from quickapp.internal_tooling.py_interpreter_tooling._kaleido_service import _KaleidoService
-from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
-    _PyInterpreterSettings,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.model.response import CodeExecutionResponse
 
@@ -32,15 +27,8 @@ logger = logging.getLogger(__name__)
 class DisplayContentProcessor:
     """Handles processing and sanitization of display content"""
 
-    def __init__(
-        self,
-        dial_client: AsyncDial,
-        py_interpreter_settings: _PyInterpreterSettings,
-        kaleido_service: _KaleidoService,
-    ):
+    def __init__(self, dial_client: AsyncDial):
         self.__dial_client: AsyncDial = dial_client
-        self.__additional_handling_model: str = py_interpreter_settings.additional_handling_model
-        self.__kaleido_service: _KaleidoService = kaleido_service
 
     async def process_display_content(
         self,
@@ -64,8 +52,7 @@ class DisplayContentProcessor:
 
         for media_type, data in content_dict.items():
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
-                bucket_info = await self._publish_to_bucket(media_type, data)
-                bucket_url = bucket_info.get("url", "")
+                bucket_url = await self._publish_to_bucket(media_type, data)
 
                 if media_type and bucket_url:
                     attachment = Attachment(type=media_type, url=bucket_url)
@@ -96,9 +83,8 @@ class DisplayContentProcessor:
 
         return data.encode("utf-8")
 
-    def sanitize_display_content(
-        self, execution_result: CodeExecutionResponse
-    ) -> CodeExecutionResponse:
+    @staticmethod
+    def sanitize_display_content(execution_result: CodeExecutionResponse) -> CodeExecutionResponse:
         """Sanitizes display content in the execution result"""
         if execution_result.display:
             for info_dict in execution_result.display:

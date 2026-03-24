@@ -548,22 +548,6 @@ files = [
 ]
 
 [[package]]
-name = "choreographer"
-version = "1.2.1"
-description = "Devtools Protocol implementation for chrome."
-optional = false
-python-versions = ">=3.8"
-groups = ["main"]
-files = [
-    {file = "choreographer-1.2.1-py3-none-any.whl", hash = "sha256:9af5385effa3c204dbc337abf7ac74fd8908ced326a15645dc31dde75718c77e"},
-    {file = "choreographer-1.2.1.tar.gz", hash = "sha256:022afd72b1e9b0bcb950420b134e70055a294c791b6f36cfb47d89745b701b5f"},
-]
-
-[package.dependencies]
-logistro = ">=2.0.1"
-simplejson = ">=3.19.3"
-
-[[package]]
 name = "click"
 version = "8.3.1"
 description = "Composable command line interface toolkit"
@@ -5818,4 +5802,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "8a7aca9d7bfbda01fd8ba0e111962b954dfc63480345a2529ced0302559e9416"
+content-hash = "047010b382d6dbb410e18f5259def93830cf9401fa69ebfd9ae2381413d2c501"

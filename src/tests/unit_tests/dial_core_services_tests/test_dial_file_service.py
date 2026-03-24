@@ -15,7 +15,7 @@ def _make_mock_dial_client(
     mock_metadata.content_length = content_length
 
     mock_download_result = MagicMock()
-    mock_download_result.content = file_content
+    mock_download_result.aget_content = AsyncMock(return_value=file_content)
 
     mock_files = MagicMock()
     mock_files.get_metadata = AsyncMock(return_value=mock_metadata)
