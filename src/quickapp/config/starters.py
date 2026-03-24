@@ -17,6 +17,10 @@ class ConversationStartersConfig(BaseModel):
         default=False,
         description="Whether to disable the chat message input when using conversation starters. If true, users can only interact with the agent through the conversation starter buttons.",
     )
+    auto_submit: bool = Field(
+        default=True,
+        description="Whether to automatically submit the conversation starter text when a button is clicked. If false, the text will be populated in the chat input but not submitted, allowing users to edit it before sending.",
+    )
     starters: list[ConversationStarter] = Field(
         description="The list of conversation starters.", min_length=1
     )

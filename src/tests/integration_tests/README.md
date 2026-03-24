@@ -11,7 +11,7 @@
 - Fill these environment variables with correct placeholder values:
     - `REMOTE_DIAL_URL=<URL of DIAL CORE>`
     - `REMOTE_DIAL_API_KEY=<Your API-KEY>`
-    - `DIAL_URL=<URL of DIAL CORE>` 
+    - `DIAL_URL=<URL of DIAL CORE>`
     - `DIAL_API_KEY=<Your API-KEY>`
 
 ### PY Interpreter tests

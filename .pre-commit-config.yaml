@@ -1,4 +1,4 @@
-exclude: ^src/tests/  # TODO: Enable after fixing
+exclude: ^src/tests/integration_tests/test_runner/cache
 
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks

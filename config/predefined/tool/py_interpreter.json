@@ -23,6 +23,15 @@
               }
             }
           },
+          "display_title": {
+            "type": "string",
+            "description": "Title for display outputs (charts, images) produced by this code. If omitted, a generic name is used. Use this only when generating visual outputs to provide a more descriptive title for image or chart.",
+            "display": {
+              "stage": {
+                "ignore": true
+              }
+            }
+          },
           "code": {
             "type": "string",
             "description": "Python code to execute. Required parameter that contains the Python 3.11 code which will run in the Jupyter Kernel environment.",

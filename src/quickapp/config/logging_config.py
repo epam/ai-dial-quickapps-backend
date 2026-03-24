@@ -70,16 +70,6 @@ class LoggingConfig:
                     "level": self._settings.log_level,
                     "propagate": False,
                 },
-                "kaleido": {
-                    "handlers": ["console"],
-                    "level": self._settings.plotly_image_conversion_log_level,
-                    "propagate": False,
-                },
-                "choreographer": {
-                    "handlers": ["console"],
-                    "level": self._settings.plotly_image_conversion_log_level,
-                    "propagate": False,
-                },
             },
         }
 

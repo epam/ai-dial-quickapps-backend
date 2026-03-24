@@ -2,7 +2,7 @@ FROM python:3.13-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 zlib
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
-RUN pip install poetry==2.2.1
+RUN pip install poetry==2.3.2
 
 WORKDIR /app
 
@@ -17,8 +17,6 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 FROM python:3.13-alpine AS runtime
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib
-
-RUN apk add --no-cache chromium nss freetype harfbuzz ttf-freefont libstdc++
 
 WORKDIR /app
 

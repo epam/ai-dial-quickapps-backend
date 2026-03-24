@@ -80,7 +80,6 @@ your gateways or downstream services expect.
 | `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                 |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
-| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                |
 | `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
@@ -92,7 +91,6 @@ your gateways or downstream services expect.
 | `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                             |
 | `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                          |
 | `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                     |
-| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                               |
 | `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                          |
 | `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
 | **Templates**                              |                            |          |                                                                                                              |
@@ -244,16 +242,40 @@ your gateways or downstream services expect.
 1. Format the code:
 
     ```bash
-    make format
+    make format                                        # Format all source files + regenerate app schema
+    make format FILES="src/quickapp/agent/orchestrator.py"  # Format specific files (skips schema dump)
     ```
 
 2. Run linters:
 
     ```bash
-    make lint
+    make lint                   # Run all linters (always checks all source files)
     ```
 
-3. To automatically apply black and isort on commit, enable PreCommit:
+3. Run individual tools (accept `FILES="..."` to target specific files):
+
+    ```bash
+    make black                  # Run black formatter
+    make isort                  # Run isort formatter
+    make flake8                 # Run flake8 linter
+    make mypy                   # Run type checking
+    ```
+
+4. Run tests:
+
+    ```bash
+    make test                          # Run all unit tests
+    make test ARGS="-k test_name -x"   # Run specific tests / fail fast
+    make test_cov                      # Run unit tests with coverage report
+    ```
+
+5. Run arbitrary Python scripts:
+
+    ```bash
+    make run_python SCRIPT=src/scripts/dump_app_schema.py
+    ```
+
+6. To automatically apply black and isort on commit, enable PreCommit:
 
    ```bash
    make install_pre_commit_hooks

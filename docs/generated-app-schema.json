@@ -541,6 +541,12 @@
           "title": "Chat Message Input Disabled",
           "type": "boolean"
         },
+        "auto_submit": {
+          "default": true,
+          "description": "Whether to automatically submit the conversation starter text when a button is clicked. If false, the text will be populated in the chat input but not submitted, allowing users to edit it before sending.",
+          "title": "Auto Submit",
+          "type": "boolean"
+        },
         "starters": {
           "description": "The list of conversation starters.",
           "items": {

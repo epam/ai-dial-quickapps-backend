@@ -1,15 +1,13 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, ProviderOf, multiprovider, provider, singleton
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.lifecycle_resource import LifecycleResource
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-from quickapp.internal_tooling.py_interpreter_tooling._kaleido_service import _KaleidoService
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -32,7 +30,6 @@ class InternalToolModule(Module):
         binder.bind(ContentSanitizer, to=ContentSanitizer)
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
-        binder.bind(_KaleidoService, to=_KaleidoService, scope=singleton)
         logger.debug("InternalTooling module configuration completed")
 
     @multiprovider
@@ -64,12 +61,6 @@ class InternalToolModule(Module):
                             )
 
         return tools
-
-    @multiprovider
-    def _provide_lifecycle_resources(
-        self, kaleido_provider: ProviderOf[_KaleidoService]
-    ) -> list[LifecycleResource]:
-        return [kaleido_provider.get()]
 
     @singleton
     @provider

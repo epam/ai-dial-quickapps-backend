@@ -16,6 +16,19 @@ Bulleted list of concrete outcomes this design must achieve. Each goal should be
 
 ---
 
+## Use Cases
+
+Concrete scenarios that illustrate how the feature is used from the user's or agent's perspective.
+Each use case should describe the trigger, the expected behavior, and the observable outcome.
+
+### UC-1: [Title]
+
+**Trigger:** What initiates this scenario.
+**Behavior:** What happens as a result.
+**Outcome:** What the user or agent observes.
+
+---
+
 ## Proposed Design
 
 The core of the document. Break this into subsections that map to the distinct concerns or components being changed.

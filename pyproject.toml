@@ -20,7 +20,7 @@ dependencies = [
     # Data processing & visualization
     "pandas>=2.3.3,<3.0.0",                       # Data manipulation
     "tabulate>=0.9.0,<0.10.0",                    # Table formatting
-    "plotly[kaleido]>=6.5.2,<7.0.0",              # Data visualization with image export
+    "plotly>=6.5.2,<7.0.0",                       # Data visualization
 
     # MCP (Model Context Protocol)
     "mcp>=1.23.2,<2.0.0",                         # MCP protocol support
@@ -36,7 +36,7 @@ dependencies = [
 
     # Utilities
     "common>=0.1.2,<0.2.0",                       # Shared utilities
-    "pyyaml (>=6.0.2,<7.0.0)",                       # YAML parsing
+    "pyyaml (>=6.0.2,<7.0.0)",                    # YAML parsing
 ]
 homepage = "https://dialx.ai"
 repository = "https://github.com/epam/ai-dial-quickapps-backend"
@@ -143,10 +143,6 @@ ignore_missing_imports = false
 
 [[tool.mypy.overrides]]
 module = ["aidial_sdk.*", "aidial_client.*"]
-follow_untyped_imports = true
-
-[[tool.mypy.overrides]]
-module = ["kaleido", "kaleido.*"]
 follow_untyped_imports = true
 
 [tool.poetry.group.dev]

@@ -4,9 +4,9 @@ permissions:
   contents: read
 
 on:
-  workflow_dispatch: 
-  registry_package: 
-  workflow_run: 
+  workflow_dispatch:
+  registry_package:
+  workflow_run:
     workflows: ["Release Workflow"]
     types:
       - completed
