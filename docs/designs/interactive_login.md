@@ -1,6 +1,6 @@
 # Design: Interactive Login into DIAL Toolset
 
-**Status:** Draft
+**Status:** Implemented
 
 ## Problem Statement
 
