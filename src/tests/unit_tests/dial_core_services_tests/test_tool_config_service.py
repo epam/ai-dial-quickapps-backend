@@ -68,9 +68,7 @@ def _make_async_dial(
     mock_application.get = AsyncMock(return_value=application_model)
 
     mock_toolset = MagicMock()
-    mock_toolset.get = AsyncMock(
-        return_value=toolset_model, side_effect=toolset_side_effect
-    )
+    mock_toolset.get = AsyncMock(return_value=toolset_model, side_effect=toolset_side_effect)
 
     dial_client = MagicMock()
     dial_client.deployments = mock_deployments
@@ -128,7 +126,9 @@ class TestGetBasicToolConfig:
             dial_client_provider=provider,
         )
 
-        with patch("quickapp.dial_core_services.tool_config_service.AsyncDial", return_value=dial_client):
+        with patch(
+            "quickapp.dial_core_services.tool_config_service.AsyncDial", return_value=dial_client
+        ):
             await svc.get_basic_tool_config("gpt-4", api_key=SecretStr("req-key"))
 
         provider.get.assert_not_called()

@@ -139,17 +139,18 @@ class DisplayContentProcessor:
                     content='',
                 )
             elif attachment.type == MediaTypes.PLOTLY:
+                plotly_image = await self._get_plotly_as_img(attachment_param)
                 message = UserMessageParam(
                     role='user',
                     custom_content=CustomContentParam(
-                        attachments=[await self._get_plotly_as_img(attachment_param)]
+                        attachments=[plotly_image] if plotly_image else None
                     ),
                     content='',
                 )
 
         return message
 
-    async def _get_plotly_as_img(self, attachment_param: AttachmentParam) -> AttachmentParam:
+    async def _get_plotly_as_img(self, attachment_param: AttachmentParam) -> AttachmentParam | None:
         image_data = await self.__kaleido_service.render_figure_as_png(attachment_param["data"])
 
         filename = generate_attachment_filename(MediaTypes.PNG)
@@ -164,11 +165,10 @@ class DisplayContentProcessor:
             return AttachmentParam(url=metadata.url, type=MediaTypes.PNG)
         except Exception as e:
             logger.exception(f"Exception during uploading plotly image to DIAL: {e}")
+        return None
 
     @staticmethod
-    def sanitize_display_content(
-            execution_result: CodeExecutionResponse
-    ) -> CodeExecutionResponse:
+    def sanitize_display_content(execution_result: CodeExecutionResponse) -> CodeExecutionResponse:
         """Sanitizes display content in the execution result"""
         if execution_result.display:
             for info_dict in execution_result.display:

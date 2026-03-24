@@ -39,8 +39,8 @@ class _PricingService:
                 return _Pricing()
 
             return _Pricing(
-                input_token_price=float(model_info.pricing.prompt),
-                output_token_price=float(model_info.pricing.completion),
+                input_token_price=float(model_info.pricing.prompt or 0),
+                output_token_price=float(model_info.pricing.completion or 0),
             )
         except Exception:
             logging.exception(f"Exception while fetching pricing for model {model_name}")

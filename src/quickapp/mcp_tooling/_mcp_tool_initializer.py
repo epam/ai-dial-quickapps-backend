@@ -4,11 +4,11 @@ from typing import Any
 from urllib.parse import unquote
 
 import httpx
+from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
-from aidial_client import ToolsetInfo
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.tool_initialization_exception import ToolInitializationException
@@ -139,7 +139,7 @@ class _MCPToolInitializer(CompletionInitializer):
                         ),
                         protocol=(
                             MCPProtocol.sse
-                            if dial_toolset_info.transport.lower() == "sse"
+                            if (dial_toolset_info.transport or "").lower() == "sse"
                             else MCPProtocol.streamable_http
                         ),
                     ),

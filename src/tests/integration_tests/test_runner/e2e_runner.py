@@ -3,18 +3,17 @@ import inspect
 import json
 import logging
 import mimetypes
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from io import BytesIO
-
-from aidial_client import AsyncDial
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
@@ -115,7 +114,7 @@ class TestRunner:
         folders_to_visit = [f"files/{bucket}"]
         for folder in folders_to_visit:
             metadata = await dial_client.files.get_metadata(folder + "/")
-            for item in (metadata.items or []):
+            for item in metadata.items or []:
                 if item.node_type == "FOLDER":
                     folders_to_visit.append(f"{folder}/{item.name}")
                 if item.name == filename:

@@ -34,7 +34,7 @@ class DialFileService:
                     raise ValueError(
                         f"File size {size} exceeds the limit of {self.__content_size_limit} bytes."
                     )
-                file_data = (await self.__dial_client.files.download(file_url)).content
+                file_data = (await self.__dial_client.files.download(file_url)).get_content()
                 self.__state_holder.store_file_data(file_url, file_data)
             except Exception as e:
                 logger.error("Failed to download: %s", file_url, exc_info=True)
