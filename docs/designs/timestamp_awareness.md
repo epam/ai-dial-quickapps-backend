@@ -1,6 +1,8 @@
 # Design: Timestamp Awareness
 
 **Status:** Draft
+**Dependencies:**
+- [Preview Feature Gating](preview_feature_gating.md)
 
 ## Problem Statement
 
@@ -35,42 +37,42 @@ that can return `datetime.now()`. This has two problems:
 
 ### UC-1: User asks a time-sensitive question
 
-**Trigger:** User sends "What day is it today?" to an app with the timestamp tool enabled.
-**Behavior:** The agent sees the auto-injected timestamp in the conversation and answers directly.
-**Outcome:** The agent responds with the correct current date without making any tool calls.
+- **Trigger:** User sends "What day is it today?" to an app with the timestamp tool enabled.
+- **Behavior:** The agent sees the auto-injected timestamp in the conversation and answers directly.
+- **Outcome:** The agent responds with the correct current date without making any tool calls.
 
 ### UC-2: Agent has access to data freshness information
 
-**Trigger:** The agent calls a REST API tool that returns market data during a multi-iteration loop.
-Several iterations later, the agent considers whether to re-fetch.
-**Behavior:** Each tool response carries a human-readable timestamp annotation. The agent can
-compare the annotation on the earlier result with the current time (from the auto-injected
-timestamp).
-**Outcome:** The agent has access to freshness information and can factor it into its decisions.
-Note: whether the LLM reliably acts on this depends on the model's temporal reasoning ability.
+- **Trigger:** The agent calls a REST API tool that returns market data during a multi-iteration loop.
+  Several iterations later, the agent considers whether to re-fetch.
+- **Behavior:** Each tool response carries a human-readable timestamp annotation. The agent can
+  compare the annotation on the earlier result with the current time (from the auto-injected
+  timestamp).
+- **Outcome:** The agent has access to freshness information and can factor it into its decisions.
+  Note: whether the LLM reliably acts on this depends on the model's temporal reasoning ability.
 
 ### UC-3: Agent plans a future action
 
-**Trigger:** User says "Remind me about this in 2 hours" or "What's the deadline if it's 3 days
-from now?"
-**Behavior:** The agent reads the auto-injected current timestamp and performs arithmetic on it.
-**Outcome:** The agent produces correct absolute dates/times relative to "now."
+- **Trigger:** User says "Remind me about this in 2 hours" or "What's the deadline if it's 3 days
+  from now?"
+- **Behavior:** The agent reads the auto-injected current timestamp and performs arithmetic on it.
+- **Outcome:** The agent produces correct absolute dates/times relative to "now."
 
 ### UC-4: User asks for time in a specific timezone
 
-**Trigger:** User asks "What time is it in Tokyo right now?"
-**Behavior:** The agent calls `current_timestamp` with `{"timezone": "Asia/Tokyo"}`. The tool
-returns the current time converted to the requested timezone via `ZoneInfo`.
-**Outcome:** The agent responds with an authoritative, server-computed time in the requested
-timezone — no LLM arithmetic required, avoiding errors with DST or unusual offset rules.
+- **Trigger:** User asks "What time is it in Tokyo right now?"
+- **Behavior:** The agent calls `current_timestamp` with `{"timezone": "Asia/Tokyo"}`. The tool
+  returns the current time converted to the requested timezone via `ZoneInfo`.
+- **Outcome:** The agent responds with an authoritative, server-computed time in the requested
+  timezone — no LLM arithmetic required, avoiding errors with DST or unusual offset rules.
 
 ### UC-5: Multi-turn conversation spanning time
 
-**Trigger:** A conversation spans several minutes. The user sends a new message after a pause.
-**Behavior:** Each user turn gets a fresh auto-injected timestamp. The agent can see the
-progression of time across turns.
-**Outcome:** The agent can reference "your previous message was 5 minutes ago" or "since your
-last message, the data may have changed."
+- **Trigger:** A conversation spans several minutes. The user sends a new message after a pause.
+- **Behavior:** Each user turn gets a fresh auto-injected timestamp. The agent can see the
+  progression of time across turns.
+- **Outcome:** The agent can reference "your previous message was 5 minutes ago" or "since your
+  last message, the data may have changed."
 
 ---
 
@@ -92,9 +94,9 @@ flowchart TD
     E --> A
     E --> C
     E --> D
-    A -- "single synthetic tool call + result<br/>appended at end of message list" --> B
-    C -- "metadata on every<br/>tool response" --> B
-    B -- "annotated messages<br/>(selective deep copies)" --> LLM["LLM"]
+    A -- " single synthetic tool call + result<br/>appended at end of message list " --> B
+    C -- " metadata on every<br/>tool response " --> B
+    B -- " annotated messages<br/>(selective deep copies) " --> LLM["LLM"]
 ```
 
 ### 1. Timestamp Tool
@@ -195,7 +197,7 @@ The metadata is stored in `CompletionResult.state` under a `_message_metadata` k
   for request-level timezone — when it arrives, only the provider construction changes.
 - **Change:** New class, bound in `TimestampModule` at request scope.
 
-### Transformer Hierarchy
+### 6. Transformer Hierarchy
 
 The current codebase has a single `MessagesTransformer` ABC and a separate `_AttachmentFilter`
 that is not a transformer. This design adds a second tier — `PreInvocationTransformer` — without
@@ -220,46 +222,104 @@ classDiagram
     PreInvocationTransformer <|-- _TimestampAnnotationTransformer
 ```
 
-| Tier                       | When it runs                           | Mutation safety                            |
-|----------------------------|----------------------------------------|--------------------------------------------|
-| `MessagesTransformer`      | Once, in `_MessagesSetup.setup()`      | Mutates the canonical message list         |
+| Tier                       | When it runs                           | Mutation safety                                     |
+|----------------------------|----------------------------------------|-----------------------------------------------------|
+| `MessagesTransformer`      | Once, in `_MessagesSetup.setup()`      | Mutates the canonical message list                  |
 | `PreInvocationTransformer` | Every iteration, in `AssistantInvoker` | Each transformer selectively copies what it mutates |
 
-### Configurability
+### 7. Configurability
 
-The timestamp awareness feature is controlled via the application config — the presence of a
-`timestamp` section in the orchestrator config enables it. App creators decide per-app whether
-timestamp awareness is active, maintaining control over their QuickApps instances.
+Timestamp awareness is a feature-level concern that impacts the whole app (tool registration,
+message transformation, tool result enrichment), not just the orchestrator. It is configured
+under a new top-level `features` section in `ApplicationConfig`.
 
-Schema change in `OrchestratorConfig`:
+#### Features model
+
+A new `Features` model groups optional, independently toggleable capabilities. Each capability
+is an optional config object — presence enables the feature. `Features` lives at the
+`ApplicationConfig` level and defaults to an empty instance (all features `None`) to avoid
+double null checks in code:
 
 ```python
-class TimestampConfig(BaseModel):
-    """Timestamp awareness configuration. Presence enables the feature."""
-    pass  # empty for now; future fields: default_timezone, annotation_format, etc.
+class Features(BaseModel):
+    timestamp: TimestampConfig | None = PreviewField(
+        default=None, description="Timestamp awareness configuration."
+    )
 
-class OrchestratorConfig(BaseModel):
+class ApplicationConfig(BaseApplicationTypeConfig):
     # ... existing fields ...
-    timestamp: TimestampConfig | None = None
+    features: Features = Field(
+        default_factory=Features,
+        description="Optional feature flags.",
+    )
 ```
+
+`Features.timestamp` uses the `TimestampConfig` alias from the start. A discriminated union
+with one variant is functionally identical to the concrete type, so there's no cost today.
+When a second strategy is added, only the union definition changes — `Features` stays
+untouched.
+
+The `features` field has `propertyKind: "server"` (backend concern, not client-visible).
+`propertyOrder` is auto-assigned by position (last among top-level fields).
 
 An app opts in with:
 
 ```json
 {
   "orchestrator": {
-    "deployment": { "name": "gpt-4o" },
+    "deployment": {
+      "name": "gpt-4o"
+    }
+  },
+  "features": {
     "timestamp": {}
   }
 }
 ```
 
-When disabled (no `timestamp` section or `"timestamp": null`):
+When disabled (no `features` section, no `timestamp` key, or `"timestamp": null`):
 
 - `TimestampModule` does not register the tool, injection transformer, annotation transformer,
   or metadata enricher.
 - No synthetic messages are injected, no tool responses are annotated.
 - Zero overhead for apps that do not need timestamp awareness.
+
+Code access is always `config.features.timestamp` — no outer null check needed.
+
+#### TimestampConfig and injection strategy extensibility
+
+`TimestampConfig` is a discriminated union keyed on `injection_strategy`. Each strategy has
+its own config model with strategy-specific properties. Initially only `ToolCallTimestampConfig`
+exists:
+
+```python
+class ToolCallTimestampConfig(BaseModel):
+    injection_strategy: Literal["tool_call"] = "tool_call"
+
+
+# Future example:
+# class SystemPromptTimestampConfig(BaseModel):
+#     injection_strategy: Literal["system_prompt"] = "system_prompt"
+#     position: Literal["prepend", "append"] = "append"
+#     format: Literal["xml", "markdown"] = "xml"
+
+TimestampConfig = Annotated[
+    ToolCallTimestampConfig,  # | SystemPromptTimestampConfig
+    Discriminator("injection_strategy"),
+]
+```
+
+`TimestampModule` matches on the config type and registers the appropriate components. When
+a new strategy is needed (e.g. system prompt injection), a new config model is added to the
+union and the module registers a `PromptPartProvider` instead of
+`_TimestampInjectionTransformer`. Adding a variant to the union is a non-breaking change
+(existing configs with `"injection_strategy": "tool_call"` or no `injection_strategy` key
+continue to parse as `ToolCallTimestampConfig`). Each strategy's config model carries only
+the properties relevant to that strategy — no shared fields accumulate unused options.
+
+#### Preview feature gating
+
+The `timestamp` field uses `PreviewField` for this release cycle.
 
 ---
 
@@ -306,6 +366,16 @@ timezone override are deferred. **Why:** DIAL Core does not currently pass timez
 headers. When it does, the only change needed is populating `TimeProvider` from the header in
 request setup.
 
+### System prompt injection strategy
+
+An alternative injection strategy that injects the current timestamp directly into the system
+prompt via a `PromptPartProvider` instead of using synthetic tool-call messages. When needed,
+a `SystemPromptTimestampConfig` model is added to the `TimestampConfig` discriminated union
+and handled by `TimestampModule` — the DI seam already supports this (see §7). **Why deferred:**
+The tool-call strategy covers all current use cases and preserves per-turn history naturally.
+The system prompt strategy may be preferable for models that handle system prompts better than
+synthetic tool calls, but this needs validation.
+
 ### Agent-learned timezone from conversation
 
 The agent could learn the user's timezone from conversation context (e.g. "I'm in Warsaw") and
@@ -347,7 +417,7 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
 `TimestampModule` registers the tool and all transformers directly via `@multiprovider`,
 following the same pattern as `AttachmentProcessingModule` with `_AvailableContextTool`. The
 module is always loaded by `AppFactory`; registration is conditional on the presence of a
-`timestamp` section in the application config.
+`timestamp` section in `ApplicationConfig.features`.
 
 ### What the LLM sees (auto-injected)
 
@@ -422,6 +492,7 @@ None.
 
 ### Non-breaking changes
 
+- New `features` field on `ApplicationConfig` — defaults to empty `Features()`.
 - New `CompletionResultEnricher` pipeline in `ToolExecutor` — empty list means no change.
 - New `PreInvocationTransformer` pipeline in `AssistantInvoker` — empty list means no change.
 - `_AttachmentFilter` becoming a `PreInvocationTransformer` is an internal refactor with no
@@ -450,8 +521,9 @@ None.
 
 ### `config/`
 
-- **Add** `TimestampConfig` model
-- **Modify** `OrchestratorConfig` — add optional `timestamp: TimestampConfig | None` field
+- **Add** `ToolCallTimestampConfig` model, `TimestampConfig` discriminated union type alias
+- **Add** `Features` model with `PreviewField`-annotated fields
+- **Modify** `ApplicationConfig` — add `features: Features` field (defaults to empty `Features()`)
 
 ### `agent/`
 
