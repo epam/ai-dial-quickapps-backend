@@ -83,17 +83,6 @@ class AppModule(Module):
         return choice.create_stage()
 
     @provider
-    def __provide_async_dial(
-        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
-    ) -> AsyncDial:
-        return AsyncDial(
-            base_url=dial_settings.url,
-            api_key=api_key.get_secret_value(),
-            api_version=dial_settings.api_version,
-            bearer_token=bearer.get_secret_value() if bearer else None,
-        )
-
-    @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:
         return context
 

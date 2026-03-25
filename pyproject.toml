@@ -154,6 +154,7 @@ priority = "primary"
 
 [tool.pytest.ini_options]
 testpaths = ["src/tests"]
+env_files = [".env"]
 asyncio_default_fixture_loop_scope = "session"
 addopts = "-ra"
 markers = [

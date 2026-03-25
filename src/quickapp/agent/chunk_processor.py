@@ -1,10 +1,20 @@
 import logging
-from typing import Any
+from functools import partial
 
-from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
+from aidial_sdk.chat_completion import Choice, Stage, Status
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
+
+from quickapp.common.chat_completion_stream import (
+    ChatStreamEvent,
+    ChatStreamFootprintMode,
+    ChunkUsageFootprint,
+    NormalizedChoiceDelta,
+    NormalizedCustomContent,
+    consume_chat_completion_chunks,
+    parse_chat_completion_chunk,
+)
 
 from ._models import AssistantCallResult, Usage
 from ._stage_delta_types import (
@@ -12,7 +22,6 @@ from ._stage_delta_types import (
     as_stage_delta,
     attachment_kwargs,
     get_stage_index,
-    normalize_attachment,
     stage_display_name,
 )
 
@@ -35,62 +44,68 @@ class ChunkProcessor:
     ) -> AssistantCallResult | None:
         destination.append_content("\n\r")
 
-        async for chunk in chat_completion:
-            if chunk.choices:
-                for ch in chunk.choices:
-                    if (content := ch.delta.content) and stream_content:
-                        destination.append_content(content)
-                        self.__assistant_call_result.append_content(content)
+        result = self.__assistant_call_result
+        outer = self
+        dest = destination
+        sc = stream_content
+        po = propagate_orchestrator_stages
 
-                    if custom_content := getattr(ch.delta, "custom_content", None):
-                        self.__process_custom_content(
-                            custom_content,
-                            destination,
-                            propagate_orchestrator_stages=propagate_orchestrator_stages,
+        def on_stream_event(event: ChatStreamEvent) -> None:
+            if isinstance(event, ChunkUsageFootprint):
+                if event.prompt_tokens is not None and event.completion_tokens is not None:
+                    result.set_usage(
+                        Usage(
+                            prompt_tokens=event.prompt_tokens,
+                            completion_tokens=event.completion_tokens,
                         )
-
-                    if tool_calls_deltas_list := ch.delta.tool_calls:
-                        for delta in tool_calls_deltas_list:
-                            self.__assistant_call_result.append_tool_call_delta(delta)
-            if chunk.usage:
-                self.__assistant_call_result.set_usage(
-                    Usage(
-                        prompt_tokens=chunk.usage.prompt_tokens,
-                        completion_tokens=chunk.usage.completion_tokens,
                     )
+                return
+            delta = event
+            if (content := delta.content) and sc:
+                dest.append_content(content)
+                result.append_content(content)
+            if delta.custom is not None:
+                outer._apply_normalized_custom_content(
+                    delta.custom,
+                    dest,
+                    propagate_orchestrator_stages=po,
                 )
-        # Close any remaining open stages at the end of the stream; mark as failed since they weren't explicitly completed.
+            for tc in delta.tool_calls:
+                result.append_tool_call_delta(tc)
+
+        await consume_chat_completion_chunks(
+            chat_completion,
+            partial(
+                parse_chat_completion_chunk,
+                mode=ChatStreamFootprintMode.ORCHESTRATOR,
+            ),
+            on_stream_event,
+        )
+
         self.__close_all_streaming_stages(status=Status.FAILED)
 
         self.__log_assistant_call_result(self.__assistant_call_result)
         return self.__assistant_call_result
 
-    def __process_custom_content(
+    def _apply_normalized_custom_content(
         self,
-        custom_content: dict[str, Any],
+        norm: NormalizedCustomContent,
         destination: Choice | Stage,
         *,
         propagate_orchestrator_stages: bool = True,
     ) -> None:
-        if attachments := custom_content.get("attachments"):
-            for attachment in attachments:
-                if isinstance(attachment, dict):
-                    normalize_attachment(attachment)
-                    kwargs = attachment_kwargs(attachment)
-                    destination.add_attachment(**kwargs)
-                    self.__assistant_call_result.append_attachment(Attachment(**kwargs))
+        for attachment in norm.sdk_attachments:
+            destination.add_attachment(**attachment.model_dump())
+            self.__assistant_call_result.append_attachment(attachment)
 
-        if (stages := custom_content.get("stages")) and isinstance(stages, list):
-            for position, raw in enumerate(stages):
-                if isinstance(raw, dict):
-                    delta = as_stage_delta(raw)
-                    self.__assistant_call_result.append_stage_delta(delta, position)
-                    if propagate_orchestrator_stages and isinstance(destination, Choice):
-                        self.__stream_stage_delta(destination, delta, position)
+        for position, raw in norm.stage_entries:
+            delta = as_stage_delta(raw)
+            self.__assistant_call_result.append_stage_delta(delta, position)
+            if propagate_orchestrator_stages and isinstance(destination, Choice):
+                self.__stream_stage_delta(destination, delta, position)
 
-        if state := custom_content.get("state"):
-            if isinstance(state, dict):
-                self.__assistant_call_result.merge_state(state)
+        if norm.state is not None:
+            self.__assistant_call_result.merge_state(norm.state)
 
     def __stream_stage_delta(
         self, destination: Choice, delta: StageDeltaItem, position: int
