@@ -23,6 +23,18 @@ from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedExce
 MAX_ITERATIONS = 1000
 
 
+def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
+    """Extract an httpx.HTTPStatusError with status 401 from an ExceptionGroup, if present."""
+    for exc in eg.exceptions:
+        if isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code == 401:
+            return exc
+        if isinstance(exc, BaseExceptionGroup):
+            nested = _extract_http_401(exc)
+            if nested is not None:
+                return nested
+    return None
+
+
 @inject
 class _MCPConnectionManager:
     """Manages MCP connections and sessions."""
@@ -104,6 +116,11 @@ class _MCPConnectionManager:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from e
+            raise
+        except BaseExceptionGroup as eg:
+            http_401 = _extract_http_401(eg)
+            if http_401 is not None:
+                raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from http_401
             raise
 
     async def get_tools_list(self) -> list[Tool]:
