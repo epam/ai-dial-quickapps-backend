@@ -5,8 +5,8 @@ from quickapp.common.base_config import (
     _PREVIEW_MARKER,
     BaseApplicationTypeConfig,
     PreviewField,
-    _has_preview_marker,
     _strip_preview_fields,
+    has_preview_marker,
 )
 
 # ── PreviewField ──────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ class TestPreviewField:
         assert _PREVIEW_MARKER not in schema["properties"]["stable"]
 
 
-# ── _has_preview_marker ───────────────────────────────────────────────
+# ── has_preview_marker ───────────────────────────────────────────────
 
 
 class TestHasPreviewMarker:
@@ -70,7 +70,7 @@ class TestHasPreviewMarker:
         class M(BaseModel):
             feat: str | None = PreviewField()
 
-        assert _has_preview_marker(M.model_fields["feat"]) is True
+        assert has_preview_marker(M.model_fields["feat"]) is True
 
     def test_callable_with_marker(self):
         def custom_extra(schema):
@@ -79,19 +79,19 @@ class TestHasPreviewMarker:
         class M(BaseModel):
             feat: str | None = PreviewField(json_schema_extra=custom_extra)
 
-        assert _has_preview_marker(M.model_fields["feat"]) is True
+        assert has_preview_marker(M.model_fields["feat"]) is True
 
     def test_regular_field(self):
         class M(BaseModel):
             stable: str = Field(default="ok")
 
-        assert _has_preview_marker(M.model_fields["stable"]) is False
+        assert has_preview_marker(M.model_fields["stable"]) is False
 
     def test_none_extra(self):
         class M(BaseModel):
             bare: str
 
-        assert _has_preview_marker(M.model_fields["bare"]) is False
+        assert has_preview_marker(M.model_fields["bare"]) is False
 
 
 # ── _strip_preview_fields ─────────────────────────────────────────────

@@ -194,7 +194,7 @@ def _preview_field(default=None, **kwargs) -> FieldInfo:
     return Field(default, **kwargs)
 
 
-def _has_preview_marker(field_info: FieldInfo) -> bool:
+def has_preview_marker(field_info: FieldInfo) -> bool:
     """Check whether a field is marked as a preview feature."""
     extra = field_info.json_schema_extra
     if extra is None:

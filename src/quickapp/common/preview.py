@@ -3,7 +3,7 @@
 _PREVIEW_MODULE_ATTR = "_is_preview_module"
 
 
-def preview_module(cls):
+def preview_module[T](cls: T) -> T:
     """Mark a DI module as preview — filtered out when preview features are disabled."""
     setattr(cls, _PREVIEW_MODULE_ATTR, True)
     return cls

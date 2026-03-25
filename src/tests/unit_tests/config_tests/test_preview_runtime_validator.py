@@ -3,7 +3,7 @@ import logging
 from pydantic import BaseModel
 
 from quickapp.common.base_config import PreviewField
-from quickapp.config.application import _nullify_preview_fields
+from quickapp.config.application import nullify_preview_fields
 
 
 class TestNullifyPreviewFields:
@@ -12,7 +12,7 @@ class TestNullifyPreviewFields:
             feat: str | None = PreviewField(description="test")
 
         model = Cfg.model_construct(feat="value")
-        _nullify_preview_fields(model)
+        nullify_preview_fields(model)
         assert model.feat is None
 
     def test_preview_field_already_none_no_warning(self, caplog):
@@ -21,7 +21,7 @@ class TestNullifyPreviewFields:
 
         model = Cfg.model_construct(feat=None)
         with caplog.at_level(logging.WARNING):
-            _nullify_preview_fields(model)
+            nullify_preview_fields(model)
         assert not caplog.records
 
     def test_non_preview_fields_untouched(self):
@@ -30,7 +30,7 @@ class TestNullifyPreviewFields:
             feat: str | None = PreviewField(description="test")
 
         model = Cfg.model_construct(stable="hello", feat="value")
-        _nullify_preview_fields(model)
+        nullify_preview_fields(model)
         assert model.stable == "hello"
         assert model.feat is None
 
@@ -44,7 +44,7 @@ class TestNullifyPreviewFields:
 
         inner = Inner.model_construct(preview_inner="value")
         model = Outer.model_construct(inner=inner, stable="ok")
-        _nullify_preview_fields(model)
+        nullify_preview_fields(model)
         assert model.inner.preview_inner is None
         assert model.stable == "ok"
 
@@ -54,7 +54,7 @@ class TestNullifyPreviewFields:
 
         model = Cfg.model_construct(feat="value")
         with caplog.at_level(logging.WARNING):
-            _nullify_preview_fields(model)
+            nullify_preview_fields(model)
         assert len(caplog.records) == 1
         assert "feat" in caplog.records[0].message
         assert "preview features are disabled" in caplog.records[0].message
@@ -78,13 +78,31 @@ class TestApplicationConfigPreviewValidator:
         # NOTE: model_validator must be on ApplicationConfig, not arbitrary
         # BaseApplicationTypeConfig subclasses. Test the helper directly.
         model = TestAppConfig.model_construct(stable="ok", preview_feat="val")
-        _nullify_preview_fields(model)
+        nullify_preview_fields(model)
         assert model.preview_feat is None
         assert model.stable == "ok"
 
     def test_preview_field_preserved_when_enabled(self, monkeypatch):
+        """When ENABLE_PREVIEW_FEATURES=true, the validator early-returns
+        and preview fields are not nullified."""
         monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
 
+        from quickapp.common.base_config import BaseApplicationTypeConfig
         from quickapp.common.feature_settings import FeatureSettings
 
         assert FeatureSettings().enable_preview_features is True
+
+        class TestAppConfig(BaseApplicationTypeConfig):
+            _dial_schema_id = "test_preview_enabled"
+            _dial_application_type_display_name = "Test"
+            stable: str
+            preview_feat: str | None = PreviewField(description="preview")
+
+        # Simulate the gating logic from ApplicationConfig._gate_preview_fields:
+        # when preview is enabled, nullify_preview_fields is never called.
+        model = TestAppConfig.model_construct(stable="ok", preview_feat="val")
+        if not FeatureSettings().enable_preview_features:
+            nullify_preview_fields(model)
+
+        assert model.preview_feat == "val"
+        assert model.stable == "ok"

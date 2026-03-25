@@ -3,7 +3,7 @@ import logging
 from pydantic import BaseModel, Field, model_validator
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, _has_preview_marker
+from quickapp.common.base_config import BaseApplicationTypeConfig, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
@@ -35,11 +35,15 @@ class OrchestratorConfig(BaseModel):
     )
 
 
-def _nullify_preview_fields(model: BaseModel) -> None:
-    """Recursively nullify preview fields on a config model tree."""
+def nullify_preview_fields(model: BaseModel) -> None:
+    """Recursively nullify preview fields on a config model tree.
+
+    Recurses into nested BaseModel instances but not into lists or dicts —
+    preview fields are expected on config objects, not inside collections.
+    """
     for field_name, field_info in type(model).model_fields.items():
         value = getattr(model, field_name)
-        if _has_preview_marker(field_info) and value is not None:
+        if has_preview_marker(field_info) and value is not None:
             setattr(model, field_name, None)
             logger.warning(
                 'Preview feature "%s" is configured but preview features are disabled '
@@ -47,7 +51,7 @@ def _nullify_preview_fields(model: BaseModel) -> None:
                 field_name,
             )
         elif isinstance(value, BaseModel):
-            _nullify_preview_fields(value)
+            nullify_preview_fields(value)
 
 
 class ApplicationConfig(BaseApplicationTypeConfig):
@@ -71,5 +75,5 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     def _gate_preview_fields(self) -> "ApplicationConfig":
         if FeatureSettings().enable_preview_features:
             return self
-        _nullify_preview_fields(self)
+        nullify_preview_fields(self)
         return self
