@@ -1,6 +1,6 @@
 # Design: Preview Feature Gating
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - None
 
