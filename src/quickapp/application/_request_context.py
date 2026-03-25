@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
+from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -32,6 +32,7 @@ class _RequestContext(MessagesMixin):
     _bearer: DIAL_BEARER = None
     _response_format: ResponseFormat | None = None
     _forwarded_headers: ForwardedHeaders | None = None
+    _client_channel_id: CLIENT_CHANNEL_ID = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -102,3 +103,13 @@ class _RequestContext(MessagesMixin):
         if self._forwarded_headers is not None:
             raise RuntimeError("Forwarded headers are already set")
         self._forwarded_headers = value
+
+    @property
+    def client_channel_id(self) -> CLIENT_CHANNEL_ID:
+        return self._client_channel_id
+
+    @client_channel_id.setter
+    def client_channel_id(self, value: CLIENT_CHANNEL_ID) -> None:
+        if self._client_channel_id is not None:
+            raise RuntimeError("Client channel ID is already set")
+        self._client_channel_id = value
