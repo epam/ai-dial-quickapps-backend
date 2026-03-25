@@ -44,7 +44,7 @@ lint: install_dev
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
 	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 
 mypy: install_dev
 	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
@@ -56,7 +56,7 @@ format: install_dev
 	$(POETRY) run black $(FILES)
 	$(POETRY) run isort $(FILES)
 ifeq ($(FILES), $(SRC_DIRS))
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 endif
 
 # --- Individual tool targets (honor FILES variable) ---
@@ -105,7 +105,7 @@ test_cov: install_dev
 	$(PYTEST_UNIT) --cov=src/quickapp --cov-report=term-missing $(ARGS)
 
 dump_app_schema: install_dev
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 
 generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
