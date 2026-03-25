@@ -1,8 +1,8 @@
 # Design: Preview Feature Gating
 
-**Status:** Draft
-**Dependencies:**
-- None
+- **Status:** Draft
+- **Dependencies:**
+  - None
 
 ## Problem Statement
 
