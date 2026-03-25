@@ -32,7 +32,6 @@ class _RequestContext(MessagesMixin):
     _bearer: DIAL_BEARER = None
     _response_format: ResponseFormat | None = None
     _forwarded_headers: ForwardedHeaders | None = None
-    _client_channel_id_set: bool = False
     _client_channel_id: CLIENT_CHANNEL_ID = None
 
     @property
@@ -107,13 +106,10 @@ class _RequestContext(MessagesMixin):
 
     @property
     def client_channel_id(self) -> CLIENT_CHANNEL_ID:
-        if not self._client_channel_id_set:
-            raise RuntimeError("Client channel ID is not set")
         return self._client_channel_id
 
     @client_channel_id.setter
     def client_channel_id(self, value: CLIENT_CHANNEL_ID) -> None:
-        if self._client_channel_id_set:
+        if self._client_channel_id is not None:
             raise RuntimeError("Client channel ID is already set")
-        self._client_channel_id_set = True
         self._client_channel_id = value

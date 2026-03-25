@@ -116,18 +116,24 @@ class _MCPToolInitializer(CompletionInitializer):
         if not self.__toolset_list:
             return
 
-        # Phase 1: Try all toolsets concurrently.
-        # MCPUnauthorizedException propagates out of _process_toolset() for DialMCPToolSets.
         tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Classify results: collect unauthorized DialMCPToolSets for batch interaction.
+        unauthorized = self._classify_initialization_results(results)
+        if not unauthorized:
+            return
+
+        await self._interactive_login_and_retry(unauthorized)
+
+    def _classify_initialization_results(
+        self, results: list[BaseException | None]
+    ) -> list[DialMCPToolSet]:
+        """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
         unauthorized: list[DialMCPToolSet] = []
         for ts, result in zip(self.__toolset_list, results):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):
-                # Plain MCPToolSet 401 — not eligible for interactive login, record as error
                 label = _toolset_label_for_error(ts)
                 logger.error(
                     "MCP toolset '%s' returned 401 (not eligible for interactive login)", label
@@ -140,15 +146,13 @@ class _MCPToolInitializer(CompletionInitializer):
                 )
             elif isinstance(result, Exception):
                 logger.error("Unexpected error during MCP toolset initialization", exc_info=result)
+        return unauthorized
 
-        if not unauthorized:
-            return
-
-        # Phase 2: Batch interactive login for all unauthorized DialMCPToolSets.
+    async def _interactive_login_and_retry(self, unauthorized: list[DialMCPToolSet]) -> None:
+        """Batch interactive login for unauthorized toolsets, then retry successful ones."""
         dial_ids = [ts.dial_id for ts in unauthorized]
         signin_results = await self.__login_service.request_signin_batch(dial_ids)
 
-        # Phase 3: Retry successful logins, record failures.
         retry_toolsets: list[DialMCPToolSet] = []
         for ts in unauthorized:
             login_result = signin_results.get(ts.dial_id, LoginResult.ERROR)

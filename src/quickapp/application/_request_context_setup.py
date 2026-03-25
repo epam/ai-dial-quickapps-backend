@@ -57,8 +57,6 @@ class _RequestContextSetup:
             context.messages = self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
-        else:
-            context.client_channel_id = None
         if choice:
             context.choice = choice
 
