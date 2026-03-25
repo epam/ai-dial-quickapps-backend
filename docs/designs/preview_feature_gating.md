@@ -16,6 +16,10 @@ mechanism to:
    all preview features across a deployment without modifying individual app configs.
 3. **Hide preview fields from the schema** — preview features appear in the JSON schema
    alongside stable features, making them indistinguishable in the configuration UI.
+4. **Gate an entire module as preview** — some features span an entire DI module (tools,
+   transformers, prompt providers, etc.). There is no way to conditionally wire a whole module
+   based on preview status — today the module is either always registered or manually
+   if-guarded in `AppFactory`.
 
 Without gating, preview features either ship as stable (risky) or are manually guarded with
 ad-hoc checks scattered across modules (inconsistent, hard to maintain).
@@ -31,6 +35,9 @@ ad-hoc checks scattered across modules (inconsistent, hard to maintain).
   slip through (e.g., config persisted before preview was disabled) and logs a warning.
 - Zero overhead for stable features — the mechanism only activates for fields explicitly marked
   with `PreviewField`.
+- A `@preview_module` decorator that marks an entire DI module as preview, allowing
+  `AppFactory` to conditionally wire it based on the preview flag — no ad-hoc `if` guards,
+  no inheritance changes.
 
 ---
 
@@ -41,16 +48,20 @@ ad-hoc checks scattered across modules (inconsistent, hard to maintain).
 - **Trigger:** Operator deploys QuickApps without setting `ENABLE_PREVIEW_FEATURES`.
 - **Behavior:** Preview fields do not appear in the JSON schema. The platform rejects configs
   that reference them. If a preview field slips through anyway (e.g., config persisted before
-  preview was disabled), the runtime validator nullifies it and logs a warning.
+  preview was disabled), the runtime validator nullifies it and logs a warning. Preview modules
+  are not wired — their tools, transformers, and providers are entirely absent at runtime.
 - **Outcome:** No preview features are active. The primary enforcement is schema-level — the
-  platform prevents misconfiguration before the app ever sees the request.
+  platform prevents misconfiguration before the app ever sees the request. Module-level
+  features are enforced at startup — the DI container never registers their bindings.
 
 ### UC-2: Operator enables preview features for staging
 
 - **Trigger:** Operator sets `ENABLE_PREVIEW_FEATURES=true` in the staging environment.
 - **Behavior:** Preview fields appear in the JSON schema and configuration UI. App creators can
-  configure them normally. Runtime validation accepts them.
-- **Outcome:** Preview features are fully functional in this environment.
+  configure them normally. Runtime validation accepts them. Preview modules are wired into the
+  DI container and function normally.
+- **Outcome:** All preview features — both field-level and module-level — are fully functional
+  in this environment.
 
 ### UC-3: Developer marks a new feature as preview
 
@@ -67,6 +78,23 @@ ad-hoc checks scattered across modules (inconsistent, hard to maintain).
 - **Behavior:** Developer changes `PreviewField(...)` to `Field(...)` on the config field.
 - **Outcome:** The feature is no longer gated. It appears in the schema and is accepted at
   runtime regardless of the `ENABLE_PREVIEW_FEATURES` setting.
+
+### UC-5: Developer marks an entire module as preview
+
+- **Trigger:** Developer builds a new feature that spans a full DI module (e.g. a new tooling
+  integration with its own tools, transformers, and providers).
+- **Behavior:** The developer decorates the module class with `@preview_module`. `AppFactory`
+  filters it out when `ENABLE_PREVIEW_FEATURES` is not set — none of its bindings (tools,
+  transformers, prompt providers) are registered.
+- **Outcome:** The entire feature is absent at runtime in production. In staging (with preview
+  enabled), the module is wired normally and fully functional. No per-binding `if` guards
+  needed.
+
+### UC-6: Preview module graduates to stable
+
+- **Trigger:** A preview module is deemed stable and ready for general availability.
+- **Behavior:** Developer removes the `@preview_module` decorator from the module class.
+- **Outcome:** The module is always wired regardless of `ENABLE_PREVIEW_FEATURES`.
 
 ---
 
@@ -188,6 +216,46 @@ call context.
   for this defensive case.
 - **Change:** New validator on `ApplicationConfig`.
 
+### 5. Module-level preview gating
+
+- **What:** A `@preview_module` decorator that marks a DI module class as preview, and
+  filtering logic in `AppFactory` that excludes decorated modules when preview is disabled.
+- **Owner:** `common/preview.py` (decorator), `app_factory.py` (filtering).
+- **Semantics:** The decorator sets a `_is_preview_module = True` attribute on the class.
+  `AppFactory.create()` reads `FeatureSettings` once at startup and filters the module list
+  before passing it to the `Injector`:
+
+  ```python
+  _PREVIEW_MODULE_ATTR = "_is_preview_module"
+
+
+  def preview_module(cls):
+      """Mark a DI module as preview — filtered out when preview features are disabled."""
+      setattr(cls, _PREVIEW_MODULE_ATTR, True)
+      return cls
+
+
+  def is_preview_module(module) -> bool:
+      return getattr(type(module), _PREVIEW_MODULE_ATTR, False)
+  ```
+
+  In `AppFactory`:
+
+  ```
+  modules = [AppModule(), AgentModule(), ..., SomePreviewModule()]
+  if not FeatureSettings().enable_preview_features:
+      modules = [m for m in modules if not is_preview_module(m)]
+  injector = Injector(modules)
+  ```
+
+  This is a pure startup-time check. When a preview module is filtered out, none of its
+  bindings are registered — tools, transformers, providers, and initializers from that module
+  are entirely absent. The decorator does not alter the module's inheritance chain or
+  behavior; it only adds a marker attribute that `AppFactory` reads.
+
+- **Change:** New decorator and helper in `common/preview.py`; modification to
+  `AppFactory.create()`.
+
 ---
 
 ## Out of Scope
@@ -225,6 +293,26 @@ class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
         default=None, description="Timestamp awareness configuration."
     )
+```
+
+### Marking a module as preview
+
+```python
+@preview_module
+class TimestampModule(Module):
+    def configure(self, binder: Binder):
+        binder.bind(TimestampProvider, to=TimestampProvider, scope=singleton)
+        ...
+```
+
+### Graduating a module to stable
+
+```python
+# Remove the decorator — module is always wired
+class TimestampModule(Module):
+    def configure(self, binder: Binder):
+        binder.bind(TimestampProvider, to=TimestampProvider, scope=singleton)
+        ...
 ```
 
 ### Environment configuration
@@ -267,6 +355,10 @@ None.
   schema is always the full version.
 - New `model_validator` on `ApplicationConfig` — only activates when preview fields slip
   through with gating off. Existing configs with no preview fields are unaffected.
+- New `@preview_module` decorator — no effect on existing modules. Only modules explicitly
+  decorated are filtered.
+- `AppFactory` filtering — existing modules are unaffected; the filter is a no-op when no
+  preview modules are registered.
 
 ## Summary of Changes
 
@@ -279,6 +371,7 @@ None.
 ### `common/`
 
 - **Add** `FeatureSettings(BaseSettings)` (`feature_settings.py`)
+- **Add** `preview_module` decorator and `is_preview_module` helper (`preview.py`)
 
 ### `common/base_config.py` (`BaseApplicationTypeConfig`)
 
@@ -289,6 +382,11 @@ None.
 
 - **Add** `model_validator` on `ApplicationConfig` for runtime preview gating (nullify +
   log warning)
+
+### `app_factory.py`
+
+- **Modify** `AppFactory.create()` — filter out `@preview_module`-decorated modules when
+  `ENABLE_PREVIEW_FEATURES` is not set
 
 ### `Makefile`
 
