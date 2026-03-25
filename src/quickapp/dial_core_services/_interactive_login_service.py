@@ -96,6 +96,7 @@ class InteractiveLoginService:
                 "Api-Key": self.__api_key.get_secret_value(),
                 CLIENT_CHANNEL_HEADER: self.__client_channel_id,
             },
+            timeout=httpx.Timeout(5.0, read=None),
         ) as client:
             async with aconnect_sse(client, "POST", _INTERACT_PATH, json=rpc_batch) as event_source:
                 event_source.response.raise_for_status()
