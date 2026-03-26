@@ -1,7 +1,10 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider, singleton
+from injector import Binder, Module, ProviderOf, multiprovider, provider, singleton
+from openai.lib.azure import AsyncAzureOpenAI
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders
+from quickapp.common.dial_settings import DialSettings
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
@@ -27,6 +30,20 @@ class DialDeploymentToolingModule(Module):
             DialDeploymentToolCacheService, to=DialDeploymentToolCacheService, scope=singleton
         )
         logger.debug("DialDeploymentTooling module configuration completed")
+
+    @provider
+    def provide_deployment_openai_client(
+        self,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        forwarded_headers: ForwardedHeaders,
+    ) -> DEPLOYMENT_AZURE_CLIENT:
+        return AsyncAzureOpenAI(
+            azure_endpoint=dial_settings.url,
+            api_key=api_key.get_secret_value(),
+            api_version=dial_settings.api_version,
+            default_headers=forwarded_headers or None,
+        )
 
     @multiprovider
     def __provide_tools(

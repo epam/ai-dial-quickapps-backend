@@ -7,10 +7,14 @@ from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
+from quickapp.common.chat_completion_stream import (
+    ChatCompletionStreamHandler,
+    ChatStreamHandlerError,
+    OrchestratorStreamStrategyConfig,
+)
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -36,7 +40,7 @@ class Orchestrator:
         usage_statistics_service: UsageStatisticsService,
         tool_executor: ToolExecutor,
         assistant_invoker_provider: ProviderOf[AssistantInvoker],
-        chunk_processor_provider: ProviderOf[ChunkProcessor],
+        stream_handler_provider: ProviderOf[ChatCompletionStreamHandler],
         app_config: ApplicationConfig,
         perf_timer: PerformanceTimer,
     ) -> None:
@@ -47,7 +51,7 @@ class Orchestrator:
         self.__SHOW_USAGE_STATISTICS = presentation_settings.show_usage_statistics
         self.__tool_executor = tool_executor
         self.__assistant_invoker_provider = assistant_invoker_provider
-        self.__chunk_processor_provider = chunk_processor_provider
+        self.__stream_handler_provider = stream_handler_provider
         self.__iterations_counter = 0
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
@@ -96,24 +100,31 @@ class Orchestrator:
 
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
-        assistant_call_result = await self.__chunk_processor_provider.get().process_chunks(
-            chat_completion=chat_completion_stream,
-            destination=self.__choice,
-            propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
-        )
-        if assistant_call_result is None:
+        try:
+            stream_accumulator = await self.__stream_handler_provider.get().process_orchestrator_stream(
+                chat_completion=chat_completion_stream,
+                config=OrchestratorStreamStrategyConfig(
+                    destination=self.__choice,
+                    stream_content=True,
+                    propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
+                ),
+            )
+        except ChatStreamHandlerError:
+            logger.exception("Orchestrator stream handling failed.")
+            raise
+        if stream_accumulator is None:
             raise RuntimeError("Assistant invocation returned no result.")
 
-        tool_calls = assistant_call_result.tool_calls
+        tool_calls = stream_accumulator.tool_calls
 
         # Thinking stages stay in custom_content (streamed to choice), not in state.
-        stream_state = dict(assistant_call_result.state or {})
+        stream_state = dict(stream_accumulator.state or {})
         state: dict[str, object] | None = (
             {STATE_KEY_ORCHESTRATOR: stream_state} if stream_state else None
         )
 
         custom_content_kwargs: dict[str, object] = {
-            "attachments": assistant_call_result.attachments,
+            "attachments": stream_accumulator.attachments,
         }
         if state:
             custom_content_kwargs["state"] = state
@@ -124,18 +135,18 @@ class Orchestrator:
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
-                content=assistant_call_result.content or " ",
+                content=stream_accumulator.content or " ",
                 custom_content=CustomContent(**custom_content_kwargs),
                 tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
 
-        if assistant_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+        if stream_accumulator.usage and self.__SHOW_USAGE_STATISTICS:
             self.__usage_statistics_list.append(
                 DeploymentUsage(
                     model_name=self.__orchestrator_deployment_name,
-                    prompt_tokens=assistant_call_result.usage.prompt_tokens,
-                    completion_tokens=assistant_call_result.usage.completion_tokens,
+                    prompt_tokens=stream_accumulator.usage.prompt_tokens,
+                    completion_tokens=stream_accumulator.usage.completion_tokens,
                 )
             )
         self.__perf_timer.add_milestone(period, "assistant_response_received")

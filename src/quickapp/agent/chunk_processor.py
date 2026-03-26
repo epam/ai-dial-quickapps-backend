@@ -1,5 +1,6 @@
 import logging
 from functools import partial
+from typing import Any
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
 from injector import inject
@@ -7,6 +8,7 @@ from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.common.chat_completion_stream import (
+    ChatStreamAccumulator,
     ChatStreamEvent,
     ChatStreamFootprintMode,
     ChunkUsageFootprint,
@@ -15,8 +17,6 @@ from quickapp.common.chat_completion_stream import (
     consume_chat_completion_chunks,
     parse_chat_completion_chunk,
 )
-
-from ._models import AssistantCallResult, Usage
 from ._stage_delta_types import (
     StageDeltaItem,
     as_stage_delta,
@@ -24,6 +24,7 @@ from ._stage_delta_types import (
     get_stage_index,
     stage_display_name,
 )
+from ..common.base_stage_wrapper import BaseStageWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ logger = logging.getLogger(__name__)
 class ChunkProcessor:
 
     def __init__(self):
-        self.__assistant_call_result = AssistantCallResult()
+        self.__accumulator = ChatStreamAccumulator()
         self.__streaming_stages: dict[int, Stage] = {}
 
     async def process_chunks(
@@ -41,10 +42,10 @@ class ChunkProcessor:
         destination: Choice,
         stream_content: bool = True,
         propagate_orchestrator_stages: bool = True,
-    ) -> AssistantCallResult | None:
+    ) -> ChatStreamAccumulator | None:
         destination.append_content("\n\r")
 
-        result = self.__assistant_call_result
+        result = self.__accumulator
         outer = self
         dest = destination
         sc = stream_content
@@ -52,17 +53,14 @@ class ChunkProcessor:
 
         def on_stream_event(event: ChatStreamEvent) -> None:
             if isinstance(event, ChunkUsageFootprint):
-                if event.prompt_tokens is not None and event.completion_tokens is not None:
-                    result.set_usage(
-                        Usage(
-                            prompt_tokens=event.prompt_tokens,
-                            completion_tokens=event.completion_tokens,
-                        )
-                    )
+                result.apply_usage_footprint(
+                    event, mode=ChatStreamFootprintMode.ORCHESTRATOR
+                )
                 return
             delta = event
             if (content := delta.content) and sc:
-                dest.append_content(content)
+                if dest:
+                    dest.append_content(content)
                 result.append_content(content)
             if delta.custom is not None:
                 outer._apply_normalized_custom_content(
@@ -84,28 +82,39 @@ class ChunkProcessor:
 
         self.__close_all_streaming_stages(status=Status.FAILED)
 
-        self.__log_assistant_call_result(self.__assistant_call_result)
-        return self.__assistant_call_result
+        self.__log_stream_accumulator(self.__accumulator)
+        return self.__accumulator
 
     def _apply_normalized_custom_content(
         self,
         norm: NormalizedCustomContent,
-        destination: Choice | Stage,
+        destination: Choice | Stage | BaseStageWrapper | None = None,
         *,
         propagate_orchestrator_stages: bool = True,
     ) -> None:
         for attachment in norm.sdk_attachments:
-            destination.add_attachment(**attachment.model_dump())
-            self.__assistant_call_result.append_attachment(attachment)
+            if destination:
+                self._fix_attachment(attachment)
+                destination.add_attachment(**attachment.model_dump())
+            self.__accumulator.append_attachment(attachment)
 
         for position, raw in norm.stage_entries:
             delta = as_stage_delta(raw)
-            self.__assistant_call_result.append_stage_delta(delta, position)
+            self.__accumulator.append_stage_delta(delta, position)
             if propagate_orchestrator_stages and isinstance(destination, Choice):
                 self.__stream_stage_delta(destination, delta, position)
 
         if norm.state is not None:
-            self.__assistant_call_result.merge_state(norm.state)
+            self.__accumulator.merge_state(norm.state)
+
+    @staticmethod
+    def _fix_attachment(attachment: Any) -> None:
+        """Bugfix issue#16: if attachment has no data and no url, use reference_url as url."""
+        if attachment.data is None and attachment.url is None:
+            if attachment.reference_url is None:
+                attachment["data"] = ""
+            else:
+                attachment.url = attachment.reference_url
 
     def __stream_stage_delta(
         self, destination: Choice, delta: StageDeltaItem, position: int
@@ -169,7 +178,7 @@ class ChunkProcessor:
             self.__close_streaming_stage_at_index(idx, status)
 
     @staticmethod
-    def __log_assistant_call_result(result: AssistantCallResult) -> None:
+    def __log_stream_accumulator(result: ChatStreamAccumulator) -> None:
         logger.debug("===================")
         logger.debug(" ---- Captured values:")
         logger.debug(" ----- text llm response: %s", result.content)

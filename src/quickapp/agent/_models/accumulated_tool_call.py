@@ -8,6 +8,9 @@ class AccumulatedToolCall:
         self._name: str | None = None
         self._arguments: str | None = None
 
+    def __str__(self) -> str:
+        return f"AccumulatedToolCall(id={self._id}, name={self._name}, arguments={self._arguments})"
+
     @property
     def id(self) -> str:
         if self._id is None:

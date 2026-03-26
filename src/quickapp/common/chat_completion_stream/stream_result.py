@@ -1,12 +1,21 @@
+"""Mutable accumulator for OpenAI-style chat completion streams (orchestrator + deployment)."""
+
+from __future__ import annotations
+
 import logging
 from typing import Any
 
+from aidial_sdk import chat_completion as dial_sdk_models
 from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
+from quickapp.agent._models.accumulated_tool_call import AccumulatedToolCall
 from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
 
-from .accumulated_tool_call import AccumulatedToolCall
+from quickapp.common.chat_completion_stream.models import (
+    ChatStreamFootprintMode,
+    ChunkUsageFootprint,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +32,6 @@ class _AccumulatedStageData:
         self.status: str | None = None
 
     def append_delta(self, item: StageDeltaItem) -> None:
-        logger.debug("Appending stage delta to index %s: %s", get_stage_index(item, -1), item)
         if not isinstance(item, dict):
             return
         if "name" in item and item["name"] is not None:
@@ -53,28 +61,40 @@ class Usage:
         self.completion_tokens = completion_tokens
 
 
-class AssistantCallResult:
-    def __init__(self):
+def attachment_to_sdk(attachment: Any) -> dial_sdk_models.Attachment:
+    """Build aidial SDK ``Attachment`` from an API attachment object with ``model_dump()``."""
+    return dial_sdk_models.Attachment(**attachment.model_dump())
+
+
+class ChatStreamAccumulator:
+    """Collects text, custom content, usage, and optional tool/stage data from a stream."""
+
+    def __init__(self) -> None:
         self.__content = ""
         self.__attachments: list[Attachment] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
-        self.__usage: Usage | None = None
+        self.__usage: Any | None = None
+        self.__statistics: Any = None
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
 
     @property
-    def content(self):
+    def content(self) -> str:
         return self.__content
 
     def append_content(self, content: str) -> None:
         self.__content += content
 
     @property
-    def attachments(self):
+    def attachments(self) -> list[Attachment]:
         return self.__attachments
 
     def append_attachment(self, attachment: Attachment) -> None:
         self.__attachments.append(attachment)
+
+    def extend_attachments_from_api(self, attachments: list[Any]) -> None:
+        """Append attachments from deployment / API objects (``model_dump`` → SDK ``Attachment``)."""
+        self.__attachments.extend(attachment_to_sdk(a) for a in attachments)
 
     @property
     def tool_calls(self) -> list[AccumulatedToolCall] | None:
@@ -88,32 +108,54 @@ class AssistantCallResult:
         self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
 
     @property
-    def usage(self):
+    def usage(self) -> Any | None:
         return self.__usage
 
     def set_usage(self, usage: Usage) -> None:
         self.__usage = usage
 
     @property
+    def statistics(self) -> Any:
+        return self.__statistics
+
+    def apply_usage_footprint(
+        self, fp: ChunkUsageFootprint, *, mode: ChatStreamFootprintMode
+    ) -> None:
+        if mode == ChatStreamFootprintMode.DEPLOYMENT:
+            if fp.raw_usage is not None:
+                self.__usage = fp.raw_usage
+            if fp.statistics is not None:
+                self.__statistics = fp.statistics
+            return
+        if fp.prompt_tokens is not None and fp.completion_tokens is not None:
+            self.__usage = Usage(fp.prompt_tokens, fp.completion_tokens)
+
+    @property
     def stages(self) -> list[dict[str, Any]]:
-        """Stages accumulated from stream, sorted by index."""
         if not self.__stages_by_index:
             return []
         return [self.__stages_by_index[idx].to_dict(idx) for idx in sorted(self.__stages_by_index)]
 
     def append_stage_delta(self, item: StageDeltaItem, position: int) -> None:
-        """Merge a stage delta into the stage at the given index."""
         idx = get_stage_index(item, position)
         if idx not in self.__stages_by_index:
             self.__stages_by_index[idx] = _AccumulatedStageData()
         self.__stages_by_index[idx].append_delta(item)
 
     @property
-    def state(self) -> dict[str, Any]:
-        """State captured from the assistant stream (copy)."""
+    def state(self) -> dict[str, Any] | None:
+        if not self.__state:
+            return None
         return dict(self.__state)
 
     def merge_state(self, state_update: dict[str, Any]) -> None:
-        """Merge state updates from a chunk into captured state."""
         if state_update:
             self.__state.update(state_update)
+
+    def replace_state(self, state: dict[str, Any] | None) -> None:
+        """Replace captured state (deployment stream ``custom_content.state``)."""
+        self.__state = dict(state) if state else {}
+
+    @property
+    def attachments_or_none(self) -> list[Attachment] | None:
+        return self.__attachments if self.__attachments else None

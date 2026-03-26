@@ -1,4 +1,11 @@
-from ._di_types import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders, RESPONSE_FORMAT
+from ._di_types import (
+    DEPLOYMENT_AZURE_CLIENT,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    ForwardedHeaders,
+    ORCHESTRATOR_AZURE_CLIENT,
+    RESPONSE_FORMAT,
+)
 from quickapp.common.base_initializer import BaseInitializer, InitializerType
 from .completion_result import CompletionResult
 from .staged_base_tool import StagedBaseTool
