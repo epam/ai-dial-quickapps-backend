@@ -27,8 +27,6 @@ from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccum
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.common.utils import to_plain_dict
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONTENT_PARAM,

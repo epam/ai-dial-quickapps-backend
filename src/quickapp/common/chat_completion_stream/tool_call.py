@@ -11,9 +11,7 @@ class AccumulatedToolCall:
         self._arguments: str | None = None
 
     def __str__(self) -> str:
-        return (
-            f"AccumulatedToolCall(id={self._id}, name={self._name}, arguments={self._arguments})"
-        )
+        return f"AccumulatedToolCall(id={self._id}, name={self._name}, arguments={self._arguments})"
 
     @property
     def id(self) -> str:

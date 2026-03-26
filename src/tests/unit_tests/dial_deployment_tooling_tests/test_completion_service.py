@@ -332,7 +332,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(azure_client, mock_
 
 @pytest.mark.asyncio
 async def test_custom_fields_configuration_routed_to_extra_body(
-    completion_service, dial_client, mock_stage_wrapper
+    completion_service, azure_client, mock_stage_wrapper
 ):
     """Pre-wrapped custom_fields.configuration appears correctly nested in extra_body."""
     await completion_service.complete_request_async(
@@ -346,7 +346,7 @@ async def test_custom_fields_configuration_routed_to_extra_body(
         stage_wrapper=mock_stage_wrapper,
     )
 
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     extra_body = call_args[EXTRA_BODY]
     assert extra_body["temperature"] == 0.7
     assert extra_body["custom_fields"] == {
