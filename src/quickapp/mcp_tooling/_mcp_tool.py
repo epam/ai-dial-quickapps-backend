@@ -13,10 +13,13 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
+from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
+from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
+from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +38,7 @@ class _MCPTool(StagedBaseTool):
         perf_timer: PerformanceTimer,
         file_service: DialFileService,  # todo combine DialFileService and AttachmentService.
         dial_toolset_id: str | None,
+        login_service: InteractiveLoginService,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -53,6 +57,7 @@ class _MCPTool(StagedBaseTool):
         self.__connection_manager: _MCPConnectionManager = connection_manager
         self.__file_service: DialFileService = file_service
         self.__dial_toolset_id = dial_toolset_id
+        self.__login_service: InteractiveLoginService = login_service
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
@@ -129,7 +134,19 @@ class _MCPTool(StagedBaseTool):
 
         logger.debug(f"MCP tool called with {kwargs}")
 
-        tool_call_result = await self.__connection_manager.call_mcp_tool(self.__tool.name, **kwargs)
+        try:
+            tool_call_result = await self.__connection_manager.call_mcp_tool(
+                self.__tool.name, **kwargs
+            )
+        except MCPUnauthorizedException:
+            if self.__dial_toolset_id is None:
+                raise
+            login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
+            if login_result != LoginResult.SUCCESS:
+                raise
+            tool_call_result = await self.__connection_manager.call_mcp_tool(
+                self.__tool.name, **kwargs
+            )
         # Handle error flag if present
         if getattr(tool_call_result, "isError", False):
             logger.error(

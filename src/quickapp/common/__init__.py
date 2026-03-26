@@ -2,6 +2,8 @@ from ._di_types import (
     DEPLOYMENT_AZURE_CLIENT,
     DIAL_API_KEY,
     DIAL_BEARER,
+    CLIENT_CHANNEL_HEADER,
+    CLIENT_CHANNEL_ID,
     ForwardedHeaders,
     ORCHESTRATOR_AZURE_CLIENT,
     RESPONSE_FORMAT,
