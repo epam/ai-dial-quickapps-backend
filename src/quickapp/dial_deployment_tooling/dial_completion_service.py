@@ -1,5 +1,5 @@
 import logging
-from collections.abc import AsyncIterable, Iterable
+from collections.abc import AsyncIterable
 from typing import Any
 
 from aidial_client import AsyncDial
@@ -19,10 +19,8 @@ from quickapp.common import CompletionResult, ForwardedHeaders
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.common.utils import to_plain_dict
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
-    CONFIGURATION,
     CONTENT_PARAM,
     EXTRA_BODY,
     EXTRA_HEADERS,
@@ -54,21 +52,6 @@ class DialCompletionService:
     def __init__(self, dial_client: AsyncDial, forwarded_headers: ForwardedHeaders) -> None:
         self.__dial_client: AsyncDial = dial_client
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
-
-    @staticmethod
-    def _prepare_custom_fields(items: Iterable[tuple[str, Any]]) -> dict[str, Any] | None:
-        # kept for backward compatibility in rare cases
-        normalized: dict[str, Any] = {}
-        for k, v in items:
-            if k == CONTENT_PARAM or k == ATTACHMENT_PARAM:
-                continue
-            n = to_plain_dict(v)
-            if n == {}:
-                continue
-            normalized[k] = n
-        if normalized:
-            return {CONFIGURATION: normalized}
-        return None
 
     async def complete_request_async(
         self,
