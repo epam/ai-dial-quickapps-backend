@@ -19,7 +19,11 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
-from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM
+from quickapp.dial_deployment_tooling.constants import (
+    ATTACHMENT_PARAM,
+    CONFIGURATION,
+    CONTENT_PARAM,
+)
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -168,12 +172,36 @@ class BaseDeploymentTool(StagedBaseTool):
 
         prepared: dict[str, Any] = {}
 
+        tool_config = cast(DialDeploymentTool, self.tool_config)
+        config_param_names = tool_config.deployment._configuration_param_names
+
         # If tool config defines defaults, normalize them first
-        params = self.tool_config.deployment.parameters
+        params = tool_config.deployment.parameters
         self._merge_to_prepared_params(params, prepared)
 
-        # Now process runtime kwargs - these should override defaults
-        prepared.update(kwargs)
+        # Split LLM kwargs: configuration params vs standard params
+        config_kwargs: dict[str, Any] = {}
+        other_kwargs: dict[str, Any] = {}
+        for k, v in kwargs.items():
+            if k in config_param_names:
+                config_kwargs[k] = v
+            else:
+                other_kwargs[k] = v
+
+        # Wrap configuration params into custom_fields.configuration, merging with defaults
+        if config_kwargs:
+            custom_fields = prepared.get("custom_fields", {})
+            if not isinstance(custom_fields, dict):
+                custom_fields = {}
+            configuration = custom_fields.get(CONFIGURATION, {})
+            if not isinstance(configuration, dict):
+                configuration = {}
+            configuration.update(config_kwargs)
+            custom_fields[CONFIGURATION] = configuration
+            prepared["custom_fields"] = custom_fields
+
+        # Standard params override defaults as flat keys
+        prepared.update(other_kwargs)
 
         logger.debug(f"Pre-processed tool parameters: {prepared}")
 
