@@ -5,7 +5,10 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.config.tools.display.paramenter import FormattedParameterConfig, ParameterDisplayConfig
+from quickapp.config.tools.display.paramenter import (
+    FormattedParameterConfig,
+    ParameterDisplayConfig,
+)
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
