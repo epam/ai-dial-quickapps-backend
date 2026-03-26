@@ -11,6 +11,7 @@ from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_stream import (
+    AccumulatedToolCall,
     ChatCompletionStreamHandler,
     ChatStreamHandlerError,
     OrchestratorStreamStrategyConfig,
@@ -22,8 +23,6 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
-
-from ._models import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
 

@@ -28,6 +28,7 @@ from quickapp.common.chat_completion_stream.stream_result import (
     Usage,
     attachment_to_sdk,
 )
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
 __all__ = [
     "ChatStreamAccumulator",
@@ -46,6 +47,7 @@ __all__ = [
     "OrchestratorStreamStrategyConfig",
     "Usage",
     "attachment_to_sdk",
+    "AccumulatedToolCall",
     "consume_chat_completion_chunks",
     "parse_chat_completion_chunk",
 ]

@@ -3,7 +3,8 @@
 import pytest
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 
-from quickapp.agent._models import AccumulatedToolCall, ChatStreamAccumulator
+from quickapp.common.chat_completion_stream import ChatStreamAccumulator
+from quickapp.common.chat_completion_stream import AccumulatedToolCall
 
 
 def test_tool_call_accumulation():
