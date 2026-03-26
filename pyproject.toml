@@ -160,3 +160,6 @@ markers = [
     "integration: integration tests, that require LLM calls and cached LLM Tool calls (deselect with '-m \"not integration\"')",
     "e2e: e2e tests, that require LLM calls without using cached responses (deselect with '-m \"not e2e\"')"
 ]
+
+[tool.pytest_env]
+env_files = [".env"]
