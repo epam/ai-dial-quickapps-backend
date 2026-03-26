@@ -10,12 +10,12 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
-from quickapp.common.chat_completion_stream import (
-    AccumulatedToolCall,
+from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
+from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
-    ChatStreamHandlerError,
     OrchestratorStreamStrategyConfig,
 )
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer

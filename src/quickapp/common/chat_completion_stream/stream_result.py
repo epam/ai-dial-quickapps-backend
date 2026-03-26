@@ -151,10 +151,6 @@ class ChatStreamAccumulator:
         if state_update:
             self.__state.update(state_update)
 
-    def replace_state(self, state: dict[str, Any] | None) -> None:
-        """Replace captured state (deployment stream ``custom_content.state``)."""
-        self.__state = dict(state) if state else {}
-
     @property
     def attachments_or_none(self) -> list[Attachment] | None:
         return self.__attachments if self.__attachments else None

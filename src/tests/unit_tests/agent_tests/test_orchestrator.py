@@ -7,7 +7,7 @@ from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, Tool
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
-from quickapp.common.chat_completion_stream import AccumulatedToolCall
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
 
 def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:

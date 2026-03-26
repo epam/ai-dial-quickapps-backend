@@ -19,7 +19,7 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.chat_completion_stream import ChatCompletionStreamHandler
+from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname

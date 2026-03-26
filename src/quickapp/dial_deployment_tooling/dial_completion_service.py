@@ -18,12 +18,12 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.chat_completion_stream import (
+from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
+from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
-    ChatStreamAccumulator,
-    ChatStreamHandlerError,
     DeploymentStreamStrategyConfig,
 )
+from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
