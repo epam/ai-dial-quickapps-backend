@@ -54,6 +54,7 @@ def _make_tool(
         perf_timer=perf_timer,
         file_service=file_service,
         dial_toolset_id=dial_toolset_id,
+        login_service=MagicMock(),
         argument_transformers=[file_transformer],
     )
     return mcp_tool, file_service

@@ -22,12 +22,15 @@ from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
+from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_connection_manager import _MCPConnectionManager
 from ._mcp_tool import _MCPTool
 from ._mcp_tooling_context import _MCPToolingContext
+from ._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +45,19 @@ def _human_readable_dial_id(dial_id: str) -> str:
     """
     last_part = dial_id.split("/")[-1] if "/" in dial_id else dial_id
     return unquote(last_part)
+
+
+_LOGIN_RESULT_MESSAGES: dict[LoginResult, str] = {
+    LoginResult.NO_CHANNEL: "Toolset '{name}' requires sign-in, but no client channel is available",
+    LoginResult.DENIED: "Sign-in was denied for toolset '{name}'",
+    LoginResult.TIMEOUT: "Sign-in timed out for toolset '{name}'",
+    LoginResult.ERROR: "Sign-in failed for toolset '{name}'",
+}
+
+
+def _login_result_message(result: LoginResult, toolset_label: str) -> str:
+    template = _LOGIN_RESULT_MESSAGES.get(result, "Sign-in failed for toolset '{name}'")
+    return template.format(name=toolset_label)
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
@@ -65,6 +81,7 @@ class _MCPToolInitializer(CompletionInitializer):
         connection_manager_builder: AssistedBuilder[_MCPConnectionManager],
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
+        login_service: InteractiveLoginService,
     ):
         self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
         self.__mcp_context: _MCPToolingContext = mcp_context
@@ -76,6 +93,7 @@ class _MCPToolInitializer(CompletionInitializer):
         )
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
+        self.__login_service: InteractiveLoginService = login_service
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -98,14 +116,81 @@ class _MCPToolInitializer(CompletionInitializer):
         if not self.__toolset_list:
             return
 
-        # Create worker tasks for all configured toolsets and run them concurrently.
         tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
-        # Await all tasks; errors are handled inside each task. Use return_exceptions=True to be robust.
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        # Log any unexpected exceptions propagated (should be rare because we catch inside worker)
-        for r in results:
-            if isinstance(r, Exception):
-                logger.error("Unexpected error during MCP toolset initialization", exc_info=r)
+
+        unauthorized = self._classify_initialization_results(results)
+        if not unauthorized:
+            return
+
+        await self._interactive_login_and_retry(unauthorized)
+
+    def _classify_initialization_results(
+        self, results: list[BaseException | None]
+    ) -> list[DialMCPToolSet]:
+        """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
+        unauthorized: list[DialMCPToolSet] = []
+        for ts, result in zip(self.__toolset_list, results):
+            if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
+                unauthorized.append(ts)
+            elif isinstance(result, MCPUnauthorizedException):
+                label = _toolset_label_for_error(ts)
+                logger.error(
+                    "MCP toolset '%s' returned 401 (not eligible for interactive login)", label
+                )
+                self.__mcp_context.append_exception(
+                    ToolInitializationException(
+                        message=f"Authentication required for toolset '{label}'",
+                        toolset_name=label,
+                    )
+                )
+            elif isinstance(result, Exception):
+                logger.error("Unexpected error during MCP toolset initialization", exc_info=result)
+        return unauthorized
+
+    async def _interactive_login_and_retry(self, unauthorized: list[DialMCPToolSet]) -> None:
+        """Batch interactive login for unauthorized toolsets, then retry successful ones."""
+        dial_ids = [ts.dial_id for ts in unauthorized]
+        signin_results = await self.__login_service.request_signin_batch(dial_ids)
+
+        retry_toolsets: list[DialMCPToolSet] = []
+        for ts in unauthorized:
+            login_result = signin_results.get(ts.dial_id, LoginResult.ERROR)
+            if login_result == LoginResult.SUCCESS:
+                retry_toolsets.append(ts)
+            else:
+                label = _toolset_label_for_error(ts)
+                self.__mcp_context.append_exception(
+                    ToolInitializationException(
+                        message=_login_result_message(login_result, label),
+                        toolset_name=label,
+                    )
+                )
+
+        if retry_toolsets:
+            retry_tasks = [
+                asyncio.create_task(self._retry_process_toolset(ts)) for ts in retry_toolsets
+            ]
+            await asyncio.gather(*retry_tasks)
+
+    async def _retry_process_toolset(self, toolset_info: DialMCPToolSet) -> None:
+        """Retry _process_toolset after successful interactive login.
+
+        Catches all exceptions (including MCPUnauthorizedException) and converts them to
+        ToolInitializationException, since interactive login was already attempted.
+        """
+        label = _toolset_label_for_error(toolset_info)
+        try:
+            await self._process_toolset(toolset_info)
+        except Exception as e:
+            logger.error("Toolset '%s' failed after interactive login: %s", label, e, exc_info=True)
+            self.__mcp_context.append_exception(
+                ToolInitializationException(
+                    message=f"Sign-in succeeded but toolset '{label}' initialization still failed",
+                    toolset_name=label,
+                    details=str(e),
+                )
+            )
 
     async def _process_toolset(self, toolset_info: MCPToolSet | DialMCPToolSet) -> None:
         if not toolset_info.enabled:
@@ -173,6 +258,8 @@ class _MCPToolInitializer(CompletionInitializer):
             if created_tools:
                 self.__mcp_context.extend_tools(created_tools)
 
+        except MCPUnauthorizedException:
+            raise
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)
             self.__mcp_context.append_exception(e)

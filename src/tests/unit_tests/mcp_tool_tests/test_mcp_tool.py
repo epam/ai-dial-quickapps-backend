@@ -12,6 +12,7 @@ from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import (
+    CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
     CompletionResult,
@@ -25,6 +26,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
@@ -128,6 +130,8 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         )
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
+        binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
@@ -297,6 +301,8 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         )
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
+        binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
