@@ -61,6 +61,14 @@
           },
           "title": "Propagate Types To Choice",
           "type": "array"
+        },
+        "media_type_substitution": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Maps original attachment types to substitution types for custom visualizers.",
+          "title": "Media Type Substitution",
+          "type": "object"
         }
       },
       "title": "AttachmentConfig",
