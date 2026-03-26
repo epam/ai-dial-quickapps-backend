@@ -119,7 +119,7 @@ def test_web_search(client):
     )
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024",
+        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024. Don't add citations.",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
