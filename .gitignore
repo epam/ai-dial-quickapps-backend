@@ -9,6 +9,7 @@
 .dial
 .env
 .idea
+.mcp_rest_server.pid
 .mypy_cache
 .poetry
 .python-version
