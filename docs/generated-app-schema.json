@@ -2867,7 +2867,7 @@
               "type": "null"
             }
           ],
-          "description": "Timestamp awareness configuration.",
+          "description": "Time awareness configuration.",
           "x-preview": true
         }
       },

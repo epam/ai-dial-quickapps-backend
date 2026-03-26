@@ -1,4 +1,4 @@
-# Design: Timestamp Awareness
+# Design: Time Awareness
 
 - **Status:** Implemented
 - **Dependencies:**
@@ -110,7 +110,7 @@ flowchart TD
 - **Change:** New tool class, new DI module.
 
 The tool is not part of any user-configured toolset. `TimestampModule` registers it
-conditionally (when timestamp awareness is enabled) via `@multiprovider`, following the
+conditionally (when time awareness is enabled) via `@multiprovider`, following the
 `AttachmentProcessingModule` / `_AvailableContextTool` pattern.
 
 The auto-injected timestamp already gives the agent "now" in UTC. The tool's primary purpose is
@@ -229,7 +229,7 @@ classDiagram
 
 ### 7. Configurability
 
-Timestamp awareness is a feature-level concern that impacts the whole app (tool registration,
+Time awareness is a feature-level concern that impacts the whole app (tool registration,
 message transformation, tool result enrichment), not just the orchestrator. It is configured
 under a new top-level `features` section in `ApplicationConfig`.
 
@@ -244,7 +244,7 @@ double null checks in code:
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(
         default_factory=ToolCallTimestampConfig,
-        description="Timestamp awareness configuration.",
+        description="Time awareness configuration.",
     )
 
 class ApplicationConfig(BaseApplicationTypeConfig):
@@ -283,7 +283,7 @@ When disabled (no `features` section, no `timestamp` key, or `"timestamp": null`
 - `TimestampModule` does not register the tool, injection transformer, annotation transformer,
   or metadata enricher.
 - No synthetic messages are injected, no tool responses are annotated.
-- Zero overhead for apps that do not need timestamp awareness.
+- Zero overhead for apps that do not need time awareness.
 
 Code access is always `config.features.timestamp` — no outer null check needed.
 

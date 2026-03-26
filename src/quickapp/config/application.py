@@ -58,7 +58,7 @@ def nullify_preview_fields(model: BaseModel) -> None:
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(  # type: ignore[assignment]
         default_factory=ToolCallTimestampConfig,
-        description="Timestamp awareness configuration.",
+        description="Time awareness configuration.",
     )
 
 
