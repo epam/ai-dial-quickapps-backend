@@ -1,6 +1,6 @@
 # Design: Timestamp Awareness
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - [Preview Feature Gating](preview_feature_gating.md)
 
