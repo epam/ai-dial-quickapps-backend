@@ -3,11 +3,10 @@ import logging
 from fastapi_injector import request_scope
 from injector import Binder, Module, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
-from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders
-from quickapp.common.dial_settings import DialSettings
 
-from quickapp.common import StagedBaseTool
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_initialization_exception import ToolInitializationException
 
 from ._deployment_tool_context import _DeploymentToolingContext

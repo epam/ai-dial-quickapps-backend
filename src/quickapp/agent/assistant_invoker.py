@@ -6,7 +6,6 @@ from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 from openai import AsyncStream
-from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent._attachment_filter import _AttachmentFilter

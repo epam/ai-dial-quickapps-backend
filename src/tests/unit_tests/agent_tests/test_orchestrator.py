@@ -45,9 +45,9 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result)
+    stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
     initial_state = {"some": "state"}
@@ -75,7 +75,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler_provider=stream_handler_provider,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -131,12 +131,12 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
+    stream_handler = Mock()
     # Return with tools first, then without tools to stop loop
-    chunk_processor.process_chunks = AsyncMock(
+    stream_handler.process_orchestrator_stream = AsyncMock(
         side_effect=[assistant_result_with_tools, assistant_result_no_tools]
     )
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -179,7 +179,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler_provider=stream_handler_provider,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -235,9 +235,9 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result)
+    stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -251,7 +251,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=Mock(),
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler_provider=stream_handler_provider,
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=5,
@@ -310,9 +310,9 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result_with_tools)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result_with_tools)
+    stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -341,7 +341,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler_provider=stream_handler_provider,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -374,7 +374,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=Mock(),
         assistant_invoker_provider=Mock(),
-        chunk_processor_provider=Mock(),
+        stream_handler_provider=Mock(),
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,

@@ -13,8 +13,8 @@ from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import (
     DIAL_API_KEY,
-    ForwardedHeaders,
     ORCHESTRATOR_AZURE_CLIENT,
+    ForwardedHeaders,
     StagedBaseTool,
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider

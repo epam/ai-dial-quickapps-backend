@@ -12,11 +12,12 @@ from quickapp.common.chat_completion_stream import (
     ChatStreamEvent,
     ChatStreamFootprintMode,
     ChunkUsageFootprint,
-    NormalizedChoiceDelta,
     NormalizedCustomContent,
     consume_chat_completion_chunks,
     parse_chat_completion_chunk,
 )
+
+from ..common.base_stage_wrapper import BaseStageWrapper
 from ._stage_delta_types import (
     StageDeltaItem,
     as_stage_delta,
@@ -24,7 +25,6 @@ from ._stage_delta_types import (
     get_stage_index,
     stage_display_name,
 )
-from ..common.base_stage_wrapper import BaseStageWrapper
 
 logger = logging.getLogger(__name__)
 
@@ -53,9 +53,7 @@ class ChunkProcessor:
 
         def on_stream_event(event: ChatStreamEvent) -> None:
             if isinstance(event, ChunkUsageFootprint):
-                result.apply_usage_footprint(
-                    event, mode=ChatStreamFootprintMode.ORCHESTRATOR
-                )
+                result.apply_usage_footprint(event, mode=ChatStreamFootprintMode.ORCHESTRATOR)
                 return
             delta = event
             if (content := delta.content) and sc:

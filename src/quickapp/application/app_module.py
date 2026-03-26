@@ -1,4 +1,3 @@
-from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import ChatCompletion, Choice, Message, Stage
 from fastapi import FastAPI
 from fastapi_injector import request_scope

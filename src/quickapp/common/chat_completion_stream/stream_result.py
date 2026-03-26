@@ -11,7 +11,6 @@ from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from quickapp.agent._models.accumulated_tool_call import AccumulatedToolCall
 from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
-
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamFootprintMode,
     ChunkUsageFootprint,

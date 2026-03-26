@@ -101,13 +101,15 @@ class Orchestrator:
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
         try:
-            stream_accumulator = await self.__stream_handler_provider.get().process_orchestrator_stream(
-                chat_completion=chat_completion_stream,
-                config=OrchestratorStreamStrategyConfig(
-                    destination=self.__choice,
-                    stream_content=True,
-                    propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
-                ),
+            stream_accumulator = (
+                await self.__stream_handler_provider.get().process_orchestrator_stream(
+                    chat_completion=chat_completion_stream,
+                    config=OrchestratorStreamStrategyConfig(
+                        destination=self.__choice,
+                        stream_content=True,
+                        propagate_orchestrator_stages=self.__propagate_orchestrator_stages,
+                    ),
+                )
             )
         except ChatStreamHandlerError:
             logger.exception("Orchestrator stream handling failed.")

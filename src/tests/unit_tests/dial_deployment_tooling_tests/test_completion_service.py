@@ -7,6 +7,7 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
+from pydantic import SecretStr
 
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
@@ -33,6 +34,13 @@ def azure_client():
 
 
 @pytest.fixture
+def completion_service(azure_client):
+    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
+    api_key = SecretStr("test-key")
+    return DialCompletionService(azure_client, dial_settings, api_key, None)
+
+
+@pytest.fixture
 def dial_core_client():
     client = MagicMock()
     client.get_metadata = AsyncMock(
@@ -46,15 +54,10 @@ def dial_core_client():
 
 
 @pytest.fixture
-def completion_service(azure_client, dial_core_client):
-    return DialCompletionService(azure_client, dial_core_client, None)
-
-
-@pytest.fixture
 def mock_stage_wrapper():
     stage_wrapper = MagicMock()
     stage_wrapper.append_stage_content = MagicMock()
-    stage_wrapper.add_stage_attachment = MagicMock()
+    stage_wrapper.add_attachment = MagicMock()
     return stage_wrapper
 
 
@@ -155,7 +158,9 @@ async def test_stage_wrapper_none(completion_service, azure_client):
 
 
 @pytest.mark.asyncio
-async def test_stage_wrapper_content_streaming(completion_service, azure_client, mock_stage_wrapper):
+async def test_stage_wrapper_content_streaming(
+    completion_service, azure_client, mock_stage_wrapper
+):
     # Act
     await completion_service.complete_request_async(
         params={"query": "Test query"},
@@ -188,8 +193,8 @@ async def test_extra_params_go_to_extra_body_not_top_level(
     )
 
     call_args = azure_client.chat.completions.create.call_args[1]
-    # Only deployment_name, stream, messages (and extra_body) at top level
-    assert set(call_args.keys()) == {"deployment_name", "stream", "messages", EXTRA_BODY}
+    # Only model, stream, messages (and extra_body) at top level
+    assert set(call_args.keys()) == {"model", "stream", "messages", EXTRA_BODY}
     assert call_args["messages"][0]["content"] == "Test query"
 
     extra_body = call_args[EXTRA_BODY]
@@ -288,7 +293,7 @@ async def test_history_with_custom_content_passed_through(
     ],
 )
 async def test_resolve_attachment_queries_dial_core_metadata(dial_core_client, file_relative_url):
-    """``_resolve_attachment`` calls ``DialCoreClient.get_metadata`` with ``files/`` + relative path."""
+    """``_resolve_attachment`` forwards the relative URL to ``DialCoreClient.get_metadata``."""
     dial_core_client.get_metadata = AsyncMock(
         return_value={
             "content_type": "image/png",
@@ -296,22 +301,20 @@ async def test_resolve_attachment_queries_dial_core_metadata(dial_core_client, f
             "url": "files/resolved.png",
         }
     )
-    service = DialCompletionService(MagicMock(), dial_core_client, None)
-    result = await service._resolve_attachment(file_relative_url)
+    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
+    service = DialCompletionService(MagicMock(), dial_settings, SecretStr("test-key"), None)
+    result = await service._resolve_attachment(dial_core_client, file_relative_url)
 
-    dial_core_client.get_metadata.assert_called_once_with("files/" + file_relative_url)
-    assert result == AttachmentParam(
-        type="image/png", title="photo.png", url="files/resolved.png"
-    )
+    dial_core_client.get_metadata.assert_called_once_with(file_relative_url)
+    assert result == AttachmentParam(type="image/png", title="photo.png", url="files/resolved.png")
 
 
 @pytest.mark.asyncio
-async def test_forwarded_x_headers_passed_to_chat_completion(
-    azure_client, dial_core_client, mock_stage_wrapper
-):
+async def test_forwarded_x_headers_passed_to_chat_completion(azure_client, mock_stage_wrapper):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    service = DialCompletionService(azure_client, dial_core_client, forwarded)
+    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
+    service = DialCompletionService(azure_client, dial_settings, SecretStr("test-key"), forwarded)
 
     await service.complete_request_async(
         params={"query": "Test query"},

@@ -5,16 +5,16 @@ from collections.abc import AsyncIterable
 from functools import partial
 from typing import Any, Protocol
 
-from aidial_sdk.chat_completion import Choice, Stage, Status
+from aidial_sdk.chat_completion import Stage, Status
 from openai.types.chat import ChatCompletionChunk
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.agent._stage_delta_types import (
+    StageDeltaItem,
     as_stage_delta,
     attachment_kwargs,
-    stage_display_name, StageDeltaItem,
+    stage_display_name,
 )
-from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.driver import consume_chat_completion_chunks
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
@@ -49,7 +49,7 @@ class _StreamStrategy(Protocol):
 class OrchestratorStreamStrategyConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    destination: Choice
+    destination: Any
     stream_content: bool = True
     propagate_orchestrator_stages: bool = True
 
@@ -57,7 +57,7 @@ class OrchestratorStreamStrategyConfig(BaseModel):
 class DeploymentStreamStrategyConfig(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    stage_wrapper: BaseStageWrapper | None = None
+    stage_wrapper: Any | None = None
 
 
 class _OrchestratorStreamStrategy:
@@ -70,9 +70,7 @@ class _OrchestratorStreamStrategy:
         self._stage_names_by_index: dict[int, str] = {}
 
     def handle_footprint(self, fp: ChunkUsageFootprint) -> None:
-        self._accumulator.apply_usage_footprint(
-            fp, mode=ChatStreamFootprintMode.ORCHESTRATOR
-        )
+        self._accumulator.apply_usage_footprint(fp, mode=ChatStreamFootprintMode.ORCHESTRATOR)
 
     def handle_delta(self, delta: NormalizedChoiceDelta) -> None:
         if delta.content and self._config.stream_content:

@@ -16,9 +16,7 @@ ChatStreamEventHandler: TypeAlias = Callable[[ChatStreamEvent], None]
 
 async def consume_chat_completion_chunks(
     chunks: AsyncIterable[TChunk],
-    parse_chunk: Callable[
-        [TChunk], tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]
-    ],
+    parse_chunk: Callable[[TChunk], tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]],
     on_event: ChatStreamEventHandler,
 ) -> None:
     async for chunk in chunks:

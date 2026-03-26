@@ -10,6 +10,7 @@ from aidial_client.types.chat.request_param import (
 )
 from injector import inject
 from openai.types.chat import ChatCompletionChunk
+
 from quickapp.common import (
     DEPLOYMENT_AZURE_CLIENT,
     DIAL_API_KEY,
@@ -41,11 +42,16 @@ logger = logging.getLogger(__name__)
 @inject
 class DialCompletionService:
 
-    def __init__(self, azure_client: DEPLOYMENT_AZURE_CLIENT, dial_settings: DialSettings,
-                 api_key: DIAL_API_KEY, forwarded_headers: ForwardedHeaders) -> None:
+    def __init__(
+        self,
+        azure_client: DEPLOYMENT_AZURE_CLIENT,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        forwarded_headers: ForwardedHeaders,
+    ) -> None:
         self.__azure_client = azure_client
-        self.__base_url:str = dial_settings.url
-        self.__api_key:DIAL_API_KEY = api_key
+        self.__base_url: str = dial_settings.url
+        self.__api_key: DIAL_API_KEY = api_key
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__stream_handler = ChatCompletionStreamHandler()
 
@@ -65,13 +71,13 @@ class DialCompletionService:
         return None
 
     async def complete_request_async(
-            self,
-            params: dict[str, Any],
-            deployment_id: str,
-            deployment_name: str,
-            stage_wrapper: BaseStageWrapper | None,
-            relative_attachment_urls: list[str] | None = None,
-            history: list[UserMessageParam | AssistantMessageParam] | None = None,
+        self,
+        params: dict[str, Any],
+        deployment_id: str,
+        deployment_name: str,
+        stage_wrapper: BaseStageWrapper | None,
+        relative_attachment_urls: list[str] | None = None,
+        history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> CompletionResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -100,10 +106,10 @@ class DialCompletionService:
 
     @staticmethod
     def _build_chat_completion_params(
-            params: dict[str, Any],
-            deployment_id: str,
-            messages: list[UserMessageParam | AssistantMessageParam],
-            forwarded_headers: ForwardedHeaders,
+        params: dict[str, Any],
+        deployment_id: str,
+        messages: list[UserMessageParam | AssistantMessageParam],
+        forwarded_headers: ForwardedHeaders,
     ) -> dict[str, Any]:
         chat_completion_params: dict[str, Any] = {
             "model": deployment_id,
@@ -130,9 +136,9 @@ class DialCompletionService:
         return chat_completion_params
 
     async def _consume_stream(
-            self,
-            chunks: AsyncIterable[ChatCompletionChunk],
-            stage_wrapper: BaseStageWrapper | None,
+        self,
+        chunks: AsyncIterable[ChatCompletionChunk],
+        stage_wrapper: BaseStageWrapper | None,
     ) -> ChatStreamAccumulator:
         try:
             return await self.__stream_handler.process_deployment_stream(
@@ -145,10 +151,10 @@ class DialCompletionService:
 
     @staticmethod
     def __get_deployment_usage(
-            usage: Any,
-            statistics: dict | None,
-            deployment_id: str,
-            deployment_name: str,
+        usage: Any,
+        statistics: dict | None,
+        deployment_id: str,
+        deployment_name: str,
     ) -> list[DeploymentUsage] | None:
         if statistics:
             result = []
@@ -177,10 +183,10 @@ class DialCompletionService:
         return None
 
     async def __build_request_messages(
-            self,
-            content: str,
-            relative_attachment_urls: list[str] | None = None,
-            history: list[UserMessageParam | AssistantMessageParam] | None = None,
+        self,
+        content: str,
+        relative_attachment_urls: list[str] | None = None,
+        history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         messages: list[UserMessageParam | AssistantMessageParam] = []
         if history:
@@ -193,7 +199,7 @@ class DialCompletionService:
         return messages
 
     async def __user_message_from_content_and_attachments(
-            self, content, relative_attachment_urls: list[str] | None = None
+        self, content, relative_attachment_urls: list[str] | None = None
     ) -> UserMessageParam:
         message = UserMessageParam(role="user", content=content)
         attachments = await self.resolve_attachment_urls(relative_attachment_urls)
@@ -202,7 +208,7 @@ class DialCompletionService:
         return message
 
     async def resolve_attachment_urls(
-            self, relative_attachment_urls: list[str] | None
+        self, relative_attachment_urls: list[str] | None
     ) -> list[AttachmentParam]:
         attachments = []
         if relative_attachment_urls:
@@ -211,10 +217,12 @@ class DialCompletionService:
                     attachments.append(await self._resolve_attachment(dial_core_client, url))
         return attachments
 
-    async def _resolve_attachment(self, dial_core_client: DialCoreClient, file_relative_url: str) -> AttachmentParam:
+    async def _resolve_attachment(
+        self, dial_core_client: DialCoreClient, file_relative_url: str
+    ) -> AttachmentParam:
         fileinfo = await dial_core_client.get_metadata(file_relative_url)
         return AttachmentParam(
             type=fileinfo.get("content_type", ""),
-            title=fileinfo.get("name", None),
+            title=fileinfo.get("name", ""),
             url=fileinfo.get("url", ""),
         )
