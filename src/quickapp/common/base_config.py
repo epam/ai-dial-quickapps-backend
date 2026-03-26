@@ -6,9 +6,12 @@ from pydantic import BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
+from quickapp.common.feature_settings import FeatureSettings
 
 _DIAL_SCHEMA_URL = "https://dial.epam.com/application_type_schemas/schema#"
 _DIAL_ID_PREFIX = "https://mydial.epam.com/custom_application_schemas/"
+
+_PREVIEW_MARKER = "x-preview"
 
 
 def _collect_defs_references(schema: Any) -> set[str]:
@@ -156,6 +159,93 @@ def _dial_file_config_field(default: Any = ..., **kwargs) -> FieldInfo:
     return Field(default, **kwargs)
 
 
+def _preview_field(default=None, **kwargs) -> FieldInfo:
+    """
+    Create a Pydantic Field marked as a preview feature.
+
+    Preview fields are stripped from the JSON schema and nullified at runtime
+    when ENABLE_PREVIEW_FEATURES is not set.
+
+    Args:
+        default: Must be None (preview fields must be nullable).
+        **kwargs: Other Pydantic Field parameters.
+
+    Returns:
+        Pydantic Field with preview marker.
+    """
+    if default is not None:
+        raise TypeError(
+            "PreviewField requires default=None (preview fields must be nullable "
+            "so they can be deactivated at runtime)."
+        )
+    json_schema_extra = kwargs.get("json_schema_extra", {})
+    if isinstance(json_schema_extra, dict):
+        json_schema_extra[_PREVIEW_MARKER] = True
+    else:
+        original_extra = json_schema_extra
+
+        def new_extra(schema):
+            if callable(original_extra):
+                original_extra(schema)
+            schema[_PREVIEW_MARKER] = True
+
+        json_schema_extra = new_extra
+    kwargs["json_schema_extra"] = json_schema_extra
+    return Field(default, **kwargs)
+
+
+def has_preview_marker(field_info: FieldInfo) -> bool:
+    """Check whether a field is marked as a preview feature."""
+    extra = field_info.json_schema_extra
+    if extra is None:
+        return False
+    if isinstance(extra, dict):
+        return bool(extra.get(_PREVIEW_MARKER, False))
+    # Callable case: invoke on a temp dict to inspect the marker.
+    tmp: dict[str, Any] = {}
+    extra(tmp)
+    return bool(tmp.get(_PREVIEW_MARKER, False))
+
+
+def _strip_preview_properties(obj: dict) -> None:
+    """Remove preview-marked properties and clean up required list in-place."""
+    properties = obj.get("properties")
+    if not properties:
+        return
+    to_remove = [name for name, prop in properties.items() if prop.get(_PREVIEW_MARKER)]
+    for name in to_remove:
+        del properties[name]
+    required = obj.get("required")
+    if required:
+        obj["required"] = [r for r in required if r not in to_remove]
+        if not obj["required"]:
+            del obj["required"]
+
+
+def _strip_preview_fields(schema: dict) -> dict:
+    """Remove preview-marked properties from a JSON schema dict."""
+    schema = deepcopy(schema)
+
+    # Strip at root level
+    _strip_preview_properties(schema)
+
+    # Strip within $defs
+    for definition in schema.get("$defs", {}).values():
+        _strip_preview_properties(definition)
+
+    # Prune unreferenced $defs
+    defs = schema.get("$defs", {})
+    if defs:
+        still_used = _collect_defs_references(schema)
+        for key in list(defs):
+            if key not in still_used:
+                defs.pop(key)
+        if not defs:
+            schema.pop("$defs", None)
+
+    return schema
+
+
 class BaseApplicationTypeConfig(BaseModel):
     """
     Base class for configuration of schema-rich applications in DIAL.
@@ -231,6 +321,9 @@ class BaseApplicationTypeConfig(BaseModel):
         schema = super().model_json_schema(*args, **kwargs)
         schema = _flatten_root_properties(schema)
 
+        if not FeatureSettings().enable_preview_features:
+            schema = _strip_preview_fields(schema)
+
         properties = schema.get("properties", {})
         model_fields = cls.model_fields
 
@@ -273,3 +366,4 @@ class BaseApplicationTypeConfig(BaseModel):
 DialConfigField = _dial_config_field
 DialFileConfigField = _dial_file_config_field
 DialResourceConfigField = _dial_resource_config_field
+PreviewField = _preview_field
