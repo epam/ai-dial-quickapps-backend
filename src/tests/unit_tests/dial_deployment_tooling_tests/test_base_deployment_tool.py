@@ -12,6 +12,19 @@ from aidial_sdk.chat_completion.request import (
 )
 from pydantic import StrictStr
 
+from quickapp.config.dial_deployment import (
+    CustomFieldsConfig,
+    DialDeploymentConfig,
+    DialDeploymentParameters,
+)
+from quickapp.config.tools.base import (
+    ConfigurableSchemaSimpleType,
+    JsonTypeEnum,
+    OpenAiToolConfig,
+    OpenAiToolFunction,
+    OpenAiToolFunctionParameters,
+)
+from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 
 
@@ -301,3 +314,110 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
     mock_service.resolve_attachment_urls.assert_awaited_once_with(["files/xyz/doc.pdf"])
+
+
+def _make_tool_config(
+    parameters: DialDeploymentParameters | None = None,
+    configuration_param_names: set[str] | None = None,
+) -> DialDeploymentTool:
+    """Build a real DialDeploymentTool for _pre_process_params tests."""
+    deployment = DialDeploymentConfig(
+        name="test-deployment",
+        parameters=parameters or DialDeploymentParameters(),
+    )
+    if configuration_param_names:
+        deployment._configuration_param_names = configuration_param_names
+    return DialDeploymentTool(
+        deployment=deployment,
+        open_ai_tool=OpenAiToolConfig(
+            function=OpenAiToolFunction(
+                name="test_tool",
+                description="A test tool",
+                parameters=OpenAiToolFunctionParameters(
+                    type=JsonTypeEnum.object,
+                    properties={
+                        "query": ConfigurableSchemaSimpleType(
+                            type=JsonTypeEnum.string, description="The query"
+                        ),
+                    },
+                    required=["query"],
+                ),
+            )
+        ),
+    )
+
+
+def _build_tool_with_config(
+    tool_config: DialDeploymentTool,
+    messages: list[Message] | None = None,
+) -> BaseDeploymentTool:
+    """Build a BaseDeploymentTool with a real tool_config for _pre_process_params tests."""
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=tool_config,
+        content_propagation=None,
+        dial_completion_service=MagicMock(),
+        messages=messages or [],
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_wraps_config_params():
+    """Configuration params are wrapped into custom_fields.configuration."""
+    tool_config = _make_tool_config(configuration_param_names={"size", "quality"})
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw a cat", size="1024x1024", quality="high")
+
+    assert result["query"] == "draw a cat"
+    assert result["custom_fields"]["configuration"]["size"] == "1024x1024"
+    assert result["custom_fields"]["configuration"]["quality"] == "high"
+    assert "size" not in {k for k in result if k != "custom_fields"}
+    assert "quality" not in {k for k in result if k != "custom_fields"}
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_merges_defaults_with_llm_config():
+    """LLM config params override defaults; unset defaults are preserved."""
+    params = DialDeploymentParameters(
+        custom_fields=CustomFieldsConfig(configuration={"size": "512x512", "style": "natural"})
+    )
+    tool_config = _make_tool_config(
+        parameters=params, configuration_param_names={"size", "quality"}
+    )
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", size="1024x1024")
+
+    config = result["custom_fields"]["configuration"]
+    assert config["size"] == "1024x1024"  # LLM overrides default
+    assert config["style"] == "natural"  # default preserved
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_no_config_names_stays_flat():
+    """With no configuration_param_names, all kwargs remain flat (backward compat)."""
+    tool_config = _make_tool_config()
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", custom_key="value")
+
+    assert result["query"] == "draw"
+    assert result["custom_key"] == "value"
+    assert "custom_fields" not in result
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_standard_params_stay_flat():
+    """Standard API params like temperature stay flat even when config params exist."""
+    tool_config = _make_tool_config(configuration_param_names={"size"})
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", size="1024x1024", temperature=0.7)
+
+    assert result["temperature"] == 0.7
+    assert "temperature" not in result.get("custom_fields", {}).get("configuration", {})
+    assert result["custom_fields"]["configuration"]["size"] == "1024x1024"

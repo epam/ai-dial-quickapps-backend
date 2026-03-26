@@ -1,6 +1,6 @@
 from typing import Any, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 
 class CustomFieldsConfig(BaseModel):
@@ -57,3 +57,4 @@ class DialDeploymentConfig(BaseModel):
         default_factory=DialDeploymentParameters,
         description="The predefined parameters for the DIAL deployment.",
     )
+    _configuration_param_names: set[str] = PrivateAttr(default_factory=set)

@@ -285,3 +285,28 @@ async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_s
     extra_headers = call_args[EXTRA_HEADERS]
     assert extra_headers["X-Request-Id"] == "deploy-req-789"
     assert extra_headers["X-Deployment-Custom"] == "deploy-val"
+
+
+@pytest.mark.asyncio
+async def test_custom_fields_configuration_routed_to_extra_body(
+    completion_service, dial_client, mock_stage_wrapper
+):
+    """Pre-wrapped custom_fields.configuration appears correctly nested in extra_body."""
+    await completion_service.complete_request_async(
+        params={
+            "query": "Test query",
+            "temperature": 0.7,
+            "custom_fields": {"configuration": {"size": "1024x1024", "quality": "high"}},
+        },
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = dial_client.chat.completions.create.call_args[1]
+    extra_body = call_args[EXTRA_BODY]
+    assert extra_body["temperature"] == 0.7
+    assert extra_body["custom_fields"] == {
+        "configuration": {"size": "1024x1024", "quality": "high"}
+    }
+    assert "query" not in extra_body
