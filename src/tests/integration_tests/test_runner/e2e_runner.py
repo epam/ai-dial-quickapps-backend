@@ -111,9 +111,13 @@ class TestRunner:
     @staticmethod
     async def _search_file(dial_client: AsyncDial, bucket: str, filename: str) -> str | None:
         """BFS over the bucket tree looking for a file by name. Returns its URL or None."""
+
         folders_to_visit = [f"files/{bucket}"]
         for folder in folders_to_visit:
-            metadata = await dial_client.files.get_metadata(folder + "/")
+            # Absolute URL preserves the trailing slash that DIAL Core requires
+            # to distinguish a folder-listing request from a file-metadata request.
+            folder_url = f"{dial_client.api_url}metadata/{folder}/"
+            metadata = await dial_client.metadata.get("files", folder_url)
             for item in metadata.items or []:
                 if item.node_type == "FOLDER":
                     folders_to_visit.append(f"{folder}/{item.name}")
