@@ -164,7 +164,9 @@ When the LLM requests multiple tools, the Tool Executor runs them concurrently u
 2. Invoked with parsed arguments
 3. Timed for performance tracking
 
-Results are collected and returned in order matching the original tool calls.
+Results are collected and returned in order matching the original tool calls. After execution,
+`CompletionResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
+result with its production time).
 
 ### Stage Wrapper Pattern
 
@@ -208,12 +210,18 @@ Messages undergo processing both before being sent to the LLM and when receiving
 
 ### Pre-Transformer Pipeline
 
-All message transformers extend the typed `MessagesTransformer` base class and are registered via the `AgentModule`
-and `AttachmentProcessingModule` DI providers. They run once at request setup via `_MessagesSetup`, called from
-`_RequestContextSetup.setup()`. `_MessagesSetup` returns a new transformed list of messages. The `AssistantInvoker`
-then uses the transformed messages directly without any copying or additional preprocessing.
+Message transformers are organized into two tiers:
 
-The pipeline runs the following steps in order:
+| Tier                       | When it runs                           | Mutation safety                                     |
+|----------------------------|----------------------------------------|-----------------------------------------------------|
+| `MessagesTransformer`      | Once, in `_MessagesSetup.setup()`      | Mutates the canonical message list                  |
+| `PreInvocationTransformer` | Every iteration, in `AssistantInvoker` | Each transformer selectively copies what it mutates |
+
+`MessagesTransformer` implementations run once at request setup via `_MessagesSetup`, called from
+`_RequestContextSetup.setup()`. `PreInvocationTransformer` implementations run before every LLM call in
+`AssistantInvoker.__prepare_messages()` — their changes are transient and never persisted to history.
+
+The setup pipeline runs the following steps in order:
 
 1. **Tool Call Extraction**: Not a transformer — runs first in `_MessagesSetup.setup()`. Expands prior-turn tool calls
    packed in `custom_content.state[TOOL_EXECUTION_HISTORY]` into proper ASSISTANT + TOOL message pairs. This must run
@@ -227,6 +235,18 @@ The pipeline runs the following steps in order:
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `available_context` tool. Returns messages unchanged when inactive.
+
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`, preview): Appends a synthetic
+   `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
+   interaction is happening. Historical timestamps are restored from state with their original times.
+
+### Pre-Invocation Transformers
+
+Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
+
+1. **Attachment Filter** (`_AttachmentFilter`): Filters unsupported attachment types and injects attachment XML metadata.
+2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`, preview): Appends human-readable
+   `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
 ### Streaming Response Processing
 
@@ -321,7 +341,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 12 specialized DI modules:
+The application is composed of 13 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -334,7 +354,8 @@ The application is composed of 12 specialized DI modules:
 9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
 10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
 11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
-12. **Skills Module**: Skill reader tool, agent skills provider
+12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
+13. **Skills Module**: Skill reader tool, agent skills provider
 
 ### Scoping
 

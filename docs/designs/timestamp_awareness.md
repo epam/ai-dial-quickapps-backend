@@ -298,16 +298,13 @@ class ToolCallTimestampConfig(BaseModel):
     injection_strategy: Literal["tool_call"] = "tool_call"
 
 
-# Future example:
-# class SystemPromptTimestampConfig(BaseModel):
-#     injection_strategy: Literal["system_prompt"] = "system_prompt"
-#     position: Literal["prepend", "append"] = "append"
-#     format: Literal["xml", "markdown"] = "xml"
-
-TimestampConfig = Annotated[
-    ToolCallTimestampConfig,  # | SystemPromptTimestampConfig
-    Discriminator("injection_strategy"),
-]
+# Type alias — currently a single variant.  When a second strategy is added,
+# change this to a discriminated union:
+#   TimestampConfig = Annotated[
+#       ToolCallTimestampConfig | SystemPromptTimestampConfig,
+#       Discriminator("injection_strategy"),
+#   ]
+TimestampConfig = ToolCallTimestampConfig
 ```
 
 `TimestampModule` matches on the config type and registers the appropriate components. When
@@ -320,7 +317,8 @@ the properties relevant to that strategy — no shared fields accumulate unused 
 
 #### Preview feature gating
 
-The `timestamp` field uses `PreviewField` for this release cycle.
+For this release cycle, `TimestampModule` is a preview module and the `timestamp` field uses
+`PreviewField`.
 
 ---
 
@@ -417,8 +415,8 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
 
 `TimestampModule` registers the tool and all transformers directly via `@multiprovider`,
 following the same pattern as `AttachmentProcessingModule` with `_AvailableContextTool`. The
-module is always loaded by `AppFactory`; registration is conditional on the presence of a
-`timestamp` section in `ApplicationConfig.features`.
+registration is conditional on the presence of a `timestamp` section in
+`ApplicationConfig.features`.
 
 ### What the LLM sees (auto-injected)
 
