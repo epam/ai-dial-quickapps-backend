@@ -179,6 +179,8 @@ def _preview_field(default=None, **kwargs) -> FieldInfo:
         Pydantic Field with preview marker.
     """
     has_factory = "default_factory" in kwargs
+    if has_factory and default is not None:
+        raise TypeError("Cannot specify both default and default_factory for PreviewField.")
     if default is not None and not has_factory:
         raise TypeError(
             "PreviewField requires default=None (preview fields must be nullable "

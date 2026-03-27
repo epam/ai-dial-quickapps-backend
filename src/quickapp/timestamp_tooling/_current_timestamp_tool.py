@@ -49,7 +49,7 @@ class _CurrentTimestampTool(StagedBaseTool):
     ) -> CompletionResult:
         timezone_str: str | None = kwargs.get("timezone")
 
-        if timezone_str:
+        if timezone_str is not None:
             tz = ZoneInfo(timezone_str)
             source = TimestampSource.REQUEST
         else:

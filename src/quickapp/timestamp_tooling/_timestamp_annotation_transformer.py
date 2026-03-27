@@ -31,8 +31,10 @@ class _TimestampAnnotationTransformer(PreInvocationTransformer):
                 metadata = get_metadata_from_state(state)
                 if metadata and metadata.timestamp and metadata.timestamp.response_timestamp:
                     ts = metadata.timestamp
+                    response_ts = ts.response_timestamp
+                    assert response_ts is not None
                     annotation = (
-                        f"\n[Timestamp: {ts.response_timestamp.strftime('%Y-%m-%d %H:%M:%S')}"  # type: ignore[union-attr]
+                        f"\n[Timestamp: {response_ts.strftime('%Y-%m-%d %H:%M:%S')}"
                         f" {ts.timezone_name or 'UTC'}]"
                     )
                     if not isinstance(msg.content, str):

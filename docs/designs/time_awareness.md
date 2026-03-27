@@ -400,7 +400,7 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
                 properties={
-                    "timezone": ConfigurableSchema(
+                    "timezone": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to UTC.",
                     )

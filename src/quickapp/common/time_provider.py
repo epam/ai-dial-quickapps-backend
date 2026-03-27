@@ -33,4 +33,5 @@ class TimeProvider:
         return self._source
 
     def format_timestamp(self, dt: datetime) -> str:
-        return f"{dt.isoformat()} ({self.tz_name}, source={self._source.value})"
+        tz_name = str(dt.tzinfo) if dt.tzinfo else self.tz_name
+        return f"{dt.isoformat()} ({tz_name}, source={self._source.value})"

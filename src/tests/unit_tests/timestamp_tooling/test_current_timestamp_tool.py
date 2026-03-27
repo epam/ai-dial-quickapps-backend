@@ -39,7 +39,7 @@ class TestCurrentTimestampTool:
     @pytest.mark.asyncio
     async def test_invalid_timezone_raises(self):
         tool = _build_tool()
-        with pytest.raises(Exception):
+        with pytest.raises(KeyError):
             await tool._run_in_stage_async(stage_wrapper=None, timezone="Invalid/Timezone")
 
     @pytest.mark.asyncio

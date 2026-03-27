@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from quickapp.common.message_metadata import TimestampSource
@@ -33,3 +34,18 @@ class TestTimeProvider:
         t1 = provider.now()
         t2 = provider.now()
         assert t2 >= t1
+
+    def test_format_timestamp_uses_provider_defaults(self):
+        provider = TimeProvider()
+        dt = datetime(2026, 3, 24, 14, 30, 0, tzinfo=timezone.utc)
+        result = provider.format_timestamp(dt)
+        assert "2026-03-24T14:30:00+00:00" in result
+        assert "UTC" in result
+        assert "source=default" in result
+
+    def test_format_timestamp_uses_datetime_timezone(self):
+        provider = TimeProvider()
+        tokyo = ZoneInfo("Asia/Tokyo")
+        dt = datetime(2026, 3, 24, 14, 30, 0, tzinfo=tokyo)
+        result = provider.format_timestamp(dt)
+        assert "Asia/Tokyo" in result
