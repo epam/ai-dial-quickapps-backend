@@ -3,12 +3,13 @@ import logging
 from pydantic import BaseModel, Field, model_validator
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, has_preview_marker
+from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.starters import ConversationStartersConfig
+from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,13 @@ def nullify_preview_fields(model: BaseModel) -> None:
             nullify_preview_fields(value)
 
 
+class Features(BaseModel):
+    timestamp: TimestampConfig | None = PreviewField(  # type: ignore[assignment]
+        default_factory=ToolCallTimestampConfig,
+        description="Time awareness configuration.",
+    )
+
+
 class ApplicationConfig(BaseApplicationTypeConfig):
     _dial_schema_id = "quickapps2"
     _dial_application_type_display_name = "Quick App 2.0"
@@ -69,6 +77,10 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     )
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
+    )
+    features: Features | None = Field(
+        default_factory=Features,
+        description="QuickApps Agent features configuration.",
     )
 
     @model_validator(mode="after")

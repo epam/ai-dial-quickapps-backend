@@ -1073,6 +1073,24 @@
       "title": "DialSystemPromptConfig",
       "type": "object"
     },
+    "Features": {
+      "properties": {
+        "timestamp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallTimestampConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time awareness configuration.",
+          "x-preview": true
+        }
+      },
+      "title": "Features",
+      "type": "object"
+    },
     "FileContextConfig": {
       "properties": {
         "type": {
@@ -2517,6 +2535,18 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "ToolCallTimestampConfig": {
+      "properties": {
+        "injection_strategy": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Injection Strategy",
+          "type": "string"
+        }
+      },
+      "title": "ToolCallTimestampConfig",
+      "type": "object"
+    },
     "ToolDisplayConfig": {
       "properties": {
         "stage": {
@@ -2842,6 +2872,21 @@
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 5
+      }
+    },
+    "features": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Features"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "QuickApps Agent features configuration.",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 6
       }
     }
   },

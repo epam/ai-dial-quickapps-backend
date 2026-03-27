@@ -1,6 +1,8 @@
 # Design: [Title]
 
-**Status:** Draft | Approved | Implemented | Superseded
+- **Status:** Draft | Approved | Implemented | Superseded
+- **Dependencies:**
+  - None | [Link to dependent design doc(s)]
 
 ## Problem Statement
 
