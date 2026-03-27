@@ -10,10 +10,7 @@ from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
-from quickapp.common.chat_completion_stream.models import (
-    ChatStreamFootprintMode,
-    ChunkUsageFootprint,
-)
+from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
@@ -65,6 +62,18 @@ def attachment_to_sdk(attachment: Any) -> dial_sdk_models.Attachment:
     return dial_sdk_models.Attachment(**attachment.model_dump())
 
 
+def fix_sdk_attachment(attachment: Any) -> None:
+    """Bugfix issue#16: if attachment has no data and no url, use reference_url as url or set empty data.
+
+    Mutates SDK attachment objects in place (orchestrator + deployment stream handlers).
+    """
+    if attachment.data is None and attachment.url is None:
+        if attachment.reference_url is None:
+            attachment["data"] = ""
+        else:
+            attachment.url = attachment.reference_url
+
+
 class ChatStreamAccumulator:
     """Collects text, custom content, usage, and optional tool/stage data from a stream."""
 
@@ -73,7 +82,6 @@ class ChatStreamAccumulator:
         self.__attachments: list[Attachment] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
         self.__usage: Any | None = None
-        self.__statistics: Any = None
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
 
@@ -113,20 +121,10 @@ class ChatStreamAccumulator:
     def set_usage(self, usage: Usage) -> None:
         self.__usage = usage
 
-    @property
-    def statistics(self) -> Any:
-        return self.__statistics
-
-    def apply_usage_footprint(
-        self, fp: ChunkUsageFootprint, *, mode: ChatStreamFootprintMode
-    ) -> None:
-        if mode == ChatStreamFootprintMode.DEPLOYMENT:
-            if fp.raw_usage is not None:
-                self.__usage = fp.raw_usage
-            if fp.statistics is not None:
-                self.__statistics = fp.statistics
-            return
-        if fp.prompt_tokens is not None and fp.completion_tokens is not None:
+    def apply_usage_footprint(self, fp: ChunkUsageFootprint) -> None:
+        if fp.raw_usage is not None:
+            self.__usage = fp.raw_usage
+        elif fp.prompt_tokens is not None and fp.completion_tokens is not None:
             self.__usage = Usage(fp.prompt_tokens, fp.completion_tokens)
 
     @property

@@ -2,6 +2,9 @@ import logging
 from collections.abc import AsyncIterable
 from typing import Any
 
+from aidial_client import AsyncDial
+from aidial_client.resources import AsyncMetadata
+from aidial_client.types.chat import response as dial_client_models
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
     AttachmentParam,
@@ -21,12 +24,13 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
-    DeploymentStreamStrategyConfig,
+    ChatStreamStrategyConfig,
 )
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONTENT_PARAM,
@@ -45,8 +49,10 @@ class DialCompletionService:
         azure_client: DEPLOYMENT_AZURE_CLIENT,
         dial_settings: DialSettings,
         api_key: DIAL_API_KEY,
+        dial_client: AsyncDial,
         forwarded_headers: ForwardedHeaders,
     ) -> None:
+        self.__dial_client: AsyncDial = dial_client
         self.__azure_client = azure_client
         self.__base_url: str = dial_settings.url
         self.__api_key: DIAL_API_KEY = api_key
@@ -80,10 +86,11 @@ class DialCompletionService:
         return CompletionResult(
             content=result.content,
             content_type="text/markdown",
+            # check if result.attachments: would return false for empty array
             attachments=result.attachments_or_none,
             state=result.state,
             usage=self.__get_deployment_usage(
-                result.usage, result.statistics, deployment_id, deployment_name
+                result.usage, deployment_id, deployment_name
             ),
         )
 
@@ -99,7 +106,6 @@ class DialCompletionService:
             "stream": True,
             "messages": messages,
         }
-        logger.debug("##%s", chat_completion_params)
 
         # query and attachment_urls are used only for messages; all other params go in extra_body
         extra_body: dict[str, Any] = dict(params.get(EXTRA_BODY) or {})
@@ -114,7 +120,6 @@ class DialCompletionService:
 
         if forwarded_headers:
             chat_completion_params[EXTRA_HEADERS] = forwarded_headers
-            logger.debug("##%s", chat_completion_params)
 
         return chat_completion_params
 
@@ -126,7 +131,7 @@ class DialCompletionService:
         try:
             return await self.__stream_handler.process_deployment_stream(
                 chunks=chunks,
-                config=DeploymentStreamStrategyConfig(stage_wrapper=stage_wrapper),
+                config=ChatStreamStrategyConfig(stage_wrapper=stage_wrapper),
             )
         except ChatStreamHandlerError:
             logger.exception("Deployment stream handling failed.")
@@ -135,24 +140,10 @@ class DialCompletionService:
     @staticmethod
     def __get_deployment_usage(
         usage: Any,
-        statistics: dict | None,
         deployment_id: str,
         deployment_name: str,
     ) -> list[DeploymentUsage] | None:
-        if statistics:
-            result = []
-            for model_usage in statistics:
-                result.append(
-                    DeploymentUsage(
-                        model_name=model_usage.get("model"),
-                        deployment_name=deployment_name,
-                        deployment_id=deployment_id,
-                        prompt_tokens=model_usage.get("prompt_tokens") or 0,
-                        completion_tokens=model_usage.get("completion_tokens") or 0,
-                    )
-                )
-            return result
-        elif usage:
+        if usage:
             return [
                 DeploymentUsage(
                     model_name=deployment_id,
@@ -162,7 +153,6 @@ class DialCompletionService:
                     completion_tokens=usage.completion_tokens,
                 )
             ]
-
         return None
 
     async def __build_request_messages(
@@ -191,21 +181,18 @@ class DialCompletionService:
         return message
 
     async def resolve_attachment_urls(
-        self, relative_attachment_urls: list[str] | None
+            self, relative_attachment_urls: list[str] | None
     ) -> list[AttachmentParam]:
-        attachments = []
-        if relative_attachment_urls:
-            async with DialCoreClient(self.__api_key, self.__base_url) as dial_core_client:
-                for url in relative_attachment_urls:
-                    attachments.append(await self._resolve_attachment(dial_core_client, url))
-        return attachments
+        return [await self._resolve_attachment(url) for url in (relative_attachment_urls or [])]
 
     async def _resolve_attachment(
-        self, dial_core_client: DialCoreClient, file_relative_url: str
+            self, file_relative_url: str
     ) -> AttachmentParam:
-        fileinfo = await dial_core_client.get_metadata(file_relative_url)
+        metadata: AsyncMetadata = self.__dial_client.metadata
+        fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
         return AttachmentParam(
-            type=fileinfo.get("content_type", ""),
-            title=fileinfo.get("name", ""),
-            url=fileinfo.get("url", ""),
+            type=fileinfo.content_type or "",
+            title=fileinfo.name,
+            url=fileinfo.url or "",
         )
+

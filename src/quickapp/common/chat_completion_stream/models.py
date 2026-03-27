@@ -1,20 +1,9 @@
 from __future__ import annotations
 
-from enum import Enum
 from typing import Any
 
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class ChatStreamFootprintMode(str, Enum):
-    """How ``ChunkUsageFootprint`` is emitted for a stream."""
-
-    ORCHESTRATOR = "orchestrator"
-    """Omit footprint when ``chunk.usage`` is absent (typical token chunks)."""
-
-    DEPLOYMENT = "deployment"
-    """Always emit footprint so per-chunk ``statistics`` (``model_extra``) can be applied."""
 
 
 class NormalizedCustomContent(BaseModel):
@@ -41,7 +30,6 @@ class ChunkUsageFootprint(BaseModel):
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     raw_usage: Any = None
-    statistics: Any = None
 
 
 ChatStreamEvent = ChunkUsageFootprint | NormalizedChoiceDelta

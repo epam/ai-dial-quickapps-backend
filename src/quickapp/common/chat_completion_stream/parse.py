@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
 
 from quickapp.agent._stage_delta_types import attachment_kwargs, normalize_attachment
 from quickapp.common.chat_completion_stream.models import (
-    ChatStreamFootprintMode,
     ChunkUsageFootprint,
     NormalizedChoiceDelta,
     NormalizedCustomContent,
@@ -69,55 +69,24 @@ def _custom_content_from_dict(raw: dict[str, Any]) -> NormalizedCustomContent | 
     )
 
 
-def _custom_content_from_object(custom_raw: Any) -> NormalizedCustomContent | None:
-    """Deployment streams: typed ``delta.custom_content`` with ``attachments`` / ``state``."""
-    attachments = getattr(custom_raw, "attachments", None)
-    state = getattr(custom_raw, "state", None)
-    if attachments or state:
-        return NormalizedCustomContent(
-            sdk_attachments=list(attachments or []),
-            stage_entries=[],
-            state=state,
-        )
-    return None
-
-
 def _custom_content_from_delta(custom_raw: Any) -> NormalizedCustomContent | None:
-    """Normalize ``delta.custom_content`` whether it is a dict (orchestrator) or an object (deployment)."""
+    """Normalize ``delta.custom_content`` (dict shape used by current stream providers)."""
     if custom_raw is None:
         return None
     if isinstance(custom_raw, dict):
         return _custom_content_from_dict(custom_raw)
-    return _custom_content_from_object(custom_raw)
+    return None
 
 
-def _statistics_from_chunk(chunk: Any) -> Any:
-    extra = getattr(chunk, "model_extra", None) or {}
-    return extra.get("statistics", {}).get("usage_per_model", {})
-
-
-def _usage_footprint_orchestrator(chunk: Any) -> ChunkUsageFootprint | None:
+def _usage_footprint(chunk: Any) -> ChunkUsageFootprint | None:
     u = getattr(chunk, "usage", None)
-    if u is None:
-        return None
-    return ChunkUsageFootprint(
-        prompt_tokens=getattr(u, "prompt_tokens", None),
-        completion_tokens=getattr(u, "completion_tokens", None),
-        raw_usage=u,
-    )
-
-
-def _usage_footprint_deployment(chunk: Any) -> ChunkUsageFootprint:
-    statistics = _statistics_from_chunk(chunk)
-    u = getattr(chunk, "usage", None)
-    if u is None:
-        return ChunkUsageFootprint(statistics=statistics)
-    return ChunkUsageFootprint(
-        prompt_tokens=getattr(u, "prompt_tokens", None),
-        completion_tokens=getattr(u, "completion_tokens", None),
-        raw_usage=u,
-        statistics=statistics,
-    )
+    if u is not None:
+        return ChunkUsageFootprint(
+            prompt_tokens=getattr(u, "prompt_tokens", None),
+            completion_tokens=getattr(u, "completion_tokens", None),
+            raw_usage=u
+        )
+    return None
 
 
 def _delta_tool_calls_tuple(delta: Any) -> tuple[Any, ...]:
@@ -142,15 +111,8 @@ def _normalized_choice_delta(choice: Any) -> NormalizedChoiceDelta | None:
     )
 
 
-def parse_chat_completion_chunk(
-    chunk: Any,
-    *,
-    mode: ChatStreamFootprintMode = ChatStreamFootprintMode.ORCHESTRATOR,
-) -> tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]:
-    if mode == ChatStreamFootprintMode.DEPLOYMENT:
-        usage_footprint: ChunkUsageFootprint | None = _usage_footprint_deployment(chunk)
-    else:
-        usage_footprint = _usage_footprint_orchestrator(chunk)
+def parse_chat_completion_chunk(chunk: Any) -> tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]:
+    usage_footprint = _usage_footprint(chunk)
 
     choices = getattr(chunk, "choices", None)
     if not choices:

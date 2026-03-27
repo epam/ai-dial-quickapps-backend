@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterable
-from functools import partial
-from typing import Any, Protocol
+from typing import Protocol
 
-from aidial_sdk.chat_completion import Stage, Status
+from aidial_sdk.chat_completion import Choice, Stage, Status
 from openai.types.chat import ChatCompletionChunk
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +12,7 @@ from quickapp.agent._stage_delta_types import (
     StageDeltaItem,
     as_stage_delta,
     attachment_kwargs,
+    get_stage_index,
     stage_display_name,
 )
 from quickapp.common.chat_completion_stream.driver import consume_chat_completion_chunks
@@ -24,15 +24,16 @@ from quickapp.common.chat_completion_stream.exceptions import (
 )
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamEvent,
-    ChatStreamFootprintMode,
     ChunkUsageFootprint,
     NormalizedChoiceDelta,
     NormalizedCustomContent,
 )
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.parse import parse_chat_completion_chunk
 from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
     attachment_to_sdk,
+    fix_sdk_attachment,
 )
 
 logger = logging.getLogger(__name__)
@@ -46,35 +47,44 @@ class _StreamStrategy(Protocol):
     def finalize(self) -> None: ...
 
 
-class OrchestratorStreamStrategyConfig(BaseModel):
+class ChatStreamStrategyConfig(BaseModel):
+    """Single strategy: orchestrator sets ``destination`` (+ ``propagate_stages``); deployment sets ``stage_wrapper``."""
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    destination: Any
+    destination: Choice | None = None
+    stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
-    propagate_orchestrator_stages: bool = True
+    propagate_stages: bool = False
 
 
-class DeploymentStreamStrategyConfig(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    stage_wrapper: Any | None = None
-
-
-class _OrchestratorStreamStrategy:
-    def __init__(
-        self, *, accumulator: ChatStreamAccumulator, config: OrchestratorStreamStrategyConfig
-    ) -> None:
+class _ChatStreamStrategy:
+    def __init__(self, *, accumulator: ChatStreamAccumulator, config: ChatStreamStrategyConfig) -> None:
         self._accumulator = accumulator
         self._config = config
-        self._streaming_stages: dict[str, Stage] = {}
-        self._stage_names_by_index: dict[int, str] = {}
+        self._stages_by_index: dict[int, Stage] = {}
 
     def handle_footprint(self, fp: ChunkUsageFootprint) -> None:
-        self._accumulator.apply_usage_footprint(fp, mode=ChatStreamFootprintMode.ORCHESTRATOR)
+        self._accumulator.apply_usage_footprint(fp)
 
     def handle_delta(self, delta: NormalizedChoiceDelta) -> None:
         if delta.content and self._config.stream_content:
-            self._append_choice_content(delta.content)
+            dest = self._config.destination
+            wrap = self._config.stage_wrapper
+            if dest is not None:
+                try:
+                    dest.append_content(delta.content)
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ChatStreamSinkWriteError(
+                        "Failed to stream content to choice sink."
+                    ) from exc
+            elif wrap is not None:
+                try:
+                    wrap.append_stage_content(delta.content)
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ChatStreamSinkWriteError(
+                        "Failed to stream content to deployment stage wrapper."
+                    ) from exc
             self._accumulator.append_content(delta.content)
 
         if delta.custom is not None:
@@ -86,74 +96,90 @@ class _OrchestratorStreamStrategy:
     def finalize(self) -> None:
         self._close_all_streaming_stages(status=Status.FAILED)
 
-    @staticmethod
-    def _fix_attachment(attachment: Any) -> None:
-        if attachment.data is None and attachment.url is None:
-            if attachment.reference_url is None:
-                attachment["data"] = ""
-            else:
-                attachment.url = attachment.reference_url
-
-    def _append_choice_content(self, content: str) -> None:
-        try:
-            self._config.destination.append_content(content)
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ChatStreamSinkWriteError("Failed to stream content to choice sink.") from exc
-
     def _apply_custom(self, norm: NormalizedCustomContent) -> None:
-        for attachment in norm.sdk_attachments:
-            self._fix_attachment(attachment)
-            try:
-                self._config.destination.add_attachment(**attachment.model_dump())
-            except Exception as exc:  # pragma: no cover - defensive
-                raise ChatStreamSinkWriteError(
-                    "Failed to stream attachment to choice sink."
-                ) from exc
-            self._accumulator.append_attachment(attachment)
+        dest = self._config.destination
+        wrap = self._config.stage_wrapper
+
+        if dest is not None:
+            for attachment in norm.sdk_attachments:
+                fix_sdk_attachment(attachment)
+                try:
+                    dest.add_attachment(**attachment.model_dump())
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ChatStreamSinkWriteError(
+                        "Failed to stream attachment to choice sink."
+                    ) from exc
+                self._accumulator.append_attachment(attachment)
+        elif wrap is not None and norm.sdk_attachments:
+            self._accumulator.extend_attachments_from_api(norm.sdk_attachments)
+            for attachment in norm.sdk_attachments:
+                fix_sdk_attachment(attachment)
+                try:
+                    wrap.add_attachment(attachment_to_sdk(attachment))
+                except Exception as exc:  # pragma: no cover - defensive
+                    raise ChatStreamSinkWriteError(
+                        "Failed to stream attachment to deployment stage wrapper."
+                    ) from exc
+        elif norm.sdk_attachments:
+            self._accumulator.extend_attachments_from_api(norm.sdk_attachments)
 
         for position, raw in norm.stage_entries:
             delta = as_stage_delta(raw)
             self._accumulator.append_stage_delta(delta, position)
-            if self._config.propagate_orchestrator_stages:
+            if self._config.propagate_stages and dest is not None:
                 self._stream_stage_delta(delta, position)
 
         if norm.state is not None:
             self._accumulator.merge_state(norm.state)
 
     def _stream_stage_delta(self, delta: StageDeltaItem, position: int) -> None:
-        stage_index = delta.get("index") if isinstance(delta.get("index"), int) else None
-        stage_name = stage_display_name(delta)
-        if stage_name and stage_index is not None:
-            self._stage_names_by_index[stage_index] = stage_name
-        elif stage_name is None and stage_index is not None:
-            stage_name = self._stage_names_by_index.get(stage_index)
-        if not stage_name:
-            logger.warning(
-                "Skipping stage delta propagation because stage name is missing: %s", delta
-            )
+        dest = self._config.destination
+        if dest is None:
             return
 
-        stage = self._streaming_stages.get(stage_name)
+        idx = get_stage_index(delta, position)
+        stage_name = stage_display_name(delta)
+
+        stage = self._stages_by_index.get(idx)
+        just_created = False
         if stage is None:
+            if not stage_name:
+                logger.warning(
+                    "Skipping stage delta propagation because stage name is missing: %s", delta
+                )
+                return
             try:
-                stage = self._config.destination.create_stage(stage_name)
+                stage = dest.create_stage(stage_name)
                 stage.open()
-                self._streaming_stages[stage_name] = stage
+                self._stages_by_index[idx] = stage
+                just_created = True
             except Exception as exc:
                 logger.warning(
-                    "Failed to create/open orchestrator stage '%s': %s",
+                    "Failed to create/open orchestrator stage '%s' (index %s): %s",
                     stage_name,
+                    idx,
                     exc,
                     exc_info=True,
                 )
                 return
 
+        if not just_created and "name" in delta and delta["name"] is not None:
+            try:
+                stage.append_name(str(delta["name"]))
+            except Exception as exc:
+                logger.warning(
+                    "Failed to append name to streaming stage (index %s): %s",
+                    idx,
+                    exc,
+                )
+
         if "content" in delta and delta["content"]:
             try:
                 stage.append_content(str(delta["content"]))
             except Exception as exc:  # pragma: no cover - defensive
+                label = stage_name or f"index {idx}"
                 raise ChatStreamSinkWriteError(
-                    f"Failed to append content to stage '{stage_name}'."
+                    f"Failed to append content to stage '{label}'."
                 ) from exc
 
         if "attachments" in delta and delta["attachments"]:
@@ -163,8 +189,8 @@ class _OrchestratorStreamStrategy:
                         stage.add_attachment(**attachment_kwargs(att))
                     except Exception as exc:
                         logger.warning(
-                            "Failed to add attachment to stage '%s': %s",
-                            stage_name,
+                            "Failed to add attachment to streaming stage (index %s): %s",
+                            idx,
                             exc,
                         )
 
@@ -174,78 +200,25 @@ class _OrchestratorStreamStrategy:
                 if str(delta["status"]).lower() == Status.COMPLETED.value
                 else Status.FAILED
             )
-            self._close_streaming_stage(stage_name, status)
-            if stage_index is not None:
-                self._stage_names_by_index.pop(stage_index, None)
+            self._close_streaming_stage_at_index(idx, status)
 
-    def _close_streaming_stage(self, stage_name: str, status: Status) -> None:
-        stage = self._streaming_stages.pop(stage_name, None)
+    def _close_streaming_stage_at_index(self, idx: int, status: Status) -> None:
+        stage = self._stages_by_index.pop(idx, None)
         if stage is None:
             return
         try:
             stage.close(status=status)
         except Exception as exc:
             logger.warning(
-                "Error closing orchestrator stage '%s': %s",
-                stage_name,
+                "Error closing orchestrator streaming stage (index %s): %s",
+                idx,
                 exc,
                 exc_info=True,
             )
 
     def _close_all_streaming_stages(self, status: Status) -> None:
-        for stage_name in list(self._streaming_stages.keys()):
-            self._close_streaming_stage(stage_name, status)
-
-
-class _DeploymentStreamStrategy:
-    def __init__(
-        self, *, accumulator: ChatStreamAccumulator, config: DeploymentStreamStrategyConfig
-    ) -> None:
-        self._accumulator = accumulator
-        self._config = config
-
-    def handle_footprint(self, fp: ChunkUsageFootprint) -> None:
-        self._accumulator.apply_usage_footprint(fp, mode=ChatStreamFootprintMode.DEPLOYMENT)
-
-    def handle_delta(self, delta: NormalizedChoiceDelta) -> None:
-        if delta.content:
-            if self._config.stage_wrapper is not None:
-                try:
-                    self._config.stage_wrapper.append_stage_content(delta.content)
-                except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamSinkWriteError(
-                        "Failed to stream content to deployment stage wrapper."
-                    ) from exc
-            self._accumulator.append_content(delta.content)
-
-        if delta.custom is not None:
-            self._apply_custom(delta.custom)
-
-    def finalize(self) -> None:
-        return
-
-    @staticmethod
-    def _fix_attachment(attachment: Any) -> None:
-        if attachment.data is None and attachment.url is None:
-            if attachment.reference_url is None:
-                attachment["data"] = ""
-            else:
-                attachment.url = attachment.reference_url
-
-    def _apply_custom(self, norm: NormalizedCustomContent) -> None:
-        if norm.sdk_attachments:
-            self._accumulator.extend_attachments_from_api(norm.sdk_attachments)
-            if self._config.stage_wrapper is not None:
-                for attachment in norm.sdk_attachments:
-                    self._fix_attachment(attachment)
-                    try:
-                        self._config.stage_wrapper.add_attachment(attachment_to_sdk(attachment))
-                    except Exception as exc:  # pragma: no cover - defensive
-                        raise ChatStreamSinkWriteError(
-                            "Failed to stream attachment to deployment stage wrapper."
-                        ) from exc
-        if norm.state is not None:
-            self._accumulator.merge_state(norm.state)
+        for idx in list(self._stages_by_index.keys()):
+            self._close_streaming_stage_at_index(idx, status)
 
 
 class ChatStreamEventDispatcher:
@@ -264,17 +237,14 @@ class ChatCompletionStreamHandler:
         self,
         *,
         chat_completion: AsyncIterable[ChatCompletionChunk],
-        config: OrchestratorStreamStrategyConfig,
+        config: ChatStreamStrategyConfig,
     ) -> ChatStreamAccumulator:
         accumulator = ChatStreamAccumulator()
         # Preserve existing behavior for orchestrator responses.
-        config.destination.append_content("\n\r")
-        strategy = _OrchestratorStreamStrategy(accumulator=accumulator, config=config)
-        await self._run(
-            chat_completion=chat_completion,
-            mode=ChatStreamFootprintMode.ORCHESTRATOR,
-            strategy=strategy,
-        )
+        if config.destination is not None:
+            config.destination.append_content("\n\r")
+        strategy = _ChatStreamStrategy(accumulator=accumulator, config=config)
+        await self._run(chat_completion=chat_completion, strategy=strategy)
         self._log_stream_accumulator(accumulator)
         return accumulator
 
@@ -282,31 +252,26 @@ class ChatCompletionStreamHandler:
         self,
         *,
         chunks: AsyncIterable[ChatCompletionChunk],
-        config: DeploymentStreamStrategyConfig,
+        config: ChatStreamStrategyConfig,
     ) -> ChatStreamAccumulator:
         accumulator = ChatStreamAccumulator()
         if config.stage_wrapper:
             config.stage_wrapper.append_stage_content("> #### Response:\n")
-        strategy = _DeploymentStreamStrategy(accumulator=accumulator, config=config)
-        await self._run(
-            chat_completion=chunks,
-            mode=ChatStreamFootprintMode.DEPLOYMENT,
-            strategy=strategy,
-        )
+        strategy = _ChatStreamStrategy(accumulator=accumulator, config=config)
+        await self._run(chat_completion=chunks, strategy=strategy)
         return accumulator
 
     async def _run(
         self,
         *,
         chat_completion: AsyncIterable[ChatCompletionChunk],
-        mode: ChatStreamFootprintMode,
         strategy: _StreamStrategy,
     ) -> None:
         dispatcher = ChatStreamEventDispatcher(strategy=strategy)
         try:
             await consume_chat_completion_chunks(
                 chat_completion,
-                partial(parse_chat_completion_chunk, mode=mode),
+                parse_chat_completion_chunk,
                 dispatcher,
             )
         except ChatStreamHandlerError:
