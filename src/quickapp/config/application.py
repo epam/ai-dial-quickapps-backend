@@ -78,9 +78,9 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
     )
-    features: Features = Field(
+    features: Features | None = Field(
         default_factory=Features,
-        description="Optional feature flags.",
+        description="QuickApps Agent features configuration.",
     )
 
     @model_validator(mode="after")

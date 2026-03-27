@@ -41,13 +41,18 @@ class TimestampModule(Module):
 
         logger.debug("TimestampModule configuration completed")
 
+    @staticmethod
+    def _is_timestamp_feature_enabled(app_config: ApplicationConfig) -> bool:
+        features = app_config.features
+        return features is not None and features.timestamp is not None
+
     @multiprovider
     def _provide_timestamp_tools(
         self,
         app_config: ApplicationConfig,
         tool_builder: AssistedBuilder[_CurrentTimestampTool],
     ) -> list[StagedBaseTool]:
-        if app_config.features.timestamp is None:
+        if not self._is_timestamp_feature_enabled(app_config):
             return []
 
         return [
@@ -74,7 +79,7 @@ class TimestampModule(Module):
         app_config: ApplicationConfig,
         annotation_transformer: _TimestampAnnotationTransformer,
     ) -> list[PreInvocationTransformer]:
-        if app_config.features.timestamp is None:
+        if not self._is_timestamp_feature_enabled(app_config):
             return []
         return [annotation_transformer]
 
@@ -84,6 +89,6 @@ class TimestampModule(Module):
         app_config: ApplicationConfig,
         time_provider: TimeProvider,
     ) -> list[CompletionResultEnricher]:
-        if app_config.features.timestamp is None:
+        if not self._is_timestamp_feature_enabled(app_config):
             return []
         return [_TimestampMetadataEnricher(time_provider)]
