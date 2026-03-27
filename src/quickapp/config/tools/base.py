@@ -173,6 +173,10 @@ class AttachmentConfig(BaseModel):
         default_factory=lambda: DEFAULT_PROPAGATE_TO_CHOICE,
         description="List of attachment types to propagate from stage to choice.",
     )
+    media_type_substitution: dict[str, str] = Field(
+        default_factory=dict,
+        description="Maps original attachment types to substitution types for custom visualizers.",
+    )
 
     @field_validator("supported_types", mode="before")
     @classmethod
@@ -186,6 +190,13 @@ class AttachmentConfig(BaseModel):
     def coerce_none_propagate_types(cls, v: list[str] | None) -> list[str]:
         if v is None:
             return DEFAULT_PROPAGATE_TO_CHOICE
+        return v
+
+    @field_validator("media_type_substitution", mode="before")
+    @classmethod
+    def coerce_none_type_substitution(cls, v: dict[str, str] | None) -> dict[str, str]:
+        if v is None:
+            return {}
         return v
 
 
