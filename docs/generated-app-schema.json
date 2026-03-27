@@ -1073,6 +1073,24 @@
       "title": "DialSystemPromptConfig",
       "type": "object"
     },
+    "Features": {
+      "properties": {
+        "timestamp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallTimestampConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time awareness configuration.",
+          "x-preview": true
+        }
+      },
+      "title": "Features",
+      "type": "object"
+    },
     "FileContextConfig": {
       "properties": {
         "type": {
@@ -2857,23 +2875,15 @@
       }
     },
     "features": {
-      "properties": {
-        "timestamp": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ToolCallTimestampConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Time awareness configuration.",
-          "x-preview": true
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Features"
+        },
+        {
+          "type": "null"
         }
-      },
-      "title": "Features",
-      "type": "object",
-      "description": "Optional feature flags.",
+      ],
+      "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 6
