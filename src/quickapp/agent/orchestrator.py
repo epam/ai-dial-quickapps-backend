@@ -13,7 +13,7 @@ from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
-    ChatStreamStrategyConfig,
+    ChatStreamConfig,
 )
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
@@ -103,7 +103,7 @@ class Orchestrator:
             stream_accumulator = (
                 await self.__stream_handler_provider.get().process_orchestrator_stream(
                     chat_completion=chat_completion_stream,
-                    config=ChatStreamStrategyConfig(
+                    config=ChatStreamConfig(
                         destination=self.__choice,
                         stream_content=True,
                         propagate_stages=self.__propagate_orchestrator_stages,

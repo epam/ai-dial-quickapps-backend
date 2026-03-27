@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -84,7 +83,7 @@ def _usage_footprint(chunk: Any) -> ChunkUsageFootprint | None:
         return ChunkUsageFootprint(
             prompt_tokens=getattr(u, "prompt_tokens", None),
             completion_tokens=getattr(u, "completion_tokens", None),
-            raw_usage=u
+            raw_usage=u,
         )
     return None
 
@@ -111,7 +110,9 @@ def _normalized_choice_delta(choice: Any) -> NormalizedChoiceDelta | None:
     )
 
 
-def parse_chat_completion_chunk(chunk: Any) -> tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]:
+def parse_chat_completion_chunk(
+    chunk: Any,
+) -> tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]:
     usage_footprint = _usage_footprint(chunk)
 
     choices = getattr(chunk, "choices", None)

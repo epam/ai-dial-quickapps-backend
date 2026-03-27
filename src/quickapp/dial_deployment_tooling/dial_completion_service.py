@@ -4,7 +4,6 @@ from typing import Any
 
 from aidial_client import AsyncDial
 from aidial_client.resources import AsyncMetadata
-from aidial_client.types.chat import response as dial_client_models
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
     AttachmentParam,
@@ -24,11 +23,10 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
-    ChatStreamStrategyConfig,
+    ChatStreamConfig,
 )
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
-from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.dial_deployment_tooling.constants import (
@@ -89,9 +87,7 @@ class DialCompletionService:
             # check if result.attachments: would return false for empty array
             attachments=result.attachments_or_none,
             state=result.state,
-            usage=self.__get_deployment_usage(
-                result.usage, deployment_id, deployment_name
-            ),
+            usage=self.__get_deployment_usage(result.usage, deployment_id, deployment_name),
         )
 
     @staticmethod
@@ -131,7 +127,7 @@ class DialCompletionService:
         try:
             return await self.__stream_handler.process_deployment_stream(
                 chunks=chunks,
-                config=ChatStreamStrategyConfig(stage_wrapper=stage_wrapper),
+                config=ChatStreamConfig(stage_wrapper=stage_wrapper),
             )
         except ChatStreamHandlerError:
             logger.exception("Deployment stream handling failed.")
@@ -181,13 +177,11 @@ class DialCompletionService:
         return message
 
     async def resolve_attachment_urls(
-            self, relative_attachment_urls: list[str] | None
+        self, relative_attachment_urls: list[str] | None
     ) -> list[AttachmentParam]:
         return [await self._resolve_attachment(url) for url in (relative_attachment_urls or [])]
 
-    async def _resolve_attachment(
-            self, file_relative_url: str
-    ) -> AttachmentParam:
+    async def _resolve_attachment(self, file_relative_url: str) -> AttachmentParam:
         metadata: AsyncMetadata = self.__dial_client.metadata
         fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
         return AttachmentParam(
@@ -195,4 +189,3 @@ class DialCompletionService:
             title=fileinfo.name,
             url=fileinfo.url or "",
         )
-
