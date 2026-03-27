@@ -130,6 +130,7 @@ def test_web_search(client):
             "1,789,226",
             "I'll search for the latest information on Tesla sales in 2024 and provide just the number.1,789,226",
             "1789226",
+            "1,789,226 (Source: Tesla 2024 deliveries press release)"
         ],
     ),
 )
