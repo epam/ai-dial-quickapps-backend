@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from injector import Injector
 
@@ -17,6 +19,7 @@ from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 
 
 class AppFactory:
@@ -46,8 +49,14 @@ class AppFactory:
             FileTransferModule(),
             AttachmentProcessingModule(),
             SkillsModule(),
+            TimestampModule(),
         ]
-        if not FeatureSettings().enable_preview_features:
+        if FeatureSettings().enable_preview_features:
+            logging.getLogger(__name__).info(
+                "Preview features are enabled (ENABLE_PREVIEW_FEATURES=true). "
+                "Preview modules and config fields are active."
+            )
+        else:
             modules = [m for m in modules if not is_preview_module(m)]
         injector = Injector(modules)
         app = injector.get(FastAPI)

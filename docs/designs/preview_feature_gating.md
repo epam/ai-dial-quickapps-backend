@@ -6,7 +6,7 @@
 
 ## Problem Statement
 
-As new features are added to QuickApps (e.g. timestamp awareness), some need to be shipped in
+As new features are added to QuickApps (e.g. time awareness), some need to be shipped in
 a "preview" state — available for early testing but not yet considered stable. Today there is no
 mechanism to:
 
@@ -282,7 +282,7 @@ documentation suffices.
 ```python
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(
-        default=None, description="Timestamp awareness configuration."
+        default=None, description="Time awareness configuration."
     )
 ```
 
@@ -291,7 +291,7 @@ class Features(BaseModel):
 ```python
 class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
-        default=None, description="Timestamp awareness configuration."
+        default=None, description="Time awareness configuration."
     )
 ```
 

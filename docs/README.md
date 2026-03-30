@@ -17,7 +17,8 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) for details.
 
 | Document                              | Description                                                                  |
 |---------------------------------------|------------------------------------------------------------------------------|
-| [Agent Skills](skills.md) `[Preview]` | How to create and manage reusable agent skills (directory layout, metadata). |
+| [Agent Skills](skills.md) `[Preview]`            | How to create and manage reusable agent skills (directory layout, metadata). |
+| [Time Awareness](time_awareness.md) `[Preview]`  | How the agent knows the current time and reasons about data freshness.       |
 
 ## Diagrams
 

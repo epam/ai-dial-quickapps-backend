@@ -4,19 +4,20 @@ from xml.sax.saxutils import escape
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
 
+from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.utils import matches_type
 
 logger = logging.getLogger(__name__)
 
 
-class _AttachmentFilter:
+class _AttachmentFilter(PreInvocationTransformer):
     SUPPORTED_ATTACHMENTS = ["image/*"]
 
     @staticmethod
     def _has_attachments(message: Message) -> bool:
         return message.custom_content is not None and bool(message.custom_content.attachments)
 
-    def filter_attachments(self, messages: list[Message]) -> list[Message]:
+    def transform(self, messages: list[Message]) -> list[Message]:
         for item in messages:
             if not isinstance(item, Message):
                 raise TypeError("All items must be Message instances")
