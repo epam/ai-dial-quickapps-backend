@@ -1,8 +1,9 @@
+import logging
 import os
 from typing import Any
 from urllib.parse import unquote
 
-from aidial_sdk.chat_completion import Attachment, Message, Role
+from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
 from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
@@ -39,6 +40,8 @@ from quickapp.internal_tooling.py_interpreter_tooling.model.request import (
     InputFileTransferDto,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.model.response import LoadedFiles
+
+logger = logging.getLogger(__name__)
 
 
 @inject
@@ -160,7 +163,9 @@ class _PyInterpreterTool(StagedBaseTool):
         )
         loaded_file_names = [file.path for file in loaded_files.files]
 
-        attachments_urls_map = self._get_attachment_urls_map(self.__messages, Role.USER)
+        attachments_urls_map = self._get_attachment_urls_map(self.__messages)
+
+        errors: list[str] = []
 
         # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
@@ -169,37 +174,54 @@ class _PyInterpreterTool(StagedBaseTool):
             if target_path in loaded_file_names:
                 continue
 
+            matched = False
             for attachment_url, attachment in attachments_urls_map.items():
                 sanitized_file_name = file_name.replace(" ", "%20")
                 if attachment_url.endswith(file_name) or attachment_url.endswith(
                     sanitized_file_name
                 ):
-                    url = await InputFileHandler().get_attachment_url(
-                        settings=self.__py_interpreter_settings,
-                        dial_api_key=self.__dial_api_key,
-                        attachment_url=attachment_url,
-                        attachment=attachment,
-                        dial_url=self.__dial_settings.url,
-                    )
-
-                    await client.transfer_input_file(
-                        InputFileTransferDto(
-                            sessionId=session_id,
-                            sourceUrl=url,
-                            targetPath=target_path,
+                    matched = True
+                    try:
+                        url = await InputFileHandler().get_attachment_url(
+                            settings=self.__py_interpreter_settings,
+                            dial_api_key=self.__dial_api_key,
+                            attachment_url=attachment_url,
+                            attachment=attachment,
+                            dial_url=self.__dial_settings.url,
                         )
-                    )
+
+                        await client.transfer_input_file(
+                            InputFileTransferDto(
+                                sessionId=session_id,
+                                sourceUrl=url,
+                                targetPath=target_path,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to transfer file %s: %s", target_path, e)
+                        errors.append(f"{target_path}: {e}")
                     break
 
+            if not matched:
+                logger.warning("No matching attachment found for: %s", file_name)
+                errors.append(
+                    f"{unquote(os.path.basename(file_name))}: "
+                    f"no matching attachment found in conversation"
+                )
+
+        if errors:
+            raise _PyInterpreterError(
+                "Failed to prepare input files:\n" + "\n".join(f"- {e}" for e in errors)
+            )
+
     @staticmethod
-    def _get_attachment_urls_map(messages: list[Message], role: Role) -> dict[str, Attachment]:
-        """Get a map of attachment URLs to Attachment objects"""
+    def _get_attachment_urls_map(messages: list[Message]) -> dict[str, Attachment]:
+        """Get a map of attachment URLs to Attachment objects from all messages."""
         attachments_urls_map: dict[str, Attachment] = {}
 
         for msg in messages:
-            if msg.role == role and msg.custom_content and msg.custom_content.attachments:
-                attachments = msg.custom_content.attachments
-                for attachment in attachments:
+            if msg.custom_content and msg.custom_content.attachments:
+                for attachment in msg.custom_content.attachments:
                     if attachment.url:
                         attachments_urls_map[attachment.url] = attachment
 
