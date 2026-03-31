@@ -1,7 +1,6 @@
 import json
 from typing import Any
 
-from aidial_sdk.chat_completion import Message
 from injector import AssistedBuilder, inject
 
 from quickapp.attachment_processing._available_context_stage_wrapper import (
@@ -15,6 +14,7 @@ from quickapp.attachment_processing._context_entries import (
 from quickapp.common import CompletionResult, StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
@@ -29,7 +29,7 @@ class _AvailableContextTool(StagedBaseTool):
         contexts: list[Context],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        messages: list[Message],
+        messages_mixin: MessagesMixin,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -41,11 +41,11 @@ class _AvailableContextTool(StagedBaseTool):
             **kwargs,
         )
         self.__contexts: list[Context] = contexts
-        self.__messages: list[Message] = messages
+        self.__messages_mixin: MessagesMixin = messages_mixin
 
     def _get_response(self) -> AvailableContextToolResponse:
         """Collect context file metadata, flagging new or changed ones."""
-        seen_entries = extract_seen_entries_from_messages(self.__messages)
+        seen_entries = extract_seen_entries_from_messages(self.__messages_mixin.messages)
         _, entries = build_context_entries(self.__contexts, seen_entries)
         return AvailableContextToolResponse(entries=entries)
 
