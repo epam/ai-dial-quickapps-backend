@@ -9,7 +9,7 @@
     "type": "function",
     "function": {
       "name": "python_code_interpreter",
-      "description": "**Python Code Interpreter**  \nExecutes Python 3.11 code using Jupyter Kernel with such libraries: \n- python-multipart\n- pandas[excel, plot, output-formatting]\n- plotly\n- matplotlib\n- seaborn\n- scipy\n\n**Workflow:**\n- Single persistent session throughout conversation.\n- Code state persists and is reusable within session.\n- Session expires after 15min inactivity, deleting all code/files.\n- User files must be listed in `input_file_names` to be accessible.\n- Text outputs are sampled. Control with `data_sample_config`.\n- Web access is DISABLED.\n\n**Instructions:**\n- Use ONLY listed above external libraries.\n- Prefer `plotly` library over `matplotlib` for data visualizations, unless user asked otherwise.\n- Reuse code in session.\n- Use `open_session=true` to create new session if expired (automatic, no user prompt).\n\n**Response:**\n- `status`: SUCCESS/FAILED\n- `stdout`: Console output\n- `stderr`: Error details\n- `result`: Execution result\n- `display`: Images/Plotly diagrams",
+      "description": "**Python Code Interpreter**  \nExecutes Python 3.11 code using Jupyter Kernel with such libraries: \n- python-multipart\n- pandas[excel, plot, output-formatting]\n- plotly\n- matplotlib\n- seaborn\n- scipy\n\n**Workflow:**\n- Single persistent session throughout conversation.\n- Code state persists and is reusable within session.\n- Session expires after 15min inactivity, deleting all code/files.\n- User files must be listed in `attachment_urls` to be accessible.\n- Text outputs are sampled. Control with `data_sample_config`.\n- Web access is DISABLED.\n\n**Instructions:**\n- Use ONLY listed above external libraries.\n- Prefer `plotly` library over `matplotlib` for data visualizations, unless user asked otherwise.\n- Reuse code in session.\n\n**Response:**\n- `status`: SUCCESS/FAILED\n- `stdout`: Console output\n- `stderr`: Error details\n- `result`: Execution result\n- `display`: Images/Plotly diagrams",
       "parameters": {
         "type": "object",
         "properties": {
@@ -42,23 +42,12 @@
               }
             }
           },
-          "open_session": {
-            "type": "boolean",
-            "description": "When true, creates a new Jupyter session if the previous one expired after 15 minutes of inactivity. Use this parameter to recover from expired sessions without prompting the user. Note: New sessions have no access to code or files from previous sessions.",
-            "default": false,
-            "display": {
-              "stage": {
-                "ignore_parameter_name": true,
-                "replaced_value_info": "**New session will be opened!**"
-              }
-            }
-          },
           "attachment_urls": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "List of filenames that your code needs to access from user-uploaded files. Files must be explicitly listed here to be accessible in code. If a 'file not found' error occurs, verify the filename is correctly included in this parameter.",
+            "description": "List of URLs of user-uploaded files that your code needs to access. Files listed here are transferred into the working directory and become accessible by their original filename. Reference them in code using just the filename, not the full path.\n\nExample 1: attachment_urls=[\"files/abc123/uploads/2026-03/sales_data.csv\"] → in code use: pd.read_csv(\"sales_data.csv\")\nExample 2: attachment_urls=[\"files/abc123/uploads/2026-03/My%20Report.xlsx\"] → in code use: pd.read_excel(\"My Report.xlsx\")",
             "default": [],
             "display": {
               "stage": {

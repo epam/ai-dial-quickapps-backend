@@ -1,4 +1,6 @@
+import os
 from typing import Any
+from urllib.parse import unquote
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import AssistedBuilder, inject
@@ -85,9 +87,13 @@ class _PyInterpreterTool(StagedBaseTool):
     ) -> CompletionResult:
         try:
             code: str = kwargs["code"]
-            open_session: bool = kwargs.get("open_session", False)
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")
-            data_sample_config: DataSampleConfig | None = kwargs.get("data_sample_config")
+            raw_data_sample_config = kwargs.get("data_sample_config")
+            data_sample_config: DataSampleConfig | None = (
+                DataSampleConfig.model_validate(raw_data_sample_config)
+                if raw_data_sample_config is not None
+                else None
+            )
             display_title: str | None = kwargs.get("display_title")
 
             async with self.__client as client:
@@ -95,9 +101,7 @@ class _PyInterpreterTool(StagedBaseTool):
                     self.__session_manager.get_session_id()
                     or self.__py_interpreter_settings.default_session_id
                 )
-                session_id = await self.__session_manager.ensure_valid_session(
-                    session_id, open_session
-                )
+                session_id = await self.__session_manager.ensure_valid_session(session_id)
 
                 await self._prepare_input_files(
                     client=client,
@@ -160,7 +164,9 @@ class _PyInterpreterTool(StagedBaseTool):
 
         # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
-            if file_name in loaded_file_names:
+            target_path = unquote(os.path.basename(file_name))
+
+            if target_path in loaded_file_names:
                 continue
 
             for attachment_url, attachment in attachments_urls_map.items():
@@ -180,7 +186,7 @@ class _PyInterpreterTool(StagedBaseTool):
                         InputFileTransferDto(
                             sessionId=session_id,
                             sourceUrl=url,
-                            targetPath=file_name,
+                            targetPath=target_path,
                         )
                     )
                     break
