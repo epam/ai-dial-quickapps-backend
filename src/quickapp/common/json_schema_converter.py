@@ -1,6 +1,7 @@
 from typing import Any
 
 from fastmcp.utilities.json_schema import dereference_refs
+from jsonref import replace_refs  # type: ignore[import-untyped]
 
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -17,7 +18,8 @@ _ConfigurableSchema = (
 class JsonSchemaConverter:
     """Utility class for converting JSON schema dictionaries to ConfigurableSchema objects.
 
-    Handles $ref resolution internally via fastmcp.utilities.json_schema.dereference_refs().
+    Handles $ref resolution internally via fastmcp dereference_refs(), falling back
+    to jsonref.replace_refs() for schemas with circular references.
     """
 
     @staticmethod
@@ -50,6 +52,7 @@ class JsonSchemaConverter:
         def_dict: dict[str, Any],
         name: str | None = None,
         seen: set[int] | None = None,
+        allow_circular_expansion: bool = True,
     ) -> _ConfigurableSchema:
         """
         Build and return a ConfigurableSchema* instance from a single property/items definition.
@@ -99,7 +102,9 @@ class JsonSchemaConverter:
                 default=default_value,
             )
         elif prop_type == "object":
-            nested_properties = JsonSchemaConverter._convert_properties(def_dict, seen)
+            nested_properties = JsonSchemaConverter._convert_properties(
+                def_dict, seen, allow_circular_expansion
+            )
             return ConfigurableSchemaObject(
                 type=JsonTypeEnum.object,
                 properties=nested_properties,
@@ -110,7 +115,10 @@ class JsonSchemaConverter:
         elif prop_type == "array":
             items_def = def_dict.get("items", {})
             items_schema = JsonSchemaConverter._build_schema_from_definition(
-                items_def, name=name, seen=seen
+                items_def,
+                name=name,
+                seen=seen,
+                allow_circular_expansion=allow_circular_expansion,
             )
             return ConfigurableSchemaArray(
                 type=JsonTypeEnum.array,
@@ -125,6 +133,7 @@ class JsonSchemaConverter:
     def _convert_properties(
         schema_dict: dict[str, Any],
         seen: set[int] | None = None,
+        allow_circular_expansion: bool = True,
     ) -> dict[str, _ConfigurableSchema]:
         """Internal recursive conversion with cycle detection (no ref resolution)."""
         if seen is None:
@@ -147,16 +156,32 @@ class JsonSchemaConverter:
         for prop_name, prop_def in schema_properties.items():
             dict_id = id(prop_def)
             if dict_id in seen:
-                # Circular reference — represent as an opaque object
-                properties[prop_name] = ConfigurableSchemaObject(
-                    type=JsonTypeEnum.object,
-                    properties={},
-                    description=prop_def.get("description", ""),
-                )
+                if allow_circular_expansion:
+                    # First re-encounter: expand one more level with a fresh seen
+                    # set so the object's own simple properties aren't falsely
+                    # flagged as circular. Disable further expansion to prevent
+                    # infinite recursion.
+                    circular_seen: set[int] = {dict_id}
+                    properties[prop_name] = JsonSchemaConverter._build_schema_from_definition(
+                        prop_def,
+                        name=prop_name,
+                        seen=circular_seen,
+                        allow_circular_expansion=False,
+                    )
+                else:
+                    # Second re-encounter: truncate to an opaque object
+                    properties[prop_name] = ConfigurableSchemaObject(
+                        type=JsonTypeEnum.object,
+                        properties={},
+                        description=prop_def.get("description", ""),
+                    )
                 continue
             seen.add(dict_id)
             properties[prop_name] = JsonSchemaConverter._build_schema_from_definition(
-                prop_def, name=prop_name, seen=seen
+                prop_def,
+                name=prop_name,
+                seen=seen,
+                allow_circular_expansion=allow_circular_expansion,
             )
 
         return properties
@@ -168,7 +193,9 @@ class JsonSchemaConverter:
         """
         Convert a JSON schema dictionary to ConfigurableSchema* properties.
 
-        Resolves any $ref pointers via dereference_refs() before conversion.
+        Resolves any $ref pointers before conversion. Uses fastmcp's dereference_refs()
+        for full resolution with sibling merging, falling back to jsonref.replace_refs()
+        for schemas with circular references that cause RecursionError in post-processing.
 
         Args:
             schema_dict: The JSON schema dictionary containing properties definition
@@ -176,6 +203,17 @@ class JsonSchemaConverter:
         Returns:
             Dictionary of converted properties compatible with OpenAiToolFunctionParameters
         """
-        schema_dict = dereference_refs(schema_dict)
+        try:
+            schema_dict = dereference_refs(schema_dict)
+        except RecursionError:
+            # Circular inline $ref (e.g. "#/properties/node") causes RecursionError
+            # in fastmcp 3.x's _strip_discriminator. Fall back to bare jsonref which
+            # produces circular Python dicts that _convert_properties handles via id().
+            dereferenced = replace_refs(schema_dict, proxies=False, lazy_load=False)
+            if not isinstance(dereferenced, dict):
+                raise TypeError(
+                    f"Expected dict from replace_refs, got {type(dereferenced).__name__}"
+                )
+            schema_dict = dereferenced
 
         return JsonSchemaConverter._convert_properties(schema_dict)
