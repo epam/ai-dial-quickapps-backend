@@ -8,7 +8,6 @@ license = "Apache-2.0"
 authors = [
     {name = "EPAM Systems"}
 ]
-
 dependencies = [
     # Core framework & DI
     "aidial-client>=0.4.0,<0.5.0",                # DIAL API client
