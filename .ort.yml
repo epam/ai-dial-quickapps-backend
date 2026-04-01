@@ -189,6 +189,9 @@ resolutions:
     - message: ".*PyPI::pycparser:3\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/eliben/pycparser/blob/main/LICENSE"
+    - message: ".*PyPI::caio:0\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Apache License 2.0: https://github.com/mosquito/caio/blob/master/COPYING"
 
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
