@@ -1,8 +1,9 @@
 import logging
 
-from aidial_sdk.chat_completion import Message, Role
+from aidial_sdk.chat_completion import Role
 from injector import inject
 
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.state_holder import StateHolder
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     PY_INTERPRETER_STATE_KEY,
@@ -25,10 +26,10 @@ class SessionManager:
     """Manages Python interpreter sessions"""
 
     def __init__(
-        self, client: _PyInterpreterClient, messages: list[Message], state_holder: StateHolder
+        self, client: _PyInterpreterClient, messages_mixin: MessagesMixin, state_holder: StateHolder
     ):
         self.__client: _PyInterpreterClient = client
-        self.__messages: list[Message] = messages
+        self.__messages_mixin: MessagesMixin = messages_mixin
         self.__state_holder: StateHolder = state_holder
         self.__validated_session_id: str | None = None
 
@@ -41,7 +42,7 @@ class SessionManager:
             return PyInterpreterState.model_validate(raw).session_id
 
         # Scan message history in a single pass for both new and legacy keys
-        for msg in reversed(self.__messages):
+        for msg in reversed(self.__messages_mixin.messages):
             if msg.role == Role.ASSISTANT and msg.custom_content:
                 state = msg.custom_content.state
                 if isinstance(state, dict):

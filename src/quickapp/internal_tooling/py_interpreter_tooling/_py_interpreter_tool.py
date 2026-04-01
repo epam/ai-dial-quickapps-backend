@@ -11,6 +11,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
@@ -53,7 +54,7 @@ class _PyInterpreterTool(StagedBaseTool):
     def __init__(
         self,
         stage_wrapper_builder: AssistedBuilder[_PyInterpreterStageWrapper],
-        messages: list[Message],
+        messages_mixin: MessagesMixin,
         client: _PyInterpreterClient,
         py_interpreter_settings: _PyInterpreterSettings,
         session_manager: SessionManager,
@@ -72,7 +73,7 @@ class _PyInterpreterTool(StagedBaseTool):
             argument_transformers=argument_transformers,
             **kwargs,
         )
-        self.__messages: list[Message] = messages
+        self.__messages_mixin: MessagesMixin = messages_mixin
 
         self.__client: _PyInterpreterClient = client
         self.__py_interpreter_settings: _PyInterpreterSettings = py_interpreter_settings
@@ -163,7 +164,7 @@ class _PyInterpreterTool(StagedBaseTool):
         )
         loaded_file_names = [file.path for file in loaded_files.files]
 
-        attachments_urls_map = self._get_attachment_urls_map(self.__messages)
+        attachments_urls_map = self._get_attachment_urls_map(self.__messages_mixin.messages)
 
         errors: list[str] = []
 

@@ -8,6 +8,7 @@ from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
     DialDeploymentConfig,
@@ -22,6 +23,12 @@ from quickapp.config.tools.base import (
 )
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
+
+
+def _make_messages_mixin(messages: list[Message]) -> MessagesMixin:
+    mixin = MessagesMixin()
+    mixin.messages = messages
+    return mixin
 
 
 def _make_tool_call(
@@ -80,7 +87,7 @@ def _build_tool(
         tool_config=tool_config,
         content_propagation=None,
         dial_completion_service=dial_completion_service,
-        messages=messages,
+        messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
     )
@@ -374,7 +381,7 @@ def _build_tool_with_config(
         tool_config=tool_config,
         content_propagation=None,
         dial_completion_service=MagicMock(),
-        messages=messages or [],
+        messages_mixin=_make_messages_mixin(messages or []),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
     )
