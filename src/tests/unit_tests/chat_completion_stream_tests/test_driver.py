@@ -2,7 +2,7 @@
 
 import pytest
 
-from quickapp.common.chat_completion_stream.driver import consume_chat_completion_chunks
+from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint, NormalizedChoiceDelta
 
 
@@ -21,13 +21,9 @@ def _parse_simple(chunk):
 
 @pytest.mark.asyncio
 async def test_consume_emits_footprint_then_deltas_in_order():
-    events = []
-
-    await consume_chat_completion_chunks(
-        _chunks("u", "d", "d"),
-        _parse_simple,
-        events.append,
-    )
+    events = [
+        event async for event in iter_chat_completion_events(_chunks("u", "d", "d"), _parse_simple)
+    ]
 
     assert len(events) == 3
     assert isinstance(events[0], ChunkUsageFootprint)
@@ -37,6 +33,5 @@ async def test_consume_emits_footprint_then_deltas_in_order():
 
 @pytest.mark.asyncio
 async def test_consume_empty_iterable():
-    events = []
-    await consume_chat_completion_chunks(_chunks(), _parse_simple, events.append)
+    events = [event async for event in iter_chat_completion_events(_chunks(), _parse_simple)]
     assert events == []

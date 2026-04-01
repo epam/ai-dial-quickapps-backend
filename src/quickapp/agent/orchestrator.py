@@ -107,9 +107,9 @@ class Orchestrator:
         tool_calls = stream_result.tool_calls
 
         # Thinking stages stay in custom_content (streamed to choice), not in state.
-        stream_result = dict(stream_result.state or {})
+        response_state = dict(stream_result.state or {})
         state: dict[str, object] | None = (
-            {STATE_KEY_ORCHESTRATOR: stream_result} if stream_result else None
+            {STATE_KEY_ORCHESTRATOR: response_state} if response_state else None
         )
 
         custom_content_kwargs: dict[str, object] = {
@@ -162,17 +162,17 @@ class Orchestrator:
         logger.debug(f"Message from context: {self.__messages_context.messages}")
         return True
 
-    async def accumulate_stream(self, chat_completion_stream: AsyncStream[ChatCompletionChunk]) -> ChatStreamAccumulator:
+    async def accumulate_stream(
+        self, chat_completion_stream: AsyncStream[ChatCompletionChunk]
+    ) -> ChatStreamAccumulator:
         try:
-            stream_accumulator = (
-                await self.__stream_handler_provider.get().process_stream(
-                    chunks=chat_completion_stream,
-                    config=ChatStreamConfig(
-                        destination=self.__choice,
-                        stream_content=True,
-                        propagate_stages=self.__propagate_orchestrator_stages,
-                    ),
-                )
+            stream_accumulator = await self.__stream_handler_provider.get().process_stream(
+                chunks=chat_completion_stream,
+                config=ChatStreamConfig(
+                    destination=self.__choice,
+                    stream_content=True,
+                    propagate_stages=self.__propagate_orchestrator_stages,
+                ),
             )
         except ChatStreamHandlerError:
             logger.exception("Orchestrator stream handling failed.")

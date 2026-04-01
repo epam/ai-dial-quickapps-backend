@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterable, Callable
+from collections.abc import AsyncIterable, AsyncIterator, Callable
 from typing import TypeAlias, TypeVar
 
 from quickapp.common.chat_completion_stream.models import (
@@ -11,17 +11,18 @@ from quickapp.common.chat_completion_stream.models import (
 
 TChunk = TypeVar("TChunk")
 
-ChatStreamEventHandler: TypeAlias = Callable[[ChatStreamEvent], None]
+ChatStreamChunkParser: TypeAlias = Callable[
+    [TChunk], tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]
+]
 
 
-async def consume_chat_completion_chunks(
+async def iter_chat_completion_events(
     chunks: AsyncIterable[TChunk],
-    parse_chunk: Callable[[TChunk], tuple[ChunkUsageFootprint | None, list[NormalizedChoiceDelta]]],
-    on_event: ChatStreamEventHandler,
-) -> None:
+    parse_chunk: ChatStreamChunkParser,
+) -> AsyncIterator[ChatStreamEvent]:
     async for chunk in chunks:
         footprint, deltas = parse_chunk(chunk)
         if footprint is not None:
-            on_event(footprint)
+            yield footprint
         for d in deltas:
-            on_event(d)
+            yield d

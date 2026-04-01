@@ -46,7 +46,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
     stream_handler = Mock()
-    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result)
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
     stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
@@ -133,7 +133,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
 
     stream_handler = Mock()
     # Return with tools first, then without tools to stop loop
-    stream_handler.process_orchestrator_stream = AsyncMock(
+    stream_handler.process_stream = AsyncMock(
         side_effect=[assistant_result_with_tools, assistant_result_no_tools]
     )
     stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
@@ -236,7 +236,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
     stream_handler = Mock()
-    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result)
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
     stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()
@@ -311,7 +311,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
     stream_handler = Mock()
-    stream_handler.process_orchestrator_stream = AsyncMock(return_value=assistant_result_with_tools)
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result_with_tools)
     stream_handler_provider = Mock(get=Mock(return_value=stream_handler))
 
     state_holder = Mock()

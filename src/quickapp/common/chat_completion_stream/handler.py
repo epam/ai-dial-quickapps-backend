@@ -16,7 +16,7 @@ from quickapp.agent._stage_delta_types import (
     stage_display_name,
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.chat_completion_stream.driver import consume_chat_completion_chunks
+from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
     ChatStreamParseError,
@@ -75,18 +75,12 @@ class ChatCompletionStreamHandler:
     ) -> None:
         stages_by_index: dict[int, Stage] = {}
 
-        def dispatch(event: ChatStreamEvent) -> None:
-            if isinstance(event, ChunkUsageFootprint):
-                accumulator.apply_usage_footprint(event)
-            else:
-                self._handle_delta(accumulator, config, stages_by_index, event)
-
         try:
-            await consume_chat_completion_chunks(
+            async for event in iter_chat_completion_events(
                 chat_completion,
                 parse_chat_completion_chunk,
-                dispatch,
-            )
+            ):
+                self._apply_stream_event(accumulator, config, stages_by_index, event)
         except ChatStreamHandlerError:
             self._close_all_streaming_stages(stages_by_index, Status.FAILED)
             raise
@@ -97,6 +91,18 @@ class ChatCompletionStreamHandler:
 
     def _finalize_remaining_streaming_stages(self, stages_by_index: dict[int, Stage]) -> None:
         self._close_all_streaming_stages(stages_by_index, Status.FAILED)
+
+    def _apply_stream_event(
+        self,
+        accumulator: ChatStreamAccumulator,
+        config: ChatStreamConfig,
+        stages_by_index: dict[int, Stage],
+        event: ChatStreamEvent,
+    ) -> None:
+        if isinstance(event, ChunkUsageFootprint):
+            accumulator.apply_usage_footprint(event)
+        elif isinstance(event, NormalizedChoiceDelta):
+            self._handle_delta(accumulator, config, stages_by_index, event)
 
     def _handle_delta(
         self,
@@ -112,9 +118,7 @@ class ChatCompletionStreamHandler:
                 try:
                     dest.append_content(delta.content)
                 except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamWriteError(
-                        "Failed to stream content to choice sink."
-                    ) from exc
+                    raise ChatStreamWriteError("Failed to stream content to choice sink.") from exc
             elif wrap is not None:
                 try:
                     wrap.append_stage_content(delta.content)
@@ -224,9 +228,7 @@ class ChatCompletionStreamHandler:
                 stage.append_content(str(delta["content"]))
             except Exception as exc:  # pragma: no cover - defensive
                 label = stage_name or f"index {idx}"
-                raise ChatStreamWriteError(
-                    f"Failed to append content to stage '{label}'."
-                ) from exc
+                raise ChatStreamWriteError(f"Failed to append content to stage '{label}'.") from exc
 
         if "attachments" in delta and delta["attachments"]:
             for att in delta["attachments"]:
@@ -250,7 +252,7 @@ class ChatCompletionStreamHandler:
 
     @staticmethod
     def _close_streaming_stage_at_index(
-            stages_by_index: dict[int, Stage], idx: int, status: Status
+        stages_by_index: dict[int, Stage], idx: int, status: Status
     ) -> None:
         stage = stages_by_index.pop(idx, None)
         if stage is None:
