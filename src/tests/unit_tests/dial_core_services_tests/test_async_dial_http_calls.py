@@ -339,7 +339,7 @@ class TestDialFileServiceHttpCalls:
         assert "per-request-permissions/grant" in str(req.url)
         body = json.loads(req.content)
         assert body["receiver"] == "my-toolset"
-        resource_urls = [r["url"] for r in body["resources"]]
+        resource_urls = [r["url"] for r in body["resourcePermissions"]]
         assert "files/my-bucket/a.txt" in resource_urls
         assert "files/my-bucket/b.txt" in resource_urls
 
