@@ -192,6 +192,9 @@ resolutions:
     - message: ".*PyPI::caio:0\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "Apache License 2.0: https://github.com/mosquito/caio/blob/master/COPYING"
+    - message: ".*PyPI::pygments:2\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "BSD-2-Clause License: https://github.com/pygments/pygments/blob/master/LICENSE"
 
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
