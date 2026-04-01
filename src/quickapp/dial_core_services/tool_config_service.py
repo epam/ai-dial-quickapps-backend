@@ -120,6 +120,7 @@ class ToolConfigCoreService:
         )
         required_params.append("query")
 
+        # Handle attachments if the tool supports them
         if deployment.input_attachment_types:
             properties["attachment_urls"] = ConfigurableSchemaArray(
                 type=JsonTypeEnum.array,
@@ -132,12 +133,16 @@ class ToolConfigCoreService:
                 ),
                 description="The list of attachment urls related to tool call. Use full url for each item in the list. If no attachments are related use empty list argument value.",
             )
+
             required_params.append("attachment_urls")
 
+        configuration_param_names: set[str] = set()
         if config and config.get("properties"):
             config_required = set(config.get("required", []))
             for param_name, param_details in config["properties"].items():
                 logger.debug(f"Processing parameter: {param_name} with details: {param_details}")
+                configuration_param_names.add(param_name)
+                # Extract enum values from the 'anyOf' structure
                 enum_values = []
                 if "anyOf" in param_details:
                     for item in param_details["anyOf"]:
@@ -156,6 +161,7 @@ class ToolConfigCoreService:
 
         output_tool.open_ai_tool.function.parameters.properties = properties
         output_tool.open_ai_tool.function.parameters.required = sorted(set(required_params))
+        output_tool.deployment._configuration_param_names = configuration_param_names
 
         return output_tool
 

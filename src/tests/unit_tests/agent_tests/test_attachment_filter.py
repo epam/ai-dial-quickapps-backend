@@ -37,7 +37,7 @@ class Test_AttachmentFilter:
             "look at this",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 1
         assert result[0].custom_content.attachments[0].type == "image/png"
 
@@ -47,7 +47,7 @@ class Test_AttachmentFilter:
             "check this",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 0
 
     def test_xml_metadata_injected_for_attachments(self):
@@ -59,7 +59,7 @@ class Test_AttachmentFilter:
                 _attachment("photo.png", "/files/photo.png", "image/png"),
             ],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<attachments>" in content
         assert "<title>doc.pdf</title>" in content
@@ -82,7 +82,7 @@ class Test_AttachmentFilter:
                 _attachment("chart.jpg", "/files/chart.jpg", "image/jpeg"),
             ],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         attachments = result[0].custom_content.attachments
         assert len(attachments) == 2
         types = {str(a.type) for a in attachments}
@@ -97,13 +97,13 @@ class Test_AttachmentFilter:
         original_content = str(msg.content)
         original_attachment_count = len(msg.custom_content.attachments)
 
-        transformer.filter_attachments([msg])
+        transformer.transform([msg])
 
         assert str(msg.content) == original_content
         assert len(msg.custom_content.attachments) == original_attachment_count
 
     def test_filter_idempotent_on_repeated_calls(self):
-        """Calling filter_attachments twice on the same list produces identical output."""
+        """Calling transform twice on the same list produces identical output."""
         transformer = _AttachmentFilter()
         msg = _user_msg(
             "hello",
@@ -111,10 +111,10 @@ class Test_AttachmentFilter:
         )
         messages = [msg]
 
-        first_pass = transformer.filter_attachments(messages)
+        first_pass = transformer.transform(messages)
         first_content = str(first_pass[0].content)
 
-        second_pass = transformer.filter_attachments(messages)
+        second_pass = transformer.transform(messages)
         second_content = str(second_pass[0].content)
 
         assert first_content == second_content
@@ -135,7 +135,7 @@ class Test_AttachmentFilter:
             "second",
             [_attachment("data.csv", "/files/data.csv", "text/csv")],
         )
-        result = transformer.filter_attachments([msg1, msg2])
+        result = transformer.transform([msg1, msg2])
 
         # First message: image kept, pdf removed
         assert len(result[0].custom_content.attachments) == 1
@@ -156,7 +156,7 @@ class Test_AttachmentFilter:
             "with file",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
         )
-        result = transformer.filter_attachments([plain_msg, attach_msg])
+        result = transformer.transform([plain_msg, attach_msg])
 
         # Plain message is passed through as-is (same object, no deepcopy)
         assert result[0] is plain_msg
@@ -174,7 +174,7 @@ class Test_AttachmentFilter:
             "response",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         # Non-USER roles: images are NOT kept inline
         assert len(result[0].custom_content.attachments) == 0
         content = str(result[0].content)
@@ -187,7 +187,7 @@ class Test_AttachmentFilter:
             "tool output",
             [_attachment("result.png", "/files/result.png", "image/png")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         assert len(result[0].custom_content.attachments) == 0
         content = str(result[0].content)
         assert "<title>result.png</title>" in content
@@ -196,7 +196,7 @@ class Test_AttachmentFilter:
 
     def test_empty_message_list(self):
         transformer = _AttachmentFilter()
-        result = transformer.filter_attachments([])
+        result = transformer.transform([])
         assert result == []
 
     def test_content_none_with_attachments(self):
@@ -206,7 +206,7 @@ class Test_AttachmentFilter:
             None,
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<attachments>" in content
         assert "<title>doc.pdf</title>" in content
@@ -217,7 +217,7 @@ class Test_AttachmentFilter:
             "test",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         content = str(result[0].content)
         # reference_url is None by default → no element
         assert "<reference_url>" not in content
@@ -235,6 +235,6 @@ class Test_AttachmentFilter:
                 )
             ],
         )
-        result = transformer.filter_attachments([msg])
+        result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<reference_url>/refs/doc.pdf</reference_url>" in content

@@ -5,10 +5,7 @@ from quickapp.config.tools.base import (
     OpenAiToolFunctionParameters,
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
-from quickapp.config.tools.internal import InternalTool
-
-INTERNAL_TOOL_NAME_PREFIX = "quickapps_internal_"
-
+from quickapp.config.tools.internal import INTERNAL_TOOL_NAME_PREFIX, InternalTool
 
 AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(

@@ -6,6 +6,7 @@ from injector import inject
 
 from quickapp.agent._models import AccumulatedToolCall
 from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import sanitize_toolname
 
@@ -15,8 +16,14 @@ logger = logging.getLogger(__name__)
 class ToolExecutor:
 
     @inject
-    def __init__(self, tools: list[StagedBaseTool], perf_timer: PerformanceTimer):
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        enrichers: list[CompletionResultEnricher],
+        perf_timer: PerformanceTimer,
+    ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        self.__enrichers = enrichers
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
@@ -32,6 +39,10 @@ class ToolExecutor:
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
 
         results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        for enricher in self.__enrichers:
+            for result in results:
+                enricher.enrich(result)
 
         return results
 

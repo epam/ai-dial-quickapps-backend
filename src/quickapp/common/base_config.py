@@ -166,17 +166,26 @@ def _preview_field(default=None, **kwargs) -> FieldInfo:
     Preview fields are stripped from the JSON schema and nullified at runtime
     when ENABLE_PREVIEW_FEATURES is not set.
 
+    The field type must be ``T | None`` so the runtime can deactivate it by
+    setting the value to ``None``.  Use either ``default=None`` (field is off
+    by default) or ``default_factory=SomeModel`` (field is on by default but
+    can still be nullified when preview features are disabled).
+
     Args:
-        default: Must be None (preview fields must be nullable).
-        **kwargs: Other Pydantic Field parameters.
+        default: Must be None when no ``default_factory`` is provided.
+        **kwargs: Other Pydantic Field parameters (including ``default_factory``).
 
     Returns:
         Pydantic Field with preview marker.
     """
-    if default is not None:
+    has_factory = "default_factory" in kwargs
+    if has_factory and default is not None:
+        raise TypeError("Cannot specify both default and default_factory for PreviewField.")
+    if default is not None and not has_factory:
         raise TypeError(
             "PreviewField requires default=None (preview fields must be nullable "
-            "so they can be deactivated at runtime)."
+            "so they can be deactivated at runtime). "
+            "Use default_factory=... if the feature should be enabled by default."
         )
     json_schema_extra = kwargs.get("json_schema_extra", {})
     if isinstance(json_schema_extra, dict):
@@ -191,6 +200,8 @@ def _preview_field(default=None, **kwargs) -> FieldInfo:
 
         json_schema_extra = new_extra
     kwargs["json_schema_extra"] = json_schema_extra
+    if has_factory:
+        return Field(**kwargs)
     return Field(default, **kwargs)
 
 

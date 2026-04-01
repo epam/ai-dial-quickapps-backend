@@ -14,7 +14,7 @@ from .completion_result import CompletionResult
 from .exceptions import InvalidToolCallParameterException
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
-from .utils import matches_type
+from .utils import matches_type, substitute_media_type
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +114,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 filtered: list = []
                 for a in result.attachments:
                     if matches_type(a.type, attachment_cfg.supported_types):
+                        a.type = substitute_media_type(
+                            a.type, attachment_cfg.media_type_substitution
+                        )
                         filtered.append(a)
                         if matches_type(a.type, attachment_cfg.propagate_types_to_choice):
                             result.propagate_to_choice.append(a)

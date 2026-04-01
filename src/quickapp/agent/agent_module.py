@@ -14,7 +14,8 @@ from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
+from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.utils import sanitize_toolname
@@ -125,6 +126,17 @@ class AgentModule(Module):
         return [
             add_system_prompt,
         ]
+
+    @multiprovider
+    def provide_pre_invocation_transformers(
+        self,
+        attachment_filter: _AttachmentFilter,
+    ) -> list[PreInvocationTransformer]:
+        return [attachment_filter]
+
+    @multiprovider
+    def provide_completion_result_enrichers(self) -> list[CompletionResultEnricher]:
+        return []
 
     @multiprovider
     def provide_prompt_parts(

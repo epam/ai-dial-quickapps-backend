@@ -49,7 +49,7 @@ class DummyConfig:
 
 
 mock_filter = Mock()
-mock_filter.filter_attachments.side_effect = lambda messages: messages
+mock_filter.transform.side_effect = lambda messages: messages
 
 
 @pytest.mark.asyncio
@@ -68,7 +68,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
         response_format=None,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
@@ -106,7 +106,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
@@ -141,7 +141,7 @@ async def test_invoke_propagates_exceptions():
         messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         response_format=None,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),

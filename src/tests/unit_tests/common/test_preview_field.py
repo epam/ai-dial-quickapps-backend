@@ -45,6 +45,27 @@ class TestPreviewField:
         assert feat_schema.get(_PREVIEW_MARKER) is True
         assert feat_schema.get("custom") is True
 
+    def test_default_factory_accepted(self):
+        class Inner(BaseModel):
+            x: int = 1
+
+        class M(BaseModel):
+            feat: Inner | None = PreviewField(default_factory=Inner)
+
+        instance = M()
+        assert instance.feat is not None
+        assert instance.feat.x == 1
+
+    def test_default_factory_has_preview_marker(self):
+        class Inner(BaseModel):
+            x: int = 1
+
+        class M(BaseModel):
+            feat: Inner | None = PreviewField(default_factory=Inner)
+
+        field_info = M.model_fields["feat"]
+        assert has_preview_marker(field_info) is True
+
     def test_with_description(self):
         class M(BaseModel):
             feat: str | None = PreviewField(description="A preview feature")

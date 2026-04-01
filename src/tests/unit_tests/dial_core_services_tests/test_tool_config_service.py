@@ -225,3 +225,32 @@ def test_no_input_attachment_types_no_attachment_urls_param():
     result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
 
     assert "attachment_urls" not in result.open_ai_tool.function.parameters.properties
+
+
+def test_config_schema_populates_configuration_param_names():
+    deployment = _make_deployment()
+    config = {
+        "properties": {
+            "size": {"type": "string", "description": "Image size"},
+            "quality": {"type": "string", "description": "Image quality"},
+        },
+        "required": ["size"],
+    }
+    result = ToolConfigCoreService._convert_to_openai_tool_format(deployment, config)
+
+    assert result.deployment._configuration_param_names == {"size", "quality"}
+
+
+def test_no_config_leaves_configuration_param_names_empty():
+    deployment = _make_deployment()
+    result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+
+    assert result.deployment._configuration_param_names == set()
+
+
+def test_config_without_properties_leaves_configuration_param_names_empty():
+    deployment = _make_deployment()
+    config = {"required": ["size"]}
+    result = ToolConfigCoreService._convert_to_openai_tool_format(deployment, config)
+
+    assert result.deployment._configuration_param_names == set()
