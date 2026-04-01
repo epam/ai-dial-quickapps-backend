@@ -125,7 +125,7 @@ class DialCompletionService:
         stage_wrapper: BaseStageWrapper | None,
     ) -> ChatStreamAccumulator:
         try:
-            return await self.__stream_handler.process_deployment_stream(
+            return await self.__stream_handler.process_stream(
                 chunks=chunks,
                 config=ChatStreamConfig(stage_wrapper=stage_wrapper),
             )

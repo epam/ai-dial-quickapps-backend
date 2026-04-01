@@ -9,9 +9,5 @@ class ChatStreamParseError(ChatStreamHandlerError):
     """Raised when a stream chunk cannot be parsed."""
 
 
-class ChatStreamSinkWriteError(ChatStreamHandlerError):
+class ChatStreamWriteError(ChatStreamHandlerError):
     """Raised when writing streamed output to a sink fails."""
-
-
-class ChatStreamInvariantError(ChatStreamHandlerError):
-    """Raised when handler detects an invalid internal state."""

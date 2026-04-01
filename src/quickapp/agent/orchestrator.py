@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
+from openai import AsyncStream
+from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
@@ -15,6 +17,7 @@ from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
     ChatStreamConfig,
 )
+from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
@@ -99,33 +102,18 @@ class Orchestrator:
 
         assistant_invoker = self.__assistant_invoker_provider.get()
         chat_completion_stream = await assistant_invoker.invoke()
-        try:
-            stream_accumulator = (
-                await self.__stream_handler_provider.get().process_orchestrator_stream(
-                    chat_completion=chat_completion_stream,
-                    config=ChatStreamConfig(
-                        destination=self.__choice,
-                        stream_content=True,
-                        propagate_stages=self.__propagate_orchestrator_stages,
-                    ),
-                )
-            )
-        except ChatStreamHandlerError:
-            logger.exception("Orchestrator stream handling failed.")
-            raise
-        if stream_accumulator is None:
-            raise RuntimeError("Assistant invocation returned no result.")
+        stream_result = await self.accumulate_stream(chat_completion_stream)
 
-        tool_calls = stream_accumulator.tool_calls
+        tool_calls = stream_result.tool_calls
 
         # Thinking stages stay in custom_content (streamed to choice), not in state.
-        stream_state = dict(stream_accumulator.state or {})
+        stream_result = dict(stream_result.state or {})
         state: dict[str, object] | None = (
-            {STATE_KEY_ORCHESTRATOR: stream_state} if stream_state else None
+            {STATE_KEY_ORCHESTRATOR: stream_result} if stream_result else None
         )
 
         custom_content_kwargs: dict[str, object] = {
-            "attachments": stream_accumulator.attachments,
+            "attachments": stream_result.attachments,
         }
         if state:
             custom_content_kwargs["state"] = state
@@ -136,18 +124,18 @@ class Orchestrator:
         self.__messages_context.append_message(
             Message(
                 role=Role.ASSISTANT,
-                content=stream_accumulator.content or " ",
+                content=stream_result.content or " ",
                 custom_content=CustomContent(**custom_content_kwargs),
                 tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls),
             )
         )
 
-        if stream_accumulator.usage and self.__SHOW_USAGE_STATISTICS:
+        if stream_result.usage and self.__SHOW_USAGE_STATISTICS:
             self.__usage_statistics_list.append(
                 DeploymentUsage(
                     model_name=self.__orchestrator_deployment_name,
-                    prompt_tokens=stream_accumulator.usage.prompt_tokens,
-                    completion_tokens=stream_accumulator.usage.completion_tokens,
+                    prompt_tokens=stream_result.usage.prompt_tokens,
+                    completion_tokens=stream_result.usage.completion_tokens,
                 )
             )
         self.__perf_timer.add_milestone(period, "assistant_response_received")
@@ -173,6 +161,25 @@ class Orchestrator:
         self.__perf_timer.stop_period(period)
         logger.debug(f"Message from context: {self.__messages_context.messages}")
         return True
+
+    async def accumulate_stream(self, chat_completion_stream: AsyncStream[ChatCompletionChunk]) -> ChatStreamAccumulator:
+        try:
+            stream_accumulator = (
+                await self.__stream_handler_provider.get().process_stream(
+                    chunks=chat_completion_stream,
+                    config=ChatStreamConfig(
+                        destination=self.__choice,
+                        stream_content=True,
+                        propagate_stages=self.__propagate_orchestrator_stages,
+                    ),
+                )
+            )
+        except ChatStreamHandlerError:
+            logger.exception("Orchestrator stream handling failed.")
+            raise
+        if stream_accumulator is None:
+            raise RuntimeError("Assistant invocation returned no result.")
+        return stream_accumulator
 
     def _build_tool_execution_history(self) -> list[dict[str, object]]:
         """Build tool execution history by extracting ASSISTANT and TOOL messages.

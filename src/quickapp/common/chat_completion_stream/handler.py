@@ -19,9 +19,8 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.driver import consume_chat_completion_chunks
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
-    ChatStreamInvariantError,
     ChatStreamParseError,
-    ChatStreamSinkWriteError,
+    ChatStreamWriteError,
 )
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamEvent,
@@ -52,20 +51,7 @@ class ChatStreamConfig(BaseModel):
 
 
 class ChatCompletionStreamHandler:
-    async def process_orchestrator_stream(
-        self,
-        *,
-        chat_completion: AsyncIterable[ChatCompletionChunk],
-        config: ChatStreamConfig,
-    ) -> ChatStreamAccumulator:
-        accumulator = ChatStreamAccumulator()
-        if config.destination is not None:
-            config.destination.append_content("\n\r")
-        await self._run(chat_completion=chat_completion, accumulator=accumulator, config=config)
-        self._log_stream_accumulator(accumulator)
-        return accumulator
-
-    async def process_deployment_stream(
+    async def process_stream(
         self,
         *,
         chunks: AsyncIterable[ChatCompletionChunk],
@@ -74,7 +60,10 @@ class ChatCompletionStreamHandler:
         accumulator = ChatStreamAccumulator()
         if config.stage_wrapper:
             config.stage_wrapper.append_stage_content("> #### Response:\n")
+        elif config.destination is not None:
+            config.destination.append_content("\n\r")
         await self._run(chat_completion=chunks, accumulator=accumulator, config=config)
+        self._log_stream_accumulator(accumulator)
         return accumulator
 
     async def _run(
@@ -92,9 +81,6 @@ class ChatCompletionStreamHandler:
             else:
                 self._handle_delta(accumulator, config, stages_by_index, event)
 
-        def do_finalize() -> None:
-            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
-
         try:
             await consume_chat_completion_chunks(
                 chat_completion,
@@ -102,18 +88,15 @@ class ChatCompletionStreamHandler:
                 dispatch,
             )
         except ChatStreamHandlerError:
-            do_finalize()
+            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
             raise
         except Exception as exc:
-            do_finalize()
+            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
+        self._finalize_remaining_streaming_stages(stages_by_index)
 
-        try:
-            do_finalize()
-        except ChatStreamHandlerError:
-            raise
-        except Exception as exc:  # pragma: no cover - defensive
-            raise ChatStreamInvariantError("Stream finalization failed.") from exc
+    def _finalize_remaining_streaming_stages(self, stages_by_index: dict[int, Stage]) -> None:
+        self._close_all_streaming_stages(stages_by_index, Status.FAILED)
 
     def _handle_delta(
         self,
@@ -129,14 +112,14 @@ class ChatCompletionStreamHandler:
                 try:
                     dest.append_content(delta.content)
                 except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamSinkWriteError(
+                    raise ChatStreamWriteError(
                         "Failed to stream content to choice sink."
                     ) from exc
             elif wrap is not None:
                 try:
                     wrap.append_stage_content(delta.content)
                 except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamSinkWriteError(
+                    raise ChatStreamWriteError(
                         "Failed to stream content to deployment stage wrapper."
                     ) from exc
             accumulator.append_content(delta.content)
@@ -163,7 +146,7 @@ class ChatCompletionStreamHandler:
                 try:
                     dest.add_attachment(**attachment.model_dump())
                 except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamSinkWriteError(
+                    raise ChatStreamWriteError(
                         "Failed to stream attachment to choice sink."
                     ) from exc
                 accumulator.append_attachment(attachment)
@@ -174,7 +157,7 @@ class ChatCompletionStreamHandler:
                 try:
                     wrap.add_attachment(attachment_to_sdk(attachment))
                 except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamSinkWriteError(
+                    raise ChatStreamWriteError(
                         "Failed to stream attachment to deployment stage wrapper."
                     ) from exc
         elif norm.sdk_attachments:
@@ -241,7 +224,7 @@ class ChatCompletionStreamHandler:
                 stage.append_content(str(delta["content"]))
             except Exception as exc:  # pragma: no cover - defensive
                 label = stage_name or f"index {idx}"
-                raise ChatStreamSinkWriteError(
+                raise ChatStreamWriteError(
                     f"Failed to append content to stage '{label}'."
                 ) from exc
 
@@ -265,8 +248,9 @@ class ChatCompletionStreamHandler:
             )
             self._close_streaming_stage_at_index(stages_by_index, idx, status)
 
+    @staticmethod
     def _close_streaming_stage_at_index(
-        self, stages_by_index: dict[int, Stage], idx: int, status: Status
+            stages_by_index: dict[int, Stage], idx: int, status: Status
     ) -> None:
         stage = stages_by_index.pop(idx, None)
         if stage is None:

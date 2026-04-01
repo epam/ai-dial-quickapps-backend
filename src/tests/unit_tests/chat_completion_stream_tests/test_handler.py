@@ -25,7 +25,7 @@ async def test_process_deployment_stream_accumulates_text():
     handler = ChatCompletionStreamHandler()
     wrap = MagicMock()
 
-    acc = await handler.process_deployment_stream(
+    acc = await handler.process_stream(
         chunks=_stream_from_chunks(chunk),
         config=ChatStreamConfig(stage_wrapper=wrap),
     )
@@ -43,8 +43,8 @@ async def test_process_orchestrator_stream_prepends_newline_and_streams_to_choic
     chunk = SimpleNamespace(usage=None, choices=[stream_choice], model_extra={})
 
     handler = ChatCompletionStreamHandler()
-    acc = await handler.process_orchestrator_stream(
-        chat_completion=_stream_from_chunks(chunk),
+    acc = await handler.process_stream(
+        chunks=_stream_from_chunks(chunk),
         config=ChatStreamConfig(destination=choice_obj),
     )
 
