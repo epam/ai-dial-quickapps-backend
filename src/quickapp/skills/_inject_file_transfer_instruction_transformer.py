@@ -10,18 +10,18 @@ from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 logger = logging.getLogger(__name__)
 
-# The skill name to inject (file transfer formatting instructions)
-BUILTIN_FILE_TRANSFER_SKILL = "tool-call-file-parameter-formatting"
-SYNTHETIC_TOOL_CALL_ID = "call_synthetic_file_transfer_0001"
+# Skills to inject at conversation start: skill_name -> synthetic tool call ID.
+# IDs are stable so existing conversation history is not affected on redeploy.
+BUILTIN_SKILLS_TO_INJECT: dict[str, str] = {
+    "tool-call-file-parameter-formatting": "call_synthetic_file_transfer_0001",
+    "dial-memory": "call_synthetic_dial_memory_0001",
+}
 
 
 class _InjectFileTransferInstructionTransformer(MessagesTransformer):
     """
-    Injects a synthetic tool call to read the builtin_file_transfer skill
-    at the beginning of the conversation (only once).
-
-    This ensures the agent learns about file parameter formatting rules
-    before processing any user requests.
+    Injects synthetic tool calls to read builtin skills at the beginning of
+    the conversation (one tool call per skill, injected only once).
     """
 
     @inject
@@ -29,64 +29,52 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
         self.__skills_provider = skills_provider
 
     def transform(self, messages: list[Message]) -> list[Message]:
-        # Check if synthetic tool call already exists in history
-        if self._has_synthetic_tool_call(messages):
-            logger.debug("Synthetic file transfer instruction already present, skipping injection")
+        synthetic_messages: list[Message] = []
+
+        for skill_name, tool_call_id in BUILTIN_SKILLS_TO_INJECT.items():
+            if self._is_skill_injected(messages, tool_call_id):
+                logger.debug("Synthetic tool call for '%s' already present, skipping", skill_name)
+                continue
+
+            try:
+                skill_content = self.__skills_provider.get_skill_content(skill_name)
+            except (FileNotFoundError, ValueError) as e:
+                logger.error("Builtin skill '%s' not found, skipping injection: %s", skill_name, e)
+                continue
+
+            synthetic_messages.extend(self._create_synthetic_tool_call(skill_name, tool_call_id, skill_content))
+
+        if not synthetic_messages:
             return messages
 
-        # Check if the skill exists
-        try:
-            skill_content = self.__skills_provider.get_skill_content(BUILTIN_FILE_TRANSFER_SKILL)
-        except (FileNotFoundError, ValueError) as e:
-            logger.error(f"Builtin file transfer skill not found, skipping injection: {e}")
-            return messages
-
-        # Create synthetic tool call and response
-        synthetic_messages = self._create_synthetic_tool_call(skill_content)
-
-        # Inject at the beginning (after system prompt if exists)
         if messages and messages[0].role == Role.SYSTEM:
-            # Insert after system message
-            result = [messages[0]] + synthetic_messages + messages[1:]
-        else:
-            # Insert at the very beginning
-            result = synthetic_messages + messages
-
-        logger.debug("Injected synthetic file transfer instruction tool call")
-        return result
+            return [messages[0]] + synthetic_messages + messages[1:]
+        return synthetic_messages + messages
 
     @staticmethod
-    def _has_synthetic_tool_call(messages: list[Message]) -> bool:
-        """Check if synthetic tool call already exists in message history."""
-        for message in messages:
-            if message.role == Role.TOOL and message.tool_call_id == SYNTHETIC_TOOL_CALL_ID:
-                return True
-        return False
+    def _is_skill_injected(messages: list[Message], tool_call_id: str) -> bool:
+        return any(m.role == Role.TOOL and m.tool_call_id == tool_call_id for m in messages)
 
     @staticmethod
-    def _create_synthetic_tool_call(skill_content: str) -> list[Message]:
-        """Create synthetic assistant message with tool call and tool response."""
-        # Create the tool call
+    def _create_synthetic_tool_call(skill_name: str, tool_call_id: str, skill_content: str) -> list[Message]:
         tool_call = ToolCall(
-            id=SYNTHETIC_TOOL_CALL_ID,
+            id=tool_call_id,
             type="function",
             function=FunctionCall(
                 name=SKILL_READER_TOOL_NAME,
-                arguments=json.dumps({"skill_name": BUILTIN_FILE_TRANSFER_SKILL}),
+                arguments=json.dumps({"skill_name": skill_name}),
             ),
         )
 
-        # Assistant message with tool call
         assistant_message = Message(
             role=Role.ASSISTANT,
             content="",
             tool_calls=[tool_call],
         )
 
-        # Tool response message
         tool_response = Message(
             role=Role.TOOL,
-            tool_call_id=SYNTHETIC_TOOL_CALL_ID,
+            tool_call_id=tool_call_id,
             content=skill_content,
         )
 
