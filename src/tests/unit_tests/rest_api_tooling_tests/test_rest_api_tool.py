@@ -4,7 +4,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
-from injector import Binder, InstanceProvider
+from injector import Binder, Injector, InstanceProvider
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
@@ -13,6 +13,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
+    BaseOpenAITool,
     OpenAiToolConfig,
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
@@ -33,12 +34,14 @@ from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration
 
 
-def _make_rest_api_tool(url: str, method: str, **tool_kwargs) -> RestApiTool:
+def _make_rest_api_tool(
+    url: str, method: str, name: str = 'test_function', **tool_kwargs
+) -> RestApiTool:
     return RestApiTool(
         rest_api_method_info=RestApiEndpointMethodInfo(method_url=url, method_type=method),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
-                name="test_function",
+                name=name,
                 description="Test function",
                 parameters=OpenAiToolFunctionParameters(
                     properties={
@@ -379,3 +382,26 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     assert actual_headers["X-Request-Id"] == "req-123"
     assert "X-Custom-Header" in actual_headers
     assert actual_headers["X-Custom-Header"] == "custom-value"
+
+
+def test_openai_tools_names():
+    toolset_name = "rest-api-toolset"
+    tool_name = "rest-tool"
+    rest_api_toolset = RestApiToolSet(
+        name=toolset_name,
+        tools=[_make_rest_api_tool("https://example.com/api", "get", name=tool_name)],
+    )
+
+    def configure(binder: Binder):
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    injector = Injector(modules=[RestApiToolingModule, configure])
+    tools = injector.get(list[StagedBaseTool])
+
+    assert len(tools) == 1
+    tool_config: BaseOpenAITool = tools[0].tool_config
+    assert tool_config.open_ai_tool.function.name == f"{toolset_name}_{tool_name}"
