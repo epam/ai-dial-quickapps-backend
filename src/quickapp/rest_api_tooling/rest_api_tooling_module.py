@@ -59,21 +59,21 @@ class RestApiToolingModule(Module):
                         "set enabled=true explicitly.",
                         tool_config.open_ai_tool.function.name,
                     )
-            tool_config = tool_config.model_copy(
-                update={
-                    "open_ai_tool": tool_config.open_ai_tool.model_copy(
-                        update={
-                            "function": tool_config.open_ai_tool.function.model_copy(
-                                update={
-                                    "name": sanitize_toolname(
-                                        f"{rest_api_toolset.name}_{tool_config.open_ai_tool.function.name}"
-                                    )
-                                }
-                            )
-                        }
-                    )
-                }
-            )
+                tool_config = tool_config.model_copy(
+                    update={
+                        "open_ai_tool": tool_config.open_ai_tool.model_copy(
+                            update={
+                                "function": tool_config.open_ai_tool.function.model_copy(
+                                    update={
+                                        "name": sanitize_toolname(
+                                            f"{rest_api_toolset.name}_{tool_config.open_ai_tool.function.name}"
+                                        )
+                                    }
+                                )
+                            }
+                        )
+                    }
+                )
             result.append(
                 tool_builder.build(
                     tool_config=tool_config, auth_info=rest_api_toolset.authorization
