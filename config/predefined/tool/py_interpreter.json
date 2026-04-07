@@ -8,7 +8,7 @@
   "open_ai_tool": {
     "type": "function",
     "function": {
-      "name": "python_code_interpreter",
+      "name": "internal_code_execution_python_interpreter",
       "description": "**Python Code Interpreter**  \nExecutes Python 3.11 code using Jupyter Kernel with such libraries: \n- python-multipart\n- pandas[excel, plot, output-formatting]\n- plotly\n- matplotlib\n- seaborn\n- scipy\n\n**Workflow:**\n- Single persistent session throughout conversation.\n- Code state persists and is reusable within session.\n- Session expires after 15min inactivity, deleting all code/files.\n- User files must be listed in `attachment_urls` to be accessible.\n- Text outputs are sampled. Control with `data_sample_config`.\n- Web access is DISABLED.\n\n**Instructions:**\n- Use ONLY listed above external libraries.\n- Prefer `plotly` library over `matplotlib` for data visualizations, unless user asked otherwise.\n- Reuse code in session.\n\n**Response:**\n- `status`: SUCCESS/FAILED\n- `stdout`: Console output\n- `stderr`: Error details\n- `result`: Execution result\n- `display`: Images/Plotly diagrams",
       "parameters": {
         "type": "object",
