@@ -15,7 +15,7 @@ from tests.integration_tests.test_runner.config import SimilarityThreshold, Test
 from tests.integration_tests.test_runner.custom_function import CustomFunction
 from tests.integration_tests.test_runner.e2e_runner import e2e_test
 from tests.integration_tests.test_runner.models import ToolCall, TstCase
-from tests.integration_tests.test_runner.utils.tool_names_with_hash import ToolNames
+from tests.integration_tests.test_runner.utils.tool_names import ToolNames
 
 logger = logging.getLogger(__name__)
 
