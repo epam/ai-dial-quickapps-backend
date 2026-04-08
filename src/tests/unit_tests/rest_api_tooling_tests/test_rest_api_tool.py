@@ -394,6 +394,7 @@ def test_openai_tools_names():
 
     def configure(binder: Binder):
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
