@@ -42,14 +42,25 @@ class _DeploymentToolInitializer(CompletionInitializer):
                     if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled:
                         await self.__init_simple_deployment_tool(tool, toolset.name)
 
-    def __init_deployment_tool(self, tool, toolset_name: str):
+    def __init_deployment_tool(self, tool: DialDeploymentTool, toolset_name: str):
         prefixed_name = sanitize_toolname(f"{toolset_name}_{tool.open_ai_tool.function.name}")
+        prefixed_tool = tool.model_copy(
+            update={
+                "open_ai_tool": tool.open_ai_tool.model_copy(
+                    update={
+                        "function": tool.open_ai_tool.function.model_copy(
+                            update={"name": prefixed_name}
+                        )
+                    }
+                )
+            }
+        )
         built_tool = self.__builder.build(
             application_id=tool.deployment.name,
             application_name=prefixed_name,
-            description=tool.open_ai_tool.function.description,
+            description=prefixed_tool.open_ai_tool.function.description,
             content_propagation=tool.content_propagation,
-            tool_config=tool,
+            tool_config=prefixed_tool,
         )
         self.__deployment_context.append_tool(built_tool)
 
