@@ -86,6 +86,7 @@ class SessionManager:
 
     async def close_session(self, session_id: str):
         await self.__client.close_session(PyInterpreterSession(sessionId=session_id))
+        self.__validated_session_id = None
 
     def _persist_state(self, interpreter_state: PyInterpreterState) -> None:
         self.__state_holder.add_state(
