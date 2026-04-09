@@ -6,8 +6,8 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, singleton
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.skills._inject_file_transfer_instruction_transformer import (
-    _InjectFileTransferInstructionTransformer,
+from quickapp.skills._inject_builtin_skills_transformer import (
+    _InjectBuiltinSkillsTransformer,
 )
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
@@ -22,8 +22,8 @@ class SkillsModule(Module):
         binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
         binder.bind(_SkillReaderTool, to=_SkillReaderTool, scope=request_scope)
         binder.bind(
-            _InjectFileTransferInstructionTransformer,
-            to=_InjectFileTransferInstructionTransformer,
+            _InjectBuiltinSkillsTransformer,
+            to=_InjectBuiltinSkillsTransformer,
             scope=request_scope,
         )
 
@@ -50,6 +50,6 @@ class SkillsModule(Module):
     @multiprovider
     def _provide_message_transformers(
         self,
-        file_transfer_transformer: _InjectFileTransferInstructionTransformer,
+        builtin_skills_transformer: _InjectBuiltinSkillsTransformer,
     ) -> list[MessagesTransformer]:
-        return [file_transfer_transformer]
+        return [builtin_skills_transformer]

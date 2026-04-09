@@ -4,34 +4,37 @@ import logging
 from aidial_sdk.chat_completion import FunctionCall, Message, Role, ToolCall
 from injector import inject
 
+from quickapp.common.di_types import BUILTIN_SKILLS_TO_INJECT
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 logger = logging.getLogger(__name__)
 
-# Skills to inject at conversation start: skill_name -> synthetic tool call ID.
-# IDs are stable so existing conversation history is not affected on redeploy.
-BUILTIN_SKILLS_TO_INJECT: dict[str, str] = {
-    "tool-call-file-parameter-formatting": "call_synthetic_file_transfer_0001",
-    "dial-memory": "call_synthetic_dial_memory_0001",
-}
 
-
-class _InjectFileTransferInstructionTransformer(MessagesTransformer):
+class _InjectBuiltinSkillsTransformer(MessagesTransformer):
     """
     Injects synthetic tool calls to read builtin skills at the beginning of
     the conversation (one tool call per skill, injected only once).
+
+    The list of skills to inject is provided via DI (BUILTIN_SKILLS_TO_INJECT).
+    Each entry is a (skill_name, tool_call_id) tuple. IDs must be stable across
+    redeploys so existing conversation history is not affected.
     """
 
     @inject
-    def __init__(self, skills_provider: AgentSkillsProvider):
+    def __init__(
+        self,
+        skills_provider: AgentSkillsProvider,
+        skills_to_inject: BUILTIN_SKILLS_TO_INJECT,
+    ):
         self.__skills_provider = skills_provider
+        self.__skills_to_inject = skills_to_inject
 
     def transform(self, messages: list[Message]) -> list[Message]:
         synthetic_messages: list[Message] = []
 
-        for skill_name, tool_call_id in BUILTIN_SKILLS_TO_INJECT.items():
+        for skill_name, tool_call_id in self.__skills_to_inject:
             if self._is_skill_injected(messages, tool_call_id):
                 logger.debug("Synthetic tool call for '%s' already present, skipping", skill_name)
                 continue

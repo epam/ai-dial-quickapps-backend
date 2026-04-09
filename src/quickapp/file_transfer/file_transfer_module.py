@@ -3,6 +3,7 @@ import logging
 from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider
 
+from quickapp.common.di_types import BUILTIN_SKILLS_TO_INJECT
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
 
@@ -20,3 +21,7 @@ class FileTransferModule(Module):
         file_argument_transformer: _FileArgumentTransformer,
     ) -> list[ToolArgumentTransformer]:
         return [file_argument_transformer]
+
+    @multiprovider
+    def _provide_skills_to_inject(self) -> BUILTIN_SKILLS_TO_INJECT:
+        return [("tool-call-file-parameter-formatting", "call_synthetic_file_transfer_0001")]

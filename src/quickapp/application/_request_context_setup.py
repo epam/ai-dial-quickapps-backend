@@ -6,7 +6,7 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
-from quickapp.common._di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
+from quickapp.common.di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver

@@ -7,7 +7,7 @@ from httpx_sse import aconnect_sse
 from injector import inject
 
 from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY
-from quickapp.common._di_types import CLIENT_CHANNEL_HEADER
+from quickapp.common.di_types import CLIENT_CHANNEL_HEADER
 from quickapp.common.dial_settings import DialSettings
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services._login_result import LoginResult

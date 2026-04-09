@@ -1,4 +1,4 @@
-from ._di_types import (
+from .di_types import (
     DIAL_API_KEY,
     DIAL_BEARER,
     CLIENT_CHANNEL_HEADER,
