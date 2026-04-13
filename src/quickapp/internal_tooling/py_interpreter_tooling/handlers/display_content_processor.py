@@ -6,9 +6,7 @@ from typing import Any
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
+from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
@@ -25,11 +23,9 @@ class DisplayContentProcessor:
 
     def __init__(
         self,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
+        dial_core_client_factory: DialCoreClientFactory,
     ):
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
+        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
 
     async def process_display_content(
         self,
@@ -65,9 +61,7 @@ class DisplayContentProcessor:
     async def _publish_to_bucket(
         self, mime_type: str, data: str | dict[str, Any]
     ) -> dict[str, Any]:
-        async with DialCoreClient(
-            api_key=self.__api_key, base_url=self.__dial_settings.url
-        ) as dial_core:
+        async with self.__dial_core_client_factory.create() as dial_core:
             filename = generate_attachment_filename(mime_type)
 
             return await dial_core.put_file(

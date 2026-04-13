@@ -5,9 +5,7 @@ from io import BytesIO
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
+from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.common.utils import generate_attachment_filename
 
 logger = logging.getLogger(__name__)
@@ -25,9 +23,8 @@ def _get_bytes(data: str) -> bytes:
 @inject
 class AttachmentService:
 
-    def __init__(self, dial_settings: DialSettings, api_key: DIAL_API_KEY):
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
+    def __init__(self, dial_core_client_factory: DialCoreClientFactory):
+        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
 
     async def upload_attachment_to_core(self, attachment: Attachment) -> Attachment:
         logger.debug(
@@ -35,9 +32,7 @@ class AttachmentService:
         )
         if attachment.url is None and attachment.data:
             try:
-                async with DialCoreClient(
-                    base_url=self.__dial_settings.url, api_key=self.__api_key
-                ) as dial_core:
+                async with self.__dial_core_client_factory.create() as dial_core:
                     attachment_name = attachment.title or generate_attachment_filename(
                         attachment.type
                     )

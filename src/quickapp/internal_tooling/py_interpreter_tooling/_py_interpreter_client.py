@@ -68,10 +68,11 @@ class _PyInterpreterClient:
             raise ValueError("No client present in the PyInterpreterClient")
         try:
             return await self._client.post(url=path, json=json)
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:
             raise _PyInterpreterTimeOutError(
-                "Unable to execute code. Executions is taking too long time!"
-            )
+                tool_name="python_code_interpreter",
+                timeout_seconds=self.timeout,
+            ) from e
 
     async def _make_post(self, path: str, json: dict[str, Any]) -> httpx.Response:
         response = await self._make_post_request(path=path, json=json)

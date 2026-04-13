@@ -19,12 +19,15 @@ class InputFileHandler:
         attachment_url: str,
         attachment: Attachment,
         dial_url: str,
+        timeout: float | None = None,
     ) -> str:
         """Get attachment URL, handling local development case"""
         if settings.api_key:
-            async with DialCoreClient(api_key=dial_api_key, base_url=dial_url) as dial_core:
+            async with DialCoreClient(
+                api_key=dial_api_key, base_url=dial_url, timeout=timeout
+            ) as dial_core:
                 file = await dial_core.get_file(attachment_url)
-            async with DialCoreClient(settings.api_key, settings.url) as dial_core:
+            async with DialCoreClient(settings.api_key, settings.url, timeout=timeout) as dial_core:
                 bucket_info = await dial_core.put_file(
                     name=os.path.basename(attachment_url),
                     mime_type=attachment.type,

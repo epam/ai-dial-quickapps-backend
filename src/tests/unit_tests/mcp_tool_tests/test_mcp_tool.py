@@ -29,7 +29,7 @@ from quickapp.dial_core_services._interactive_login_settings import InteractiveL
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
-from tests.unit_tests.common.common import create_app_configuration
+from tests.unit_tests.common.common import create_app_configuration, noop_timeout_resolver
 
 
 @pytest.mark.asyncio
@@ -345,6 +345,7 @@ async def test_forwarded_x_headers_passed_to_mcp_request():
         ),
         oauth_token_fetcher=mock_oauth,
         dial_settings=dial_settings,
+        timeout_resolver=noop_timeout_resolver(),
         bearer=None,
         forwarded_headers=forwarded,
     )

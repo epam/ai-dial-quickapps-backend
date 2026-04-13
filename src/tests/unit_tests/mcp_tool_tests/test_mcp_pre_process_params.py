@@ -14,6 +14,7 @@ from quickapp.file_transfer._file_argument_transformer import _FileArgumentTrans
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 def _make_tool(
@@ -55,6 +56,7 @@ def _make_tool(
         file_service=file_service,
         dial_toolset_id=dial_toolset_id,
         login_service=MagicMock(),
+        timeout_resolver=noop_timeout_resolver(),
         argument_transformers=[file_transformer],
     )
     return mcp_tool, file_service

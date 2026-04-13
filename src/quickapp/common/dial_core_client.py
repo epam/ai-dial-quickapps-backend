@@ -44,17 +44,26 @@ class ToolsetInfo(BaseModel, extra='allow'):
 
 
 class DialCoreClient:
-    def __init__(self, api_key: str | SecretStr, base_url: str):
+    def __init__(
+        self,
+        api_key: str | SecretStr,
+        base_url: str,
+        timeout: float | None = None,
+    ):
         self.api_key = self._get_api_key(api_key)
         self.base_url = base_url
+        self._timeout: float | None = timeout
         self._bucket_id: str | None = None
         self._client: httpx.AsyncClient | None = None
 
     async def __aenter__(self):
-        self._client = httpx.AsyncClient(
-            base_url=self.base_url,
-            headers={'Api-Key': self._get_api_key(self.api_key)},
-        )
+        client_kwargs: dict = {
+            "base_url": self.base_url,
+            "headers": {'Api-Key': self._get_api_key(self.api_key)},
+        }
+        if self._timeout is not None:
+            client_kwargs["timeout"] = self._timeout
+        self._client = httpx.AsyncClient(**client_kwargs)
         return self
 
     def _get_api_key(self, api_key: str | SecretStr) -> str:

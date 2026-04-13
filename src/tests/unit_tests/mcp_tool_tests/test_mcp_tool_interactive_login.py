@@ -9,6 +9,7 @@ from quickapp.common import CompletionResult
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 def _make_mcp_tool(
@@ -40,6 +41,7 @@ def _make_mcp_tool(
         file_service=MagicMock(),
         dial_toolset_id=dial_toolset_id,
         login_service=login_service,
+        timeout_resolver=noop_timeout_resolver(),
     )
     return mcp_tool, connection_manager, login_service
 

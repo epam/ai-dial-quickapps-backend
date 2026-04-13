@@ -11,7 +11,7 @@ from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .completion_result import CompletionResult
-from .exceptions import InvalidToolCallParameterException
+from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type, substitute_media_type
@@ -77,7 +77,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             except Exception as e:
                 logger.exception("Error occurred while running tool")
                 fallback = self._tool_config.fallback_configuration
-                if fallback.display_error_in_stage:
+                if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
                     stage_wrapper.add_exception(e)
                 else:
                     stage_wrapper.add_exception(

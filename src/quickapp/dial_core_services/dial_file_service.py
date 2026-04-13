@@ -2,9 +2,7 @@ import logging
 
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
+from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 
@@ -16,16 +14,13 @@ class DialFileService:
 
     def __init__(
         self,
-        dial_settings: DialSettings,
-        dial_api_key: DIAL_API_KEY,
         state_holder: StateHolder,
         perf_timer: PerformanceTimer,
+        dial_core_client_factory: DialCoreClientFactory,
     ):
-
-        self.__dial_settings: DialSettings = dial_settings
-        self.__dial_api_key: DIAL_API_KEY = dial_api_key
         self.__state_holder: StateHolder = state_holder
         self.__content_size_limit = 10 * 1024 * 1024
+        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
 
     async def download_file(self, file_url: str) -> bytes:
         # Check state holder for the file content:
@@ -34,9 +29,7 @@ class DialFileService:
         if file_data is None:
             try:
                 logger.debug(f"Downloading file:{file_url}")
-                async with DialCoreClient(
-                    api_key=self.__dial_api_key, base_url=self.__dial_settings.url
-                ) as dial_core:
+                async with self.__dial_core_client_factory.create() as dial_core:
                     metadata = await dial_core.get_metadata(file_url)
                     size = metadata.get("contentLength") or 0
                     if size > self.__content_size_limit:
@@ -54,9 +47,7 @@ class DialFileService:
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str
     ) -> None:
-        async with DialCoreClient(
-            api_key=self.__dial_api_key, base_url=self.__dial_settings.url
-        ) as dial_core:
+        async with self.__dial_core_client_factory.create() as dial_core:
             try:
                 logger.debug(f"Granting permissions to files: {files_to_share}")
                 await dial_core.grant_permissions(files_to_share, dial_toolset_id)

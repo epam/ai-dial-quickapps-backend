@@ -1,7 +1,7 @@
 from enum import StrEnum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class TriggerOnType(StrEnum):
@@ -37,6 +37,16 @@ class BaseHandleStrategyModel(BaseToolFallbackStrategyModel):
 
 class ContinueStrategyModel(BaseHandleStrategyModel):
     type: Literal["continue"] = Field(default="continue", description="The type of the strategy.")
+
+    @model_validator(mode="after")
+    def _require_instructions_with_trigger(self) -> "ContinueStrategyModel":
+        if self.trigger_on is not None and self.instructions is None:
+            raise ValueError(
+                "ContinueStrategyModel with `trigger_on` set must also provide "
+                "`instructions`. Otherwise the generic fallback text would silently "
+                "replace any built-in handling."
+            )
+        return self
 
 
 class RetryStrategyModel(BaseHandleStrategyModel):

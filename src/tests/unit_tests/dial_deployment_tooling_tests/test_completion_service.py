@@ -10,6 +10,7 @@ from aidial_client.types.chat.request_param import (
 
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 @pytest.fixture
@@ -32,7 +33,7 @@ def dial_client():
 
 @pytest.fixture
 def completion_service(dial_client):
-    return DialCompletionService(dial_client, None)
+    return DialCompletionService(dial_client, None, noop_timeout_resolver())
 
 
 @pytest.fixture
@@ -290,7 +291,7 @@ async def test_resolve_attachment_strips_file_prefix(
     fileinfo.url = expected_stripped_url
     dial_client.metadata.get = AsyncMock(return_value=fileinfo)
 
-    service = DialCompletionService(dial_client, None)
+    service = DialCompletionService(dial_client, None, noop_timeout_resolver())
     result = await service._resolve_attachment(file_relative_url)
 
     dial_client.metadata.get.assert_called_once_with("files", expected_stripped_url)
@@ -306,7 +307,7 @@ async def test_resolve_attachment_without_prefix(dial_client):
     fileinfo.url = "files/xyz/report.pdf"
     dial_client.metadata.get = AsyncMock(return_value=fileinfo)
 
-    service = DialCompletionService(dial_client, None)
+    service = DialCompletionService(dial_client, None, noop_timeout_resolver())
     result = await service._resolve_attachment("files/xyz/report.pdf")
 
     dial_client.metadata.get.assert_called_once_with("files", "files/xyz/report.pdf")
@@ -319,7 +320,7 @@ async def test_resolve_attachment_without_prefix(dial_client):
 async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_stage_wrapper):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    service = DialCompletionService(dial_client, forwarded)
+    service = DialCompletionService(dial_client, forwarded, noop_timeout_resolver())
 
     await service.complete_request_async(
         params={"query": "Test query"},

@@ -8,8 +8,8 @@ from injector import ProviderOf, inject
 from pydantic import SecretStr
 
 from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient, ToolsetInfo
-from quickapp.common.dial_settings import DialSettings
+from quickapp.common.dial_core_client import ToolsetInfo
+from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -37,15 +37,19 @@ logger = logging.getLogger(__name__)
 @inject
 class ToolConfigCoreService:
 
-    def __init__(self, dial_settings: DialSettings, api_key_provider: ProviderOf[DIAL_API_KEY]):
-        self.__dial_settings: DialSettings = dial_settings
+    def __init__(
+        self,
+        api_key_provider: ProviderOf[DIAL_API_KEY],
+        dial_core_client_factory: DialCoreClientFactory,
+    ):
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
+        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
 
     async def get_basic_tool_config(
         self, deployment: str, api_key: SecretStr | None = None
     ) -> DialDeploymentTool:
         api_key = api_key or self.__api_key_provider.get()
-        async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
+        async with self.__dial_core_client_factory.create(api_key=api_key) as dial_core:
             deployment_model: Deployment | None = None
             application_model: Application | None = None
             try:
@@ -165,7 +169,7 @@ class ToolConfigCoreService:
         api_key = self.__api_key_provider.get()
         if api_key is None:
             raise RuntimeError("API-KEY must be set")
-        async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
+        async with self.__dial_core_client_factory.create(api_key=api_key) as dial_core:
             try:
                 logger.debug(f"Getting toolset tool config for {toolset_dial_id}")
                 info_dict = await dial_core.get_toolset_info(toolset_dial_id)

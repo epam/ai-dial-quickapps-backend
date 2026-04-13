@@ -19,6 +19,8 @@ from quickapp.common import CompletionResult, ForwardedHeaders
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.file_reference_pattern import strip_file_prefix
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONTENT_PARAM,
@@ -49,9 +51,15 @@ class _StreamResult(BaseModel):
 @inject
 class DialCompletionService:
 
-    def __init__(self, dial_client: AsyncDial, forwarded_headers: ForwardedHeaders) -> None:
+    def __init__(
+        self,
+        dial_client: AsyncDial,
+        forwarded_headers: ForwardedHeaders,
+        timeout_resolver: ToolTimeoutResolver,
+    ) -> None:
         self.__dial_client: AsyncDial = dial_client
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
+        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
 
     async def complete_request_async(
         self,
@@ -70,12 +78,16 @@ class DialCompletionService:
                 " it should use `query` parameter"
             )
 
-        messages = await self.__build_request_messages(content, relative_attachment_urls, history)
-        chat_params = self._build_chat_completion_params(
-            params, deployment_id, messages, self.__forwarded_headers
-        )
-        chunks = await self.__dial_client.chat.completions.create(**chat_params)
-        result = await self._consume_stream(chunks, stage_wrapper)
+        timeout = self.__timeout_resolver.resolve()
+        async with translate_timeout(deployment_name, timeout):
+            messages = await self.__build_request_messages(
+                content, relative_attachment_urls, history
+            )
+            chat_params = self._build_chat_completion_params(
+                params, deployment_id, messages, self.__forwarded_headers
+            )
+            chunks = await self.__dial_client.chat.completions.create(**chat_params)
+            result = await self._consume_stream(chunks, stage_wrapper)
 
         return CompletionResult(
             content=result.content,

@@ -3,9 +3,7 @@ from datetime import timedelta
 
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
+from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.usage_statistics._pricing import _Pricing
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 
@@ -20,12 +18,10 @@ class _PricingService:
     def __init__(
         self,
         pricing_registry: _PricingRegistry,
-        dial_settings: DialSettings,
-        api_key: DIAL_API_KEY,
+        dial_core_client_factory: DialCoreClientFactory,
     ):
         self.__pricing_registry: _PricingRegistry = pricing_registry
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
+        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
 
     async def get_price(self, model_name: str) -> _Pricing:
         try:
@@ -42,9 +38,7 @@ class _PricingService:
 
     async def __fetch_pricing_from_api(self, model_name: str) -> _Pricing:
         try:
-            async with DialCoreClient(
-                api_key=self.__api_key, base_url=self.__dial_settings.url
-            ) as dial_core:
+            async with self.__dial_core_client_factory.create() as dial_core:
                 json_response = await dial_core.get_model_pricing(model_name)
                 fetched_pricing = json_response.get("pricing")
 
