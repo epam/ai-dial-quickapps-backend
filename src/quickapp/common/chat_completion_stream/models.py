@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aidial_client.types.chat.response import Attachment
+from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
