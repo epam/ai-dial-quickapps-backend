@@ -1,101 +1,105 @@
 import base64
-from io import BytesIO
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_client.types.chat.response import Attachment
-from pydantic import SecretStr
 
-from quickapp.common.dial_settings import DialSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
+
+
+def _make_mock_dial_client(
+    bucket: str = "test-bucket", upload_url: str = "https://example.com/file"
+) -> MagicMock:
+    """Build a minimal AsyncDial mock covering bucket + files.upload."""
+    bucket_resp = MagicMock()
+    bucket_resp.appdata = None
+    bucket_resp.bucket = bucket
+
+    upload_result = MagicMock()
+    upload_result.url = upload_url
+
+    mock_client = MagicMock()
+    mock_client.bucket.get_raw = AsyncMock(return_value=bucket_resp)
+    mock_client.files.upload = AsyncMock(return_value=upload_result)
+    return mock_client
 
 
 @pytest.mark.asyncio
 async def test_upload_attachment_success_with_title():
-    dial_settings = DialSettings(url="http://dial-core", api_version="2025-01-01-preview")
-    api_key = SecretStr("apikey")
+    mock_client = _make_mock_dial_client(upload_url="https://example.com/myfile.txt")
+    attachment = Attachment(
+        title="myfile.txt",
+        url=None,
+        data=base64.b64encode(b"hello world").decode(),
+        type="text/plain",
+    )
 
-    raw = b"hello world"
-    encoded = base64.b64encode(raw).decode()
-    attachment = Attachment(title="myfile.txt", url=None, data=encoded, type="text/plain")
+    svc = AttachmentService(dial_client=mock_client)
+    result = await svc.upload_attachment_to_core(attachment)
 
-    mock_ctx = AsyncMock()
-    mock_client = AsyncMock()
-    mock_client.put_file.return_value = {"url": "https://example.com/myfile.txt"}
-    mock_ctx.__aenter__.return_value = mock_client
-    mock_ctx.__aexit__.return_value = None
-
-    with patch(
-        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
-    ) as mock_dc:
-        svc = AttachmentService(dial_settings, api_key)
-        result = await svc.upload_attachment_to_core(attachment)
-
-    mock_dc.assert_called_once_with(base_url=dial_settings.url, api_key=api_key)
-    mock_client.put_file.assert_awaited_once()
-    called_kwargs = mock_client.put_file.await_args.kwargs
-    assert called_kwargs["name"] == "myfile.txt"
-    assert called_kwargs["mime_type"] == "text/plain"
-    assert isinstance(called_kwargs["content"], BytesIO)
+    mock_client.bucket.get_raw.assert_awaited_once()
+    mock_client.files.upload.assert_awaited_once()
+    call_kwargs = mock_client.files.upload.call_args
+    assert call_kwargs.kwargs["url"] == "files/test-bucket/myfile.txt"
+    name, content, mime = call_kwargs.kwargs["file"]
+    assert name == "myfile.txt"
+    assert isinstance(content, bytes)
+    assert mime == "text/plain"
     assert result.data is None
     assert result.url == "https://example.com/myfile.txt"
 
 
 @pytest.mark.asyncio
 async def test_upload_attachment_generates_name_when_no_title():
-    dial_settings = DialSettings(url="https://dial-core", api_version="2025-01-01-preview")
-    api_key = SecretStr("apikey")
+    mock_client = _make_mock_dial_client(upload_url="https://example.com/generated.bin")
+    attachment = Attachment(
+        title=None,
+        url=None,
+        data=base64.b64encode(b"data").decode(),
+        type="application/octet-stream",
+    )
 
-    raw = b"data"
-    encoded = base64.b64encode(raw).decode()
-    attachment = Attachment(title=None, url=None, data=encoded, type="application/octet-stream")
-
-    mock_ctx = AsyncMock()
-    mock_client = AsyncMock()
-    mock_client.put_file.return_value = {"url": "https://example.com/generated.bin"}
-    mock_ctx.__aenter__.return_value = mock_client
-    mock_ctx.__aexit__.return_value = None
+    from unittest.mock import patch
 
     with patch(
-        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
+        "quickapp.dial_core_services.attachment_service.generate_attachment_filename",
+        return_value="generated.bin",
     ):
-        with patch(
-            "quickapp.dial_core_services.attachment_service.generate_attachment_filename",
-            return_value="generated.bin",
-        ):
-            svc = AttachmentService(dial_settings, api_key)
-            result = await svc.upload_attachment_to_core(attachment)
+        svc = AttachmentService(dial_client=mock_client)
+        result = await svc.upload_attachment_to_core(attachment)
 
-    mock_client.put_file.assert_awaited_once()
-    called_kwargs = mock_client.put_file.await_args.kwargs
-    assert called_kwargs["name"] == "generated.bin"
+    mock_client.files.upload.assert_awaited_once()
+    call_kwargs = mock_client.files.upload.call_args
+    assert call_kwargs.kwargs["url"] == "files/test-bucket/generated.bin"
     assert result.url == "https://example.com/generated.bin"
     assert result.data is None
 
 
 @pytest.mark.asyncio
 async def test_upload_attachment_on_exception_keeps_data():
-    dial_settings = DialSettings(url="https://dial-core", api_version="2025-01-01-preview")
-    api_key = SecretStr("apikey")
-
-    attachment = Attachment(title="fail.txt", url=None, data="rawdata", type="text/plain")
-
-    mock_ctx = AsyncMock()
-    mock_client = AsyncMock()
-    mock_client.put_file.side_effect = Exception(
+    mock_client = _make_mock_dial_client()
+    mock_client.bucket.get_raw.side_effect = Exception(
         "upload failed as expected in test case, just ignore this message"
     )
-    mock_ctx.__aenter__.return_value = mock_client
-    mock_ctx.__aexit__.return_value = None
+    attachment = Attachment(title="fail.txt", url=None, data="rawdata", type="text/plain")
 
-    with patch(
-        "quickapp.dial_core_services.attachment_service.DialCoreClient", return_value=mock_ctx
-    ):
-        svc = AttachmentService(dial_settings, api_key)
-        # noinspection PyBroadException
-        try:
-            result = await svc.upload_attachment_to_core(attachment)
-        except Exception:
-            pass  # Suppress exception for test
+    svc = AttachmentService(dial_client=mock_client)
+    result = await svc.upload_attachment_to_core(attachment)
+
     assert result.data == "rawdata"
     assert result.url is None
+
+
+@pytest.mark.asyncio
+async def test_upload_skipped_when_url_already_set():
+    mock_client = _make_mock_dial_client()
+    attachment = Attachment(
+        title="existing.txt", url="https://already-set.com/file", data=None, type="text/plain"
+    )
+
+    svc = AttachmentService(dial_client=mock_client)
+    result = await svc.upload_attachment_to_core(attachment)
+
+    mock_client.bucket.get_raw.assert_not_called()
+    mock_client.files.upload.assert_not_called()
+    assert result.url == "https://already-set.com/file"

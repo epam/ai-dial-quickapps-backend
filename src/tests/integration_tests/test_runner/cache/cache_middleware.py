@@ -3,8 +3,9 @@ import gzip
 import json
 import logging
 import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List
+from typing import AsyncGenerator, List
 from urllib.parse import urlparse
 
 import httpx
@@ -79,15 +80,21 @@ class CacheMiddlewareApp(FastAPI):
         self.used_cache_responses = set()
         self._background_tasks: List[asyncio.Task] = []
 
-        super().__init__()
+        super().__init__(lifespan=self._lifespan)
         self.router = APIRouter()
         self.register_routes()
-
-        self.add_event_handler("shutdown", self.close_resources)
 
         self.http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=50), timeout=600.0
         )
+
+    @asynccontextmanager
+    async def _lifespan(self, app: FastAPI) -> AsyncGenerator[None, None]:
+        """Manage application lifespan with startup and shutdown logic."""
+        # Startup
+        yield
+        # Shutdown
+        await self.close_resources()
 
     def track_task(self, task: asyncio.Task):
         """Track a background task for cleanup"""

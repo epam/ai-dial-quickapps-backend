@@ -12,6 +12,9 @@ excludes:
       comment: "Packages for experimentation only."
 resolutions:
   rule_violations:
+    - message: ".*PyPI::aidial-client:0\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Apache License 2.0: https://github.com/epam/ai-dial-client-python/blob/main/LICENSE"
     - message: ".*PyPI::fastapi:0\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/fastapi/fastapi/blob/master/LICENSE"
