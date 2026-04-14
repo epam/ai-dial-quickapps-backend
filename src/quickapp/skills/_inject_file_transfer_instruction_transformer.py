@@ -44,13 +44,19 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
         # Create synthetic tool call and response
         synthetic_messages = self._create_synthetic_tool_call(skill_content)
 
-        # Inject at the beginning (after system prompt if exists)
-        if messages and messages[0].role == Role.SYSTEM:
-            # Insert after system message
-            result = [messages[0]] + synthetic_messages + messages[1:]
+        # Inject after the first user message to satisfy model constraints
+        # (e.g. Gemini requires tool calls after a user turn, not after system)
+        first_user_idx = next(
+            (i for i, m in enumerate(messages) if m.role == Role.USER),
+            None,
+        )
+
+        if first_user_idx is not None:
+            insert_pos = first_user_idx + 1
+            result = messages[:insert_pos] + synthetic_messages + messages[insert_pos:]
         else:
-            # Insert at the very beginning
-            result = synthetic_messages + messages
+            # No user message (edge case) — append at the end
+            result = messages + synthetic_messages
 
         logger.debug("Injected synthetic file transfer instruction tool call")
         return result
