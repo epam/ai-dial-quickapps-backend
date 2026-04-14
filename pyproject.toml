@@ -1,6 +1,6 @@
 [project]
 name = "QuickApps"
-version = "0.6.0rc"
+version = "0.6.1"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -24,7 +24,7 @@ dependencies = [
 
     # MCP (Model Context Protocol)
     "mcp>=1.23.2,<2.0.0",                         # MCP protocol support
-    "fastmcp>=2.14.3,<3.0.0",                     # High-level MCP server framework
+    "fastmcp>=3.2.0,<4.0.0",                       # High-level MCP server framework
 
     # HTML & web content
     "beautifulsoup4>=4.14.2,<5.0.0",              # HTML parsing
@@ -50,7 +50,6 @@ requires-poetry = '>=2.0.0,<3.0.0'
 black = { version = "^26.3.1", extras = ["jupyter"] }
 isort = "^5.13.2"
 mypy = "^1.19.1"
-fastmcp = "^2.12.5"
 types-requests = "^2.31.0.20240406"
 pre-commit = "^3.8.0"
 flake8 = "^7.3.0"

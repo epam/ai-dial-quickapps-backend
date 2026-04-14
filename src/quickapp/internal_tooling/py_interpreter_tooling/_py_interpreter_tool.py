@@ -1,6 +1,9 @@
+import logging
+import os
 from typing import Any
+from urllib.parse import unquote
 
-from aidial_sdk.chat_completion import Attachment, Message, Role
+from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
 from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
@@ -8,6 +11,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
@@ -38,6 +42,8 @@ from quickapp.internal_tooling.py_interpreter_tooling.model.request import (
 )
 from quickapp.internal_tooling.py_interpreter_tooling.model.response import LoadedFiles
 
+logger = logging.getLogger(__name__)
+
 
 @inject
 class _PyInterpreterTool(StagedBaseTool):
@@ -48,7 +54,7 @@ class _PyInterpreterTool(StagedBaseTool):
     def __init__(
         self,
         stage_wrapper_builder: AssistedBuilder[_PyInterpreterStageWrapper],
-        messages: list[Message],
+        messages_mixin: MessagesMixin,
         client: _PyInterpreterClient,
         py_interpreter_settings: _PyInterpreterSettings,
         session_manager: SessionManager,
@@ -67,7 +73,7 @@ class _PyInterpreterTool(StagedBaseTool):
             argument_transformers=argument_transformers,
             **kwargs,
         )
-        self.__messages: list[Message] = messages
+        self.__messages_mixin: MessagesMixin = messages_mixin
 
         self.__client: _PyInterpreterClient = client
         self.__py_interpreter_settings: _PyInterpreterSettings = py_interpreter_settings
@@ -85,9 +91,13 @@ class _PyInterpreterTool(StagedBaseTool):
     ) -> CompletionResult:
         try:
             code: str = kwargs["code"]
-            open_session: bool = kwargs.get("open_session", False)
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")
-            data_sample_config: DataSampleConfig | None = kwargs.get("data_sample_config")
+            raw_data_sample_config = kwargs.get("data_sample_config")
+            data_sample_config: DataSampleConfig | None = (
+                DataSampleConfig.model_validate(raw_data_sample_config)
+                if raw_data_sample_config is not None
+                else None
+            )
             display_title: str | None = kwargs.get("display_title")
 
             async with self.__client as client:
@@ -95,9 +105,7 @@ class _PyInterpreterTool(StagedBaseTool):
                     self.__session_manager.get_session_id()
                     or self.__py_interpreter_settings.default_session_id
                 )
-                session_id = await self.__session_manager.ensure_valid_session(
-                    session_id, open_session
-                )
+                session_id = await self.__session_manager.ensure_valid_session(session_id)
 
                 await self._prepare_input_files(
                     client=client,
@@ -156,44 +164,65 @@ class _PyInterpreterTool(StagedBaseTool):
         )
         loaded_file_names = [file.path for file in loaded_files.files]
 
-        attachments_urls_map = self._get_attachment_urls_map(self.__messages, Role.USER)
+        attachments_urls_map = self._get_attachment_urls_map(self.__messages_mixin.messages)
+
+        errors: list[str] = []
 
         # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
-            if file_name in loaded_file_names:
+            target_path = unquote(os.path.basename(file_name))
+
+            if target_path in loaded_file_names:
                 continue
 
+            matched = False
             for attachment_url, attachment in attachments_urls_map.items():
                 sanitized_file_name = file_name.replace(" ", "%20")
                 if attachment_url.endswith(file_name) or attachment_url.endswith(
                     sanitized_file_name
                 ):
-                    url = await InputFileHandler().get_attachment_url(
-                        settings=self.__py_interpreter_settings,
-                        dial_api_key=self.__dial_api_key,
-                        attachment_url=attachment_url,
-                        attachment=attachment,
-                        dial_url=self.__dial_settings.url,
-                    )
-
-                    await client.transfer_input_file(
-                        InputFileTransferDto(
-                            sessionId=session_id,
-                            sourceUrl=url,
-                            targetPath=file_name,
+                    matched = True
+                    try:
+                        url = await InputFileHandler().get_attachment_url(
+                            settings=self.__py_interpreter_settings,
+                            dial_api_key=self.__dial_api_key,
+                            attachment_url=attachment_url,
+                            attachment=attachment,
+                            dial_url=self.__dial_settings.url,
                         )
-                    )
+
+                        await client.transfer_input_file(
+                            InputFileTransferDto(
+                                sessionId=session_id,
+                                sourceUrl=url,
+                                targetPath=target_path,
+                            )
+                        )
+                    except Exception as e:
+                        logger.warning("Failed to transfer file %s: %s", target_path, e)
+                        errors.append(f"{target_path}: {e}")
                     break
 
+            if not matched:
+                logger.warning("No matching attachment found for: %s", file_name)
+                errors.append(
+                    f"{unquote(os.path.basename(file_name))}: "
+                    f"no matching attachment found in conversation"
+                )
+
+        if errors:
+            raise _PyInterpreterError(
+                "Failed to prepare input files:\n" + "\n".join(f"- {e}" for e in errors)
+            )
+
     @staticmethod
-    def _get_attachment_urls_map(messages: list[Message], role: Role) -> dict[str, Attachment]:
-        """Get a map of attachment URLs to Attachment objects"""
+    def _get_attachment_urls_map(messages: list[Message]) -> dict[str, Attachment]:
+        """Get a map of attachment URLs to Attachment objects from all messages."""
         attachments_urls_map: dict[str, Attachment] = {}
 
         for msg in messages:
-            if msg.role == role and msg.custom_content and msg.custom_content.attachments:
-                attachments = msg.custom_content.attachments
-                for attachment in attachments:
+            if msg.custom_content and msg.custom_content.attachments:
+                for attachment in msg.custom_content.attachments:
                     if attachment.url:
                         attachments_urls_map[attachment.url] = attachment
 

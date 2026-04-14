@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.state_holder import StateHolder
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -376,11 +378,16 @@ async def test_pyinterpreter_close_session():
     async with _PyInterpreterClient(
         api_key=TestConfig.PY_INTERPRETER_API_KEY, base_url=TestConfig.PY_INTERPRETER_URL
     ) as client:
-        session_manager = SessionManager(client=client, messages=[])
-        session_id = await session_manager.ensure_valid_session(None, True)
+        messages_mixin = MessagesMixin()
+        messages_mixin.messages = []
+        state_holder = StateHolder()
+        session_manager = SessionManager(
+            client=client, messages_mixin=messages_mixin, state_holder=state_holder
+        )
+        session_id = await session_manager.ensure_valid_session(None)
         logger.info("Closing session, and try call py_interpreter again")
         await session_manager.close_session(session_id)
-        new_session_id = await session_manager.ensure_valid_session(session_id, True)
+        new_session_id = await session_manager.ensure_valid_session(session_id)
         assert new_session_id != session_id
 
 
