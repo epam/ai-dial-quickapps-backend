@@ -9,7 +9,7 @@ from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
     Usage,
     attachment_to_sdk,
-    fix_sdk_attachment,
+    ensure_attachment_url_or_data,
 )
 
 
@@ -29,7 +29,7 @@ def test_apply_usage_footprint_prefers_raw_usage():
 def test_apply_usage_footprint_raw_usage_none_uses_token_pair():
     acc = ChatStreamAccumulator()
     acc.apply_usage_footprint(
-        ChunkUsageFootprint(prompt_tokens=10, completion_tokens=20, raw_usage=None)
+        ChunkUsageFootprint(prompt_tokens=10, completion_tokens=20)
     )
     assert acc.usage is not None
     assert acc.usage.prompt_tokens == 10
@@ -40,7 +40,7 @@ def test_apply_usage_footprint_incomplete_tokens_leaves_usage_unchanged():
     acc = ChatStreamAccumulator()
     acc.set_usage(Usage(1, 1))
     acc.apply_usage_footprint(
-        ChunkUsageFootprint(prompt_tokens=5, completion_tokens=None, raw_usage=None)
+        ChunkUsageFootprint(prompt_tokens=5, completion_tokens=None)
     )
     assert acc.usage.prompt_tokens == 1
     assert acc.usage.completion_tokens == 1
@@ -95,7 +95,7 @@ def test_fix_sdk_attachment_sets_data_when_no_url_no_reference():
     att.data = None
     att.url = None
     att.reference_url = None
-    fix_sdk_attachment(att)
+    ensure_attachment_url_or_data(att)
     att.__setitem__.assert_called_once_with("data", "")
 
 
@@ -104,5 +104,5 @@ def test_fix_sdk_attachment_copies_reference_url_to_url():
     att.data = None
     att.url = None
     att.reference_url = "files/ref"
-    fix_sdk_attachment(att)
+    ensure_attachment_url_or_data(att)
     assert att.url == "files/ref"

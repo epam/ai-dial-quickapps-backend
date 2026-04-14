@@ -22,7 +22,6 @@ def test_parse_chunk_usage_only_no_choices():
     assert isinstance(footprint, ChunkUsageFootprint)
     assert footprint.prompt_tokens == 3
     assert footprint.completion_tokens == 5
-    assert footprint.raw_usage is usage
     assert deltas == []
 
 
@@ -139,7 +138,7 @@ def test_normalized_custom_content_builder_add_attachments_non_list_no_op():
     b = NormalizedCustomContentBuilder().add_attachments("not-a-list").add_stages([{"name": "x"}])
     built = b.build()
     assert built is not None
-    assert built.sdk_attachments == []
+    assert built.attachments == []
 
 
 def test_normalized_custom_content_builder_build_empty_returns_none():

@@ -2,16 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from aidial_client.types.chat.response import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class NormalizedCustomContent(BaseModel):
-    """Per-delta custom payload. ``sdk_attachments``: SDK ``Attachment`` (dict path) or API objects (deployment)."""
+    """Per-delta custom payload. ``attachments``: ``Attachment``"""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    sdk_attachments: list[Any]
+    attachments: list[Attachment]
     stage_entries: list[tuple[int, dict[str, Any]]]
     state: dict[str, Any] | None
 
@@ -29,7 +30,6 @@ class ChunkUsageFootprint(BaseModel):
 
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
-    raw_usage: Any = None
 
 
 ChatStreamEvent = ChunkUsageFootprint | NormalizedChoiceDelta

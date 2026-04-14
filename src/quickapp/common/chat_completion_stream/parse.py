@@ -50,7 +50,7 @@ class NormalizedCustomContentBuilder:
         if not self._sdk_attachments and not self._stage_entries and self._state is None:
             return None
         return NormalizedCustomContent(
-            sdk_attachments=self._sdk_attachments,
+            attachments=self._sdk_attachments,
             stage_entries=self._stage_entries,
             state=self._state,
         )
@@ -83,7 +83,6 @@ def _usage_footprint(chunk: Any) -> ChunkUsageFootprint | None:
         return ChunkUsageFootprint(
             prompt_tokens=getattr(u, "prompt_tokens", None),
             completion_tokens=getattr(u, "completion_tokens", None),
-            raw_usage=u,
         )
     return None
 

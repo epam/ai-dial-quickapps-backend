@@ -62,14 +62,14 @@ def attachment_to_sdk(attachment: Any) -> dial_sdk_models.Attachment:
     return dial_sdk_models.Attachment(**attachment.model_dump())
 
 
-def fix_sdk_attachment(attachment: Any) -> None:
+def ensure_attachment_url_or_data(attachment: Attachment) -> None:
     """Bugfix issue#16: if attachment has no data and no url, use reference_url as url or set empty data.
 
     Mutates SDK attachment objects in place (orchestrator + deployment stream handlers).
     """
     if attachment.data is None and attachment.url is None:
         if attachment.reference_url is None:
-            attachment["data"] = ""
+            attachment.data = ""
         else:
             attachment.url = attachment.reference_url
 
@@ -122,9 +122,7 @@ class ChatStreamAccumulator:
         self.__usage = usage
 
     def apply_usage_footprint(self, fp: ChunkUsageFootprint) -> None:
-        if fp.raw_usage is not None:
-            self.__usage = fp.raw_usage
-        elif fp.prompt_tokens is not None and fp.completion_tokens is not None:
+        if fp.prompt_tokens is not None and fp.completion_tokens is not None:
             self.__usage = Usage(fp.prompt_tokens, fp.completion_tokens)
 
     @property

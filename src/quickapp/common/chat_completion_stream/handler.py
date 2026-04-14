@@ -32,7 +32,7 @@ from quickapp.common.chat_completion_stream.parse import parse_chat_completion_c
 from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
     attachment_to_sdk,
-    fix_sdk_attachment,
+    ensure_attachment_url_or_data,
 )
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,11 @@ class ChatStreamConfig(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    # SkipValidation: SDK types are not validated as subclasses (tests use Mock).
-    destination: Annotated[Choice | None, SkipValidation()] = None
-    stage_wrapper: Annotated[BaseStageWrapper | None, SkipValidation()] = None
+    destination: Choice | None = None
+    stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
+    # TODO: add validator that one of destination or stage_wrapper should have value.
 
 
 class ChatCompletionStreamHandler:
@@ -82,15 +82,12 @@ class ChatCompletionStreamHandler:
             ):
                 self._apply_stream_event(accumulator, config, stages_by_index, event)
         except ChatStreamHandlerError:
-            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
             raise
         except Exception as exc:
-            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
-        self._finalize_remaining_streaming_stages(stages_by_index)
+        finally:
+            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
 
-    def _finalize_remaining_streaming_stages(self, stages_by_index: dict[int, Stage]) -> None:
-        self._close_all_streaming_stages(stages_by_index, Status.FAILED)
 
     def _apply_stream_event(
         self,
@@ -103,6 +100,8 @@ class ChatCompletionStreamHandler:
             accumulator.apply_usage_footprint(event)
         elif isinstance(event, NormalizedChoiceDelta):
             self._handle_delta(accumulator, config, stages_by_index, event)
+        else:
+            logger.warning("Unexpected event of type %s", type(event))
 
     def _handle_delta(
         self,
@@ -134,6 +133,28 @@ class ChatCompletionStreamHandler:
         for tool_call in delta.tool_calls:
             accumulator.append_tool_call_delta(tool_call)
 
+    def _process_attachments_to_destination(
+            self,
+            accumulator: ChatStreamAccumulator,
+            attachments: list,
+            destination,
+            converter=None
+    ) -> None:
+        """Process attachments: extend accumulator, ensure URL/data, and add to destination."""
+        if not attachments:
+            return
+
+        accumulator.extend_attachments_from_api(attachments)
+        for attachment in attachments:
+            ensure_attachment_url_or_data(attachment)
+            try:
+                if converter:
+                    destination.add_attachment(converter(attachment))
+                else:
+                    destination.add_attachment(**attachment.model_dump())
+            except Exception as exc:
+                raise ChatStreamWriteError("Failed to stream attachment.") from exc
+
     def _apply_custom(
         self,
         accumulator: ChatStreamAccumulator,
@@ -144,28 +165,10 @@ class ChatCompletionStreamHandler:
         dest = config.destination
         wrap = config.stage_wrapper
 
-        if dest is not None:
-            for attachment in norm.sdk_attachments:
-                fix_sdk_attachment(attachment)
-                try:
-                    dest.add_attachment(**attachment.model_dump())
-                except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamWriteError(
-                        "Failed to stream attachment to choice sink."
-                    ) from exc
-                accumulator.append_attachment(attachment)
-        elif wrap is not None and norm.sdk_attachments:
-            accumulator.extend_attachments_from_api(norm.sdk_attachments)
-            for attachment in norm.sdk_attachments:
-                fix_sdk_attachment(attachment)
-                try:
-                    wrap.add_attachment(attachment_to_sdk(attachment))
-                except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamWriteError(
-                        "Failed to stream attachment to deployment stage wrapper."
-                    ) from exc
-        elif norm.sdk_attachments:
-            accumulator.extend_attachments_from_api(norm.sdk_attachments)
+        if dest is not None and norm.attachments:
+            self._process_attachments_to_destination(accumulator, norm.attachments, dest)
+        elif wrap is not None and norm.attachments:
+            self._process_attachments_to_destination(accumulator, norm.attachments, wrap, attachment_to_sdk)
 
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)
