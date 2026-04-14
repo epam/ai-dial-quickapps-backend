@@ -1,4 +1,4 @@
-from aidial_sdk.chat_completion import Role
+from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
@@ -13,35 +13,101 @@ from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 
+def _make_transformer() -> _InjectFileTransferInstructionTransformer:
+    provider = PredefinedContentProvider(PredefinedSettings())
+    skills_provider = AgentSkillsProvider(provider)
+    return _InjectFileTransferInstructionTransformer(skills_provider)
+
+
+def _assert_synthetic_pair(messages: list[Message], assistant_idx: int) -> None:
+    """Assert that messages[assistant_idx] and messages[assistant_idx+1] form a valid synthetic pair."""
+    assistant = messages[assistant_idx]
+    tool = messages[assistant_idx + 1]
+
+    assert assistant.role == Role.ASSISTANT
+    assert assistant.tool_calls is not None
+    assert len(assistant.tool_calls) == 1
+    assert assistant.tool_calls[0].id == SYNTHETIC_TOOL_CALL_ID
+    assert assistant.tool_calls[0].function.name == SKILL_READER_TOOL_NAME
+    assert BUILTIN_FILE_TRANSFER_SKILL in assistant.tool_calls[0].function.arguments
+
+    assert tool.role == Role.TOOL
+    assert tool.tool_call_id == SYNTHETIC_TOOL_CALL_ID
+    assert tool.content is not None
+    assert tool.content
+
+
 class TestInjectFileTransferInstructionTransformer:
     """Tests for _InjectFileTransferInstructionTransformer."""
 
     def test_skill_with_name_tool_call_file_parameter_formatting_is_present(self):
         """Verify the file-transfer skill is loaded and injected as a synthetic tool call."""
-        provider = PredefinedContentProvider(PredefinedSettings())
-        skills_provider = AgentSkillsProvider(provider)
-
-        skill_content = skills_provider.get_skill_content(BUILTIN_FILE_TRANSFER_SKILL)
-        assert skill_content
-        assert BUILTIN_FILE_TRANSFER_SKILL in skill_content
-
-        transformer = _InjectFileTransferInstructionTransformer(skills_provider)
+        transformer = _make_transformer()
         result = transformer.transform([])
 
         assert len(result) == 2, "Expected assistant tool call + tool response"
+        _assert_synthetic_pair(result, 0)
 
-        assert result[0].role == Role.ASSISTANT
-        assert result[0].tool_calls is not None
-        assert len(result[0].tool_calls) == 1
+    def test_injects_after_first_user_message_with_system(self):
+        """Synthetic pair is inserted after the first USER message, not after SYSTEM."""
+        messages = [
+            Message(role=Role.SYSTEM, content="system prompt"),
+            Message(role=Role.USER, content="hello"),
+        ]
+        result = _make_transformer().transform(messages)
 
-        tool_call = result[0].tool_calls[0]
-        assert tool_call.id == SYNTHETIC_TOOL_CALL_ID
-        assert tool_call.function.name == SKILL_READER_TOOL_NAME
-        assert BUILTIN_FILE_TRANSFER_SKILL in tool_call.function.arguments
+        assert len(result) == 4
+        assert result[0].role == Role.SYSTEM
+        assert result[1].role == Role.USER
+        _assert_synthetic_pair(result, 2)
 
-        assert result[1].role == Role.TOOL
-        assert result[1].tool_call_id == SYNTHETIC_TOOL_CALL_ID
-        assert result[1].content is not None
-        assert len(str(result[1].content)) > 0
+    def test_injects_after_first_user_message_without_system(self):
+        """When there is no system message, inject after the first USER."""
+        messages = [Message(role=Role.USER, content="hello")]
+        result = _make_transformer().transform(messages)
 
-        assert BUILTIN_FILE_TRANSFER_SKILL == "tool-call-file-parameter-formatting"
+        assert len(result) == 3
+        assert result[0].role == Role.USER
+        _assert_synthetic_pair(result, 1)
+
+    def test_injects_after_first_user_with_multiple_users(self):
+        """Synthetic pair is injected after the FIRST user message only."""
+        messages = [
+            Message(role=Role.SYSTEM, content="system prompt"),
+            Message(role=Role.USER, content="first"),
+            Message(role=Role.ASSISTANT, content="reply"),
+            Message(role=Role.USER, content="second"),
+        ]
+        result = _make_transformer().transform(messages)
+
+        assert len(result) == 6
+        assert result[0].role == Role.SYSTEM
+        assert result[1].role == Role.USER
+        assert result[1].content == "first"
+        _assert_synthetic_pair(result, 2)
+        assert result[4].role == Role.ASSISTANT
+        assert result[4].content == "reply"
+        assert result[5].role == Role.USER
+        assert result[5].content == "second"
+
+    def test_no_user_message_appends_at_end(self):
+        """When there is no USER message, synthetic pair is appended at the end."""
+        messages = [Message(role=Role.SYSTEM, content="system prompt")]
+        result = _make_transformer().transform(messages)
+
+        assert len(result) == 3
+        assert result[0].role == Role.SYSTEM
+        _assert_synthetic_pair(result, 1)
+
+    def test_skips_if_synthetic_already_present(self):
+        """Transformer is idempotent — does not inject twice."""
+        messages = [
+            Message(role=Role.SYSTEM, content="system prompt"),
+            Message(role=Role.USER, content="hello"),
+        ]
+        transformer = _make_transformer()
+        first_pass = transformer.transform(messages)
+        second_pass = transformer.transform(first_pass)
+
+        assert len(second_pass) == len(first_pass)
+        assert second_pass == first_pass
