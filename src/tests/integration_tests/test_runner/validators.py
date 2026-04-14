@@ -11,6 +11,7 @@ from tests.integration_tests.test_runner.similarity_checker import (
     get_similarity,
     get_similarity_alternatives,
 )
+from tests.integration_tests.test_runner.utils.tool_names_with_hash import ToolNames
 
 logger = logging.getLogger(__name__)
 
@@ -399,6 +400,7 @@ class ResponseValidator:
         """
         failures = []
         expected_names = {tc.name for tc in expected_tool_calls}
+        expected_names.add(ToolNames.READ_SKILL.value) # Allow read_skill calls in all tests as they are used for tool retrieval
         for actual in tool_call_history:
             if actual.name not in expected_names:
                 failures.append(

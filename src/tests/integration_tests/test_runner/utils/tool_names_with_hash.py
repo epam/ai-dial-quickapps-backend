@@ -12,3 +12,4 @@ class ToolNames(Enum):
     GET_SHAPES_FROM_BOX = "get_shapes_from_box_bdc8"
     INVERT_STRING = "Invert_String_f197"
     LIST_FROM_WORD = "list_from_word_2309"
+    READ_SKILL = "read_skill_04ee"
