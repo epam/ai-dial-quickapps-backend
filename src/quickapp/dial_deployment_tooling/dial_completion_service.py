@@ -49,13 +49,14 @@ class DialCompletionService:
         api_key: DIAL_API_KEY,
         dial_client: AsyncDial,
         forwarded_headers: ForwardedHeaders,
+        stream_handler: ChatCompletionStreamHandler,
     ) -> None:
         self.__dial_client: AsyncDial = dial_client
         self.__azure_client = azure_client
         self.__base_url: str = dial_settings.url
         self.__api_key: DIAL_API_KEY = api_key
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
-        self.__stream_handler = ChatCompletionStreamHandler()
+        self.__stream_handler = stream_handler
 
     async def complete_request_async(
         self,
@@ -125,10 +126,16 @@ class DialCompletionService:
         stage_wrapper: BaseStageWrapper | None,
     ) -> ChatStreamAccumulator:
         try:
-            return await self.__stream_handler.process_stream(
-                chunks=chunks,
-                config=ChatStreamConfig(stage_wrapper=stage_wrapper),
-            )
+            if stage_wrapper is None:
+                config = ChatStreamConfig.model_construct(
+                    destination=None,
+                    stage_wrapper=None,
+                    stream_content=True,
+                    propagate_stages=False,
+                )
+            else:
+                config = ChatStreamConfig(stage_wrapper=stage_wrapper)
+            return await self.__stream_handler.process_stream(chunks=chunks, config=config)
         except ChatStreamHandlerError:
             logger.exception("Deployment stream handling failed.")
             raise

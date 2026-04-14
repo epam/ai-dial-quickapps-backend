@@ -9,9 +9,11 @@ from aidial_client.types.chat.request_param import (
 )
 from pydantic import SecretStr
 
+from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
+from tests.unit_tests.stream_test_doubles import DummyStageWrapper
 
 
 @pytest.fixture
@@ -39,16 +41,18 @@ def completion_service(azure_client):
     dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
     api_key = SecretStr("test-key")
     return DialCompletionService(
-        azure_client, dial_settings, api_key, dial_client=None, forwarded_headers=None
+        azure_client,
+        dial_settings,
+        api_key,
+        dial_client=None,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler(),
     )
 
 
 @pytest.fixture
 def mock_stage_wrapper():
-    stage_wrapper = MagicMock()
-    stage_wrapper.append_stage_content = MagicMock()
-    stage_wrapper.add_attachment = MagicMock()
-    return stage_wrapper
+    return DummyStageWrapper()
 
 
 @pytest.mark.asyncio
@@ -161,7 +165,7 @@ async def test_stage_wrapper_content_streaming(
 
     # Assert - Check that both calls were made: first the header, then the content
     expected_calls = [call("> #### Response:\n"), call("Test response")]
-    mock_stage_wrapper.append_stage_content.assert_has_calls(expected_calls)
+    mock_stage_wrapper.stage_mock.append_content.assert_has_calls(expected_calls)
 
 
 @pytest.mark.asyncio
@@ -302,6 +306,7 @@ async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url
         SecretStr("test-key"),
         dial_client=dial_client,
         forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler(),
     )
     result = await service._resolve_attachment(file_relative_url)
 
@@ -320,6 +325,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(azure_client, mock_
         SecretStr("test-key"),
         dial_client=None,
         forwarded_headers=forwarded,
+        stream_handler=ChatCompletionStreamHandler(),
     )
 
     await service.complete_request_async(

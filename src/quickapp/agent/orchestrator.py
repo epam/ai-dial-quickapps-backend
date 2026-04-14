@@ -42,7 +42,7 @@ class Orchestrator:
         usage_statistics_service: UsageStatisticsService,
         tool_executor: ToolExecutor,
         assistant_invoker_provider: ProviderOf[AssistantInvoker],
-        stream_handler_provider: ProviderOf[ChatCompletionStreamHandler],
+        stream_handler: ChatCompletionStreamHandler,
         app_config: ApplicationConfig,
         perf_timer: PerformanceTimer,
     ) -> None:
@@ -53,7 +53,7 @@ class Orchestrator:
         self.__SHOW_USAGE_STATISTICS = presentation_settings.show_usage_statistics
         self.__tool_executor = tool_executor
         self.__assistant_invoker_provider = assistant_invoker_provider
-        self.__stream_handler_provider = stream_handler_provider
+        self.__stream_handler = stream_handler
         self.__iterations_counter = 0
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
@@ -166,7 +166,7 @@ class Orchestrator:
         self, chat_completion_stream: AsyncStream[ChatCompletionChunk]
     ) -> ChatStreamAccumulator:
         try:
-            stream_accumulator = await self.__stream_handler_provider.get().process_stream(
+            stream_accumulator = await self.__stream_handler.process_stream(
                 chunks=chat_completion_stream,
                 config=ChatStreamConfig(
                     destination=self.__choice,

@@ -51,9 +51,7 @@ class ChatStreamConfig(BaseModel):
     def validate_destination_or_stage_wrapper(self) -> ChatStreamConfig:
         """Ensure that at least one of destination or stage_wrapper is set."""
         if self.destination is None and self.stage_wrapper is None:
-            raise ValueError(
-                "At least one of 'destination' or 'stage_wrapper' must be provided"
-            )
+            raise ValueError("At least one of 'destination' or 'stage_wrapper' must be provided")
         return self
 
 
@@ -94,7 +92,6 @@ class ChatCompletionStreamHandler:
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
         finally:
             self._close_all_streaming_stages(stages_by_index, Status.FAILED)
-
 
     def _apply_stream_event(
         self,
@@ -141,11 +138,7 @@ class ChatCompletionStreamHandler:
             accumulator.append_tool_call_delta(tool_call)
 
     def _process_attachments_to_destination(
-            self,
-            accumulator: ChatStreamAccumulator,
-            attachments: list,
-            destination,
-            converter=None
+        self, accumulator: ChatStreamAccumulator, attachments: list, destination, converter=None
     ) -> None:
         """Process attachments: extend accumulator, ensure URL/data, and add to destination."""
         if not attachments:
@@ -175,7 +168,9 @@ class ChatCompletionStreamHandler:
         if dest is not None and norm.attachments:
             self._process_attachments_to_destination(accumulator, norm.attachments, dest)
         elif wrap is not None and norm.attachments:
-            self._process_attachments_to_destination(accumulator, norm.attachments, wrap, attachment_to_sdk)
+            self._process_attachments_to_destination(
+                accumulator, norm.attachments, wrap, attachment_to_sdk
+            )
 
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)

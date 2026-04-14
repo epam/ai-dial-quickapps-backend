@@ -9,6 +9,7 @@ from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
     ChatStreamConfig,
 )
+from tests.unit_tests.stream_test_doubles import DummyStageWrapper, SpyChoice
 
 
 async def _stream_from_chunks(*raw_chunks):
@@ -23,7 +24,7 @@ async def test_process_deployment_stream_accumulates_text():
     chunk = SimpleNamespace(usage=None, choices=[choice], model_extra={})
 
     handler = ChatCompletionStreamHandler()
-    wrap = MagicMock()
+    wrap = DummyStageWrapper()
 
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(chunk),
@@ -31,14 +32,14 @@ async def test_process_deployment_stream_accumulates_text():
     )
 
     assert acc.content == "abc"
-    wrap.append_stage_content.assert_any_call("> #### Response:\n")
-    wrap.append_stage_content.assert_any_call("abc")
+    wrap.stage_mock.append_content.assert_any_call("> #### Response:\n")
+    wrap.stage_mock.append_content.assert_any_call("abc")
 
 
 @pytest.mark.asyncio
 async def test_process_orchestrator_stream_prepends_newline_and_streams_to_choice():
     delta = SimpleNamespace(content="x", custom_content=None, tool_calls=None)
-    choice_obj = MagicMock()
+    choice_obj = SpyChoice()
     stream_choice = SimpleNamespace(delta=delta, finish_reason=None)
     chunk = SimpleNamespace(usage=None, choices=[stream_choice], model_extra={})
 
@@ -49,8 +50,8 @@ async def test_process_orchestrator_stream_prepends_newline_and_streams_to_choic
     )
 
     assert acc.content == "x"
-    choice_obj.append_content.assert_any_call("\n\r")
-    choice_obj.append_content.assert_any_call("x")
+    assert "\n\r" in choice_obj.append_content_calls
+    assert "x" in choice_obj.append_content_calls
 
 
 @pytest.mark.asyncio
@@ -64,7 +65,7 @@ async def test_run_wraps_generic_exception_as_chat_stream_parse_error():
         await handler._run(
             chat_completion=bad_stream(),
             accumulator=MagicMock(),
-            config=ChatStreamConfig(),
+            config=ChatStreamConfig(stage_wrapper=DummyStageWrapper()),
         )
     from quickapp.common.chat_completion_stream.exceptions import ChatStreamParseError
 
