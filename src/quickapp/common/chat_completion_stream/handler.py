@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 from collections.abc import AsyncIterable
-from typing import Annotated
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict, SkipValidation, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
-from quickapp.agent._stage_delta_types import (
+from quickapp.common._stage_delta_types import (
     StageDeltaItem,
     as_stage_delta,
     attachment_kwargs,

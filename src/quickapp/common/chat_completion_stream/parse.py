@@ -6,7 +6,7 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
 
-from quickapp.agent._stage_delta_types import attachment_kwargs, normalize_attachment
+from quickapp.common._stage_delta_types import attachment_kwargs, normalize_attachment
 from quickapp.common.chat_completion_stream.models import (
     ChunkUsageFootprint,
     NormalizedChoiceDelta,

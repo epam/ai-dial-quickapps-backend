@@ -9,7 +9,7 @@ from aidial_sdk import chat_completion as dial_sdk_models
 from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
+from quickapp.common._stage_delta_types import StageDeltaItem, get_stage_index
 from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
@@ -81,7 +81,7 @@ class ChatStreamAccumulator:
         self.__content = ""
         self.__attachments: list[Attachment] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
-        self.__usage: Any | None = None
+        self.__usage: Usage | None = None
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
 
