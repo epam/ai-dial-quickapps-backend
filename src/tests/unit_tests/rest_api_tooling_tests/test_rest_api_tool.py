@@ -25,6 +25,7 @@ from quickapp.config.tools.rest_api import (
     RestApiEndpointMethodInfo,
     RestApiEndpointSimpleTypeParam,
     RestApiTool,
+    ToolEndpointInfoMethodType,
     ToolEndpointParamType,
 )
 from quickapp.config.toolsets.authorization import BearerAuthorization
@@ -36,7 +37,7 @@ from tests.unit_tests.common.common import create_app_configuration
 
 
 def _make_rest_api_tool(
-    url: str, method: str, name: str = 'test_function', **tool_kwargs
+    url: str, method: ToolEndpointInfoMethodType, name: str = 'test_function', **tool_kwargs
 ) -> RestApiTool:
     return RestApiTool(
         rest_api_method_info=RestApiEndpointMethodInfo(method_url=url, method_type=method),
@@ -63,7 +64,10 @@ def _make_rest_api_tool(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("request_method,url", [("get", "https://auth@abc.example.com:2020/index")])
+@pytest.mark.parametrize(
+    "request_method,url",
+    [(ToolEndpointInfoMethodType.get, "https://auth@abc.example.com:2020/index")],
+)
 @patch("httpx.AsyncClient")
 async def test_web_api_tool_2_make_correct_http_call(mock_async_client, request_method, url):
     mock_stage = MagicMock(spec=Stage)
@@ -181,7 +185,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         tools=[
             _make_rest_api_tool(
                 url,
-                "get",
+                ToolEndpointInfoMethodType.get,
                 response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
             )
         ],
@@ -243,7 +247,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
         tools=[
             _make_rest_api_tool(
                 url,
-                "get",
+                ToolEndpointInfoMethodType.get,
                 response_as_attachment=ResponseAsAttachmentConfig(
                     enabled=True, include_body_as_content=False
                 ),
@@ -303,7 +307,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
         name="rest-api",
         authorization=BearerAuthorization(token="test_token"),
         response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
-        tools=[_make_rest_api_tool(url, "get")],
+        tools=[_make_rest_api_tool(url, ToolEndpointInfoMethodType.get)],
     )
 
     def configure(binder: Binder):
@@ -351,7 +355,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     rest_api_toolset = RestApiToolSet(
         name="rest-api",
         authorization=BearerAuthorization(token="test_token"),
-        tools=[_make_rest_api_tool(url, "get")],
+        tools=[_make_rest_api_tool(url, ToolEndpointInfoMethodType.get)],
     )
 
     forwarded = {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
@@ -392,7 +396,11 @@ def test_openai_tools_names():
     tool_name = "rest-tool"
     rest_api_toolset = RestApiToolSet(
         name=toolset_name,
-        tools=[_make_rest_api_tool("https://example.com/api", "get", name=tool_name)],
+        tools=[
+            _make_rest_api_tool(
+                "https://example.com/api", ToolEndpointInfoMethodType.get, name=tool_name
+            )
+        ],
     )
 
     def configure(binder: Binder):
@@ -400,6 +408,7 @@ def test_openai_tools_names():
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
