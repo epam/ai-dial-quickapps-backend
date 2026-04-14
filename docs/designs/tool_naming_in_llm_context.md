@@ -199,7 +199,7 @@ None — no changes to the JSON config schema or public API.
 - **Update all tool name constants** in that file: remove hash suffixes and add `{toolset_name}_` prefix.
 - **Update JSON test config files** (`test_rest_toolset.json`, `test_tool_set_py_interpreter.json`, `test_tool_set_chat_hub.json`, `test_mcp_tool.json`) — replace `function.name` values with the new format.
 - **Source-level constants** (`AVAILABLE_CONTEXT_TOOL_NAME`, `CURRENT_TIMESTAMP_TOOL_NAME`, `SKILL_READER_TOOL_NAME`) are derived from the tool config (`= TOOL_CONFIG.open_ai_tool.function.name`), so they update automatically — no manual changes needed.
-- **Regenerate integration test cache files** (73+ response files under `src/tests/integration_tests/test_runner/cache/`) — cached LLM responses embed tool names literally. Run `make integration_test MODEL=<model> REFRESH=TRUE` for each model after the naming changes are applied.
+- **No cache regeneration needed** — the integration test cache stores tool deployment responses (e.g. image generation, web search). Tool names appear only in orchestrator requests, which are never cached (orchestrator models are in `AGENT_MODELS` and always proxied live). Renaming tools does not affect any cached `.response` files.
 
 ---
 
@@ -244,9 +244,6 @@ None — no changes to the JSON config schema or public API.
 
 ### `src/tests/integration_tests/test_runner/utils/tool_names_with_hash.py`
 - **Renamed** to `tool_names.py`. All tool name constants updated to `{toolset_name}_{tool_name}` format (no hash). Import sites in 3 integration test files updated accordingly.
-
-### `src/tests/integration_tests/test_runner/cache/`
-- **Regenerated** — cached LLM responses embed tool names literally. Run `make integration_test MODEL=<model> REFRESH=TRUE` for each model. This must be done as the **final step** before the PR is merged.
 
 ---
 
