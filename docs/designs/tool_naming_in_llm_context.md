@@ -1,6 +1,6 @@
 # Design: Tool Naming in LLM Context
 
-**Status:** Draft\
+**Status:** Implemented\
 **Issue:** [#200](https://github.com/epam/ai-dial-quickapps-backend/issues/200)
 
 ## Problem Statement
