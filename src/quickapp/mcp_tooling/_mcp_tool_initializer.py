@@ -12,6 +12,7 @@ from quickapp.common.dial_core_client import ToolsetInfo
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.utils import sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -101,7 +102,7 @@ class _MCPToolInitializer(CompletionInitializer):
         name: str, description: str | None, input_schema: dict[str, Any]
     ) -> OpenAiToolConfig:
         return OpenAiToolConfig(
-            function=OpenAiToolFunction.model_construct(  # model_construct to prevent double @model_validator execution for name
+            function=OpenAiToolFunction(
                 name=name,
                 description=description or name,
                 parameters=OpenAiToolFunctionParameters(
@@ -246,7 +247,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         attachment=resolved_toolset.attachment,
                         fallback_configuration=resolved_toolset.fallback_configuration,
                         open_ai_tool=self._convert_to_openai_tool(
-                            tool.name, tool.description, tool.inputSchema
+                            sanitize_toolname(f"{resolved_toolset.name}_{tool.name}"),
+                            tool.description,
+                            tool.inputSchema,
                         ),
                     ),
                     connection_manager=connection_manager,

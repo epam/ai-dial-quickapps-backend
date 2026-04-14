@@ -6,14 +6,14 @@ from quickapp.config.tools.base import (
     OpenAiToolFunctionParameters,
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
-from quickapp.config.tools.internal import INTERNAL_TOOL_NAME_PREFIX, InternalTool
+from quickapp.config.tools.internal import InternalTool
 
 SYNTHETIC_TIMESTAMP_CALL_PREFIX = "call_synthetic_timestamp_"
 
 CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{INTERNAL_TOOL_NAME_PREFIX}current_timestamp",
+            name="internal_timeawareness_current_timestamp",
             description="Returns the current date and time. Optionally converts to a specific timezone.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -29,5 +29,5 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Current timestamp")),
 )
 
-# Tool name after hashing by OpenAiToolFunction.set_name validator
+# Tool name as sent to the LLM (sanitized, no hash)
 CURRENT_TIMESTAMP_TOOL_NAME = CURRENT_TIMESTAMP_TOOL_CONFIG.open_ai_tool.function.name

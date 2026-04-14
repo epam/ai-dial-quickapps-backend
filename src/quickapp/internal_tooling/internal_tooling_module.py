@@ -49,7 +49,7 @@ class InternalToolModule(Module):
                                 "Predefined tool wasn't substituted by real tool. Check application settings."
                             )
                         elif tool_config.open_ai_tool.function.name.startswith(
-                            'python_code_interpreter'
+                            'internal_code_execution_python_interpreter'
                         ):
                             # TODO: remove this filtering by name, the user may configure any name of the tool.
                             tools.append(

@@ -18,7 +18,6 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer, PreIn
 from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -88,7 +87,6 @@ class AgentModule(Module):
         for tool in tools:
             if issubclass(type(tool.tool_config), BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
-                open_ai_tool.function.name = sanitize_toolname(open_ai_tool.function.name)
                 open_ai_tool = self._remove_const_params(open_ai_tool)
                 if tool.tool_config.type in [
                     "deployment-tool"
