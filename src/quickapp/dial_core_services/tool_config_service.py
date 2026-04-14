@@ -1,14 +1,12 @@
 import logging
 from typing import Any
 
+from aidial_client import AsyncDial, DialException, ToolsetInfo
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
-from httpx import HTTPStatusError
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient, ToolsetInfo
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
@@ -37,46 +35,52 @@ logger = logging.getLogger(__name__)
 @inject
 class ToolConfigCoreService:
 
-    def __init__(self, dial_settings: DialSettings, api_key_provider: ProviderOf[DIAL_API_KEY]):
+    def __init__(self, dial_settings: DialSettings, dial_client_provider: ProviderOf[AsyncDial]):
         self.__dial_settings: DialSettings = dial_settings
-        self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
+        self.__dial_client_provider: ProviderOf[AsyncDial] = dial_client_provider
+
+    def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
+        """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
+        if api_key is not None:
+            return AsyncDial(api_key=api_key.get_secret_value(), base_url=self.__dial_settings.url)
+        return self.__dial_client_provider.get()
 
     async def get_basic_tool_config(
         self, deployment: str, api_key: SecretStr | None = None
     ) -> DialDeploymentTool:
-        api_key = api_key or self.__api_key_provider.get()
-        async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
-            deployment_model: Deployment | None = None
-            application_model: Application | None = None
-            try:
-                logger.debug(f"Getting deployment tool config for {deployment}")
-                info_dict = await dial_core.get_deployment_info(deployment)
-                deployment_model = Deployment.model_validate(info_dict)
-            except HTTPStatusError as e:
-                if e.response.status_code == 404:
-                    logger.debug(f"No deployment found, trying application for {deployment}")
-                    info_dict = await dial_core.get_application_info(deployment)
-                    application_model = Application.model_validate(info_dict)
-            config_schema = None
-            if (
-                deployment_model
-                and deployment_model.features
-                and deployment_model.features.configuration
-            ):
-                logger.debug(f"Getting deployment config for {deployment}")
-                config_schema = await dial_core.get_deployment_config(deployment)
-            elif (
-                application_model
-                and application_model.features
-                and application_model.features.configuration
-            ):
-                logger.debug(f"Getting application config for {deployment}")
-                config_schema = await dial_core.get_deployment_config(deployment)
+        dial_client = self._resolve_dial_client(api_key)
+        deployment_model: Deployment | None = None
+        application_model: Application | None = None
+        try:
+            logger.debug(f"Getting deployment tool config for {deployment}")
+            deployment_model = await dial_client.deployments.get(deployment)
+        except DialException as e:
+            if e.status_code == 404:
+                logger.debug(f"No deployment found, trying application for {deployment}")
+                application_model = await dial_client.application.get(deployment)
+            else:
+                raise
 
-            model = deployment_model or application_model
-            if model is None:
-                raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
-            return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
+        config_schema: dict[str, Any] | None = None
+        if (
+            deployment_model
+            and deployment_model.features
+            and deployment_model.features.configuration
+        ):
+            logger.debug(f"Getting deployment config for {deployment}")
+            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
+        elif (
+            application_model
+            and application_model.features
+            and application_model.features.configuration
+        ):
+            logger.debug(f"Getting application config for {deployment}")
+            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
+
+        model = deployment_model or application_model
+        if model is None:
+            raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
+        return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
 
     @staticmethod
     def _convert_to_openai_tool_format(
@@ -87,7 +91,7 @@ class ToolConfigCoreService:
 
         Args:
             deployment: The parsed Pydantic model of the deployment info.
-            config: The JSON response from get_deployment_config (if available).
+            config: The JSON response from get_configuration_schema (if available).
 
         Returns:
             A DialDeploymentTool representing the final tool configuration.
@@ -162,24 +166,20 @@ class ToolConfigCoreService:
         return output_tool
 
     async def get_basic_toolset_config(self, toolset_dial_id: str) -> ToolsetInfo | None:
-        api_key = self.__api_key_provider.get()
-        if api_key is None:
-            raise RuntimeError("API-KEY must be set")
-        async with DialCoreClient(api_key=api_key, base_url=self.__dial_settings.url) as dial_core:
-            try:
-                logger.debug(f"Getting toolset tool config for {toolset_dial_id}")
-                info_dict = await dial_core.get_toolset_info(toolset_dial_id)
-                return ToolsetInfo.model_validate(info_dict)
-            except HTTPStatusError as e:
-                logger.exception("Something went wrong during getting toolset %s", toolset_dial_id)
-                if e.response.status_code == 404:
-                    raise ToolsetNotFoundException(
-                        toolset_id=toolset_dial_id,
-                        details=f"{e.response.status_code} {getattr(e.response, 'reason_phrase', '')}",
-                    )
-                elif e.response.status_code == 403:
-                    raise ToolsetForbiddenException(
-                        toolset_id=toolset_dial_id,
-                        details=f"{e.response.status_code} {getattr(e.response, 'reason_phrase', '')}",
-                    )
-                raise
+        dial_client = self.__dial_client_provider.get()
+        try:
+            logger.debug(f"Getting toolset tool config for {toolset_dial_id}")
+            return await dial_client.toolset.get(toolset_dial_id)
+        except DialException as e:
+            logger.exception("Something went wrong during getting toolset %s", toolset_dial_id)
+            if e.status_code == 404:
+                raise ToolsetNotFoundException(
+                    toolset_id=toolset_dial_id,
+                    details=f"{e.status_code} {e.message}",
+                )
+            elif e.status_code == 403:
+                raise ToolsetForbiddenException(
+                    toolset_id=toolset_dial_id,
+                    details=f"{e.status_code} {e.message}",
+                )
+            raise

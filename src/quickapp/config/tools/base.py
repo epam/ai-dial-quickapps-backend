@@ -1,9 +1,7 @@
-import json
 from enum import Enum
-from hashlib import sha256
 from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.tools.display.paramenter import ParameterDisplayConfig
@@ -139,26 +137,6 @@ class OpenAiToolFunction(
     ]
     description: str
     name: str
-
-    # ToDo: move to before sending to LLM, and only if collision detected
-    # Preventing name collisions for tools with same name but different parameters
-    @model_validator(mode='after')
-    def set_name(self):
-        base = self.name.strip()
-        # compute stable hash of the model excluding the name field
-        payload = self.model_dump(exclude={'name'})
-        json_str = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-        h = sha256(json_str.encode('utf-8')).hexdigest()[:4]
-        suffix = f"_{h}"
-
-        if base.endswith(suffix):
-            # Already hashed — idempotent
-            self.name = base
-        else:
-            # Truncate base if needed to ensure total length ≤ 64
-            max_base_len = 64 - len(suffix)
-            self.name = f"{base[:max_base_len]}{suffix}"
-        return self
 
 
 DEFAULT_PROPAGATE_TO_CHOICE = ["image/*", "application/vnd.plotly.v1+json"]

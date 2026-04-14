@@ -186,6 +186,6 @@ class DialCompletionService:
         fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
         return AttachmentParam(
             type=fileinfo.content_type or "",
-            title=fileinfo.name,
+            title=fileinfo.name or "",
             url=fileinfo.url or "",
         )

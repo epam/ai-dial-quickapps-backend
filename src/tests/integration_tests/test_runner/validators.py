@@ -301,14 +301,14 @@ class ResponseValidator:
         tool_call_history: list[ParsedToolCall],
     ) -> list[ParsedToolCall]:
         """
-        Filters out failed py_code_interpreter tool calls.
+        Filters out failed internal_code_execution_python_interpreter tool calls.
         Adapted to use the ParsedToolCall structure.
         """
         return [
             tool_call
             for tool_call in tool_call_history
             if not (
-                tool_call.name == 'py_code_interpreter'
+                tool_call.name == 'internal_code_execution_python_interpreter'
                 and (
                     "FAILURE" in tool_call.result
                     or "Python Code Interpreter session has been closed" in tool_call.result
@@ -399,6 +399,9 @@ class ResponseValidator:
         """
         failures = []
         expected_names = {tc.name for tc in expected_tool_calls}
+        expected_names.add(
+            "read_skill"
+        )  # Allow read_skill calls in all tests as they are used for tool retrieval
         for actual in tool_call_history:
             if actual.name not in expected_names:
                 failures.append(
