@@ -24,7 +24,6 @@ from injector import ProviderOf
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -284,7 +283,6 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
-            perf_timer=PerformanceTimer(),
         )
         result = await svc.download_file("files/my-bucket/test.txt")
 
@@ -305,7 +303,6 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
-            perf_timer=PerformanceTimer(),
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
             await svc.download_file("files/my-bucket/large.bin")
@@ -325,7 +322,6 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
-            perf_timer=PerformanceTimer(),
         )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],

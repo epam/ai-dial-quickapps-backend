@@ -2,7 +2,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -37,7 +36,6 @@ def _make_service(
     return DialFileService(
         dial_client=dial_client or _make_mock_dial_client(),
         state_holder=state_holder or StateHolder(),
-        perf_timer=PerformanceTimer(),
     )
 
 
