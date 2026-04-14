@@ -6,7 +6,7 @@ from typing import Annotated
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict, SkipValidation
+from pydantic import BaseModel, ConfigDict, SkipValidation, model_validator
 
 from quickapp.agent._stage_delta_types import (
     StageDeltaItem,
@@ -47,7 +47,15 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
-    # TODO: add validator that one of destination or stage_wrapper should have value.
+
+    @model_validator(mode="after")
+    def validate_destination_or_stage_wrapper(self) -> ChatStreamConfig:
+        """Ensure that at least one of destination or stage_wrapper is set."""
+        if self.destination is None and self.stage_wrapper is None:
+            raise ValueError(
+                "At least one of 'destination' or 'stage_wrapper' must be provided"
+            )
+        return self
 
 
 class ChatCompletionStreamHandler:
