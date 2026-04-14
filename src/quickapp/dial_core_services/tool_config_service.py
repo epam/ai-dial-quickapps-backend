@@ -42,7 +42,11 @@ class ToolConfigCoreService:
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
         if api_key is not None:
-            return AsyncDial(api_key=api_key.get_secret_value(), base_url=self.__dial_settings.url)
+            return AsyncDial(
+                api_key=api_key.get_secret_value(),
+                base_url=self.__dial_settings.url,
+                api_version=self.__dial_settings.api_version,
+            )
         return self.__dial_client_provider.get()
 
     async def get_basic_tool_config(
