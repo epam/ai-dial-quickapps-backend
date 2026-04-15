@@ -2,98 +2,105 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing import _Pricing
-
-# noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
-
-# noinspection PyProtectedMember
 from quickapp.usage_statistics._pricing_service import _PricingService
-from tests.unit_tests.common.common import mock_dial_core_client_factory
 
 
-@pytest.fixture
-def mock_registry():
+def _make_model_info(prompt: str | None = "0.01", completion: str | None = "0.02") -> MagicMock:
+    if prompt is None and completion is None:
+        model_info = MagicMock()
+        model_info.pricing = None
+        return model_info
+
+    pricing = MagicMock()
+    pricing.prompt = prompt
+    pricing.completion = completion
+
+    model_info = MagicMock()
+    model_info.pricing = pricing
+    return model_info
+
+
+def _make_service(
+    registry: _PricingRegistry | None = None,
+    model_info: MagicMock | None = None,
+    model_side_effect: Exception | None = None,
+) -> tuple[_PricingService, MagicMock]:
+    mock_registry = registry or MagicMock(spec=_PricingRegistry)
+    if not hasattr(mock_registry, "get_model_pricing") or not callable(
+        mock_registry.get_model_pricing
+    ):
+        mock_registry.get_model_pricing.return_value = None
+
+    mock_model = MagicMock()
+    mock_model.get = AsyncMock(return_value=model_info, side_effect=model_side_effect)
+
+    mock_dial_client = MagicMock()
+    mock_dial_client.model = mock_model
+
+    return _PricingService(mock_registry, mock_dial_client), mock_dial_client
+
+
+@pytest.mark.asyncio
+async def test_get_price_from_cache():
+    cached = MagicMock(spec=_Pricing)
+    cached.is_expired.return_value = False
+
+    registry = MagicMock(spec=_PricingRegistry)
+    registry.get_model_pricing.return_value = cached
+
+    svc, mock_dial_client = _make_service(registry=registry)
+
+    result = await svc.get_price("gpt-4")
+
+    assert result is cached
+    mock_dial_client.model.get.assert_not_called()
+    registry.set_model_pricing.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_get_price_fetch_from_api():
     registry = MagicMock(spec=_PricingRegistry)
     registry.get_model_pricing.return_value = None
-    return registry
 
+    svc, mock_dial_client = _make_service(
+        registry=registry,
+        model_info=_make_model_info(prompt="0.01", completion="0.02"),
+    )
 
-@pytest.mark.asyncio
-async def test_get_price_from_cache(mock_registry):
-    mock_pricing = MagicMock(spec=_Pricing)
-    mock_pricing.is_expired.return_value = False
-    mock_registry.get_model_pricing.return_value = mock_pricing
-
-    factory = MagicMock()
-    svc = _PricingService(mock_registry, factory)
     result = await svc.get_price("gpt-4")
 
-    mock_registry.get_model_pricing.assert_called_once_with("gpt-4")
-    assert result == mock_pricing
-    mock_registry.set_model_pricing.assert_not_called()
-    factory.create.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_get_price_fetch_from_api(mock_registry):
-    mock_client = AsyncMock()
-    mock_client.get_model_pricing.return_value = {
-        "pricing": {"prompt": "0.01", "completion": "0.02"}
-    }
-    factory, _ = mock_dial_core_client_factory(mock_client)
-
-    svc = _PricingService(mock_registry, factory)
-    result = await svc.get_price("gpt-4")
-
-    mock_registry.get_model_pricing.assert_called_once_with("gpt-4")
-    mock_registry.set_model_pricing.assert_called_once()
+    mock_dial_client.model.get.assert_awaited_once_with("gpt-4")
+    registry.set_model_pricing.assert_called_once()
     assert isinstance(result, _Pricing)
     assert result.input_token_price == 0.01
     assert result.output_token_price == 0.02
 
 
 @pytest.mark.asyncio
-async def test_get_price_api_error(mock_registry):
-    mock_client = AsyncMock()
-    mock_client.get_model_pricing.side_effect = Exception("API Error")
-    factory, _ = mock_dial_core_client_factory(mock_client)
+async def test_get_price_missing_pricing_data():
+    registry = MagicMock(spec=_PricingRegistry)
+    registry.get_model_pricing.return_value = None
 
-    svc = _PricingService(mock_registry, factory)
+    svc, _ = _make_service(registry=registry, model_info=_make_model_info(None, None))
+
     result = await svc.get_price("gpt-4")
 
-    mock_registry.get_model_pricing.assert_called_once_with("gpt-4")
     assert isinstance(result, _Pricing)
     assert result.input_token_price == "-"
     assert result.output_token_price == "-"
 
 
 @pytest.mark.asyncio
-async def test_get_price_missing_pricing_data(mock_registry):
-    mock_client = AsyncMock()
-    mock_client.get_model_pricing.return_value = {}
-    factory, _ = mock_dial_core_client_factory(mock_client)
+async def test_get_price_api_error_returns_empty_pricing():
+    registry = MagicMock(spec=_PricingRegistry)
+    registry.get_model_pricing.return_value = None
 
-    svc = _PricingService(mock_registry, factory)
+    svc, _ = _make_service(registry=registry, model_side_effect=Exception("API error"))
+
     result = await svc.get_price("gpt-4")
 
-    mock_registry.get_model_pricing.assert_called_once_with("gpt-4")
-    assert isinstance(result, _Pricing)
-    assert result.input_token_price == "-"
-    assert result.output_token_price == "-"
-
-
-@pytest.mark.asyncio
-async def test_get_price_http_error(mock_registry):
-    mock_client = AsyncMock()
-    mock_client.get_model_pricing.side_effect = Exception("Not Found")
-    factory, _ = mock_dial_core_client_factory(mock_client)
-
-    svc = _PricingService(mock_registry, factory)
-    result = await svc.get_price("unknown-model")
-
-    mock_registry.get_model_pricing.assert_called_once_with("unknown-model")
     assert isinstance(result, _Pricing)
     assert result.input_token_price == "-"
     assert result.output_token_price == "-"

@@ -12,7 +12,6 @@ from quickapp.common import (
     RESPONSE_FORMAT,
     ForwardedHeaders,
 )
-from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -61,7 +60,6 @@ class AppModule(Module):
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(ToolTimeoutSettings, to=ToolTimeoutSettings, scope=singleton)
         binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
-        binder.bind(DialCoreClientFactory, to=DialCoreClientFactory, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )

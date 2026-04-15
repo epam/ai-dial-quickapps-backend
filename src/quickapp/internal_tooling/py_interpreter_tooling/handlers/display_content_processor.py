@@ -3,16 +3,22 @@ import json
 import logging
 from typing import Any
 
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common.dial_core_client_factory import DialCoreClientFactory
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.utils import generate_attachment_filename
 from quickapp.internal_tooling.py_interpreter_tooling._constants import (
     SUPPORTED_DISPLAY_MEDIA_TYPES,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.model.response import CodeExecutionResponse
+
+_NAMING_SYS_PROMPT = (
+    "Generate a short, descriptive title based on the content provided.\n"
+    "Title should have from 1 up to 7 words!\n"
+    "Example: `Python function calculating Fibonacci sequence...` -> `Fibonacci calculator`"
+)
 
 logger = logging.getLogger(__name__)
 
@@ -21,11 +27,8 @@ logger = logging.getLogger(__name__)
 class DisplayContentProcessor:
     """Handles processing and sanitization of display content"""
 
-    def __init__(
-        self,
-        dial_core_client_factory: DialCoreClientFactory,
-    ):
-        self.__dial_core_client_factory: DialCoreClientFactory = dial_core_client_factory
+    def __init__(self, dial_client: AsyncDial):
+        self.__dial_client: AsyncDial = dial_client
 
     async def process_display_content(
         self,
@@ -49,8 +52,7 @@ class DisplayContentProcessor:
 
         for media_type, data in content_dict.items():
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
-                bucket_info = await self._publish_to_bucket(media_type, data)
-                bucket_url = bucket_info.get("url", "")
+                bucket_url = await self._publish_to_bucket(media_type, data)
 
                 if media_type and bucket_url:
                     attachment = Attachment(type=media_type, url=bucket_url)
@@ -58,19 +60,18 @@ class DisplayContentProcessor:
 
         return attachments
 
-    async def _publish_to_bucket(
-        self, mime_type: str, data: str | dict[str, Any]
-    ) -> dict[str, Any]:
-        async with self.__dial_core_client_factory.create() as dial_core:
-            filename = generate_attachment_filename(mime_type)
+    async def _publish_to_bucket(self, mime_type: str, data: str | dict[str, Any]) -> str:
+        filename = generate_attachment_filename(mime_type)
+        bucket_resp = await self.__dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+        metadata = await self.__dial_client.files.upload(
+            url=f"files/{bucket}/{filename}",
+            file=(filename, self._prepare_content(mime_type, data), mime_type),
+        )
+        return metadata.url
 
-            return await dial_core.put_file(
-                name=filename,
-                mime_type=mime_type,
-                content=self._prepare_content(mime_type, data),
-            )
-
-    def _prepare_content(self, mime_type: str, data: str | dict[str, Any]) -> bytes:
+    @staticmethod
+    def _prepare_content(mime_type: str, data: str | dict[str, Any]) -> bytes:
         """Prepares content for storage based on mime type"""
         if mime_type in (MediaTypes.PNG, MediaTypes.JPEG, MediaTypes.GIF):
             if isinstance(data, dict):
@@ -82,9 +83,8 @@ class DisplayContentProcessor:
 
         return data.encode("utf-8")
 
-    def sanitize_display_content(
-        self, execution_result: CodeExecutionResponse
-    ) -> CodeExecutionResponse:
+    @staticmethod
+    def sanitize_display_content(execution_result: CodeExecutionResponse) -> CodeExecutionResponse:
         """Sanitizes display content in the execution result"""
         if execution_result.display:
             for info_dict in execution_result.display:

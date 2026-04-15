@@ -3,10 +3,10 @@
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
+from aidial_client import ToolsetInfo
 from aidial_client.types.deployment import Features
 from pydantic import SecretStr
 
-from quickapp.common.dial_core_client import ToolsetInfo
 from quickapp.common.tool_initialization_exception import ToolInitializationException
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet

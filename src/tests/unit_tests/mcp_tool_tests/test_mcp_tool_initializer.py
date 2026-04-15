@@ -376,3 +376,15 @@ def test_convert_to_openai_tool_dereferences_refs():
     }
     result = _MCPToolInitializer._convert_to_openai_tool("test_tool", "A test tool", schema)
     assert "addr" in result.function.parameters.properties
+
+
+@pytest.mark.asyncio
+async def test_tool_names_prefixed_with_toolset_name(initializer_factory, builder_mock):
+    toolset_name = "mcp-local-toolset"
+    initializer, _ = initializer_factory(protocol=MCPProtocol.streamable_http, name=toolset_name)
+    await initializer.initialize()
+
+    calls = builder_mock.build.call_args_list
+    assert len(calls) == 2
+    names = [c.kwargs["tool_config"].open_ai_tool.function.name for c in calls]
+    assert names == ["mcp-local-toolset_tool1", "mcp-local-toolset_tool2"]

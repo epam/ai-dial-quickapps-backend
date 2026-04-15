@@ -3,16 +3,17 @@ import inspect
 import json
 import logging
 import mimetypes
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common.dial_core_client import DialCoreClient
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
@@ -108,19 +109,42 @@ class TestRunner:
         await asyncio.sleep(1.5)
 
     @staticmethod
+    async def _search_file(dial_client: AsyncDial, bucket: str, filename: str) -> str | None:
+        """BFS over the bucket tree looking for a file by name. Returns its URL or None."""
+
+        folders_to_visit = [f"files/{bucket}"]
+        for folder in folders_to_visit:
+            # Absolute URL preserves the trailing slash that DIAL Core requires
+            # to distinguish a folder-listing request from a file-metadata request.
+            folder_url = f"{dial_client.api_url}metadata/{folder}/"
+            metadata = await dial_client.metadata.get("files", folder_url)
+            for item in metadata.items or []:
+                if item.node_type == "FOLDER":
+                    folders_to_visit.append(f"{folder}/{item.name}")
+                if item.name == filename:
+                    return item.url
+        return None
+
+    @staticmethod
     async def get_attachment_url(dial_url: str, headers, attachment: Path):
-        # Use DialCoreClient (httpx-based) directly.
         api_key = headers.get(API_KEY_HEADER)
-        async with DialCoreClient(api_key, dial_url) as client:
-            url = await client.search_file_on_core(attachment.name)
-            if url is None:
-                with open(attachment.absolute(), "rb") as file:
-                    file_bytes = file.read()
-                    file_mime = mimetypes.guess_type(attachment.name)[0]
-                    metadata = await client.upload_bytes(
-                        name=attachment.name, file_bytes=file_bytes, mime_type=file_mime
-                    )
-                    url = metadata["url"]
+        dial_client = AsyncDial(api_key=api_key, base_url=dial_url)
+
+        bucket_resp = await dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+
+        url = await TestRunner._search_file(dial_client, bucket, attachment.name)
+
+        if url is None:
+            with open(attachment.absolute(), "rb") as file:
+                file_bytes = file.read()
+            file_mime = mimetypes.guess_type(attachment.name)[0]
+            file_metadata = await dial_client.files.upload(
+                f"files/{bucket}/{attachment.name}",
+                (attachment.name, BytesIO(file_bytes), file_mime),
+            )
+            url = file_metadata.url
+
         return url
 
     @staticmethod

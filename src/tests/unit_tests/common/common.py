@@ -1,7 +1,7 @@
 import json
 from collections.abc import Callable, Iterable
 from typing import TypeAlias
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
@@ -96,21 +96,3 @@ def build_tool_expected_result(tool_result: CompletionResult):
 def noop_timeout_resolver(value: float = 300.0) -> MagicMock:
     """MagicMock for `ToolTimeoutResolver` where `.resolve()` returns ``value``."""
     return MagicMock(resolve=MagicMock(return_value=value))
-
-
-def mock_dial_core_client_factory(
-    mock_client: AsyncMock | None = None,
-) -> tuple[MagicMock, AsyncMock]:
-    """Return `(factory_mock, client_mock)` suitable for patching
-    `DialCoreClientFactory` in service tests.
-
-    The returned factory's `create()` yields `client_mock` via async context
-    manager, matching how services use `async with factory.create() as client`.
-    """
-    client = mock_client or AsyncMock()
-    ctx = AsyncMock()
-    ctx.__aenter__.return_value = client
-    ctx.__aexit__.return_value = None
-    factory = MagicMock()
-    factory.create.return_value = ctx
-    return factory, client

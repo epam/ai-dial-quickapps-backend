@@ -12,7 +12,7 @@ from quickapp.config.tools.display.paramenter import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
-SKILL_READER_TOOL_NAME_PREFIX = "read_skill"
+SKILL_READER_TOOL_NAME_PREFIX = "internal_skills_read_skill"
 
 SKILL_READER_TOOL_CONFIG = InternalTool(
     enabled=True,
