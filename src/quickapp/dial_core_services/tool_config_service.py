@@ -1,7 +1,6 @@
 import logging
 from typing import Any
 
-import openai
 from aidial_client import AsyncDial, DialException, ToolsetInfo
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
@@ -10,6 +9,7 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -52,12 +52,11 @@ class ToolConfigCoreService:
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
         if api_key is not None:
-            timeout = self.__timeout_resolver_provider.get().resolve()
             return AsyncDial(
                 api_key=api_key.get_secret_value(),
                 base_url=self.__dial_settings.url,
                 api_version=self.__dial_settings.api_version,
-                timeout=openai.Timeout(connect=5, read=timeout, write=timeout, pool=timeout),
+                timeout=build_async_dial_timeout(self.__timeout_resolver_provider.get().resolve()),
             )
         return self.__dial_client_provider.get()
 

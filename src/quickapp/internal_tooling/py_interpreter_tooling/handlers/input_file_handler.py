@@ -1,11 +1,11 @@
 import os
 from io import BytesIO
 
-import openai
 from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common import DIAL_API_KEY
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )
@@ -25,7 +25,7 @@ class InputFileHandler:
     ) -> str:
         """Get attachment URL, handling local development case"""
         if settings.api_key:
-            client_timeout = openai.Timeout(connect=5, read=timeout, write=timeout, pool=timeout)
+            client_timeout = build_async_dial_timeout(timeout)
             request_dial = AsyncDial(
                 api_key=dial_api_key.get_secret_value(),
                 base_url=dial_url,

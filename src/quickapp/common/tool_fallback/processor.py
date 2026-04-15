@@ -1,7 +1,7 @@
 from typing import Any
 
 from quickapp.common import CompletionResult
-from quickapp.common.exceptions import ToolTimeoutError
+from quickapp.common.exceptions import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
 from quickapp.common.tool_fallback.applicable_mixin import ApplicableStrategyMixin
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
 from quickapp.common.tool_fallback.mapping import STRATEGY_TYPE_TO_HANDLER
@@ -9,8 +9,15 @@ from quickapp.config.tools.tool_fallback import ToolFallbackStrategyModel
 
 
 def _format_timeout_message(error: ToolTimeoutError) -> str:
+    """Long-form LLM-facing message for `ToolTimeoutError`.
+
+    Distinct from `ToolTimeoutError.__str__` (short form shown in stage UI):
+    this wording gives the model agency to retry / chunk / inform the user.
+    Both forms contain the `TOOL_TIMEOUT_PHRASE` so explicit fallback triggers
+    still match against either representation.
+    """
     return (
-        f"The tool call `{error.tool_name}` timed out after "
+        f"The tool call `{error.tool_name}` {TOOL_TIMEOUT_PHRASE} after "
         f"{error.timeout_seconds} seconds. Consider retrying with a smaller or "
         "different input, breaking the request into smaller pieces, or informing "
         "the user that the operation is taking longer than expected."

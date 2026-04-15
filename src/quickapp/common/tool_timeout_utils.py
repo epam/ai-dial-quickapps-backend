@@ -10,6 +10,20 @@ from quickapp.common.exceptions import ToolTimeoutError
 
 MCP_TIMEOUT_CODE: int = int(httpx.codes.REQUEST_TIMEOUT)
 
+# `connect` is held at 5s so dead deployments fast-fail regardless of the
+# configured tool timeout; read/write/pool all track the resolved value.
+_ASYNC_DIAL_CONNECT_TIMEOUT_SECONDS: float = 5.0
+
+
+def build_async_dial_timeout(timeout_seconds: float) -> openai.Timeout:
+    """Return the `openai.Timeout` shape applied to every `AsyncDial` client."""
+    return openai.Timeout(
+        connect=_ASYNC_DIAL_CONNECT_TIMEOUT_SECONDS,
+        read=timeout_seconds,
+        write=timeout_seconds,
+        pool=timeout_seconds,
+    )
+
 
 def _is_timeout(exc: BaseException) -> bool:
     if isinstance(exc, (httpx.TimeoutException, asyncio.TimeoutError, openai.APITimeoutError)):

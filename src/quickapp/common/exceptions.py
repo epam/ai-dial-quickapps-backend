@@ -17,18 +17,25 @@ class InvalidToolCallParameterException(ValueError):
         return self.message
 
 
-class ToolTimeoutError(RuntimeError):
-    """Raised when a tool invocation exceeds its configured timeout.
+TOOL_TIMEOUT_PHRASE = "timed out"
+"""Stable substring present in every timeout-related user-facing message.
 
-    The string representation always contains the stable phrase ``"timed out"`` so
-    that ``TriggerOn(type=contains, value="timed out")`` can match it in tool
-    fallback configuration.
-    """
+Load-bearing: `TriggerOn(type=contains, value=TOOL_TIMEOUT_PHRASE)` in tool
+fallback configuration relies on this appearing in both
+`ToolTimeoutError.__str__` (stage UI short form) and the long LLM-facing
+message emitted by `FallbackProcessor._process_timeout`.
+"""
+
+
+class ToolTimeoutError(RuntimeError):
+    """Raised when a tool invocation exceeds its configured timeout."""
 
     def __init__(self, tool_name: str, timeout_seconds: float):
         self.tool_name = tool_name
         self.timeout_seconds = timeout_seconds
-        self.message = f"Tool call '{tool_name}' timed out after {timeout_seconds} seconds."
+        self.message = (
+            f"Tool call '{tool_name}' {TOOL_TIMEOUT_PHRASE} after {timeout_seconds} seconds."
+        )
         super().__init__(self.message)
 
     def __str__(self):
