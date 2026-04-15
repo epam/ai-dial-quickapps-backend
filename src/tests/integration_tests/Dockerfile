@@ -1,6 +1,6 @@
 FROM python:3.13-alpine AS test-builder
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 musl musl-utils
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
 RUN pip install poetry==2.3.2
 
@@ -24,7 +24,7 @@ COPY ./integration_tests ./integration_tests
 
 # Stage 2: Test runtime (reuse app runtime base for infra)
 FROM python:3.13-alpine AS test-runtime
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat musl musl-utils
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
