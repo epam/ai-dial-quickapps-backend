@@ -7,8 +7,8 @@
 ## Problem Statement
 
 Quick Apps calls external services as tools — DIAL deployments (`AsyncDial`), REST
-APIs, MCP servers, and the Python interpreter — plus the auxiliary `DialCoreClient`
-for bucket/file operations. Three inadequacies today:
+APIs, MCP servers, and the Python interpreter. Bucket and file operations also
+flow through `AsyncDial`. Three inadequacies today:
 
 1. **Inconsistent, mostly hard-coded timeouts.** Effective budgets differ per call
    site, and only the Python interpreter is configurable (and only via its own env
@@ -22,7 +22,6 @@ for bucket/file operations. Three inadequacies today:
    | `_MCPConnectionManager.sse_client` | `timeout=5`, `sse_read_timeout=300` |
    | `ClientSession.call_tool` (MCP) | `read_timeout_seconds=None` — unbounded |
    | `_PyInterpreterClient` | 60s (env `PY_INTERPRETER_CLIENT_TIMEOUT`) |
-   | `DialCoreClient` | httpx default — 5s all phases |
 
 2. **No app-level override.** App creators can't extend timeouts for apps that need
    longer processing. Issue
@@ -45,7 +44,7 @@ only one leaves the feature half-useful.
 
 ## Design Goals
 
-- **Unified timeout configuration across all LLM-visible tools + `DialCoreClient`.**
+- **Unified timeout configuration across all LLM-visible tools.**
   One mechanism replaces the mix of hard-coded defaults and per-component env vars.
 - **Env default + app-level override.** Operators set a deployment-wide default; app
   creators override per app. No per-toolset granularity in this pass (see
@@ -58,7 +57,7 @@ only one leaves the feature half-useful.
 - **One predictable default for all tool calls.** Env default is **300s** (5 min),
   applied to every tool client. This is a deliberate uniformity choice — devops
   operators get a single number that bounds every tool call, instead of a per-client
-  patchwork (5s for REST/DialCoreClient, 60s for PyInterpreter, 600s for AsyncDial,
+  patchwork (5s for REST, 60s for PyInterpreter, 600s for AsyncDial,
   300s for MCP transport). Some clients see a shorter budget than today (notably
   AsyncDial's 600s read budget and PyInterpreter's 60s); this is acknowledged as a
   regression in [Migration](#migration), and operators or app creators raise the
@@ -99,15 +98,13 @@ The "fixes #216" claim is gated on locating the actual cap — the unified
 mechanism below only helps for caps that live in our HTTP clients. Priority
 hypotheses:
 
-1. **`DialCoreClient`** — runs at httpx defaults (5s all phases). Large PDF
-   upload/download goes through here; an in-flight `get_file`/`put_file` on a
-   large attachment could aggregate to ~5 min.
-2. **`AsyncDial`** — library read default is 600s, so not the cap directly, but
-   the deployment-tool code path may wrap the call in an outer `asyncio.wait_for`
-   or accumulate retries.
-3. **MCP per-call** — if an MCP tool is in the failing flow, transport
+1. **`AsyncDial`** — library read default is 600s, so not the cap directly, but
+   the deployment-tool code path (and the bucket/file operations previously
+   routed through a dedicated DIAL Core HTTP client) may wrap the call in an
+   outer `asyncio.wait_for` or accumulate retries.
+2. **MCP per-call** — if an MCP tool is in the failing flow, transport
    `sse_read_timeout=300s` is exactly 5 minutes.
-4. **Upstream (DIAL Core / ingress)** — the user reports this is not the source,
+3. **Upstream (DIAL Core / ingress)** — the user reports this is not the source,
    but cross-checked during repro.
 
 Repro captures: exception class + traceback, elapsed time from `PerformanceTimer`,
@@ -181,7 +178,6 @@ flowchart LR
     R -->|float seconds| RA[REST API tool<br/>httpx.AsyncClient]
     R -->|float seconds| M[MCP tool<br/>transport + call_tool]
     R -->|float seconds| P[PyInterpreter client]
-    R -->|float seconds| C[DialCoreClient]
 ```
 
 ### 4. Plumbing the timeout into each tool type
@@ -204,9 +200,15 @@ never `None` — and pass it explicitly to their underlying client. No
   pass the resolved value to `_PyInterpreterClient(timeout=T)`. Remove
   `_PyInterpreterSettings.client_timeout` and the `PY_INTERPRETER_CLIENT_TIMEOUT`
   env var (see [Migration](#migration)).
-- **`DialCoreClient.__aenter__`** — pass `timeout=T` to `httpx.AsyncClient(...)`.
-  In primary scope because it is a plausible root cause of #216 (see
-  [Investigation for #216](#0-investigation-tracing-the-5-minute-cap-for-216)).
+- **Ad-hoc `AsyncDial` construction sites** —
+  `ToolConfigCoreService._resolve_dial_client` (controller path, uses an
+  explicit header-supplied `api_key`) and
+  `InputFileHandler.get_attachment_url` (PyInterpreter's local-dev bridge,
+  talks to a distinct dev DIAL Core base URL) both build `AsyncDial` inline
+  rather than consuming the DI-provided client. Each one repeats the same
+  `timeout=openai.Timeout(connect=5, read=T, write=T, pool=T)` shape as
+  `__provide_async_dial`, so the resolved budget applies uniformly even on
+  the bypass paths.
 
 #### MCP tool — three tiers
 
@@ -439,7 +441,6 @@ required.
   | `AsyncDial` (deployment) | 600s read | 300s read | Shortened (regression risk for long RAG flows) |
   | `_PyInterpreterClient` | 60s | 300s | Lengthened |
   | `_RestApiTool` (httpx) | 5s | 300s | Lengthened |
-  | `DialCoreClient` (httpx) | 5s | 300s | Lengthened |
   | MCP transport `sse_read_timeout` | 300s | 300s | Unchanged |
   | MCP `call_tool` | unbounded | 300s | Bounded |
   | MCP connection setup | 30s / 5s | 30s / 5s | Unchanged (deliberate, see [MCP tool — three tiers](#mcp-tool--three-tiers)) |
@@ -448,7 +449,7 @@ required.
   relying on the 600s read budget needs to set
   `DEFAULT_TOOL_TIMEOUT_SECONDS=600` (or higher) at the env level, or
   `tool_defaults.timeout_seconds: 600` per-app. The lengthenings for
-  REST/DialCoreClient/PyInterpreter are improvements (5s and 60s were
+  REST/PyInterpreter are improvements (5s and 60s were
   dangerously short for many real workloads), but operators should be aware
   that slow upstreams now occupy the agent loop longer.
 - **LLM sees a timeout-specific message instead of the generic catch-all text.**
@@ -525,8 +526,10 @@ required.
   [Default graceful fallback for `ToolTimeoutError`](#7-default-graceful-fallback-for-tooltimeouterror)
 - `config/tools/tool_fallback.ContinueStrategyModel` — validator rejecting
   `trigger_on is not None and instructions is None`
-- `common/dial_core_client.DialCoreClient.__aenter__` — apply resolved timeout to
-  `httpx.AsyncClient`
+- `dial_core_services/tool_config_service.ToolConfigCoreService._resolve_dial_client`
+  and `internal_tooling/py_interpreter_tooling/handlers/input_file_handler.InputFileHandler.get_attachment_url`
+  — apply resolved timeout to the inline-constructed `AsyncDial` instances that
+  bypass the `__provide_async_dial` DI provider
 - `common/staged_base_tool.StagedBaseTool.arun` — exempt `ToolTimeoutError` from
   `display_error_in_stage=False` masking
 - `docs/agent.md` — tool system section
