@@ -41,16 +41,18 @@ class ToolConfigCoreService:
         self,
         dial_settings: DialSettings,
         dial_client_provider: ProviderOf[AsyncDial],
-        timeout_resolver: ToolTimeoutResolver,
+        timeout_resolver_provider: ProviderOf[ToolTimeoutResolver],
     ):
         self.__dial_settings: DialSettings = dial_settings
         self.__dial_client_provider: ProviderOf[AsyncDial] = dial_client_provider
-        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
+        self.__timeout_resolver_provider: ProviderOf[ToolTimeoutResolver] = (
+            timeout_resolver_provider
+        )
 
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
         if api_key is not None:
-            timeout = self.__timeout_resolver.resolve()
+            timeout = self.__timeout_resolver_provider.get().resolve()
             return AsyncDial(
                 api_key=api_key.get_secret_value(),
                 base_url=self.__dial_settings.url,
