@@ -4,10 +4,11 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
-from quickapp.agent._models import AccumulatedToolCall
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from tests.unit_tests.stream_test_doubles import SpyChoice
 
 
 def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
@@ -28,9 +29,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # assistant call result without tool calls, with usage
     assistant_result = SimpleNamespace(
@@ -45,9 +44,8 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
 
     state_holder = Mock()
     initial_state = {"some": "state"}
@@ -75,7 +73,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -86,7 +84,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     state_holder.add_state.assert_not_called()
 
     # choice.set_state should be called with the state from state_holder
-    choice.set_state.assert_called_once_with(initial_state)
+    assert choice.set_state_calls == [initial_state]
 
     # usage_statistics_service.process_usage_statistics should be awaited with a list
     usage_statistics_service.process_usage_statistics.assert_awaited_once()
@@ -107,9 +105,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # First assistant result contains tool_calls, second has none (to end loop)
     assistant_result_with_tools = SimpleNamespace(
@@ -131,12 +127,11 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
+    stream_handler = Mock()
     # Return with tools first, then without tools to stop loop
-    chunk_processor.process_chunks = AsyncMock(
+    stream_handler.process_stream = AsyncMock(
         side_effect=[assistant_result_with_tools, assistant_result_no_tools]
     )
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -179,7 +174,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -196,7 +191,8 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
 
     # attachments should be propagated to choice via add_attachment
     attach.model_dump.assert_called()
-    choice.add_attachment.assert_called_once_with(**attach.model_dump())
+    assert len(choice.add_attachment_kwargs) == 1
+    assert choice.add_attachment_kwargs[0] == attach.model_dump()
 
     # state_holder.add_state called once in finally with tool_execution_history (no stream state in mocks)
     state_holder.add_state.assert_called_once()
@@ -217,9 +213,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     stream_state = {"claude_message_content": "thinking output"}
     assistant_result = SimpleNamespace(
@@ -235,9 +229,8 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -251,7 +244,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=Mock(),
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=5,
@@ -293,9 +286,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # Assistant result contains a properly shaped tool_call entry
     assistant_result_with_tools = SimpleNamespace(
@@ -310,9 +301,8 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result_with_tools)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result_with_tools)
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -341,7 +331,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
     )
@@ -374,7 +364,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=Mock(),
         assistant_invoker_provider=Mock(),
-        chunk_processor_provider=Mock(),
+        stream_handler=Mock(),
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,

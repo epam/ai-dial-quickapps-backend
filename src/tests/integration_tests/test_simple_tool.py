@@ -95,7 +95,7 @@ def test_text_to_image2(client):
     test_case=TstCase("Web search", "NBA winner 2025", similarity_threshold=0.7)
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations'",
+        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations. Don't add source citation.'",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
@@ -121,7 +121,7 @@ def test_web_search(client):
     )
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024",
+        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024. Don't add citations.",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
@@ -132,6 +132,7 @@ def test_web_search(client):
             "1,789,226",
             "I'll search for the latest information on Tesla sales in 2024 and provide just the number.1,789,226",
             "1789226",
+            "1,789,226 (Source: Tesla 2024 deliveries press release)",
         ],
     ),
 )

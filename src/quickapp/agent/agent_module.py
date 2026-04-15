@@ -9,13 +9,18 @@ from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
+from quickapp.common import (
+    DIAL_API_KEY,
+    ORCHESTRATOR_AZURE_CLIENT,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
+from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
@@ -56,7 +61,7 @@ class AgentModule(Module):
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
-        binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
+        binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
@@ -71,7 +76,7 @@ class AgentModule(Module):
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
         forwarded_headers: ForwardedHeaders,
-    ) -> AsyncAzureOpenAI:
+    ) -> ORCHESTRATOR_AZURE_CLIENT:
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),

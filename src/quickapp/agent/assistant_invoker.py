@@ -6,13 +6,12 @@ from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 from openai import AsyncStream
-from openai.lib.azure import AsyncAzureOpenAI
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
-from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
+from quickapp.common import ORCHESTRATOR_AZURE_CLIENT, RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
@@ -28,7 +27,7 @@ class AssistantInvoker:
         config: ApplicationConfig,
         messages: list[Message],
         choice: Choice,
-        azure_client: AsyncAzureOpenAI,
+        azure_client: ORCHESTRATOR_AZURE_CLIENT,
         response_format: RESPONSE_FORMAT,
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
