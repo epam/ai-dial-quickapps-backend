@@ -400,8 +400,8 @@ class ResponseValidator:
         failures = []
         expected_names = {tc.name for tc in expected_tool_calls}
         expected_names.add(
-            "read_skill"
-        )  # Allow read_skill calls in all tests as they are used for tool retrieval
+            "internal_skills_read_skill"
+        )  # Allow internal_skills_read_skill calls in all tests as they are used for tool retrieval
         for actual in tool_call_history:
             if actual.name not in expected_names:
                 failures.append(

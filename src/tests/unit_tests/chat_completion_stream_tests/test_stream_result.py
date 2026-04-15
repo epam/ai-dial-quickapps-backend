@@ -8,7 +8,6 @@ from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
 from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
     Usage,
-    attachment_to_sdk,
     ensure_attachment_url_or_data,
 )
 
@@ -56,21 +55,6 @@ def test_attachments_or_none():
     att = Attachment(type="text/plain", title="t", data="aGk=")
     acc.append_attachment(att)
     assert acc.attachments_or_none == [att]
-
-
-def test_attachment_to_sdk_delegates_model_dump():
-    api_att = MagicMock()
-    api_att.model_dump.return_value = {
-        "type": "image/png",
-        "title": "i",
-        "data": None,
-        "url": "files/x",
-        "reference_url": None,
-        "reference_type": None,
-    }
-    sdk = attachment_to_sdk(api_att)
-    assert isinstance(sdk, Attachment)
-    assert sdk.url == "files/x"
 
 
 def test_fix_sdk_attachment_sets_data_when_no_url_no_reference():

@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from aidial_sdk import chat_completion as dial_sdk_models
 from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
@@ -57,11 +56,6 @@ class Usage:
         self.completion_tokens = completion_tokens
 
 
-def attachment_to_sdk(attachment: Any) -> dial_sdk_models.Attachment:
-    """Build aidial SDK ``Attachment`` from an API attachment object with ``model_dump()``."""
-    return dial_sdk_models.Attachment(**attachment.model_dump())
-
-
 def ensure_attachment_url_or_data(attachment: Attachment) -> None:
     """Bugfix issue#16: if attachment has no data and no url, use reference_url as url or set empty data.
 
@@ -99,9 +93,9 @@ class ChatStreamAccumulator:
     def append_attachment(self, attachment: Attachment) -> None:
         self.__attachments.append(attachment)
 
-    def extend_attachments_from_api(self, attachments: list[Any]) -> None:
+    def extend_attachments(self, attachments: list[Attachment]) -> None:
         """Append attachments from deployment / API objects (``model_dump`` → SDK ``Attachment``)."""
-        self.__attachments.extend(attachment_to_sdk(a) for a in attachments)
+        self.__attachments.extend(attachments)
 
     @property
     def tool_calls(self) -> list[AccumulatedToolCall] | None:

@@ -126,16 +126,10 @@ class DialCompletionService:
         stage_wrapper: BaseStageWrapper | None,
     ) -> ChatStreamAccumulator:
         try:
-            if stage_wrapper is None:
-                config = ChatStreamConfig.model_construct(
-                    destination=None,
-                    stage_wrapper=None,
-                    stream_content=True,
-                    propagate_stages=False,
-                )
-            else:
-                config = ChatStreamConfig(stage_wrapper=stage_wrapper)
-            return await self.__stream_handler.process_stream(chunks=chunks, config=config)
+            return await self.__stream_handler.process_stream(
+                chunks=chunks,
+                config=ChatStreamConfig(stage_wrapper=stage_wrapper),
+            )
         except ChatStreamHandlerError:
             logger.exception("Deployment stream handling failed.")
             raise

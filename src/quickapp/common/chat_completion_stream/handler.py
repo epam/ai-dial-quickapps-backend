@@ -5,7 +5,7 @@ from collections.abc import AsyncIterable
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common._stage_delta_types import (
     StageDeltaItem,
@@ -30,7 +30,6 @@ from quickapp.common.chat_completion_stream.models import (
 from quickapp.common.chat_completion_stream.parse import parse_chat_completion_chunk
 from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
-    attachment_to_sdk,
     ensure_attachment_url_or_data,
 )
 
@@ -46,13 +45,6 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
-
-    @model_validator(mode="after")
-    def validate_destination_or_stage_wrapper(self) -> ChatStreamConfig:
-        """Ensure that at least one of destination or stage_wrapper is set."""
-        if self.destination is None and self.stage_wrapper is None:
-            raise ValueError("At least one of 'destination' or 'stage_wrapper' must be provided")
-        return self
 
 
 class ChatCompletionStreamHandler:
@@ -117,18 +109,13 @@ class ChatCompletionStreamHandler:
         if delta.content and config.stream_content:
             dest = config.destination
             wrap = config.stage_wrapper
-            if dest is not None:
-                try:
+            try:
+                if dest is not None:
                     dest.append_content(delta.content)
-                except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamWriteError("Failed to stream content to choice sink.") from exc
-            elif wrap is not None:
-                try:
+                elif wrap is not None:
                     wrap.append_stage_content(delta.content)
-                except Exception as exc:  # pragma: no cover - defensive
-                    raise ChatStreamWriteError(
-                        "Failed to stream content to deployment stage wrapper."
-                    ) from exc
+            except Exception as exc:  # pragma: no cover - defensive
+                raise ChatStreamWriteError("Failed to stream content to destination") from exc
             accumulator.append_content(delta.content)
 
         if delta.custom is not None:
@@ -137,21 +124,14 @@ class ChatCompletionStreamHandler:
         for tool_call in delta.tool_calls:
             accumulator.append_tool_call_delta(tool_call)
 
-    def _process_attachments_to_destination(
-        self, accumulator: ChatStreamAccumulator, attachments: list, destination, converter=None
-    ) -> None:
+    def _process_attachments_to_destination(self, attachments: list, destination) -> None:
         """Process attachments: extend accumulator, ensure URL/data, and add to destination."""
         if not attachments:
             return
-
-        accumulator.extend_attachments_from_api(attachments)
         for attachment in attachments:
             ensure_attachment_url_or_data(attachment)
             try:
-                if converter:
-                    destination.add_attachment(converter(attachment))
-                else:
-                    destination.add_attachment(**attachment.model_dump())
+                destination.add_attachment(attachment)
             except Exception as exc:
                 raise ChatStreamWriteError("Failed to stream attachment.") from exc
 
@@ -166,11 +146,10 @@ class ChatCompletionStreamHandler:
         wrap = config.stage_wrapper
 
         if dest is not None and norm.attachments:
-            self._process_attachments_to_destination(accumulator, norm.attachments, dest)
+            self._process_attachments_to_destination(norm.attachments, dest)
         elif wrap is not None and norm.attachments:
-            self._process_attachments_to_destination(
-                accumulator, norm.attachments, wrap, attachment_to_sdk
-            )
+            self._process_attachments_to_destination(norm.attachments, wrap)
+        accumulator.extend_attachments(norm.attachments)
 
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)
