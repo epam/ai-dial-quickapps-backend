@@ -207,8 +207,6 @@ When a tool call exceeds the resolved budget, `translate_timeout` (async context
 
 `FallbackProcessor` has a dedicated branch for `ToolTimeoutError`: user strategies with an explicit `trigger_on` can pre-empt, otherwise a built-in template message naming the tool and timeout is returned. **Implicit catch-all strategies (`trigger_on=None`) are skipped for timeouts** — this is the key semantic shift versus prior behaviour. `_request_context_setup` logs an INFO line per customised catch-all so operators can spot impacted toolsets at a glance.
 
-`DialCoreClient` is always constructed via `DialCoreClientFactory` (request-scoped) so the resolved timeout is applied uniformly; services no longer wire `DialSettings + DIAL_API_KEY + ToolTimeoutResolver` individually.
-
 <!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
