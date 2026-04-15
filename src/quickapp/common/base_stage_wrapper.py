@@ -81,12 +81,12 @@ class BaseStageWrapper(ABC):
     @abstractmethod
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str: ...
 
-    def add_stage_attachment(self, attachment: Attachment) -> None:
+    def add_attachment(self, attachment: Attachment) -> None:
         self.__stage.add_attachment(**attachment.model_dump())
 
-    def add_stage_attachments(self, attachments: list[Attachment]) -> None:
+    def add_attachments(self, attachments: list[Attachment]) -> None:
         for attachment in attachments:
-            self.add_stage_attachment(attachment)
+            self.add_attachment(attachment)
 
     def add_exception(self, exception: Exception) -> None:
         debug_info = self._build_debug_info_from_exception(exception)
@@ -139,7 +139,7 @@ class BaseStageWrapper(ABC):
         self.append_stage_content(debug_info)
         if result.attachments:
             for att in result.attachments:
-                self.add_stage_attachment(att)
+                self.add_attachment(att)
 
     @abstractmethod
     def _build_debug_info_from_result(self, result: CompletionResult) -> str: ...

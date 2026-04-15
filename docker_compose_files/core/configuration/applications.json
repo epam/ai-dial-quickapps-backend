@@ -7,7 +7,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-5-2025-08-07-reasoning",
+            "name": "gpt-5-2025-08-07",
             "parameters": {
               "temperature": 1.0
             }

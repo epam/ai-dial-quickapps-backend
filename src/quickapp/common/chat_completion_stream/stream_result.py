@@ -1,12 +1,16 @@
+"""Mutable accumulator for OpenAI-style chat completion streams (orchestrator + deployment)."""
+
+from __future__ import annotations
+
 import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
-from quickapp.agent._stage_delta_types import StageDeltaItem, get_stage_index
-
-from .accumulated_tool_call import AccumulatedToolCall
+from quickapp.common._stage_delta_types import StageDeltaItem, get_stage_index
+from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +27,6 @@ class _AccumulatedStageData:
         self.status: str | None = None
 
     def append_delta(self, item: StageDeltaItem) -> None:
-        logger.debug("Appending stage delta to index %s: %s", get_stage_index(item, -1), item)
         if not isinstance(item, dict):
             return
         if "name" in item and item["name"] is not None:
@@ -53,8 +56,22 @@ class Usage:
         self.completion_tokens = completion_tokens
 
 
-class AssistantCallResult:
-    def __init__(self):
+def ensure_attachment_url_or_data(attachment: Attachment) -> None:
+    """Bugfix issue#16: if attachment has no data and no url, use reference_url as url or set empty data.
+
+    Mutates SDK attachment objects in place (orchestrator + deployment stream handlers).
+    """
+    if attachment.data is None and attachment.url is None:
+        if attachment.reference_url is None:
+            attachment.data = ""
+        else:
+            attachment.url = attachment.reference_url
+
+
+class ChatStreamAccumulator:
+    """Collects text, custom content, usage, and optional tool/stage data from a stream."""
+
+    def __init__(self) -> None:
         self.__content = ""
         self.__attachments: list[Attachment] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
@@ -63,18 +80,22 @@ class AssistantCallResult:
         self.__state: dict[str, Any] = {}
 
     @property
-    def content(self):
+    def content(self) -> str:
         return self.__content
 
     def append_content(self, content: str) -> None:
         self.__content += content
 
     @property
-    def attachments(self):
+    def attachments(self) -> list[Attachment]:
         return self.__attachments
 
     def append_attachment(self, attachment: Attachment) -> None:
         self.__attachments.append(attachment)
+
+    def extend_attachments(self, attachments: list[Attachment]) -> None:
+        """Append SDK ``Attachment`` instances (parser normalizes to SDK type upstream)."""
+        self.__attachments.extend(attachments)
 
     @property
     def tool_calls(self) -> list[AccumulatedToolCall] | None:
@@ -88,32 +109,38 @@ class AssistantCallResult:
         self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
 
     @property
-    def usage(self):
+    def usage(self) -> Usage | None:
         return self.__usage
 
     def set_usage(self, usage: Usage) -> None:
         self.__usage = usage
 
+    def apply_usage_footprint(self, fp: ChunkUsageFootprint) -> None:
+        if fp.prompt_tokens is not None and fp.completion_tokens is not None:
+            self.__usage = Usage(fp.prompt_tokens, fp.completion_tokens)
+
     @property
     def stages(self) -> list[dict[str, Any]]:
-        """Stages accumulated from stream, sorted by index."""
         if not self.__stages_by_index:
             return []
         return [self.__stages_by_index[idx].to_dict(idx) for idx in sorted(self.__stages_by_index)]
 
     def append_stage_delta(self, item: StageDeltaItem, position: int) -> None:
-        """Merge a stage delta into the stage at the given index."""
         idx = get_stage_index(item, position)
         if idx not in self.__stages_by_index:
             self.__stages_by_index[idx] = _AccumulatedStageData()
         self.__stages_by_index[idx].append_delta(item)
 
     @property
-    def state(self) -> dict[str, Any]:
-        """State captured from the assistant stream (copy)."""
+    def state(self) -> dict[str, Any] | None:
+        if not self.__state:
+            return None
         return dict(self.__state)
 
     def merge_state(self, state_update: dict[str, Any]) -> None:
-        """Merge state updates from a chunk into captured state."""
         if state_update:
             self.__state.update(state_update)
+
+    @property
+    def attachments_or_none(self) -> list[Attachment] | None:
+        return self.__attachments if self.__attachments else None
