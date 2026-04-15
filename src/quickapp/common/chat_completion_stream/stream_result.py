@@ -94,7 +94,7 @@ class ChatStreamAccumulator:
         self.__attachments.append(attachment)
 
     def extend_attachments(self, attachments: list[Attachment]) -> None:
-        """Append attachments from deployment / API objects (``model_dump`` → SDK ``Attachment``)."""
+        """Append SDK ``Attachment`` instances (parser normalizes to SDK type upstream)."""
         self.__attachments.extend(attachments)
 
     @property
@@ -109,7 +109,7 @@ class ChatStreamAccumulator:
         self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
 
     @property
-    def usage(self) -> Any | None:
+    def usage(self) -> Usage | None:
         return self.__usage
 
     def set_usage(self, usage: Usage) -> None:

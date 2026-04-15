@@ -30,8 +30,6 @@ class ChunkUsageFootprint(BaseModel):
 
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
-    raw_usage: Any | None = None
-    statistics: Any | None = None
 
 
 ChatStreamEvent = ChunkUsageFootprint | NormalizedChoiceDelta

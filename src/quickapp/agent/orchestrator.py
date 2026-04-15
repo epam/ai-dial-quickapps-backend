@@ -166,7 +166,7 @@ class Orchestrator:
         self, chat_completion_stream: AsyncStream[ChatCompletionChunk]
     ) -> ChatStreamAccumulator:
         try:
-            stream_accumulator = await self.__stream_handler.process_stream(
+            return await self.__stream_handler.process_stream(
                 chunks=chat_completion_stream,
                 config=ChatStreamConfig(
                     destination=self.__choice,
@@ -177,9 +177,6 @@ class Orchestrator:
         except ChatStreamHandlerError:
             logger.exception("Orchestrator stream handling failed.")
             raise
-        if stream_accumulator is None:
-            raise RuntimeError("Assistant invocation returned no result.")
-        return stream_accumulator
 
     def _build_tool_execution_history(self) -> list[dict[str, object]]:
         """Build tool execution history by extracting ASSISTANT and TOOL messages.
