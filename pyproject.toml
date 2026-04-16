@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     # Core framework & DI
-    "aidial-client>=0.6.2,<0.7.0",                # DIAL API client
+    "aidial-client @ git+https://github.com/epam/ai-dial-client-python@feat/prompts-api",  # DIAL API client (temp: branch with prompts API)
     "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
     "pydantic-settings>=2.12.0,<3.0.0",           # Settings management

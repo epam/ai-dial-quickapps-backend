@@ -58,7 +58,7 @@ def test_context_file_notified_via_synthetic_tool_call():
     async def get_method(messages_setup: _MessagesSetup = Injected(_MessagesSetup)):
         messages = [_user_msg("hello")]
 
-        result = messages_setup.setup(messages)
+        result = await messages_setup.setup(messages)
 
         # Original + synthetic assistant tool_call + tool result
         assert len(result) == 3
@@ -92,7 +92,7 @@ def test_user_attachment_text_and_context_tool_call():
             )
         ]
 
-        result = messages_setup.setup(messages)
+        result = await messages_setup.setup(messages)
 
         # Original message + 2 synthetic messages for context
         assert len(result) == 3

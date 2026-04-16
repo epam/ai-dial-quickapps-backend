@@ -54,7 +54,7 @@ class _RequestContextSetup:
             await request.request_dial_application_properties()
         )
         if isinstance(request, Request):
-            context.messages = self.__messages_setup.setup(request.messages)
+            context.messages = await self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
         if choice:

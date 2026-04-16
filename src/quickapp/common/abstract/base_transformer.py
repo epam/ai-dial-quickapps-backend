@@ -10,7 +10,7 @@ class MessagesTransformer(ABC):
     """
 
     @abstractmethod
-    def transform(self, messages: list[Message]) -> list[Message]: ...
+    async def transform(self, messages: list[Message]) -> list[Message]: ...
 
 
 class PreInvocationTransformer(ABC):

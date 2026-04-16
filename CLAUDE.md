@@ -69,9 +69,15 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 3. **MCP** (`mcp_tooling/`) — Model Context Protocol servers
 4. **Internal** (`internal_tooling/`) — Built-in Python tools (pandas, plotly, etc.)
 
+### Skills
+
+Skills are reusable instruction modules. Predefined skills are loaded at startup from `config/predefined/skills/`.
+DIAL prompt skills (`dial_prompt_skills/`) are fetched at request time from DIAL Core's prompts API — this is a
+preview feature. `SkillsRegistry` merges both sources per request.
+
 ### Configuration Model
 
-JSON-schema validated manifests with three sections: orchestrator config (deployment, system prompt, max iterations), contexts (file attachments), and tool sets. Schema is auto-generated — run `make dump_app_schema` after changing config models.
+JSON-schema validated manifests with four sections: orchestrator config (deployment, system prompt, max iterations), contexts (file attachments), tool sets, and skills (optional, preview). Schema is auto-generated — run `make dump_app_schema` after changing config models.
 
 ### Preview Features
 

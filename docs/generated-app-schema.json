@@ -1023,6 +1023,28 @@
       "title": "DialMCPToolSet",
       "type": "object"
     },
+    "DialPromptSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-prompt",
+          "default": "dial-prompt",
+          "description": "Skill sourced from a DIAL prompt.",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialPromptSkillConfig",
+      "type": "object"
+    },
     "DialSystemPromptConfig": {
       "properties": {
         "type": {
@@ -2874,6 +2896,37 @@
         "dial:propertyOrder": 5
       }
     },
+    "skills": {
+      "anyOf": [
+        {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DialPromptSkillConfig"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of user-configured agent skills.",
+      "title": "Skills",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 6
+      }
+    },
     "features": {
       "anyOf": [
         {
@@ -2886,7 +2939,7 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 6
+        "dial:propertyOrder": 7
       }
     }
   },
