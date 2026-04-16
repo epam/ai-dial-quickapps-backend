@@ -1,16 +1,14 @@
 from __future__ import annotations
 
-import logging
-
+from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_prompt_skills import DialPromptSkillResolver
+from quickapp.skills._exceptions import SkillResolutionWarning
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
-
-logger = logging.getLogger(__name__)
 
 
 @inject
@@ -25,10 +23,12 @@ class SkillsRegistry(PromptPartProvider):
         self,
         predefined_provider: AgentSkillsProvider,
         config_provider: ProviderOf[ApplicationConfig],
+        stage_provider: ProviderOf[Stage],
         dial_prompt_resolver: DialPromptSkillResolver | None = None,
     ) -> None:
         self._predefined_provider = predefined_provider
         self._config_provider = config_provider
+        self._stage_provider = stage_provider
         self._dial_prompt_resolver = dial_prompt_resolver
         self._resolved: bool = False
         self._xml_cache: str = ""
@@ -45,32 +45,52 @@ class SkillsRegistry(PromptPartProvider):
 
         merged_skills = list(predefined_skills)
         merged_contents = dict(predefined_contents)
+        all_warnings: list[SkillResolutionWarning] = []
 
         if self._dial_prompt_resolver is not None:
             try:
                 config = self._config_provider.get()
                 skill_configs = config.skills or []
                 if skill_configs:
-                    resolved = await self._dial_prompt_resolver.resolve(skill_configs)
+                    resolved, warnings = await self._dial_prompt_resolver.resolve(skill_configs)
+                    all_warnings.extend(warnings)
                     for metadata, content in resolved:
                         if metadata.name in predefined_names:
-                            logger.warning(
-                                "DIAL prompt skill '%s' has the same name as a predefined skill; "
-                                "predefined takes precedence. Skipping.",
-                                metadata.name,
+                            all_warnings.append(
+                                SkillResolutionWarning(
+                                    url=metadata.name,
+                                    reason="Has the same name as a predefined"
+                                    " skill; predefined takes precedence",
+                                )
                             )
                             continue
                         merged_skills.append(metadata)
                         merged_contents[metadata.name] = content
-            except Exception:
-                logger.warning(
-                    "Failed to resolve DIAL prompt skills; falling back to predefined-only.",
-                    exc_info=True,
+            except Exception as exc:
+                all_warnings.append(
+                    SkillResolutionWarning(
+                        url="*",
+                        reason="Failed to resolve DIAL prompt skills;"
+                        f" falling back to predefined-only: {exc}",
+                    )
                 )
+
+        if all_warnings:
+            self._render_warning_stage(all_warnings)
 
         self._all_contents = merged_contents
         self._xml_cache = generate_skills_xml(merged_skills)
         self._resolved = True
+
+    def _render_warning_stage(self, warnings: list[SkillResolutionWarning]) -> None:
+        stage = self._stage_provider.get()
+        stage.open()
+        stage.append_name("Skill loading warnings")
+        lines = ["#### Some DIAL prompt skills could not be loaded:"]
+        for w in warnings:
+            lines.append(f"- **{w.url}**: {w.reason}")
+        stage.append_content("\n".join(lines))
+        stage.close(Status.COMPLETED)
 
     async def get_prompt_part(self) -> str:
         """Return merged skills XML for inclusion in the system prompt."""

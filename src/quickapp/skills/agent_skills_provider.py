@@ -35,6 +35,7 @@ class AgentSkillsProvider:
 
     def _load_skills(self) -> None:
         """Load all skill files and cache metadata and contents."""
+        from quickapp.skills._exceptions import SkillValidationError
         from quickapp.skills._frontmatter import parse_frontmatter
 
         skill_names = self._provider.list_names(ContentType.SKILL)
@@ -50,19 +51,22 @@ class AgentSkillsProvider:
                 logger.debug(f"Loading skill `{file_stem}`")
                 content = self._provider.read_text(ContentType.SKILL, file_stem)
                 metadata = parse_frontmatter(content, file_stem)
-                if metadata is None:
-                    continue
-                if metadata.name != file_stem:
-                    logger.warning(
-                        "Skill name '%s' does not match directory name '%s'; skipping",
-                        metadata.name,
-                        file_stem,
-                    )
-                    continue
-                skills.append(metadata)
-                contents[metadata.name] = content
+            except SkillValidationError as exc:
+                logger.warning(str(exc))
+                continue
             except Exception as exc:
                 logger.error(f"Failed to parse skill `{file_stem}`: {exc}")
+                continue
+
+            if metadata.name != file_stem:
+                logger.warning(
+                    "Skill name '%s' does not match directory name '%s'; skipping",
+                    metadata.name,
+                    file_stem,
+                )
+                continue
+            skills.append(metadata)
+            contents[metadata.name] = content
 
         self._skills = skills
         self._contents = contents

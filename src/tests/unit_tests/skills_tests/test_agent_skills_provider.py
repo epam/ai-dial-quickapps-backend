@@ -6,6 +6,7 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
+from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
@@ -34,7 +35,6 @@ class TestParseFrontmatter:
             "Body content\n"
         )
         result = parse_frontmatter(content, "my-skill")
-        assert result is not None
         assert isinstance(result, SkillMetadata)
         assert result.name == "my-skill"
         assert result.description == "A test skill"
@@ -43,43 +43,50 @@ class TestParseFrontmatter:
         assert result.metadata == {"version": "1.0"}
         assert result.allowed_tools == ["tool_a", "tool_b"]
 
-    def test_missing_name_returns_none(self):
+    def test_missing_name_raises(self):
         content = "---\ndescription: A skill without name\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_missing_description_returns_none(self):
+    def test_missing_description_raises(self):
         content = "---\nname: my-skill\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_name_exceeds_64_chars_returns_none(self):
+    def test_name_exceeds_64_chars_raises(self):
         long_name = "a" * 65
         content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_consecutive_hyphens_returns_none(self):
+    def test_consecutive_hyphens_raises(self):
         content = "---\nname: my--skill\ndescription: desc\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_leading_hyphen_returns_none(self):
+    def test_leading_hyphen_raises(self):
         content = "---\nname: -my-skill\ndescription: desc\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_trailing_hyphen_returns_none(self):
+    def test_trailing_hyphen_raises(self):
         content = "---\nname: my-skill-\ndescription: desc\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_invalid_yaml_returns_none(self):
+    def test_invalid_yaml_raises(self):
         content = "---\n: [invalid yaml\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_non_dict_yaml_returns_none(self):
+    def test_non_dict_yaml_raises(self):
         content = "---\n- item1\n- item2\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
     def test_allowed_tools_as_string_normalized_to_list(self):
         content = "---\nname: my-skill\ndescription: desc\nallowed-tools: tool1 tool2\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result is not None
         assert result.allowed_tools == ["tool1", "tool2"]
 
     def test_allowed_tools_as_list_kept(self):
@@ -88,17 +95,25 @@ class TestParseFrontmatter:
             "allowed-tools:\n  - tool1\n  - tool2\n---\nBody\n"
         )
         result = parse_frontmatter(content, "test")
-        assert result is not None
         assert result.allowed_tools == ["tool1", "tool2"]
 
-    def test_description_exceeds_1024_chars_returns_none(self):
+    def test_description_exceeds_1024_chars_raises(self):
         long_desc = "x" * 1025
         content = f"---\nname: my-skill\ndescription: {long_desc}\n---\nBody\n"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_no_frontmatter_returns_none(self):
+    def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
-        assert parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
+
+    def test_error_carries_source_id_and_reason(self):
+        content = "No frontmatter"
+        with pytest.raises(SkillValidationError) as exc_info:
+            parse_frontmatter(content, "my-source")
+        assert exc_info.value.source_id == "my-source"
+        assert "No YAML frontmatter found" in exc_info.value.reason
 
 
 # ---------------------------------------------------------------------------

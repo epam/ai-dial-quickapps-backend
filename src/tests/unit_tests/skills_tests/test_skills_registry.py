@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.skills._exceptions import SkillResolutionWarning
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills.agent_skills_provider import SkillMetadata
 
@@ -24,6 +25,17 @@ def _make_config_provider(skills_config: list | None = None) -> MagicMock:
     return provider
 
 
+def _make_stage_provider() -> MagicMock:
+    stage = MagicMock()
+    stage.open = MagicMock()
+    stage.append_name = MagicMock()
+    stage.append_content = MagicMock()
+    stage.close = MagicMock()
+    provider = MagicMock()
+    provider.get.return_value = stage
+    return provider
+
+
 def _skill(name: str, description: str = "A skill") -> SkillMetadata:
     return SkillMetadata(name=name, description=description)
 
@@ -38,6 +50,7 @@ class TestSkillsRegistryNoPResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, contents),
             config_provider=_make_config_provider(),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=None,
         )
 
@@ -52,6 +65,7 @@ class TestSkillsRegistryNoPResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider([_skill("my-skill")], contents),
             config_provider=_make_config_provider(),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=None,
         )
 
@@ -63,6 +77,7 @@ class TestSkillsRegistryNoPResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             config_provider=_make_config_provider(),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=None,
         )
 
@@ -74,6 +89,7 @@ class TestSkillsRegistryNoPResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             config_provider=_make_config_provider(),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=None,
         )
 
@@ -93,11 +109,12 @@ class TestSkillsRegistryWithResolver:
         dial_content = "DIAL skill content"
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = [(dial_metadata, dial_content)]
+        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, predefined_contents),
             config_provider=_make_config_provider(skills_config=["some-config"]),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
@@ -115,11 +132,12 @@ class TestSkillsRegistryWithResolver:
         dial_content = "DIAL content"
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = [(dial_metadata, dial_content)]
+        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, predefined_contents),
             config_provider=_make_config_provider(skills_config=["some-config"]),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
@@ -140,6 +158,7 @@ class TestSkillsRegistryWithResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, predefined_contents),
             config_provider=_make_config_provider(skills_config=["some-config"]),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
@@ -150,11 +169,12 @@ class TestSkillsRegistryWithResolver:
     @pytest.mark.asyncio
     async def test_lazy_resolution_only_resolves_once(self):
         resolver = AsyncMock()
-        resolver.resolve.return_value = []
+        resolver.resolve.return_value = ([], [])
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             config_provider=_make_config_provider(skills_config=["config"]),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
@@ -169,11 +189,12 @@ class TestSkillsRegistryWithResolver:
         dial_content = "DIAL prompt skill content"
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = [(dial_metadata, dial_content)]
+        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             config_provider=_make_config_provider(skills_config=["some-config"]),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
@@ -187,9 +208,105 @@ class TestSkillsRegistryWithResolver:
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             config_provider=_make_config_provider(skills_config=None),
+            stage_provider=_make_stage_provider(),
             dial_prompt_resolver=resolver,
         )
 
         await registry.get_prompt_part()
 
         resolver.resolve.assert_not_awaited()
+
+
+class TestSkillsRegistryStageWarnings:
+    """Tests for stage-based warning display."""
+
+    @pytest.mark.asyncio
+    async def test_warnings_open_stage(self):
+        resolver = AsyncMock()
+        resolver.resolve.return_value = (
+            [],
+            [SkillResolutionWarning(url="prompts/b/s", reason="fetch failed")],
+        )
+
+        stage_provider = _make_stage_provider()
+        registry = SkillsRegistry(
+            predefined_provider=_make_predefined_provider(),
+            config_provider=_make_config_provider(skills_config=["cfg"]),
+            stage_provider=stage_provider,
+            dial_prompt_resolver=resolver,
+        )
+
+        await registry.get_prompt_part()
+
+        stage = stage_provider.get.return_value
+        stage.open.assert_called_once()
+        stage.append_name.assert_called_once()
+        stage.append_content.assert_called_once()
+        content_arg = stage.append_content.call_args[0][0]
+        assert "prompts/b/s" in content_arg
+        assert "fetch failed" in content_arg
+        stage.close.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_no_warnings_no_stage(self):
+        resolver = AsyncMock()
+        resolver.resolve.return_value = ([], [])
+
+        stage_provider = _make_stage_provider()
+        registry = SkillsRegistry(
+            predefined_provider=_make_predefined_provider(),
+            config_provider=_make_config_provider(skills_config=["cfg"]),
+            stage_provider=stage_provider,
+            dial_prompt_resolver=resolver,
+        )
+
+        await registry.get_prompt_part()
+
+        stage_provider.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_predefined_collision_opens_stage(self):
+        predefined = [_skill("shared")]
+        predefined_contents = {"shared": "Predefined content"}
+
+        dial_metadata = _skill("shared", "DIAL version")
+        dial_content = "DIAL content"
+
+        resolver = AsyncMock()
+        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
+
+        stage_provider = _make_stage_provider()
+        registry = SkillsRegistry(
+            predefined_provider=_make_predefined_provider(predefined, predefined_contents),
+            config_provider=_make_config_provider(skills_config=["cfg"]),
+            stage_provider=stage_provider,
+            dial_prompt_resolver=resolver,
+        )
+
+        await registry.get_prompt_part()
+
+        stage = stage_provider.get.return_value
+        stage.open.assert_called_once()
+        content_arg = stage.append_content.call_args[0][0]
+        assert "shared" in content_arg
+        assert "predefined" in content_arg.lower()
+
+    @pytest.mark.asyncio
+    async def test_catastrophic_failure_opens_stage(self):
+        resolver = AsyncMock()
+        resolver.resolve.side_effect = RuntimeError("DIAL Core is down")
+
+        stage_provider = _make_stage_provider()
+        registry = SkillsRegistry(
+            predefined_provider=_make_predefined_provider(),
+            config_provider=_make_config_provider(skills_config=["cfg"]),
+            stage_provider=stage_provider,
+            dial_prompt_resolver=resolver,
+        )
+
+        await registry.get_prompt_part()
+
+        stage = stage_provider.get.return_value
+        stage.open.assert_called_once()
+        content_arg = stage.append_content.call_args[0][0]
+        assert "DIAL Core is down" in content_arg

@@ -1,6 +1,6 @@
 # Design: DIAL Prompts as Skills
 
-- **Status:** Implemented
+- **Status:** Partially Implemented
 - **Dependencies:**
   - [Agent Skills and File Transfer](skills_and_file_transfer.md) (implemented)
 
@@ -50,7 +50,8 @@ skill.
 `name` or `description`, or no frontmatter at all).
 
 **Behavior:** The backend fetches the prompt, attempts to parse the frontmatter, and finds it invalid. The skill
-is skipped with a warning log.
+is skipped and the user sees a warning stage explaining the issue (e.g., "Missing required fields
+(name/description) in prompts/\<bucket\>/my-prompt").
 
 **Outcome:** The request proceeds normally. Other skills (predefined and valid DIAL prompt skills) remain
 available. The agent does not see the invalid skill.
@@ -59,7 +60,8 @@ available. The agent does not see the invalid skill.
 
 **Trigger:** The config references a DIAL prompt that does not exist, or the user lacks permission to access it.
 
-**Behavior:** The DIAL Core API returns 404 or 403. The backend logs a warning and skips the skill.
+**Behavior:** The DIAL Core API returns 404 or 403. The skill is skipped and the user sees a warning stage
+explaining the fetch failure.
 
 **Outcome:** Same as UC-2 — graceful degradation. The request is served with remaining skills.
 
@@ -68,7 +70,7 @@ available. The agent does not see the invalid skill.
 **Trigger:** A DIAL prompt skill has the same `name` as a predefined skill.
 
 **Behavior:** The predefined (admin-configured) skill takes precedence — it is never overridden by user content.
-The DIAL prompt skill is skipped with a WARNING log noting the collision (skill name + prompt URL).
+The DIAL prompt skill is skipped and the collision is reported in the warning stage.
 
 **Outcome:** The agent sees the predefined version of the skill. Admin-configured content always wins.
 
@@ -278,9 +280,8 @@ ApplicationConfig.skills
 ```
 
 **Content guard:** Before parsing, the resolver checks `prompt.content`. If `content` is `None` or empty, the
-skill is skipped with a WARNING log (e.g., "DIAL prompt at \<url\> has no content. Skipping as skill."). This
-handles prompts that exist but have no body — `parse_frontmatter` expects a `str`, so a `None` would otherwise
-raise a `TypeError`.
+skill is recorded as a warning (e.g., "DIAL prompt at \<url\> has no content"). This handles prompts that exist
+but have no body — `parse_frontmatter` expects a `str`, so a `None` would otherwise raise a `TypeError`.
 
 **Validation rules** (same as predefined skills, enforced by `parse_frontmatter`):
 - Must have YAML frontmatter delimited by `---`
@@ -296,12 +297,31 @@ function in `skills/` (e.g. `skills/_frontmatter.py`), importable by both the pr
 
 **Deduplication:** Before fetching, the resolver deduplicates by URL — if the same prompt URL appears multiple
 times in the `skills` array, it is fetched once. After fetching, if two different DIAL prompts resolve to the
-same skill `name`, the first one (by config order) wins and the duplicate is skipped with a WARNING log.
+same skill `name`, the first one (by config order) wins and the duplicate is recorded as a warning.
+
+**Structured warning reporting.** The resolver does **not** log warnings itself. Instead, it returns warnings
+alongside resolved skills so the caller can surface them to the user:
+
+```python
+@dataclass
+class SkillResolutionWarning:
+    url: str
+    reason: str
+
+async def resolve(
+    self,
+    skill_configs: list[DialPromptSkillConfig],
+) -> tuple[list[tuple[SkillMetadata, str]], list[SkillResolutionWarning]]:
+```
+
+All failure modes — fetch exceptions, empty content, invalid frontmatter (via `SkillValidationError`), and
+duplicate names — produce a `SkillResolutionWarning` with the prompt URL and a human-readable reason. The
+resolver never calls `logger.warning()` — all diagnostic information flows through the return value.
 
 **Error handling:** Each skill config is resolved independently. A failure in one does not affect others.
-Parallel fetches use `asyncio.gather(..., return_exceptions=True)` — the resolver filters exceptions from the
-result list, logging each as a WARNING with enough context to diagnose (prompt URL, error type). Without
-`return_exceptions=True`, the first exception would cancel all remaining tasks.
+Parallel fetches use `asyncio.gather(..., return_exceptions=True)` — the resolver collects exceptions from the
+result list, converting each into a `SkillResolutionWarning` with enough context to diagnose (prompt URL,
+error type). Without `return_exceptions=True`, the first exception would cancel all remaining tasks.
 
 **DI module — `DialPromptSkillsModule`:** Decorated with `@preview_module` and registered in `AppFactory`
 alongside the other feature modules. When `ENABLE_PREVIEW_FEATURES=false`, `AppFactory` filters out the module
@@ -368,16 +388,17 @@ requests). Merging these two sources requires a request-scoped component.
 **Semantics:**
 
 - Constructed per-request with injected `AgentSkillsProvider` (singleton), `DialPromptSkillResolver`
-  (request-scoped, optional), and `ProviderOf[ApplicationConfig]` (deferred access via `.get()` — required
+  (request-scoped, optional), `ProviderOf[ApplicationConfig]` (deferred access via `.get()` — required
   because `ApplicationConfig` is populated on `_RequestContext` after DI construction; same pattern as
-  `ConfigBasedPromptProvider`, `_AttachmentNotificationInjector`, and `_TimestampInjectionTransformer`).
+  `ConfigBasedPromptProvider`, `_AttachmentNotificationInjector`, and `_TimestampInjectionTransformer`),
+  and `ProviderOf[Stage]` (for surfacing warnings to the user).
 - `async get_prompt_part() -> str` — on first call: reads `skills` config via `provider_of.get()`, fetches
   DIAL prompt skills via the resolver, merges with predefined, generates combined XML, caches everything.
   On subsequent calls: returns cached XML. The entire fetch-merge block is wrapped in `try/except` — if
-  the fetch fails catastrophically (e.g. DIAL Core outage), falls back to predefined-only skills with a
-  WARNING log. A DIAL Core failure never prevents the request from being served. A failed fetch sets a
-  "resolved" flag — subsequent calls (including `get_skill_content()`) use whatever was cached (predefined
-  only) and do not re-attempt the DIAL prompt fetch within the same request.
+  the fetch fails catastrophically (e.g. DIAL Core outage), falls back to predefined-only skills. A DIAL
+  Core failure never prevents the request from being served. A failed fetch sets a "resolved" flag —
+  subsequent calls (including `get_skill_content()`) use whatever was cached (predefined only) and do not
+  re-attempt the DIAL prompt fetch within the same request.
 - `async get_skill_content(name: str) -> str` — returns full content for a skill by name. Triggers
   lazy fetch if cache is not yet populated (same cache as `get_prompt_part()`). Making this async eliminates
   the implicit ordering invariant between prompt assembly and `read_skill` execution. If the lazy fetch fails,
@@ -395,9 +416,19 @@ XML — no DIAL prompt fetching occurs.
 1. Start with all predefined skills (from `AgentSkillsProvider`). These are admin-configured and always take
    precedence.
 2. Add DIAL prompt skills. If a DIAL prompt skill has the same `name` as a predefined skill, the DIAL prompt
-   skill is **skipped** — predefined wins. A WARNING log notes the collision (skill name + prompt URL).
+   skill is **skipped** — predefined wins. The collision is added to the warnings list.
 3. The registry generates combined XML from the merged metadata list. XML generation is owned exclusively
    by `SkillsRegistry` — no other component produces XML.
+
+**User-facing warning stage.** After resolution, if any warnings were collected (from the resolver's return
+value or from the registry's own merge-time collisions), the registry opens a stage via `ProviderOf[Stage]`
+and renders all warnings as a markdown list — following the same pattern as `_InitializationErrorHandler`.
+This ensures the user sees exactly which skills failed and why, rather than warnings being silently lost in
+server logs. The stage is closed with `Status.COMPLETED` (the request proceeds with remaining skills).
+
+No `logger.warning()` calls are made for DIAL prompt skill issues — all diagnostic output goes through the
+stage. (Predefined skill issues at startup still use logging, since there is no request-scoped stage
+available.)
 
 **Concurrency:** Multiple DIAL prompt fetches within a single request are parallelized with `asyncio.gather()`
 inside the resolver for better latency when multiple skills are configured.
@@ -430,8 +461,20 @@ The frontmatter parsing and Agent Skills spec validation logic currently lives a
 `AgentSkillsProvider`. Both the provider (for predefined skills at startup) and `DialPromptSkillResolver`
 (for DIAL prompt skills at request time) need it. Extract to `skills/_frontmatter.py` as a standalone
 `parse_frontmatter(content: str, source_id: str)` function. The `source_id` parameter (renamed from
-`file_name`) is used only in log messages — callers pass a file path or prompt URL as appropriate. Both callers
+`file_name`) is used in error messages — callers pass a file path or prompt URL as appropriate. Both callers
 import from there.
+
+**Error reporting via exceptions, not logging.** `parse_frontmatter` raises `SkillValidationError` (a new
+exception in `skills/`) on any validation failure — missing frontmatter, invalid YAML, missing required fields,
+bad name format, etc. The exception message is human-readable and includes the `source_id` for context. The
+function never calls `logger.warning()` or `logger.error()`.
+
+Callers handle the exception differently depending on context:
+- **`AgentSkillsProvider`** (predefined skills at startup): catches `SkillValidationError`, logs it, and
+  skips the skill. This is an operator error — server logs are the right channel.
+- **`DialPromptSkillResolver`** (DIAL prompt skills at request time): catches `SkillValidationError` and
+  converts it into a `SkillResolutionWarning`, which flows up to the registry and is surfaced to the user
+  via a stage.
 
 ### Move XML generation to `skills/_xml.py`
 
@@ -440,16 +483,48 @@ XML metadata generation (`_generate_xml()`, `_escape_xml()`) moves out of `Agent
 imports these — the provider no longer generates XML. Whether the functions live in `_xml.py` or inline in
 the registry is an implementation detail.
 
-### Configuration support API — skills endpoint
+### Configuration support API — skills endpoints
 
-The `_Controller` in `configuration_support/` should expose a new endpoint `GET /v1/configuration-support/skills`
-that returns `list[SkillMetadata]` (name, description, and optional fields like license, compatibility). The
+Two new endpoints on the `_Controller` in `configuration_support/`:
+
+**1. List predefined skills — `GET /v1/configuration-support/skills`**
+
+Returns `list[SkillMetadata]` (name, description, and optional fields like license, compatibility). The
 controller depends on `AgentSkillsProvider` (which holds parsed metadata), not `ConfigResolver`. This mirrors
 the `/system-prompts` endpoint pattern (returns structured metadata, not just names).
 
 This endpoint is **predefined-only** — DIAL prompt skills are per-request (depend on user credentials) and
 cannot be served from the singleton controller. The editor UI will see DIAL prompt skills through the config's
 `skills` array, not through this endpoint.
+
+**2. Validate a skill config entry — `POST /v1/configuration-support/skills/validate`**
+
+Validates whether a skill config entry resolves to a valid skill. The editor (frontend) calls this when a user
+adds or modifies an entry in the `skills` array, providing immediate feedback before saving.
+
+**Request:** JSON body containing a single `SkillConfig` object (the discriminated union — the same shape as
+one element of the `skills` array). Requires `api-key` header for skill types that fetch from DIAL Core (same
+pattern as the existing `GET /v1/configuration-support/template/{deployment}` endpoint).
+
+```json
+{ "type": "dial-prompt", "url": "prompts/<bucket>/skills/my-skill" }
+```
+
+**Response on success:** `SkillMetadata` (name, description, and optional fields).
+
+**Response on failure:** HTTP error with a descriptive detail message:
+- 404 — resource not found or inaccessible (e.g. DIAL prompt does not exist, permission denied).
+- 422 — content is not a valid skill (empty content, missing/invalid frontmatter). The detail includes the
+  `SkillValidationError` message so the user knows exactly what to fix.
+
+**Dispatch by type.** The endpoint deserializes the body as `SkillConfig` (Pydantic handles the discriminated
+union), then dispatches validation based on the `type` field. For `"dial-prompt"`: creates an `AsyncDial`
+client with the request's `api-key`, fetches the prompt, validates with `parse_frontmatter`. Future variants
+(e.g. `"custom"` with inline content) add their own validation branch without changing the endpoint contract.
+
+**DI:** The controller gets `DialSettings` injected (singleton, already available). The `AsyncDial` client is
+created per-request inside the endpoint handler using the `api-key` from the HTTP request — the same approach
+used by `ToolConfigCoreService`. No new DI bindings are needed.
 
 ---
 
@@ -568,9 +643,13 @@ This is just a regular prompt without any YAML frontmatter.
 It talks about how to greet users politely.
 ```
 
-The backend logs:
+The user sees a warning stage in the response:
+
 ```
-WARNING - No YAML frontmatter found in DIAL prompt at prompts/<bucket>/greetings. Skipping as skill.
+⚠️ Skill loading warnings
+
+The following issues occurred while loading DIAL prompt skills:
+- **prompts/<bucket>/greetings**: No YAML frontmatter found
 ```
 
 The request proceeds normally without this skill.
@@ -618,21 +697,22 @@ None. The `skills` field is optional and defaults to `None`. Existing applicatio
 |---|---|
 | **`config/skill.py`** (new) | `DialPromptSkillConfig` (`type: "dial-prompt"`) model with `DialResourceConfigField`-annotated `url`, `SkillConfig` discriminated union |
 | **`config/application.py`** | Add `skills: list[SkillConfig] \| None` field to `ApplicationConfig` |
-| **`skills/_frontmatter.py`** (new) | Extracted `parse_frontmatter()` function (from `AgentSkillsProvider._parse_frontmatter`) |
+| **`skills/_frontmatter.py`** (new) | Extracted `parse_frontmatter()` function (from `AgentSkillsProvider._parse_frontmatter`); raises `SkillValidationError` on invalid content |
+| **`skills/_exceptions.py`** (new) | `SkillValidationError` exception class |
 | **`skills/_xml.py`** (new) | `generate_skills_xml()` and `escape_xml()` — moved from `AgentSkillsProvider`, imported only by `SkillsRegistry` |
 | **`skills/agent_skills_provider.py`** | Remove `PromptPartProvider` implementation and XML generation; delegate to `_frontmatter.parse_frontmatter()`; expose `get_all_skills()`, `get_all_skill_contents()`, `get_skill_content()` as pure data store |
 | **`dial_prompt_skills/` package** (new) | New package for DIAL prompt skill source integration |
-| **`dial_prompt_skills/_dial_prompt_skill_resolver.py`** (new) | Request-scoped resolver: fetches DIAL prompts via `AsyncDial`, validates as skills |
+| **`dial_prompt_skills/_dial_prompt_skill_resolver.py`** (new) | Request-scoped resolver: fetches DIAL prompts via `AsyncDial`, validates as skills; returns structured `SkillResolutionWarning` list alongside resolved skills (no logging) |
 | **`dial_prompt_skills/dial_prompt_skills_module.py`** (new) | `@preview_module` DI module: binds `DialPromptSkillResolver` at request-scope |
 | **`common/abstract/base_prompt_provider.py`** | `get_prompt_part()` becomes `async` |
 | **`common/abstract/base_transformer.py`** | `MessagesTransformer.transform()` becomes `async` |
 | **`application/_messages_setup.py`** | `setup()` becomes `async`, awaits each transformer |
 | **`agent/_messages_transformers.py`** | `_AddSystemPromptTransformer.transform()` becomes `async`, awaits `get_prompt_part()` |
 | **All other `MessagesTransformer` impls** | Add `async` keyword, no body changes |
-| **`skills/_skills_registry.py`** (new) | Request-scoped registry: merges predefined + external skills lazily in async `get_prompt_part()`, serves `read_skill` lookups |
+| **`skills/_skills_registry.py`** (new) | Request-scoped registry: merges predefined + external skills lazily in async `get_prompt_part()`, serves `read_skill` lookups; surfaces resolution warnings to user via `ProviderOf[Stage]` |
 | **`skills/skills_module.py`** | Register `SkillsRegistry` (request-scope) as `PromptPartProvider`; remove `AgentSkillsProvider`'s `PromptPartProvider` multiprovider registration |
 | **`skills/_skill_reader_tool.py`** | Change dependency from `AgentSkillsProvider` to `SkillsRegistry`; `await` the now-async `get_skill_content()` |
-| **`configuration_support/_controller.py`** | Add `GET /v1/configuration-support/skills` endpoint; add `AgentSkillsProvider` as constructor dependency (cross-module injection from `SkillsModule` singleton) |
+| **`configuration_support/_controller.py`** | Add `GET /v1/configuration-support/skills` (predefined listing) and `POST /v1/configuration-support/skills/validate` (validates any `SkillConfig` entry) endpoints; add `AgentSkillsProvider` and `DialSettings` as constructor dependencies |
 | **Test files** | Update sync calls to `_MessagesSetup.setup()`, `transform()`, `get_prompt_part()` to `await`; update mocks to `AsyncMock` |
 | **`app_factory.py`** | Register `DialPromptSkillsModule` in injector module list |
 | **App schema** | Regenerated via `make dump_app_schema` to include `skills` field |

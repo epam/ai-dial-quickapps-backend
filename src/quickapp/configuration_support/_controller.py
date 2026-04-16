@@ -1,15 +1,21 @@
 from typing import Any
 
+from aidial_client import AsyncDial, DialException
 from fastapi import FastAPI, HTTPException, Request, status
 from injector import inject
 from pydantic import SecretStr, TypeAdapter
 
+from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import ContentType
+from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.skills._exceptions import SkillValidationError
+from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
 
 CONFIG_SUPPORT_URI = "/v1/configuration-support"
 
@@ -17,9 +23,17 @@ CONFIG_SUPPORT_URI = "/v1/configuration-support"
 @inject
 class _Controller:
 
-    def __init__(self, config_resolver: ConfigResolver, service: ToolConfigCoreService):
+    def __init__(
+        self,
+        config_resolver: ConfigResolver,
+        service: ToolConfigCoreService,
+        skills_provider: AgentSkillsProvider,
+        dial_settings: DialSettings,
+    ):
         self.__config_resolver = config_resolver
         self.__service = service
+        self.__skills_provider = skills_provider
+        self.__dial_settings = dial_settings
 
     def register_routes(self, app: FastAPI) -> None:
         @app.get(CONFIG_SUPPORT_URI + "/application-schema")
@@ -54,6 +68,53 @@ class _Controller:
         async def get_tool_template(deployment: str, request: Request):
             api_key = SecretStr(request.headers.get("api-key", ""))
             return await self.__service.get_basic_tool_config(deployment, api_key)
+
+        @app.get(CONFIG_SUPPORT_URI + "/skills")
+        async def get_skills() -> list[SkillMetadata]:
+            return self.__skills_provider.get_all_skills()
+
+        @app.post(CONFIG_SUPPORT_URI + "/skills/validate", response_model=SkillMetadata)
+        async def validate_skill(config: DialPromptSkillConfig, request: Request) -> SkillMetadata:
+            return await self._validate_dial_prompt_skill(config, request)
+
+    async def _validate_dial_prompt_skill(
+        self,
+        config: DialPromptSkillConfig,
+        request: Request,
+    ) -> SkillMetadata:
+        api_key = request.headers.get("api-key", "")
+        dial_client = AsyncDial(
+            base_url=self.__dial_settings.url,
+            api_key=api_key,
+            api_version=self.__dial_settings.api_version,
+        )
+
+        try:
+            prompt = await dial_client.prompts.get(config.url)
+        except DialException as e:
+            if e.status_code in (403, 404):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Prompt not found or inaccessible: {config.url}",
+                )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Failed to fetch prompt: {e.message}",
+            )
+
+        if prompt.content is None or not prompt.content.strip():
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=f"Prompt at '{config.url}' has no content",
+            )
+
+        try:
+            return parse_frontmatter(prompt.content, config.url)
+        except SkillValidationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail=str(e),
+            )
 
     def _get_template_content(
         self, template_type: ContentType, template_name: str
