@@ -7,7 +7,7 @@ from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )

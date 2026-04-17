@@ -3,7 +3,7 @@ import logging
 from aidial_sdk.chat_completion import Message
 from injector import inject
 
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )

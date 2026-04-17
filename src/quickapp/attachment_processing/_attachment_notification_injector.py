@@ -11,7 +11,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )

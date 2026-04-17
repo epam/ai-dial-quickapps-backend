@@ -584,7 +584,7 @@ Create `src/tests/unit_tests/common/test_synthetic_tool_call_injector.py`:
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
@@ -667,7 +667,7 @@ def _user(content: str = "hi") -> Message:
 
 
 def _assert_synthetic_pair(
-    messages: list[Message], assistant_idx: int, tool_name: str, content: str
+        messages: list[Message], assistant_idx: int, tool_name: str, content: str
 ) -> str:
     """Assert that messages[assistant_idx:assistant_idx+2] is a valid synthetic pair.
     Returns the call_id."""
@@ -917,7 +917,7 @@ from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
@@ -931,7 +931,8 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
     call_id_prefix: str = "synthetic_"
 
     @abstractmethod
-    async def get_tool_name(self) -> str: ...
+    async def get_tool_name(self) -> str:
+        ...
 
     async def get_arguments(self) -> dict:
         return {}
@@ -1013,9 +1014,9 @@ def _remove_pair_by_call_id(messages: list[Message], call_id: str) -> list[Messa
     while i < len(messages):
         msg = messages[i]
         if (
-            msg.role == Role.ASSISTANT
-            and msg.tool_calls
-            and any(tc.id == call_id for tc in msg.tool_calls)
+                msg.role == Role.ASSISTANT
+                and msg.tool_calls
+                and any(tc.id == call_id for tc in msg.tool_calls)
         ):
             # Skip this ASSISTANT message and the following TOOL message(s) with this call_id
             i += 1
@@ -1028,7 +1029,7 @@ def _remove_pair_by_call_id(messages: list[Message], call_id: str) -> list[Messa
 
 
 def _build_pair(
-    tool_name: str, call_id: str, arguments: dict, content: str
+        tool_name: str, call_id: str, arguments: dict, content: str
 ) -> tuple[Message, Message]:
     import json
 
@@ -1089,7 +1090,7 @@ from unittest.mock import AsyncMock, MagicMock
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common.completion_result import CompletionResult
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
@@ -1265,7 +1266,7 @@ Full replacement for `src/quickapp/timestamp_tooling/_timestamp_injection_transf
 from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
@@ -1290,9 +1291,9 @@ class _TimestampInjectionTransformer(SyntheticToolCallInjector):
 
     @inject
     def __init__(
-        self,
-        time_provider: TimeProvider,
-        config_provider: ProviderOf[ApplicationConfig],
+            self,
+            time_provider: TimeProvider,
+            config_provider: ProviderOf[ApplicationConfig],
     ):
         self.__time_provider = time_provider
         self.__config_provider = config_provider
@@ -1352,7 +1353,7 @@ import logging
 from aidial_sdk.chat_completion import Message
 from injector import inject
 
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
@@ -1472,7 +1473,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
-from quickapp.common.synthetic_injection._injection_enums import (
+from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
 )
