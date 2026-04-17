@@ -1,10 +1,13 @@
-import uuid
-
-from aidial_sdk.chat_completion import Message, Role
-from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.synthetic_injection._injection_enums import (
+    InjectionFrequency,
+    InjectionPosition,
+)
+from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    SyntheticToolCallInjector,
+)
 from quickapp.common.time_provider import TimeProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.timestamp_tooling._tool_configs import (
@@ -13,14 +16,13 @@ from quickapp.timestamp_tooling._tool_configs import (
 )
 
 
-class _TimestampInjectionTransformer(MessagesTransformer):
+class _TimestampInjectionTransformer(SyntheticToolCallInjector):
     """Appends a synthetic tool-call + tool-result pair with the current
-    timestamp at the end of the message list.
+    timestamp at the end of the message list on every request turn."""
 
-    Runs once at request setup via ``_MessagesSetup``.  Historical timestamps
-    are restored from state by ``extract_tool_calls()`` with their original
-    times; this transformer only appends the *current* turn's timestamp.
-    """
+    position = InjectionPosition.END
+    frequency = InjectionFrequency.ALWAYS
+    call_id_prefix = SYNTHETIC_TIMESTAMP_CALL_PREFIX
 
     @inject
     def __init__(
@@ -31,33 +33,12 @@ class _TimestampInjectionTransformer(MessagesTransformer):
         self.__time_provider = time_provider
         self.__config_provider = config_provider
 
-    async def transform(self, messages: list[Message]) -> list[Message]:
+    async def get_tool_name(self) -> str:
+        return CURRENT_TIMESTAMP_TOOL_NAME
+
+    async def get_content(self, messages: list[Message]) -> str | None:
         features = self.__config_provider.get().features
         if features is None or features.timestamp is None or not messages:
-            return messages
-
+            return None
         now = self.__time_provider.now()
-        content = self.__time_provider.format_timestamp(now)
-        call_id = f"{SYNTHETIC_TIMESTAMP_CALL_PREFIX}{uuid.uuid4().hex[:12]}"
-
-        assistant_msg = Message(
-            role=Role.ASSISTANT,
-            content="",
-            tool_calls=[
-                ToolCall(
-                    id=call_id,
-                    type="function",
-                    function=FunctionCall(
-                        name=CURRENT_TIMESTAMP_TOOL_NAME,
-                        arguments="{}",
-                    ),
-                )
-            ],
-        )
-        tool_msg = Message(
-            role=Role.TOOL,
-            content=content,
-            tool_call_id=call_id,
-        )
-
-        return messages + [assistant_msg, tool_msg]
+        return self.__time_provider.format_timestamp(now)
