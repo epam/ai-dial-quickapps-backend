@@ -180,9 +180,9 @@ flowchart TD
 
 ---
 
-### Component 4: `text_file_tooling` (new internal toolset)
+### Component 4: Text-file internal tools (live in this module)
 
-**What:** Three new internal tools registered via `InternalToolModule`.
+**What:** Three new internal tools. They are **registered by `CompletionResultOffloadModule`** (see Component 5) — contributed to the same internal-tool multiprovider that other internal tools (e.g., Python interpreter) also feed. Tool source files live alongside the processor in `completion_result_offload/`, not under `internal_tooling/`.
 
 **Tools:**
 
