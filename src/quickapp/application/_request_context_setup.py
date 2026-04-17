@@ -21,7 +21,6 @@ def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CH
     return None
 
 
-from ._messages_setup import _MessagesSetup
 from ._request_context import _RequestContext
 
 logger = logging.getLogger(__name__)
@@ -33,11 +32,9 @@ class _RequestContextSetup:
         self,
         context_provider: ProviderOf[_RequestContext],
         config_resolver: ConfigResolver,
-        messages_setup: _MessagesSetup,
     ):
         self.__context_provider = context_provider
         self.__config_resolver = config_resolver
-        self.__messages_setup = messages_setup
 
     def __resolve_application_config(self, application_properties):
         application_config = ApplicationConfig.model_validate(application_properties)
@@ -54,7 +51,6 @@ class _RequestContextSetup:
             await request.request_dial_application_properties()
         )
         if isinstance(request, Request):
-            context.messages = self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
         if choice:

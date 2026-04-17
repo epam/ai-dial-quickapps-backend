@@ -11,12 +11,14 @@ The pipeline runs transformers sequentially via _MessagesSetup:
 
 import json
 
+import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
-from fastapi_injector import Injected
+from fastapi_injector import Injected, request_scope
 from injector import Binder
 from starlette.testclient import TestClient
 
 from quickapp.application._messages_setup import _MessagesSetup
+from quickapp.application._request_context import _RequestContext
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.config.application import ApplicationConfig
@@ -46,6 +48,8 @@ def _make_context_app(ctx_url: str):
         app_config = create_app_configuration([])
         app_config.contexts = [ctx]
         binder.bind(ApplicationConfig, to=app_config)
+        binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
+        binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
 
     return create_test_app([AttachmentProcessingModule, configure])
 
@@ -55,10 +59,14 @@ def test_context_file_notified_via_synthetic_tool_call():
     client = TestClient(app)
 
     @app.get("/test_context")
-    async def get_method(messages_setup: _MessagesSetup = Injected(_MessagesSetup)):
+    async def get_method(
+        messages_setup: _MessagesSetup = Injected(_MessagesSetup),
+        context: _RequestContext = Injected(_RequestContext),
+    ):
         messages = [_user_msg("hello")]
 
-        result = messages_setup.setup(messages)
+        await messages_setup.setup(messages)
+        result = context.messages
 
         # Original + synthetic assistant tool_call + tool result
         assert len(result) == 3
@@ -84,7 +92,10 @@ def test_user_attachment_text_and_context_tool_call():
     client = TestClient(app)
 
     @app.get("/test_combined")
-    async def get_method(messages_setup: _MessagesSetup = Injected(_MessagesSetup)):
+    async def get_method(
+        messages_setup: _MessagesSetup = Injected(_MessagesSetup),
+        context: _RequestContext = Injected(_RequestContext),
+    ):
         messages = [
             _user_msg(
                 "check",
@@ -92,7 +103,8 @@ def test_user_attachment_text_and_context_tool_call():
             )
         ]
 
-        result = messages_setup.setup(messages)
+        await messages_setup.setup(messages)
+        result = context.messages
 
         # Original message + 2 synthetic messages for context
         assert len(result) == 3

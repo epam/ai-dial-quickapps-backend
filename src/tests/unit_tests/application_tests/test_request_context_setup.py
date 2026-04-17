@@ -21,12 +21,9 @@ def _make_setup() -> tuple[_RequestContextSetup, _RequestContext]:
     context_provider.get.return_value = context
     config_resolver = MagicMock()
     config_resolver.resolve_config.return_value = MagicMock()
-    messages_setup = MagicMock()
-    messages_setup.setup.return_value = []
     setup = _RequestContextSetup(
         context_provider=context_provider,
         config_resolver=config_resolver,
-        messages_setup=messages_setup,
     )
     return setup, context
 

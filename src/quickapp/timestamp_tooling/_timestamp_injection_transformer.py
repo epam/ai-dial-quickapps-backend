@@ -31,7 +31,7 @@ class _TimestampInjectionTransformer(MessagesTransformer):
         self.__time_provider = time_provider
         self.__config_provider = config_provider
 
-    def transform(self, messages: list[Message]) -> list[Message]:
+    async def transform(self, messages: list[Message]) -> list[Message]:
         features = self.__config_provider.get().features
         if features is None or features.timestamp is None or not messages:
             return messages

@@ -9,6 +9,8 @@ from injector import inject
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 
+from ._request_context import _RequestContext
+
 logger = logging.getLogger(__name__)
 
 
@@ -23,15 +25,17 @@ class _MessagesSetup:
     def __init__(
         self,
         transformers: list[MessagesTransformer],
+        context: _RequestContext,
     ):
         self.__transformers = transformers
+        self.__context = context
         logger.debug(f"Messages transformers: {transformers}")
 
-    def setup(self, messages: list[Message]) -> list[Message]:
+    async def setup(self, messages: list[Message]) -> None:
         messages = self.extract_tool_calls(messages)
         for transformer in self.__transformers:
-            messages = transformer.transform(messages)
-        return messages
+            messages = await transformer.transform(messages)
+        self.__context.messages = messages
 
     @staticmethod
     def _is_legacy_format(tool_history: list) -> bool:

@@ -28,7 +28,7 @@ class _AttachmentNotificationInjector(MessagesTransformer):
     def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
         self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
 
-    def transform(self, messages: list[Message]) -> list[Message]:
+    async def transform(self, messages: list[Message]) -> list[Message]:
         contexts = list(self.__config_provider.get().contexts)
 
         if not should_activate_context_tool(contexts, messages):

@@ -13,6 +13,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 
 from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler
+from ._messages_setup import _MessagesSetup
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 
@@ -47,6 +48,7 @@ class _QuickAppCompletion(ChatCompletion):
                 await invoke_initializers(self.__injector, InitializerType.completion)
                 self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
                 timer_service.add_milestone(self.__timer_period_name, "tools initialization")
+                await self.__injector.get(_MessagesSetup).setup(request.messages)
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
             except Exception as e:
