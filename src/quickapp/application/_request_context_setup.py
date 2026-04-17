@@ -11,6 +11,10 @@ from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
+from ._request_context import _RequestContext
+
+logger = logging.getLogger(__name__)
+
 
 def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CHANNEL_ID:
     """Extract the client channel ID from forwarded headers (case-insensitive)."""
@@ -19,11 +23,6 @@ def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CH
             if key.lower() == CLIENT_CHANNEL_HEADER.lower():
                 return value
     return None
-
-
-from ._request_context import _RequestContext
-
-logger = logging.getLogger(__name__)
 
 
 @inject

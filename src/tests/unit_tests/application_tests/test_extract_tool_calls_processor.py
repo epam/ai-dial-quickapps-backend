@@ -56,6 +56,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     @pytest.mark.asyncio
     async def test_new_format_single_tool_call(self):
+        """Test extraction of new message-based format with single tool call."""
         msgs_setup, ctx = _make_setup()
         tc = make_tool_call("tc-1", "my_tool")
 
@@ -128,6 +129,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     @pytest.mark.asyncio
     async def test_new_format_multiple_iterations(self):
+        """Test multiple sequential tool call iterations."""
         msgs_setup, ctx = _make_setup()
         tc1 = make_tool_call("tc-1", "tool_a")
         tc2 = make_tool_call("tc-2", "tool_b")
@@ -161,6 +163,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     @pytest.mark.asyncio
     async def test_legacy_format_backward_compatibility(self):
+        """Test that legacy ExecutedToolCallDTO format still works with deprecation warning."""
         msgs_setup, ctx = _make_setup()
         tc = make_tool_call("tc-1", "my_tool")
 
@@ -204,6 +207,7 @@ class TestExtractToolCallsFromStateProcessor:
 
     @pytest.mark.asyncio
     async def test_tool_history_removed_from_final_message_state(self):
+        """Verify that tool_execution_history is removed from the final message's state."""
         msgs_setup, ctx = _make_setup()
         tc = make_tool_call("tc-1", "my_tool")
 
