@@ -11,7 +11,6 @@ The pipeline runs transformers sequentially via _MessagesSetup:
 
 import json
 
-import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected, request_scope
 from injector import Binder
