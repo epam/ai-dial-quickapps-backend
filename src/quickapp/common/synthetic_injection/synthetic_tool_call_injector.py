@@ -42,11 +42,11 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         # 1. Frequency gate
         match self.frequency:
             case InjectionFrequency.ONCE:
-                call_id = f"synthetic_once_{tool_name}"
+                call_id = f"synthetic_once_{tool_name}"  # deterministic; call_id_prefix not used
                 if _has_tool_call_id(messages, call_id):
                     return messages
             case InjectionFrequency.REFRESH:
-                call_id = f"synthetic_once_{tool_name}"
+                call_id = f"synthetic_once_{tool_name}"  # deterministic; call_id_prefix not used
                 messages = _remove_pair_by_call_id(messages, call_id)
             case InjectionFrequency.CONDITIONAL:
                 if not self.condition(messages):
@@ -54,6 +54,8 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
                 call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
             case InjectionFrequency.ALWAYS:
                 call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
+            case _ as unhandled:
+                raise NotImplementedError(f"Unhandled InjectionFrequency: {unhandled!r}")
 
         # 2. Content fetch
         content = await self.get_content(messages)
