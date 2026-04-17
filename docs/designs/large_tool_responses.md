@@ -45,11 +45,19 @@ There is also **no extension point** in the current pipeline for transforming `C
 **Behavior:** The read tool returns a `CompletionResult` with the large content. Because `search_in_file` / `read_file_*` tools are in the exclusion list, `LargeResponseProcessor` **skips** them — the large content **is not re-offloaded**. The LLM sees its own oversized request filling the context.\
 **Outcome:** The LLM learns (from context cost / follow-up iterations) to request smaller slices. No infinite loop; no duplicate storage of the same data.
 
+> **Alternatives considered (deferred):** Hard limits on read-tool parameters (`end_line - start_line ≤ N`), truncation to threshold with a "truncated" notice, pagination tokens, or summarization. Each has trade-offs (loss of data, complexity, cost) — see the Out of Scope section for follow-up notes.
+
 ### UC-4: DIAL file storage is unavailable during offload
 
 **Trigger:** Upload to DIAL file storage fails with a 5xx error.\
 **Behavior:** `LargeResponseProcessor` logs a warning and returns the original `CompletionResult` unchanged (fail-open).\
 **Outcome:** Large content goes into the LLM context — not ideal, but the agent iteration completes. No user-visible error.
+
+### UC-5: Multiple reads of the same offloaded file in one request
+
+**Trigger:** The LLM calls `read_file_lines` on the same `file_url` several times within a single request (e.g., first to inspect structure, then to grab specific ranges).\
+**Behavior:** The download is performed **once** and cached by `DialFileService` (request-scoped, keyed by `SHA256(url)`, 10 MB limit per file — already implemented). Subsequent calls hit the cache.\
+**Outcome:** No repeated GETs to DIAL; low latency on follow-up reads.
 
 ---
 
@@ -58,6 +66,8 @@ There is also **no extension point** in the current pipeline for transforming `C
 ### Component 1: `CompletionResultProcessor` (new abstraction)
 
 **What:** A new async interface that transforms a `CompletionResult` after tool execution.
+
+`ProcessingContext` is included from day one even though it only carries `tool_call_id` and `tool_name` today. Adding fields to `ProcessingContext` later is non-breaking; changing the `process()` signature later is breaking for every processor. The 3-line class now saves a migration later.
 
 ```python
 # src/quickapp/common/abstract/completion_result_processor.py
@@ -104,20 +114,23 @@ for tool_call in tool_calls:
 
 **New:**
 ```python
-processors = sorted(self._processors, key=lambda p: p.priority)
+# In __init__: sort once, store.
+self._processors = sorted(processors, key=lambda p: p.priority)
+
+# In execute():
 for tool_call in tool_calls:
     result = await tool.arun(tool_call.id, **args)
     for enricher in self._enrichers:
         enricher.enrich(result)
     ctx = ProcessingContext(tool_call_id=tool_call.id, tool_name=tool_call.function.name)
-    for processor in processors:
+    for processor in self._processors:
         result = await processor.process(result, ctx)
     results.append(result)
 ```
 
 **Owner:** `src/quickapp/agent/tool_executor.py`
 
-**Change:** New constructor parameter (list of processors), new sort + loop after enrichers. Sort is done once per `execute()` call (cheap; list is small).
+**Change:** New constructor parameter (list of processors). Sorting happens **once in the constructor** (`ToolExecutor` is request-scoped → sorted list is reused for every `execute()` call within the request). New loop after enrichers.
 
 ---
 
@@ -125,9 +138,25 @@ for tool_call in tool_calls:
 
 **What:** First concrete implementation of `CompletionResultProcessor`. Detects oversized responses (by size only, regardless of content type) and offloads them.
 
-**Module:** `src/quickapp/large_response_tooling/`
+**Module:** `src/quickapp/completion_result_offload/`
 
 **Algorithm:**
+
+```mermaid
+flowchart TD
+    Start([process result, ctx]) --> Enabled{enabled?}
+    Enabled -- no --> ReturnAsIs([return result unchanged])
+    Enabled -- yes --> Excluded{ctx.tool_name in<br/>excluded_tools?}
+    Excluded -- yes --> ReturnAsIs
+    Excluded -- no --> Size{len content<br/>≥ threshold?}
+    Size -- no --> ReturnAsIs
+    Size -- yes --> Upload[upload content to<br/>DIAL file storage]
+    Upload -- failure --> Warn[log warning] --> ReturnAsIs
+    Upload -- success --> Build[build new CompletionResult:<br/>short notice + file attachment<br/>+ state.offloaded_response]
+    Build --> ReturnNew([return new result])
+```
+
+**Textual steps:**
 1. If processor disabled → return result unchanged.
 2. If `ctx.tool_name in self._excluded_tools` → return result unchanged.
 3. If `len(result.content) < self._size_threshold` → return result unchanged.
@@ -140,20 +169,20 @@ for tool_call in tool_calls:
 
 **Note on content type / extension:** Size-only filtering is intentional for v1. The original `content_type` is preserved on the attachment so DIAL can render it. The stored file name uses a `.txt` extension as a conservative default since responses are always treated as text strings; extension-from-content-type is deferred (see Out of Scope). This does not affect the LLM's ability to read the file back — read tools operate on bytes/lines regardless of extension.
 
-**Settings:** `LargeResponseSettings` (pydantic-settings), registered as singleton.
+**Settings:** `CompletionResultOffloadSettings` (pydantic-settings), registered as singleton.
 - `size_threshold: int` — character threshold (compared against `len(result.content)`); starting default `4000`, tuned during implementation
 - `excluded_tools: set[str]` — default `{"read_file_lines", "read_file_chars", "search_in_file"}`
 - `enabled: bool` — default `True`
 
 **Priority:** `100` (default). No other processors planned today.
 
-**Owner:** `src/quickapp/large_response_tooling/_large_response_processor.py`
+**Owner:** `src/quickapp/completion_result_offload/_large_response_processor.py`
 
 ---
 
 ### Component 4: `text_file_tooling` (new internal toolset)
 
-**What:** Three new internal tools registered via `InternalToolModule`, enabled alongside the processor.
+**What:** Three new internal tools registered via `InternalToolModule`.
 
 **Tools:**
 
@@ -167,20 +196,24 @@ for tool_call in tool_calls:
 
 **Behavior under re-offload:** Their results bypass `LargeResponseProcessor` (via `excluded_tools` default). If the LLM requests a too-large slice, it pays the context cost directly — expected self-correction loop (UC-3).
 
-**Owner:** `src/quickapp/large_response_tooling/` (same module as the processor — they are co-designed).
+**Owner:** `src/quickapp/internal_tooling/text_file_tooling/`
+
+> **Note on location:** Internal tools live under `internal_tooling/` to follow the project convention (see `py_interpreter_tooling/`). The offload processor and these tools are *co-designed* but organizationally separated: the processor lives in `completion_result_offload/`, the tools live in `internal_tooling/text_file_tooling/`. Both are wired by the same feature module (`CompletionResultOffloadModule`) to keep the feature's preview gating centralized.
 
 ---
 
-### Component 5: `LargeResponseToolingModule` (DI wiring)
+### Component 5: `CompletionResultOffloadModule` (DI wiring)
 
 **What:** New `injector.Module` that:
 
-- Binds `LargeResponseSettings` as singleton.
+- Binds `CompletionResultOffloadSettings` as singleton.
 - Provides `LargeResponseProcessor` into the `list[CompletionResultProcessor]` multiprovider.
-- Provides the three text-file tools into the internal tool set multiprovider.
+- Provides the three text-file tools (`read_file_lines`, `read_file_chars`, `search_in_file`) into the internal tool set multiprovider.
 - Registers itself in `src/quickapp/app_factory.py` alongside other feature modules.
 
-**Owner:** `src/quickapp/large_response_tooling/large_response_tooling_module.py`
+**Preview gating:** Module is **preview-feature-gated**. `configure(binder)` checks `ApplicationConfig.enable_preview_features` (same pattern other preview modules use); when the flag is off, **nothing** is bound — no processor, no tools. This keeps the feature invisible in production deployments until it stabilizes. Once stable, the gate is removed and the module becomes always-on.
+
+**Owner:** `src/quickapp/completion_result_offload/completion_result_offload_module.py`
 
 **Change:** New file; one-line addition in `app_factory.py`.
 
@@ -188,27 +221,78 @@ for tool_call in tool_calls:
 
 ## Data Flow
 
-**Offload (write path):**
-```
-Tool.arun() → CompletionResult{content=<large>, content_type=<any>}
-  → Enrichers (state metadata, as today)
-  → Processors sorted by priority:
-      LargeResponseProcessor:
-        tool not excluded? size ≥ threshold?
-          → upload to files/{bucket}/offloaded-responses/...
-          → return CompletionResult{content=<short notice>, attachments=[file]}
-  → ToolExecutor returns result
-  → Orchestrator appends to canonical message history (short notice is what persists)
+### Pipeline Overview
+
+Where the new `CompletionResultProcessor` chain sits inside `ToolExecutor`, alongside the existing enricher chain:
+
+```mermaid
+flowchart LR
+    Tool[Tool.arun] --> Result[CompletionResult]
+    Result --> Enrich[Enrichers chain<br/>existing]
+    Enrich --> Proc[Processors chain<br/>NEW<br/>sorted by priority]
+    Proc --> Hist[Canonical message history<br/>via Orchestrator]
+    subgraph Proc_detail[Processors chain]
+      direction TB
+      P1[LargeResponseProcessor<br/>priority 100]
+      P2[future: compression, PII...]
+    end
+    Proc -.-> Proc_detail
 ```
 
-**Read-back (read path):**
+### Offload (write path)
+
+```mermaid
+sequenceDiagram
+    participant Tool
+    participant TE as ToolExecutor
+    participant Enr as Enrichers
+    participant LRP as LargeResponseProcessor
+    participant AS as AttachmentService
+    participant DIAL as DIAL file storage
+    participant Hist as Canonical history
+
+    Tool->>TE: CompletionResult{content=<large>, content_type=<any>}
+    TE->>Enr: enrich(result)
+    Enr-->>TE: result (state metadata added)
+    TE->>LRP: process(result, ctx)
+    LRP->>LRP: not excluded? size ≥ threshold?
+    LRP->>AS: upload_attachment_to_core(content)
+    AS->>DIAL: PUT files/{bucket}/offloaded-responses/...
+    DIAL-->>AS: file_url
+    AS-->>LRP: Attachment{url, type}
+    LRP->>LRP: build new CompletionResult<br/>(short notice + attachment)
+    LRP-->>TE: new result
+    TE->>Hist: append(new result)
 ```
-LLM calls read_file_lines(...) / read_file_chars(...) / search_in_file(...)
-  → Tool downloads file via DialFileService (request-scoped file download cache exists)
-  → Returns CompletionResult with the requested slice
-  → Enrichers run
-  → Processors run — but tool name is in excluded_tools → no re-offload
-  → Orchestrator appends result to canonical history
+
+### Read-back (read path)
+
+```mermaid
+sequenceDiagram
+    participant LLM
+    participant TE as ToolExecutor
+    participant Tool as read_file_lines / _chars / search_in_file
+    participant DFS as DialFileService<br/>(request-scoped cache)
+    participant DIAL as DIAL file storage
+    participant LRP as LargeResponseProcessor
+    participant Hist as Canonical history
+
+    LLM->>TE: tool_call(file_url, range/pattern)
+    TE->>Tool: arun(...)
+    Tool->>DFS: get_file(file_url)
+    alt first call in request
+        DFS->>DIAL: GET file_url
+        DIAL-->>DFS: bytes
+        DFS-->>DFS: cache[SHA256(url)] = bytes
+    else subsequent calls same url
+        DFS-->>DFS: cache hit
+    end
+    DFS-->>Tool: bytes
+    Tool-->>TE: CompletionResult{content=<slice>}
+    TE->>LRP: process(result, ctx)
+    Note over LRP: ctx.tool_name ∈ excluded_tools<br/>→ return unchanged
+    LRP-->>TE: result
+    TE->>Hist: append(result)
 ```
 
 ---
@@ -228,7 +312,7 @@ LLM calls read_file_lines(...) / read_file_chars(...) / search_in_file(...)
 
 - **Regex search.** `search_in_file` ships with substring + `case_insensitive` only. Regex requires DoS protection (timeout, catastrophic backtracking mitigation via the `regex` library), bounds checks, and careful error surfaces. Addressed in a follow-up design when the use case becomes concrete.
 - **Content-type-based routing.** v1 applies size-only filtering — any large `content` is offloaded regardless of `content_type`. Future work: allow-list / deny-list per content type, per-type processors (e.g., compress JSON differently from plain text), extension-from-content-type for stored file names.
-- **Configuration hierarchy (global → app → toolset → tool).** Interface is designed to accept a richer `ProcessingContext` in the future, but today only a single global `LargeResponseSettings` applies. Next step is defining how app/toolset/tool configs compose.
+- **Configuration hierarchy (global → app → toolset → tool).** Interface is designed to accept a richer `ProcessingContext` in the future, but today only a single global `CompletionResultOffloadSettings` applies. Next step is defining how app/toolset/tool configs compose.
 - **Explicit file cleanup / retention.** Offloaded files live in the same DIAL bucket as all other attachments and inherit DIAL Core's retention policy. No QuickApps-side cleanup today.
 - **Caching strategy for read-back downloads.** `DialFileService` already caches within a request; whether to extend or introduce additional caching (e.g., LRU per file URL) is deferred to implementation, based on observed behavior.
 - **Additional processors** (compression, PII scrubbing, format conversion). The abstraction supports them; concrete processors are not part of this design.
@@ -240,9 +324,9 @@ LLM calls read_file_lines(...) / read_file_chars(...) / search_in_file(...)
 ### Environment variables (pydantic-settings)
 
 ```
-LARGE_RESPONSE__ENABLED=true
-LARGE_RESPONSE__SIZE_THRESHOLD=4000
-LARGE_RESPONSE__EXCLUDED_TOOLS=["read_file_lines","read_file_chars","search_in_file"]
+COMPLETION_RESULT_OFFLOAD__ENABLED=true
+COMPLETION_RESULT_OFFLOAD__SIZE_THRESHOLD=4000
+COMPLETION_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","read_file_chars","search_in_file"]
 ```
 
 ### LLM-visible notice (example content the LLM sees after offload)
@@ -283,8 +367,8 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 ### Non-breaking changes
 
 - New optional DI binding `list[CompletionResultProcessor]`. Defaults to an empty list if no module provides processors (via existing `@multiprovider` semantics, the binding resolves to an empty list when no providers exist; confirm during implementation).
-- New internal tools are only registered when `LargeResponseToolingModule` is loaded — they are not visible to the LLM otherwise.
-- Feature can be disabled entirely via `LARGE_RESPONSE__ENABLED=false`.
+- Feature is **preview-gated** by `ENABLE_PREVIEW_FEATURES`. When disabled (the production default today), neither the processor nor the text-file tools are bound — LLM sees no change.
+- When preview is enabled, feature can still be disabled entirely via `COMPLETION_RESULT_OFFLOAD__ENABLED=false`.
 
 ---
 
@@ -295,19 +379,19 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 | File | Purpose |
 |------|---------|
 | `common/abstract/completion_result_processor.py` | `CompletionResultProcessor` ABC, `ProcessingContext` model |
-| `large_response_tooling/_large_response_processor.py` | First processor implementation |
-| `large_response_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
-| `large_response_tooling/_read_file_chars_tool.py` | `read_file_chars` internal tool |
-| `large_response_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
-| `large_response_tooling/_settings.py` | `LargeResponseSettings` pydantic-settings |
-| `large_response_tooling/large_response_tooling_module.py` | DI wiring |
+| `completion_result_offload/_large_response_processor.py` | First processor implementation |
+| `completion_result_offload/_settings.py` | `CompletionResultOffloadSettings` pydantic-settings |
+| `completion_result_offload/completion_result_offload_module.py` | DI wiring (preview-gated) |
+| `internal_tooling/text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
+| `internal_tooling/text_file_tooling/_read_file_chars_tool.py` | `read_file_chars` internal tool |
+| `internal_tooling/text_file_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
-| `agent/tool_executor.py` | Inject `list[CompletionResultProcessor]`, sort by priority, apply after enrichers |
-| `app_factory.py` | Register `LargeResponseToolingModule` |
+| `agent/tool_executor.py` | Inject `list[CompletionResultProcessor]`, sort by priority in constructor, apply chain after enrichers |
+| `app_factory.py` | Register `CompletionResultOffloadModule` |
 
 ### New interfaces
 
@@ -316,5 +400,5 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 ### Tests
 
-- Unit: `src/tests/large_response_tooling/` covering threshold / content-type / exclusion / fail-open branches and each text-file tool.
+- Unit: `src/tests/completion_result_offload/` covering threshold / exclusion / fail-open branches; `src/tests/internal_tooling/text_file_tooling/` for each text-file tool.
 - Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (UC-3).
