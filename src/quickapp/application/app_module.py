@@ -16,7 +16,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.common.tool_timeout_settings import ToolTimeoutSettings
+from quickapp.common.tool_timeout_settings import ToolSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
@@ -58,7 +58,7 @@ class AppModule(Module):
         binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
-        binder.bind(ToolTimeoutSettings, to=ToolTimeoutSettings, scope=singleton)
+        binder.bind(ToolSettings, to=ToolSettings, scope=singleton)
         binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope

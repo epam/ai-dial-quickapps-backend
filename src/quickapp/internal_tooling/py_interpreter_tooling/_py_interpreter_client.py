@@ -5,6 +5,7 @@ import httpx
 from pydantic import SecretStr
 
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import (
+    _PY_INTERPRETER_TOOL_NAME,
     _PyInterpreterSessionError,
     _PyInterpreterTimeOutError,
     _PyInterpreterWrongRequestStateError,
@@ -70,7 +71,7 @@ class _PyInterpreterClient:
             return await self._client.post(url=path, json=json)
         except httpx.TimeoutException as e:
             raise _PyInterpreterTimeOutError(
-                tool_name="python_code_interpreter",
+                tool_name=_PY_INTERPRETER_TOOL_NAME,
                 timeout_seconds=self.timeout,
             ) from e
 

@@ -112,7 +112,7 @@ the `httpx.AsyncClient` construction site, payload sizes, determinism (repeat
 ≥2×). If the cap turns out to be outside any of the call sites the design covers,
 a follow-up design pass is needed before shipping #216.
 
-### 1. `ToolTimeoutSettings` — env default
+### 1. `ToolSettings` — env default
 
 A `BaseSettings` singleton in `common/tool_timeout_settings.py` exposing
 `DEFAULT_TOOL_TIMEOUT_SECONDS` as a `float` (always set, never `None`) with
@@ -160,18 +160,18 @@ A request-scoped `ToolTimeoutResolver` in `common/tool_timeout_resolver.py`
 `resolve() -> float`. Resolution: return
 `app_config.tool_defaults.timeout_seconds` when non-None, otherwise
 `settings.default_tool_timeout_seconds` (which is always a `float` per
-[`ToolTimeoutSettings`](#1-tooltimeoutsettings--env-default)). The return is
+[`ToolSettings`](#1-toolsettings--env-default)). The return is
 always a number — call sites never need a `None`-fallback branch.
 
 Injecting the resolver (rather than exposing a raw `TOOL_TIMEOUT_SECONDS` typedef)
 keeps a single DI pattern across call sites.
 
-**Scopes.** `ToolTimeoutSettings` singleton; `ApplicationConfig` request-scoped
+**Scopes.** `ToolSettings` singleton; `ApplicationConfig` request-scoped
 (from `_RequestContext`); `ToolTimeoutResolver` request-scoped.
 
 ```mermaid
 flowchart LR
-    ENV[DEFAULT_TOOL_TIMEOUT_SECONDS<br/>env var] --> S[ToolTimeoutSettings<br/>singleton]
+    ENV[DEFAULT_TOOL_TIMEOUT_SECONDS<br/>env var] --> S[ToolSettings<br/>singleton]
     APP[ApplicationConfig.tool_defaults.timeout_seconds<br/>app-config field] --> R
     S --> R[ToolTimeoutResolver<br/>request-scoped]
     R -->|float seconds| D[Deployment tool<br/>AsyncDial]
@@ -239,7 +239,7 @@ and bypass fallback handling. The MCP SDK also accepts both `float` and
 
 New exception in `common/exceptions.py` with `tool_name: str` and
 `timeout_seconds: float` attributes. The resolved timeout is always a number (see
-[`ToolTimeoutSettings`](#1-tooltimeoutsettings--env-default)), so there's no `None`
+[`ToolSettings`](#1-toolsettings--env-default)), so there's no `None`
 case to handle. `__str__` always contains the stable phrase `"timed out"` so
 `TriggerOn(type=contains, value="timed out")` can match on message content.
 
@@ -488,7 +488,7 @@ required.
 
 ### New files (`common/`)
 
-- `tool_timeout_settings.py` — `ToolTimeoutSettings` (env default, `float`,
+- `tool_timeout_settings.py` — `ToolSettings` (env default, `float`,
   default 300.0)
 - `tool_timeout_resolver.py` — `ToolTimeoutResolver` (env + app-config merge)
 - `tool_timeout_utils.py` — `translate_timeout` async context manager

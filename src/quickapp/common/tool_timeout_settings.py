@@ -2,7 +2,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class ToolTimeoutSettings(BaseSettings):
+class ToolSettings(BaseSettings):
     """Deployment-wide default for tool-call timeouts.
 
     Always resolves to a positive float (default 300.0). Every tool client

@@ -1,6 +1,6 @@
 from injector import inject
 
-from quickapp.common.tool_timeout_settings import ToolTimeoutSettings
+from quickapp.common.tool_timeout_settings import ToolSettings
 from quickapp.config.application import ApplicationConfig
 
 
@@ -8,7 +8,7 @@ from quickapp.config.application import ApplicationConfig
 class ToolTimeoutResolver:
     def __init__(
         self,
-        settings: ToolTimeoutSettings,
+        settings: ToolSettings,
         app_config: ApplicationConfig,
     ) -> None:
         self.__settings = settings

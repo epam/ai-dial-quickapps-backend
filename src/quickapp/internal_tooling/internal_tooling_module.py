@@ -1,5 +1,4 @@
 import logging
-import os
 
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
@@ -75,7 +74,7 @@ class InternalToolModule(Module):
                 f"No url provided for py_interpreter, using default url {dial_settings.url}"
             )
             py_interpreter_settings.url = dial_settings.url
-        if os.getenv("PY_INTERPRETER_CLIENT_TIMEOUT"):
+        if "client_timeout" in py_interpreter_settings.model_fields_set:
             logger.warning(
                 "PY_INTERPRETER_CLIENT_TIMEOUT is deprecated and will be removed in a "
                 "future release. Use DEFAULT_TOOL_TIMEOUT_SECONDS or "
@@ -107,7 +106,7 @@ class InternalToolModule(Module):
         # but not over `tool_defaults.timeout_seconds` (which the resolver already honours).
         if (
             app_config.tool_defaults.timeout_seconds is None
-            and os.getenv("PY_INTERPRETER_CLIENT_TIMEOUT") is not None
+            and "client_timeout" in py_interpreter_settings.model_fields_set
         ):
             timeout = py_interpreter_settings.client_timeout
         else:
