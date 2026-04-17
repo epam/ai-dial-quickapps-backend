@@ -196,9 +196,9 @@ flowchart TD
 
 **Behavior under re-offload:** Their results bypass `LargeResponseProcessor` (via `excluded_tools` default). If the LLM requests a too-large slice, it pays the context cost directly — expected self-correction loop (UC-3).
 
-**Owner:** `src/quickapp/internal_tooling/text_file_tooling/`
+**Owner:** `src/quickapp/completion_result_offload/` (same module as the processor — they are co-designed).
 
-> **Note on location:** Internal tools live under `internal_tooling/` to follow the project convention (see `py_interpreter_tooling/`). The offload processor and these tools are *co-designed* but organizationally separated: the processor lives in `completion_result_offload/`, the tools live in `internal_tooling/text_file_tooling/`. Both are wired by the same feature module (`CompletionResultOffloadModule`) to keep the feature's preview gating centralized.
+> **Note on location:** Despite the project convention of placing internal tools under `internal_tooling/` (see `py_interpreter_tooling/`), these tools live alongside the processor because they are tightly coupled: `read_file_*` / `search_in_file` only exist to consume files produced by `LargeResponseProcessor`. Keeping them together makes it easy to see the full feature in one place and keeps the preview gating centralized.
 
 ---
 
@@ -381,10 +381,10 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 | `common/abstract/completion_result_processor.py` | `CompletionResultProcessor` ABC, `ProcessingContext` model |
 | `completion_result_offload/_large_response_processor.py` | First processor implementation |
 | `completion_result_offload/_settings.py` | `CompletionResultOffloadSettings` pydantic-settings |
+| `completion_result_offload/_read_file_lines_tool.py` | `read_file_lines` internal tool |
+| `completion_result_offload/_read_file_chars_tool.py` | `read_file_chars` internal tool |
+| `completion_result_offload/_search_in_file_tool.py` | `search_in_file` internal tool |
 | `completion_result_offload/completion_result_offload_module.py` | DI wiring (preview-gated) |
-| `internal_tooling/text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
-| `internal_tooling/text_file_tooling/_read_file_chars_tool.py` | `read_file_chars` internal tool |
-| `internal_tooling/text_file_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
 
 ### Modified files
 
@@ -400,5 +400,5 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 ### Tests
 
-- Unit: `src/tests/completion_result_offload/` covering threshold / exclusion / fail-open branches; `src/tests/internal_tooling/text_file_tooling/` for each text-file tool.
+- Unit: `src/tests/completion_result_offload/` covering threshold / exclusion / fail-open branches for the processor and each text-file tool.
 - Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (UC-3).
