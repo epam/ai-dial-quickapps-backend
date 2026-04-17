@@ -7,11 +7,12 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.skills._inject_file_transfer_instruction_transformer import (
     BUILTIN_FILE_TRANSFER_SKILL,
-    SYNTHETIC_TOOL_CALL_ID,
     _InjectFileTransferInstructionTransformer,
 )
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+
+EXPECTED_CALL_ID = f"synthetic_once_{SKILL_READER_TOOL_NAME}"
 
 
 def _make_transformer() -> _InjectFileTransferInstructionTransformer:
@@ -28,12 +29,12 @@ def _assert_synthetic_pair(messages: list[Message], assistant_idx: int) -> None:
     assert assistant.role == Role.ASSISTANT
     assert assistant.tool_calls is not None
     assert len(assistant.tool_calls) == 1
-    assert assistant.tool_calls[0].id == SYNTHETIC_TOOL_CALL_ID
+    assert assistant.tool_calls[0].id == EXPECTED_CALL_ID
     assert assistant.tool_calls[0].function.name == SKILL_READER_TOOL_NAME
     assert BUILTIN_FILE_TRANSFER_SKILL in assistant.tool_calls[0].function.arguments
 
     assert tool.role == Role.TOOL
-    assert tool.tool_call_id == SYNTHETIC_TOOL_CALL_ID
+    assert tool.tool_call_id == EXPECTED_CALL_ID
     assert tool.content is not None
     assert tool.content
 
