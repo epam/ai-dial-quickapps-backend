@@ -1,9 +1,7 @@
 import json
 import logging
-import uuid
 
-from aidial_sdk.chat_completion import Message, Role
-from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
 from quickapp.attachment_processing._context_entries import (
@@ -13,72 +11,50 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.synthetic_injection._injection_enums import (
+    InjectionFrequency,
+    InjectionPosition,
+)
+from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    SyntheticToolCallInjector,
+)
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.context import Context
 
 logger = logging.getLogger(__name__)
 
 
-class _AttachmentNotificationInjector(MessagesTransformer):
+class _AttachmentNotificationInjector(SyntheticToolCallInjector):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
+
+    position = InjectionPosition.END
+    frequency = InjectionFrequency.CONDITIONAL
 
     @inject
     def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
         self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
 
-    async def transform(self, messages: list[Message]) -> list[Message]:
+    async def get_tool_name(self) -> str:
+        return AVAILABLE_CONTEXT_TOOL_NAME
+
+    def condition(self, messages: list[Message]) -> bool:
         contexts = list(self.__config_provider.get().contexts)
+        return should_activate_context_tool(contexts, messages)
 
-        if not should_activate_context_tool(contexts, messages):
-            return messages
-
-        synthetic: list[Message] = self._check_contexts(messages, contexts)
-
-        if not synthetic:
-            return messages
-
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                f"Injecting {len(synthetic)} synthetic messages for context notification: "
-                f"{[str(msg) for msg in synthetic]}"
-            )
-
-        return messages + synthetic
-
-    def _check_contexts(self, messages: list[Message], contexts: list[Context]) -> list[Message]:
-        """Collect context file metadata and return synthetic messages if changed."""
+    async def get_content(self, messages: list[Message]) -> str | None:
+        contexts = list(self.__config_provider.get().contexts)
         seen_entries = extract_seen_entries_from_messages(messages)
         current_urls, entries = build_context_entries(contexts, seen_entries)
 
         if current_urls == set(seen_entries) and not any(e.status for e in entries):
-            return []
+            return None
 
         tool_response = AvailableContextToolResponse(entries=entries)
-        return self._build_synthetic_messages(
-            AVAILABLE_CONTEXT_TOOL_NAME,
-            json.dumps(tool_response.model_dump(exclude_none=True), ensure_ascii=False),
-        )
 
-    @staticmethod
-    def _build_synthetic_messages(tool_name: str, content: str) -> list[Message]:
-        """Build a pair of assistant tool_call + tool result messages."""
-        call_id = f"synthetic_{uuid.uuid4().hex[:12]}"
-        assistant_msg = Message(
-            role=Role.ASSISTANT,
-            content="",
-            tool_calls=[
-                ToolCall(
-                    id=call_id,
-                    type="function",
-                    function=FunctionCall(name=tool_name, arguments="{}"),
-                )
-            ],
-        )
-        tool_msg = Message(
-            role=Role.TOOL,
-            content=content,
-            tool_call_id=call_id,
-        )
-        return [assistant_msg, tool_msg]
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "Injecting synthetic context notification with %d entries",
+                len(entries),
+            )
+
+        return json.dumps(tool_response.model_dump(exclude_none=True), ensure_ascii=False)
