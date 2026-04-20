@@ -95,3 +95,19 @@ async def test_error_carries_timeout_value():
     assert excinfo.value.timeout_seconds == 42
     assert "timed out" in str(excinfo.value)
     assert "42" in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_enforces_wall_clock_timeout():
+    with pytest.raises(ToolTimeoutError) as excinfo:
+        async with translate_timeout("my_tool", 0.05):
+            await asyncio.sleep(0.2)
+    assert excinfo.value.tool_name == "my_tool"
+    assert excinfo.value.timeout_seconds == 0.05
+    assert isinstance(excinfo.value.__cause__, TimeoutError)
+
+
+@pytest.mark.asyncio
+async def test_wall_clock_does_not_fire_when_body_is_fast():
+    async with translate_timeout("my_tool", 5):
+        await asyncio.sleep(0)  # completes immediately
