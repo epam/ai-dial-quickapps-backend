@@ -65,7 +65,7 @@ def parse_frontmatter(content: str, source_id: str) -> SkillMetadata:
 
     compatibility = parsed.get("compatibility")
     if compatibility is not None and len(compatibility) > 500:
-        compatibility = compatibility[:500]
+        raise SkillValidationError(source_id, "Compatibility exceeds 500 characters")
 
     return SkillMetadata(
         name=name,

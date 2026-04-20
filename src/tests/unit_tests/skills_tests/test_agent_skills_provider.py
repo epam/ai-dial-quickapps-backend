@@ -103,6 +103,14 @@ class TestParseFrontmatter:
         with pytest.raises(SkillValidationError):
             parse_frontmatter(content, "test")
 
+    def test_compatibility_exceeds_500_chars_raises(self):
+        long_compat = "x" * 501
+        content = (
+            f"---\nname: my-skill\ndescription: desc\n" f"compatibility: {long_compat}\n---\nBody\n"
+        )
+        with pytest.raises(SkillValidationError, match="Compatibility exceeds 500"):
+            parse_frontmatter(content, "test")
+
     def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
         with pytest.raises(SkillValidationError):

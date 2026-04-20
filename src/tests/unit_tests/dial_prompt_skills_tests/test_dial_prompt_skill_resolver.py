@@ -54,10 +54,11 @@ class TestDialPromptSkillResolver:
 
         assert len(result) == 1
         assert len(warnings) == 0
-        metadata, content = result[0]
-        assert metadata.name == "my-skill"
-        assert metadata.description == "A test skill from DIAL"
-        assert "Full content here." in content
+        skill = result[0]
+        assert skill.url == "prompts/bucket/my-skill"
+        assert skill.metadata.name == "my-skill"
+        assert skill.metadata.description == "A test skill from DIAL"
+        assert "Full content here." in skill.content
 
     @pytest.mark.asyncio
     async def test_empty_content_skipped(self):
@@ -126,8 +127,10 @@ class TestDialPromptSkillResolver:
         result, warnings = await resolver.resolve(configs)
 
         assert len(result) == 1
-        assert result[0][0].name == "my-skill"
+        assert result[0].url == "prompts/bucket/skill-a"
+        assert result[0].metadata.name == "my-skill"
         assert len(warnings) == 1
+        assert warnings[0].url == "prompts/bucket/skill-b"
         assert "Duplicate" in warnings[0].reason
 
     @pytest.mark.asyncio
@@ -148,8 +151,10 @@ class TestDialPromptSkillResolver:
         result, warnings = await resolver.resolve(configs)
 
         assert len(result) == 1
-        assert result[0][0].name == "my-skill"
+        assert result[0].url == "prompts/bucket/working"
+        assert result[0].metadata.name == "my-skill"
         assert len(warnings) == 1
+        assert warnings[0].url == "prompts/bucket/broken"
         assert "Network error" in warnings[0].reason
 
     @pytest.mark.asyncio

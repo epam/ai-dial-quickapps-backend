@@ -1,6 +1,6 @@
 # Design: DIAL Prompts as Skills
 
-- **Status:** Partially Implemented
+- **Status:** Implemented
 - **Dependencies:**
   - [Agent Skills and File Transfer](skills_and_file_transfer.md) (implemented)
 

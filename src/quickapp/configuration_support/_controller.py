@@ -9,7 +9,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import ContentType
-from quickapp.config.skill import DialPromptSkillConfig
+from quickapp.config.skill import DialPromptSkillConfig, SkillConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
@@ -74,8 +74,13 @@ class _Controller:
             return self.__skills_provider.get_all_skills()
 
         @app.post(CONFIG_SUPPORT_URI + "/skills/validate", response_model=SkillMetadata)
-        async def validate_skill(config: DialPromptSkillConfig, request: Request) -> SkillMetadata:
-            return await self._validate_dial_prompt_skill(config, request)
+        async def validate_skill(config: SkillConfig, request: Request) -> SkillMetadata:
+            if isinstance(config, DialPromptSkillConfig):
+                return await self._validate_dial_prompt_skill(config, request)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unsupported skill type: {config.type}",
+            )
 
     async def _validate_dial_prompt_skill(
         self,
@@ -83,6 +88,12 @@ class _Controller:
         request: Request,
     ) -> SkillMetadata:
         api_key = request.headers.get("api-key", "")
+        if not api_key:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Missing api-key header",
+            )
+
         dial_client = AsyncDial(
             base_url=self.__dial_settings.url,
             api_key=api_key,
@@ -92,6 +103,11 @@ class _Controller:
         try:
             prompt = await dial_client.prompts.get(config.url)
         except DialException as e:
+            if e.status_code == 401:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid api-key",
+                )
             if e.status_code in (403, 404):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,

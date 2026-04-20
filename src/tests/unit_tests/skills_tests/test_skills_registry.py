@@ -1,10 +1,25 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
 from quickapp.skills._exceptions import SkillResolutionWarning
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills.agent_skills_provider import SkillMetadata
+
+
+def _resolved(
+    url: str,
+    name: str,
+    description: str = "A skill",
+    content: str = "content",
+) -> ResolvedDialPromptSkill:
+    return ResolvedDialPromptSkill(
+        url=url,
+        metadata=SkillMetadata(name=name, description=description),
+        content=content,
+    )
 
 
 def _make_predefined_provider(
@@ -105,11 +120,11 @@ class TestSkillsRegistryWithResolver:
         predefined = [_skill("predefined")]
         predefined_contents = {"predefined": "Predefined content"}
 
-        dial_metadata = _skill("dial-skill", "From DIAL")
-        dial_content = "DIAL skill content"
-
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
+        resolver.resolve.return_value = (
+            [_resolved("prompts/b/dial-skill", "dial-skill", "From DIAL", "DIAL skill content")],
+            [],
+        )
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, predefined_contents),
@@ -128,11 +143,11 @@ class TestSkillsRegistryWithResolver:
         predefined = [_skill("shared-name", "Predefined version")]
         predefined_contents = {"shared-name": "Predefined content"}
 
-        dial_metadata = _skill("shared-name", "DIAL version")
-        dial_content = "DIAL content"
-
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
+        resolver.resolve.return_value = (
+            [_resolved("prompts/b/collides", "shared-name", "DIAL version", "DIAL content")],
+            [],
+        )
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, predefined_contents),
@@ -185,11 +200,11 @@ class TestSkillsRegistryWithResolver:
 
     @pytest.mark.asyncio
     async def test_get_skill_content_for_dial_prompt_skill(self):
-        dial_metadata = _skill("dial-only")
-        dial_content = "DIAL prompt skill content"
-
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
+        resolver.resolve.return_value = (
+            [_resolved("prompts/b/only", "dial-only", content="DIAL prompt skill content")],
+            [],
+        )
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
@@ -200,6 +215,33 @@ class TestSkillsRegistryWithResolver:
 
         content = await registry.get_skill_content("dial-only")
         assert content == "DIAL prompt skill content"
+
+    @pytest.mark.asyncio
+    async def test_concurrent_resolve_resolves_once(self):
+        """Concurrent callers should share a single resolve pass."""
+
+        async def slow_resolve(_configs):
+            await asyncio.sleep(0.01)
+            return ([_resolved("prompts/b/only", "dial-only", content="C")], [])
+
+        resolver = AsyncMock()
+        resolver.resolve.side_effect = slow_resolve
+
+        registry = SkillsRegistry(
+            predefined_provider=_make_predefined_provider(),
+            config_provider=_make_config_provider(skills_config=["cfg"]),
+            stage_provider=_make_stage_provider(),
+            dial_prompt_resolver=resolver,
+        )
+
+        xml, content = await asyncio.gather(
+            registry.get_prompt_part(),
+            registry.get_skill_content("dial-only"),
+        )
+
+        assert "dial-only" in xml
+        assert content == "C"
+        assert resolver.resolve.await_count == 1
 
     @pytest.mark.asyncio
     async def test_no_skill_configs_skips_resolver(self):
@@ -269,11 +311,11 @@ class TestSkillsRegistryStageWarnings:
         predefined = [_skill("shared")]
         predefined_contents = {"shared": "Predefined content"}
 
-        dial_metadata = _skill("shared", "DIAL version")
-        dial_content = "DIAL content"
-
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([(dial_metadata, dial_content)], [])
+        resolver.resolve.return_value = (
+            [_resolved("prompts/b/dial-collides", "shared", "DIAL version", "DIAL content")],
+            [],
+        )
 
         stage_provider = _make_stage_provider()
         registry = SkillsRegistry(
@@ -288,7 +330,7 @@ class TestSkillsRegistryStageWarnings:
         stage = stage_provider.get.return_value
         stage.open.assert_called_once()
         content_arg = stage.append_content.call_args[0][0]
-        assert "shared" in content_arg
+        assert "prompts/b/dial-collides" in content_arg
         assert "predefined" in content_arg.lower()
 
     @pytest.mark.asyncio
@@ -310,3 +352,5 @@ class TestSkillsRegistryStageWarnings:
         stage.open.assert_called_once()
         content_arg = stage.append_content.call_args[0][0]
         assert "DIAL Core is down" in content_arg
+        assert "*****" not in content_arg
+        assert "falling back to predefined-only" in content_arg

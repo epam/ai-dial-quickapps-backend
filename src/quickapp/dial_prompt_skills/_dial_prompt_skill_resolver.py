@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 
 from aidial_client import AsyncDial
 from injector import inject
@@ -9,6 +10,15 @@ from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillResolutionWarning, SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills.agent_skills_provider import SkillMetadata
+
+
+@dataclass(frozen=True)
+class ResolvedDialPromptSkill:
+    """A successfully fetched DIAL prompt skill, including its source URL."""
+
+    url: str
+    metadata: SkillMetadata
+    content: str
 
 
 @inject
@@ -21,8 +31,8 @@ class DialPromptSkillResolver:
     async def resolve(
         self,
         skill_configs: list[DialPromptSkillConfig],
-    ) -> tuple[list[tuple[SkillMetadata, str]], list[SkillResolutionWarning]]:
-        """Resolve skill configs into validated ``(SkillMetadata, content)`` pairs.
+    ) -> tuple[list[ResolvedDialPromptSkill], list[SkillResolutionWarning]]:
+        """Resolve skill configs into validated ``ResolvedDialPromptSkill`` entries.
 
         Returns a tuple of (resolved_skills, warnings).
 
@@ -48,7 +58,7 @@ class DialPromptSkillResolver:
         )
 
         # Filter exceptions, deduplicate by name, collect warnings
-        resolved: list[tuple[SkillMetadata, str]] = []
+        resolved: list[ResolvedDialPromptSkill] = []
         warnings: list[SkillResolutionWarning] = []
         seen_names: set[str] = set()
 
@@ -58,26 +68,25 @@ class DialPromptSkillResolver:
                 warnings.append(SkillResolutionWarning(url=url, reason=str(result)))
                 continue
 
-            metadata, content = result
-            if metadata.name in seen_names:
+            if result.metadata.name in seen_names:
                 warnings.append(
                     SkillResolutionWarning(
                         url=url,
-                        reason=f"Duplicate skill name '{metadata.name}';"
+                        reason=f"Duplicate skill name '{result.metadata.name}';"
                         " keeping first occurrence",
                     )
                 )
                 continue
 
-            seen_names.add(metadata.name)
-            resolved.append((metadata, content))
+            seen_names.add(result.metadata.name)
+            resolved.append(result)
 
         return resolved, warnings
 
     async def _fetch_one(
         self,
         config: DialPromptSkillConfig,
-    ) -> tuple[SkillMetadata, str]:
+    ) -> ResolvedDialPromptSkill:
         """Fetch a single DIAL prompt and validate it as a skill."""
         prompt = await self._dial_client.prompts.get(config.url)
 
@@ -85,4 +94,8 @@ class DialPromptSkillResolver:
             raise SkillValidationError(config.url, "DIAL prompt has no content")
 
         metadata = parse_frontmatter(prompt.content, config.url)
-        return (metadata, prompt.content)
+        return ResolvedDialPromptSkill(
+            url=config.url,
+            metadata=metadata,
+            content=prompt.content,
+        )

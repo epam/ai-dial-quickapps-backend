@@ -161,3 +161,51 @@ class TestValidateSkill:
 
         assert response.status_code == 422
         assert "frontmatter" in response.json()["detail"].lower()
+
+    @pytest.mark.asyncio
+    async def test_missing_api_key_returns_401(self):
+        app = _make_app(_make_controller())
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+            response = await client.post(
+                VALIDATE_URL,
+                json={"type": "dial-prompt", "url": "prompts/bucket/my-skill"},
+            )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    @patch("quickapp.configuration_support._controller.AsyncDial")
+    async def test_dial_401_returns_401(self, mock_dial_cls):
+        from aidial_client import DialException
+
+        mock_client = MagicMock()
+        mock_client.prompts = MagicMock()
+        mock_client.prompts.get = AsyncMock(
+            side_effect=DialException(message="Unauthorized", status_code=401)
+        )
+        mock_dial_cls.return_value = mock_client
+
+        app = _make_app(_make_controller())
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+            response = await client.post(
+                VALIDATE_URL,
+                json={"type": "dial-prompt", "url": "prompts/bucket/my-skill"},
+                headers={"api-key": "bad-key"},
+            )
+
+        assert response.status_code == 401
+
+    @pytest.mark.asyncio
+    async def test_unknown_skill_type_returns_422(self):
+        app = _make_app(_make_controller())
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+            response = await client.post(
+                VALIDATE_URL,
+                json={"type": "mystery", "url": "prompts/bucket/skill"},
+                headers={"api-key": "test-key"},
+            )
+
+        assert response.status_code == 422

@@ -2965,7 +2965,7 @@
       "type": "object",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 7
+        "dial:propertyOrder": 8
       }
     }
   },

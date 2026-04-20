@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import asyncio
+
 from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
@@ -31,6 +33,7 @@ class SkillsRegistry(PromptPartProvider):
         self._stage_provider = stage_provider
         self._dial_prompt_resolver = dial_prompt_resolver
         self._resolved: bool = False
+        self._resolve_lock = asyncio.Lock()
         self._xml_cache: str = ""
         self._all_contents: dict[str, str] = {}
 
@@ -38,51 +41,69 @@ class SkillsRegistry(PromptPartProvider):
         """Lazily resolve all skill sources. Called once per request."""
         if self._resolved:
             return
+        async with self._resolve_lock:
+            if self._resolved:
+                return
 
-        predefined_skills = self._predefined_provider.get_all_skills()
-        predefined_contents = self._predefined_provider.get_all_skill_contents()
-        predefined_names = {s.name for s in predefined_skills}
+            predefined_skills = self._predefined_provider.get_all_skills()
+            predefined_contents = self._predefined_provider.get_all_skill_contents()
+            predefined_names = {s.name for s in predefined_skills}
 
-        merged_skills = list(predefined_skills)
-        merged_contents = dict(predefined_contents)
-        all_warnings: list[SkillResolutionWarning] = []
+            merged_skills = list(predefined_skills)
+            merged_contents = dict(predefined_contents)
+            warnings: list[SkillResolutionWarning] = []
+            catastrophic_reason: str | None = None
 
-        if self._dial_prompt_resolver is not None:
-            try:
-                config = self._config_provider.get()
-                skill_configs = config.skills or []
-                if skill_configs:
-                    resolved, warnings = await self._dial_prompt_resolver.resolve(skill_configs)
-                    all_warnings.extend(warnings)
-                    for metadata, content in resolved:
-                        if metadata.name in predefined_names:
-                            all_warnings.append(
-                                SkillResolutionWarning(
-                                    url=metadata.name,
-                                    reason="Has the same name as a predefined"
-                                    " skill; predefined takes precedence",
+            if self._dial_prompt_resolver is not None:
+                try:
+                    config = self._config_provider.get()
+                    skill_configs = config.skills or []
+                    if skill_configs:
+                        resolved, resolver_warnings = await self._dial_prompt_resolver.resolve(
+                            skill_configs
+                        )
+                        warnings.extend(resolver_warnings)
+                        for skill in resolved:
+                            if skill.metadata.name in predefined_names:
+                                warnings.append(
+                                    SkillResolutionWarning(
+                                        url=skill.url,
+                                        reason="Has the same name as a predefined"
+                                        " skill; predefined takes precedence",
+                                    )
                                 )
-                            )
-                            continue
-                        merged_skills.append(metadata)
-                        merged_contents[metadata.name] = content
-            except Exception as exc:
-                all_warnings.append(
-                    SkillResolutionWarning(
-                        url="*",
-                        reason="Failed to resolve DIAL prompt skills;"
-                        f" falling back to predefined-only: {exc}",
+                                continue
+                            merged_skills.append(skill.metadata)
+                            merged_contents[skill.metadata.name] = skill.content
+                except Exception as exc:
+                    catastrophic_reason = (
+                        "Failed to resolve DIAL prompt skills; "
+                        f"falling back to predefined-only: {exc}"
                     )
-                )
 
-        if all_warnings:
-            self._render_warning_stage(all_warnings)
+            # `catastrophic_reason` and `warnings` are mutually exclusive: the
+            # resolver either returns (warnings only) or raises (catastrophic only).
+            if catastrophic_reason is not None:
+                self._render_catastrophic_stage(catastrophic_reason)
+            elif warnings:
+                self._render_warnings_stage(warnings)
 
-        self._all_contents = merged_contents
-        self._xml_cache = generate_skills_xml(merged_skills)
-        self._resolved = True
+            self._all_contents = merged_contents
+            self._xml_cache = generate_skills_xml(merged_skills)
+            self._resolved = True
 
-    def _render_warning_stage(self, warnings: list[SkillResolutionWarning]) -> None:
+    def _render_catastrophic_stage(self, reason: str) -> None:
+        stage = self._stage_provider.get()
+        stage.open()
+        stage.append_name("Skill loading warnings")
+        stage.append_content(
+            "#### DIAL prompt skills could not be loaded;"
+            " falling back to predefined-only:\n"
+            f"- {reason}"
+        )
+        stage.close(Status.COMPLETED)
+
+    def _render_warnings_stage(self, warnings: list[SkillResolutionWarning]) -> None:
         stage = self._stage_provider.get()
         stage.open()
         stage.append_name("Skill loading warnings")
