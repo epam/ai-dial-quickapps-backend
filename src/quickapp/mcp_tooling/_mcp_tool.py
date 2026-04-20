@@ -5,7 +5,7 @@ from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
@@ -134,7 +134,7 @@ class _MCPTool(StagedBaseTool):
 
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
 
         logger.debug(f"MCP tool called with {kwargs}")
 
@@ -196,7 +196,7 @@ class _MCPTool(StagedBaseTool):
                     )
                     attachments.append(attachment)
 
-            result = CompletionResult(
+            result = ToolCallResult(
                 content=tool_content,
                 content_type="text/markdown",
                 attachments=attachments or None,
