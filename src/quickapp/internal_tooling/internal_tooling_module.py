@@ -5,6 +5,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
@@ -73,6 +74,12 @@ class InternalToolModule(Module):
                 f"No url provided for py_interpreter, using default url {dial_settings.url}"
             )
             py_interpreter_settings.url = dial_settings.url
+        if "client_timeout" in py_interpreter_settings.model_fields_set:
+            logger.warning(
+                "PY_INTERPRETER_CLIENT_TIMEOUT is deprecated and will be removed in a "
+                "future release. Use DEFAULT_TOOL_TIMEOUT_SECONDS or "
+                "`tool_defaults.timeout_seconds` in app config instead."
+            )
         return py_interpreter_settings
 
     @request_scope
@@ -89,11 +96,25 @@ class InternalToolModule(Module):
     @request_scope
     @provider
     def _provide_py_interpreter_client(
-        self, api_key: _PY_INTERPRETER_API_KEY, py_interpreter_settings: _PyInterpreterSettings
+        self,
+        api_key: _PY_INTERPRETER_API_KEY,
+        py_interpreter_settings: _PyInterpreterSettings,
+        timeout_resolver: ToolTimeoutResolver,
+        app_config: ApplicationConfig,
     ) -> _PyInterpreterClient:
+        # Legacy PY_INTERPRETER_CLIENT_TIMEOUT shim: wins over DEFAULT_TOOL_TIMEOUT_SECONDS
+        # but not over `tool_defaults.timeout_seconds` (which the resolver already honours).
+        if (
+            app_config.tool_defaults.timeout_seconds is None
+            and "client_timeout" in py_interpreter_settings.model_fields_set
+        ):
+            timeout = py_interpreter_settings.client_timeout
+        else:
+            timeout = timeout_resolver.resolve()
+
         return _PyInterpreterClient(
             api_key=api_key,
             base_url=py_interpreter_settings.url,
-            timeout=py_interpreter_settings.client_timeout,
+            timeout=timeout,
             max_retries=py_interpreter_settings.client_max_retries,
         )

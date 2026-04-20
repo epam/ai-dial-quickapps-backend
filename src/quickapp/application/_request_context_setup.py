@@ -8,6 +8,7 @@ from pydantic import SecretStr
 
 from quickapp.common._di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
+from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
@@ -53,6 +54,7 @@ class _RequestContextSetup:
         context.application_config = self.__resolve_application_config(
             await request.request_dial_application_properties()
         )
+        log_customised_catch_all_strategies(context.application_config)
         if isinstance(request, Request):
             context.messages = await self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)

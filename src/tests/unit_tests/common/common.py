@@ -1,10 +1,11 @@
 import json
 from collections.abc import Callable, Iterable
 from typing import TypeAlias
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
-from injector import Binder, Injector, Module
+from injector import Binder, Injector, Module, ProviderOf
 
 from quickapp.common import CompletionResult
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
@@ -90,3 +91,15 @@ def build_tool_expected_result(tool_result: CompletionResult):
     result_dict = tool_result.model_dump()
     result_dict["propagate_to_choice"] = AttachmentConfig()
     return result_dict
+
+
+def noop_timeout_resolver(value: float = 300.0) -> MagicMock:
+    """MagicMock for `ToolTimeoutResolver` where `.resolve()` returns ``value``."""
+    return MagicMock(resolve=MagicMock(return_value=value))
+
+
+def noop_timeout_resolver_provider(value: float = 300.0) -> MagicMock:
+    """MagicMock for `ProviderOf[ToolTimeoutResolver]` whose `.get()` returns ``noop_timeout_resolver(value)``."""
+    provider = MagicMock(spec=ProviderOf)
+    provider.get.return_value = noop_timeout_resolver(value=value)
+    return provider

@@ -12,6 +12,7 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetNotFoundException,
 )
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from tests.unit_tests.common.common import noop_timeout_resolver_provider
 
 
 def _make_dial_exception(status_code: int) -> DialException:
@@ -47,6 +48,7 @@ def _make_service(dial_client: MagicMock) -> ToolConfigCoreService:
     return ToolConfigCoreService(
         dial_settings=_make_dial_settings(),
         dial_client_provider=provider,
+        timeout_resolver_provider=noop_timeout_resolver_provider(),
     )
 
 
@@ -124,6 +126,7 @@ class TestGetBasicToolConfig:
         svc = ToolConfigCoreService(
             dial_settings=_make_dial_settings(),
             dial_client_provider=provider,
+            timeout_resolver_provider=noop_timeout_resolver_provider(),
         )
 
         with patch(

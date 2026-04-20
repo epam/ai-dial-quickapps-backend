@@ -2941,6 +2941,32 @@
         "dial:propertyKind": "server",
         "dial:propertyOrder": 7
       }
+    },
+    "tool_defaults": {
+      "description": "Defaults applied to every tool call (e.g. timeout).",
+      "properties": {
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeout (in seconds) applied to all tool calls in this app. When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, or each client's library default if neither is set.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "ToolDefaults",
+      "type": "object",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
+      }
     }
   },
   "required": [

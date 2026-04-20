@@ -14,6 +14,7 @@ from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 def _make_dial_toolset(dial_id: str = "toolsets/public/ts1", name: str = "ts1") -> DialMCPToolSet:
@@ -45,6 +46,7 @@ def _build_tool_side_effect(tool, tool_config, connection_manager=None, **kwargs
         file_service=MagicMock(),
         dial_toolset_id=None,
         login_service=MagicMock(),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
 
