@@ -35,9 +35,17 @@ def _is_timeout(exc: BaseException) -> bool:
 
 @asynccontextmanager
 async def translate_timeout(tool_name: str, timeout_seconds: float) -> AsyncIterator[None]:
-    """Catch recognised timeout exceptions and re-raise as `ToolTimeoutError`."""
+    """Enforce wall-clock timeout and translate recognised timeouts to `ToolTimeoutError`.
+
+    The `asyncio.timeout` wrapper is load-bearing: streaming tool calls
+    (DIAL deployment SSE) have only an *idle-read* phase timeout at the
+    client layer, so a chatty server would otherwise run unbounded. The
+    fired `TimeoutError` is absorbed by the `asyncio.TimeoutError` branch
+    below and surfaces as `ToolTimeoutError`.
+    """
     try:
-        yield
+        async with asyncio.timeout(timeout_seconds):
+            yield
     except BaseExceptionGroup as eg:
         timeout_leaves, _ = eg.split(_is_timeout)
         if timeout_leaves is not None:

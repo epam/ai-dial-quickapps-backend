@@ -27,9 +27,8 @@ flow through `AsyncDial`. Three inadequacies today:
    longer processing. Issue
    [#216](https://github.com/epam/ai-dial-quickapps-backend/issues/216): a 7.2 MB
    PDF processes directly against DIAL RAG in 9.5 min, but errors out at ~5 min
-   through a Quick App 2.0 deployment tool. The cap is in our code (per bug
-   reporter), not infra, but the **exact call site** is not yet pinpointed —
-   see [Investigation for #216](#0-investigation-tracing-the-5-minute-cap-for-216).
+   through a Quick App 2.0 deployment tool — the cap lives in our HTTP-client
+   defaults, not infra.
 3. **Timeouts look like any other tool error to the LLM.** Every tool defaults to
    `ToolFallbackConfig.strategies = [ContinueStrategyModel()]` with
    `trigger_on=None` — matches all exceptions. A timed-out call today produces a
@@ -91,26 +90,6 @@ only one leaves the feature half-useful.
 ---
 
 ## Proposed Design
-
-### 0. Investigation: tracing the 5-minute cap for #216
-
-The "fixes #216" claim is gated on locating the actual cap — the unified
-mechanism below only helps for caps that live in our HTTP clients. Priority
-hypotheses:
-
-1. **`AsyncDial`** — library read default is 600s, so not the cap directly, but
-   the deployment-tool code path (and the bucket/file operations previously
-   routed through a dedicated DIAL Core HTTP client) may wrap the call in an
-   outer `asyncio.wait_for` or accumulate retries.
-2. **MCP per-call** — if an MCP tool is in the failing flow, transport
-   `sse_read_timeout=300s` is exactly 5 minutes.
-3. **Upstream (DIAL Core / ingress)** — the user reports this is not the source,
-   but cross-checked during repro.
-
-Repro captures: exception class + traceback, elapsed time from `PerformanceTimer`,
-the `httpx.AsyncClient` construction site, payload sizes, determinism (repeat
-≥2×). If the cap turns out to be outside any of the call sites the design covers,
-a follow-up design pass is needed before shipping #216.
 
 ### 1. `ToolSettings` — env default
 
@@ -186,14 +165,20 @@ All call sites consume `T = ToolTimeoutResolver.resolve()` — always a `float`,
 never `None` — and pass it explicitly to their underlying client. No
 "library-default fallback" branch is needed anywhere. Per-client specifics:
 
-- **Deployment (`AsyncDial`)** — `AppModule.__provide_async_dial` passes
-  `timeout=openai.Timeout(connect=5, read=T, write=T, pool=T)`. `connect` is held
-  at 5s to preserve fast-fail on dead deployments; the other phases track `T`.
-  `http_client=` is not used — it would replace the whole transport and bypass
-  internal openai-client config.
-  *Streaming caveat:* DIAL deployments stream, so `read=T` means "T seconds of
-  silence between SSE events," not wall-clock. Treat `tool_defaults.timeout_seconds`
-  as an **idle budget** for streaming deployment calls.
+- **Deployment (`AsyncDial` / `AsyncAzureOpenAI`)** — both the shared
+  `AsyncDial` client (`AppModule.__provide_async_dial`) and the deployment
+  tool's `DEPLOYMENT_AZURE_CLIENT`
+  (`DialDeploymentToolingModule.provide_deployment_openai_client`) pass
+  `timeout=openai.Timeout(connect=5, read=T, write=T, pool=T)`. `connect`
+  is held at 5s to preserve fast-fail on dead deployments; the other phases
+  track `T`. `http_client=` is not used — it would replace the whole
+  transport and bypass internal openai-client config.
+  *Streaming.* DIAL deployments stream, so the client-level `read=T` alone
+  is only an idle gap between SSE events, not wall-clock. Wall-clock is
+  instead guaranteed by `translate_timeout`, which wraps the call body with
+  `asyncio.timeout(T)` (see [Section 6](#6-per-tool-timeout--tooltimeouterror-translation)).
+  Treat the client-level phase timeout as a fast-fail on stuck reads, and
+  `asyncio.timeout(T)` as the authoritative total budget.
 - **REST API (`_RestApiTool._run_in_stage_async`)** — construct
   `httpx.AsyncClient(timeout=T)`. Body wrapped in `translate_timeout`.
 - **Python interpreter (`InternalToolModule._provide_py_interpreter_client`)** —
@@ -253,9 +238,12 @@ case to handle. `__str__` always contains the stable phrase `"timed out"` so
 | Python interpreter | Existing `_PyInterpreterTimeOutError` | No wrap needed — `_PyInterpreterTimeOutError` is changed to **extend** `ToolTimeoutError` (not replace), preserving existing `isinstance` callers |
 
 A shared `translate_timeout(tool_name, timeout_seconds)` async context manager in
-`common/tool_timeout_utils.py` performs the catch-and-raise, chaining the original
-cause (`from e`) so tracebacks keep the underlying library exception visible. Two
-subtleties worth naming because they're easy to get wrong:
+`common/tool_timeout_utils.py` wraps its body with `async with
+asyncio.timeout(timeout_seconds):` (hard wall-clock) and performs the
+catch-and-raise, chaining the original cause (`from e`) so tracebacks keep the
+underlying library exception visible. The `TimeoutError` raised by
+`asyncio.timeout` is handled by the same translation branch as the library
+timeouts. Two subtleties worth naming because they're easy to get wrong:
 
 - **`mcp.McpError` needs predicate matching**, not a tuple entry. Adding it to an
   `isinstance` tuple alongside `httpx.TimeoutException` et al. would misclassify
@@ -414,6 +402,12 @@ timeout, directing it to halt and inform the user. Orchestration itself continue
 | unset | 900 | 900.0 | All clients for this app capped at 900s (MCP caveat below) |
 | 600 | 900 | 900.0 | App override wins |
 
+**Wall-clock semantics.** Resolved `T` is enforced as a hard wall-clock budget
+for deployment, REST, and MCP tool calls — the `translate_timeout` helper
+wraps each tool body with `asyncio.timeout(T)`. Per-client phase timeouts
+(`httpx`, `openai.Timeout`) are retained as fast-fail on connect/read-stall
+and are subordinate to the helper's hard cap.
+
 **MCP caveat.** Resolved `T` applies to `ClientSession.call_tool(read_timeout_seconds=T)`
 (authoritative per-call budget) and `sse_read_timeout`. It does **not** bind the
 connection-setup tier (`streamablehttp_client.timeout`, `sse_client.timeout`) — those
@@ -508,6 +502,15 @@ required.
 
 - `application/app_module.__provide_async_dial` — apply resolved timeout as
   `openai.Timeout(connect=5, read=T, write=T, pool=T)`
+- `dial_deployment_tooling/dial_deployment_tooling_module.provide_deployment_openai_client`
+  — inject `ToolTimeoutResolver`, apply the same
+  `openai.Timeout(connect=5, read=T, write=T, pool=T)` shape to
+  `AsyncAzureOpenAI` so the deployment tool's client is bounded consistently
+  with `__provide_async_dial`
+- `common/tool_timeout_utils.translate_timeout` — wrap body with
+  `async with asyncio.timeout(timeout_seconds):`; the raised `TimeoutError`
+  is absorbed by the existing translation branch and surfaces as
+  `ToolTimeoutError`
 - `rest_api_tooling/_rest_api_tool._run_in_stage_async` — pass `timeout=T` to
   `httpx.AsyncClient(...)`; wrap body in `translate_timeout`
 - `mcp_tooling/_mcp_connection_manager.__session_context` — pass
@@ -564,10 +567,8 @@ pre-empts built-in (continue and stop strategies). Bare
 Pydantic error at config load.
 
 **E2E — #216 repro.** Reproduce failure on `development`; with
-`tool_defaults.timeout_seconds=900` the call succeeds (assuming
-[Investigation for #216](#0-investigation-tracing-the-5-minute-cap-for-216)
-confirms our HTTP clients are the cap). LLM-facing tool result names the tool and
-timeout value.
+`tool_defaults.timeout_seconds=900` the call succeeds. LLM-facing tool result
+names the tool and timeout value.
 
 **Stage UI.** `ToolTimeoutError.__str__` is displayed under
 `display_error_in_stage=True` and `=False` (timeouts are intentionally exempt
