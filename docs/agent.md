@@ -165,7 +165,7 @@ When the LLM requests multiple tools, the Tool Executor runs them concurrently u
 3. Timed for performance tracking
 
 Results are collected and returned in order matching the original tool calls. After execution,
-`CompletionResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
+`ToolCallResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
 result with its production time).
 
 ### Stage Wrapper Pattern
@@ -207,7 +207,7 @@ When a tool call exceeds the resolved budget, `translate_timeout` (async context
 
 `FallbackProcessor` has a dedicated branch for `ToolTimeoutError`: user strategies with an explicit `trigger_on` can pre-empt, otherwise a built-in template message naming the tool and timeout is returned. **Implicit catch-all strategies (`trigger_on=None`) are skipped for timeouts** — this is the key semantic shift versus prior behaviour. `_request_context_setup` logs an INFO line per customised catch-all so operators can spot impacted toolsets at a glance.
 
-<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
+<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
 ---

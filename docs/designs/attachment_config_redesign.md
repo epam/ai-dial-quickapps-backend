@@ -35,7 +35,7 @@ name is clear enough and avoiding a rename eliminates migration cost for all exi
 
 **Owner:** `StagedBaseTool._run_in_stage_report_success()` — the **single, canonical** filter point.
 
-**Semantics:** After a tool produces its `CompletionResult`, the base class filters `result.attachments` to keep only
+**Semantics:** After a tool produces its `ToolCallResult`, the base class filters `result.attachments` to keep only
 types matching this list. This is the only place this check runs.
 
 **Change:** Remove the `supported_types` check from `_RestApiTool` (it will no longer create attachments itself — that's
@@ -86,7 +86,7 @@ tool that doesn't define its own override.
 - **`content_types`** (`list[str]`, default `["*/*"]`) — which response Content-Types to convert. Uses the same MIME
   matching logic. Only relevant when `enabled=True`.
 - **`include_body_as_content`** (`bool`, default `True`) — when an attachment is created, whether to also keep the
-  response body as `CompletionResult.content`. When `false`, content is set to a placeholder
+  response body as `ToolCallResult.content`. When `false`, content is set to a placeholder
   (e.g., `"See attached file: {filename}"`) rather than left empty, since some LLM providers reject empty tool messages.
 
 This cleanly supports three REST API response modes:
@@ -159,7 +159,7 @@ Common patterns that emerge from combining the orthogonal config fields:
 
 **REST API tool returning JSON data (text only — the new default, no config needed):**
 - `response_as_attachment` is omitted (defaults to `enabled = false`)
-- Result: HTTP response body is returned as `CompletionResult.content` text. No attachment is created. This is the most
+- Result: HTTP response body is returned as `ToolCallResult.content` text. No attachment is created. This is the most
   common case for REST API tools that return structured data for the LLM to process.
 
 **REST API tool returning custom Plotly visualization (propagation only):**

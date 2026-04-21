@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.message_metadata import (
@@ -46,7 +46,7 @@ class _CurrentTimestampTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         timezone_str: str | None = kwargs.get("timezone")
 
         if timezone_str is not None:
@@ -73,7 +73,7 @@ class _CurrentTimestampTool(StagedBaseTool):
             ),
         )
 
-        result = CompletionResult(content=content, content_type="text/plain", state=state)
+        result = ToolCallResult(content=content, content_type="text/plain", state=state)
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result

@@ -13,12 +13,7 @@ from aidial_client.types.chat.request_param import (
 from injector import inject
 from openai.types.chat import ChatCompletionChunk
 
-from quickapp.common import (
-    DEPLOYMENT_AZURE_CLIENT,
-    DIAL_API_KEY,
-    CompletionResult,
-    ForwardedHeaders,
-)
+from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
@@ -70,7 +65,7 @@ class DialCompletionService:
         stage_wrapper: BaseStageWrapper | None,
         relative_attachment_urls: list[str] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
         if not content:
@@ -90,7 +85,7 @@ class DialCompletionService:
             chunks = await self.__azure_client.chat.completions.create(**chat_params)
             result = await self._consume_stream(chunks, stage_wrapper)
 
-        return CompletionResult(
+        return ToolCallResult(
             content=result.content,
             content_type="text/markdown",
             # check if result.attachments: would return false for empty array

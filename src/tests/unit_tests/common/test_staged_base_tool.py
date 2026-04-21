@@ -5,7 +5,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.base import AttachmentConfig
@@ -20,7 +20,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
-        result_to_return: CompletionResult | None = None,
+        result_to_return: ToolCallResult | None = None,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,
@@ -31,12 +31,10 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         )
         self._result_to_return = result_to_return
 
-    async def _run_in_stage_async(
-        self, stage_wrapper, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+    async def _run_in_stage_async(self, stage_wrapper, *args: Any, **kwargs: Any) -> ToolCallResult:
         if self._result_to_return is not None:
             return self._result_to_return
-        return CompletionResult(content="response content", content_type="application/json")
+        return ToolCallResult(content="response content", content_type="application/json")
 
 
 @pytest.fixture
@@ -103,7 +101,7 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     image_attachment = Attachment(type="image/png", title="image.png", data="img_data")
     text_attachment = Attachment(type="text/plain", title="readme.txt", data="text_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[image_attachment, text_attachment],
@@ -143,7 +141,7 @@ async def test_media_type_substitution_applied(mock_stage_wrapper_factory):
 
     attachment = Attachment(type="image/png", title="photo.png", data="img_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[attachment],
@@ -176,7 +174,7 @@ async def test_media_type_substitution_not_applied_when_no_match(mock_stage_wrap
 
     attachment = Attachment(type="image/jpeg", title="photo.jpg", data="img_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[attachment],
@@ -209,7 +207,7 @@ async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
 
     attachment = Attachment(type="image/png", title="chart.png", data="img_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[attachment],

@@ -6,7 +6,7 @@ from urllib.parse import unquote
 from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
-from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
@@ -91,7 +91,7 @@ class _PyInterpreterTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         try:
             code: str = kwargs["code"]
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")
@@ -133,14 +133,14 @@ class _PyInterpreterTool(StagedBaseTool):
                         execution_result
                     )
 
-                result = CompletionResult(
+                result = ToolCallResult(
                     content=f"\n```json\n{execution_result.model_dump_json(indent=2)}\n```\n",
                     content_type=MediaTypes.JSON,
                     attachments=attachments,
                 )
 
         except _PyInterpreterError as e:
-            result = CompletionResult(
+            result = ToolCallResult(
                 content=str(e),
                 content_type=MediaTypes.JSON,
                 attachments=None,

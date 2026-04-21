@@ -1,4 +1,3 @@
-from quickapp.common.completion_result import CompletionResult
 from quickapp.common.message_metadata import (
     MESSAGE_METADATA_KEY,
     MessageMetadata,
@@ -8,13 +7,14 @@ from quickapp.common.message_metadata import (
     set_metadata_in_state,
 )
 from quickapp.common.time_provider import TimeProvider
+from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.timestamp_tooling._timestamp_metadata_enricher import _TimestampMetadataEnricher
 
 
 class TestTimestampMetadataEnricher:
     def test_enriches_result_without_state(self):
         enricher = _TimestampMetadataEnricher(TimeProvider())
-        result = CompletionResult(content="data", content_type="text/plain", state=None)
+        result = ToolCallResult(content="data", content_type="text/plain", state=None)
 
         enricher.enrich(result)
 
@@ -28,7 +28,7 @@ class TestTimestampMetadataEnricher:
 
     def test_enriches_result_with_empty_state(self):
         enricher = _TimestampMetadataEnricher(TimeProvider())
-        result = CompletionResult(content="data", content_type="text/plain", state={})
+        result = ToolCallResult(content="data", content_type="text/plain", state={})
 
         enricher.enrich(result)
 
@@ -50,7 +50,7 @@ class TestTimestampMetadataEnricher:
         )
         state: dict = {}
         set_metadata_in_state(state, existing)
-        result = CompletionResult(content="data", content_type="text/plain", state=state)
+        result = ToolCallResult(content="data", content_type="text/plain", state=state)
 
         enricher.enrich(result)
 
@@ -64,7 +64,7 @@ class TestTimestampMetadataEnricher:
         enricher = _TimestampMetadataEnricher(TimeProvider())
         state: dict = {}
         set_metadata_in_state(state, MessageMetadata())
-        result = CompletionResult(content="data", content_type="text/plain", state=state)
+        result = ToolCallResult(content="data", content_type="text/plain", state=state)
 
         enricher.enrich(result)
 
@@ -79,7 +79,7 @@ class TestTimestampMetadataEnricher:
         enricher = _TimestampMetadataEnricher(
             TimeProvider(tz=ZoneInfo("US/Eastern"), source=TimestampSource.REQUEST)
         )
-        result = CompletionResult(content="data", content_type="text/plain")
+        result = ToolCallResult(content="data", content_type="text/plain")
 
         enricher.enrich(result)
 
@@ -89,7 +89,7 @@ class TestTimestampMetadataEnricher:
 
     def test_state_key_is_correct(self):
         enricher = _TimestampMetadataEnricher(TimeProvider())
-        result = CompletionResult(content="data", content_type="text/plain")
+        result = ToolCallResult(content="data", content_type="text/plain")
 
         enricher.enrich(result)
 
