@@ -42,7 +42,17 @@ When a chat completion request arrives, it flows through several stages before t
 
 The chat completion endpoint receives the incoming request with messages, configuration, and authentication credentials.
 
-### 2. Context Setup
+### 2. Messages Shape Validation
+
+The raw `messages` array is validated against the QuickApps contract `(System)? (User Assistant)* User`
+before any other request processing. The check runs outside the `create_single_choice` block so an
+`InvalidRequestError` (raised from `validate_messages_shape` in `_messages_validator.py`) propagates to
+the aidial_sdk exception handler and produces an HTTP 400 response. All rule violations are collected in
+a single pass and returned together in `display_message`, so clients see every problem at once rather
+than one at a time. Tool messages and misplaced system messages are rejected here because they are
+orchestrator-internal and must never arrive from the client.
+
+### 3. Context Setup
 
 A request-scoped context is created to hold:
 
@@ -51,12 +61,12 @@ A request-scoped context is created to hold:
 - Conversation messages
 - Response choice object for streaming output
 
-### 3. Configuration Resolution
+### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
 definitions from the predefined configuration files.
 
-### 4. Completion Initialization
+### 5. Completion Initialization
 
 Completion initializers are invoked to prepare the request for orchestration. This includes:
 
@@ -73,12 +83,12 @@ Completion initializers are invoked to prepare the request for orchestration. Th
   `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
   the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
-### 5. Error Handling
+### 6. Error Handling
 
 Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
 functionality even when some tools fail to initialize.
 
-### 6. Orchestrator Invocation
+### 7. Orchestrator Invocation
 
 The orchestrator is retrieved from the DI container and its invoke method is called, starting the agent loop.
 
