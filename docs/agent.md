@@ -153,8 +153,9 @@ Quick Apps supports several tool types:
   response body is wrapped as a file attachment. Defaults to disabled — responses are returned as text only.
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
-- **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
-  registered conditionally (see [Attachment Notification](#attachment-notification))
+- **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
+  tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
+  conditionally (see [Attachment Notification](#attachment-notification)).
 
 ### Parallel Execution
 
@@ -234,7 +235,7 @@ The setup pipeline runs the following steps in order:
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
-   using the `available_context` tool. Returns messages unchanged when inactive.
+   using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
 
 4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`, preview): Appends a synthetic
    `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
@@ -272,7 +273,7 @@ The system uses two separate mechanisms to inform the agent about available file
   (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
   `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
-  `available_context` internal tool. This provides structured metadata without modifying user messages.
+  `internal_attachments_available_context` internal tool. This provides structured metadata without modifying user messages.
 
 ### Activation Conditions
 
@@ -292,7 +293,7 @@ both the tool provider and the injector see fully expanded messages and are alwa
 
 ### Context Notification Tool
 
-The **`available_context`** internal tool returns metadata about admin-configured context files attached to the
+The **`internal_attachments_available_context`** internal tool returns metadata about admin-configured context files attached to the
 application. Each entry contains:
 
 - **Title**: File name
@@ -302,8 +303,11 @@ application. Each entry contains:
 - **Change Status**: Whether the file is `new` (added), `updated` (metadata changed), or `removed` since the last
   notification
 
-Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
-file contents when needed.
+Only metadata is returned — actual file content is not included. When the orchestrator deployment accepts the file MIME
+(per DialCore `input_attachment_types`) and the lazy materialization gate passes, the **`internal_attachments_get_content`** tool
+may appear in the tool list; the model passes the exact `url` from the list response to retrieve **one** configured file
+as a tool-result attachment. Otherwise the orchestrator must rely on other configured tools (for example RAG) or answer
+without that native attachment path.
 
 ### Algorithmic Injection
 
@@ -312,7 +316,7 @@ have changed since the last notification was injected.
 
 If changes are detected, synthetic message pairs are appended to the message history:
 
-1. An **assistant message** containing a tool call to `available_context`
+1. An **assistant message** containing a tool call to `internal_attachments_available_context`
 2. A **tool result message** with the current metadata and change indicators
 
 These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
@@ -331,7 +335,8 @@ LLM. The agent can call it at any point during the conversation to re-check avai
   inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
-- **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
+- **Admin context content (`internal_attachments_get_content`)**: When registered, supplies a single admin-configured file
+  as a tool attachment after list-then-get-content; see `docs/designs/lazy_admin_context_attachment.md`.
 
 ---
 
@@ -348,12 +353,13 @@ The application is composed of 13 specialized DI modules:
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
 5. **MCP Tooling Module**: MCP server tool construction
-6. **Internal Tool Module**: Python interpreter, content downloader
+6. **Internal Tool Module**: Python interpreter and other built-in tools configured per application
 7. **Starters Module**: UI starter button configuration
 8. **Configuration Support API Module**: Configuration validation endpoints
 9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
 10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
-11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+11. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
+  (when gated), attachment change detection injector
 12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
 13. **Skills Module**: Skill reader tool, agent skills provider
 
