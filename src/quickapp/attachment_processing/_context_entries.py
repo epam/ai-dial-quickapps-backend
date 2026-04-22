@@ -5,7 +5,11 @@ from enum import Enum
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, Field, ValidationError
 
-from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.attachment_processing._tool_configs import (
+    AVAILABLE_CONTEXT_TOOL_NAME,
+    INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+)
+from quickapp.common.utils import matches_type
 from quickapp.config.context import Context, FileContextConfig
 
 
@@ -88,6 +92,36 @@ def build_context_entries(
     return current_urls, entries
 
 
+def inferred_mime_type_for_file_context_url(url: str) -> str:
+    """Infer MIME from the filename segment of ``url`` (same rule as :func:`build_context_entries`)."""
+    title = url.rsplit("/", 1)[-1]
+    return mimetypes.guess_type(title)[0] or ""
+
+
+def normalize_context_url_argument(raw: str) -> str:
+    """Normalize a model-supplied context URL for whitelist comparison: strip outer whitespace only."""
+    return raw.strip()
+
+
+def should_enable_lazy_context_fetch_tool(
+    contexts: Sequence[Context],
+    input_attachment_types: list[str] | None,
+) -> bool:
+    """True when some admin file context's inferred MIME is allowed on the orchestrator path.
+
+    Uses the same filename-based inference as :func:`build_context_entries` and DialCore
+    ``input_attachment_types`` via :func:`quickapp.common.utils.matches_type`. Empty inferred
+    MIME never matches unless the deployment patterns allow it.
+    """
+    for ctx in contexts:
+        if not isinstance(ctx, FileContextConfig):
+            continue
+        mime = inferred_mime_type_for_file_context_url(ctx.url)
+        if matches_type(mime, input_attachment_types):
+            return True
+    return False
+
+
 def _parse_tool_response(content: str) -> dict[str, ContextEntry] | None:
     """Parse a JSON tool response into a URL → ContextEntry mapping, ignoring removed entries.
 
@@ -127,11 +161,12 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
 
 
 def has_context_tool_history(messages: Sequence[Message]) -> bool:
-    """Check whether message history contains any tool calls for the context tool."""
+    """Check whether message history contains any tool calls for the context list or fetch tools."""
+    names = frozenset({AVAILABLE_CONTEXT_TOOL_NAME, INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME})
     for msg in messages:
         if msg.role == Role.ASSISTANT and msg.tool_calls:
             for tc in msg.tool_calls:
-                if tc.function and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME:
+                if tc.function and tc.function.name in names:
                     return True
     return False
 

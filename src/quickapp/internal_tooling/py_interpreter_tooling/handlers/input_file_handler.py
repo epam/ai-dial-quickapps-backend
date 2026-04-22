@@ -1,10 +1,10 @@
-import os
 from io import BytesIO
 
 from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common import DIAL_API_KEY
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )
@@ -29,7 +29,7 @@ class InputFileHandler:
             dev_dial = AsyncDial(api_key=settings.api_key.get_secret_value(), base_url=settings.url)
             bucket_resp = await dev_dial.bucket.get_raw()
             bucket = bucket_resp.appdata or bucket_resp.bucket
-            filename = os.path.basename(attachment_url)
+            filename = posix_path_last_segment(attachment_url)
             metadata = await dev_dial.files.upload(
                 f"files/{bucket}/{filename}",
                 (filename, BytesIO(file_content), attachment.type),

@@ -49,41 +49,49 @@ class ToolConfigCoreService:
             )
         return self.__dial_client_provider.get()
 
+    async def _resolve_deployment_model(
+        self, dial_client: AsyncDial, deployment_id: str
+    ) -> Deployment | Application:
+        """Load deployment or application metadata from DialCore (same lookup as tool config)."""
+        deployment_model: Deployment | None = None
+        application_model: Application | None = None
+        try:
+            logger.debug(f"Getting deployment tool config for {deployment_id}")
+            deployment_model = await dial_client.deployments.get(deployment_id)
+        except DialException as e:
+            if e.status_code == 404:
+                logger.debug(f"No deployment found, trying application for {deployment_id}")
+                application_model = await dial_client.application.get(deployment_id)
+            else:
+                raise
+
+        model = deployment_model or application_model
+        if model is None:
+            raise RuntimeError(f"Neither deployment nor application found for '{deployment_id}'")
+        return model
+
+    async def get_deployment_or_application_model(
+        self, deployment_id: str, api_key: SecretStr | None = None
+    ) -> Deployment | Application:
+        """
+        Return DialCore ``Deployment`` or ``Application`` for the id without building
+        ``DialDeploymentTool`` (same ``deployments.get`` / ``application.get`` fallback as
+        :meth:`get_basic_tool_config`).
+        """
+        dial_client = self._resolve_dial_client(api_key)
+        return await self._resolve_deployment_model(dial_client, deployment_id)
+
     async def get_basic_tool_config(
         self, deployment: str, api_key: SecretStr | None = None
     ) -> DialDeploymentTool:
         dial_client = self._resolve_dial_client(api_key)
-        deployment_model: Deployment | None = None
-        application_model: Application | None = None
-        try:
-            logger.debug(f"Getting deployment tool config for {deployment}")
-            deployment_model = await dial_client.deployments.get(deployment)
-        except DialException as e:
-            if e.status_code == 404:
-                logger.debug(f"No deployment found, trying application for {deployment}")
-                application_model = await dial_client.application.get(deployment)
-            else:
-                raise
+        model = await self._resolve_deployment_model(dial_client, deployment)
 
         config_schema: dict[str, Any] | None = None
-        if (
-            deployment_model
-            and deployment_model.features
-            and deployment_model.features.configuration
-        ):
+        if model.features and model.features.configuration:
             logger.debug(f"Getting deployment config for {deployment}")
             config_schema = await dial_client.deployments.get_configuration_schema(deployment)
-        elif (
-            application_model
-            and application_model.features
-            and application_model.features.configuration
-        ):
-            logger.debug(f"Getting application config for {deployment}")
-            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
 
-        model = deployment_model or application_model
-        if model is None:
-            raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
         return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
 
     @staticmethod

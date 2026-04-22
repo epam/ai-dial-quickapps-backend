@@ -394,6 +394,7 @@ async def test_pyinterpreter_close_session():
 @pytest.mark.integration
 @e2e_test(
     config_file_set="integration",
+    include_rest_toolset=True,
     test_case=TstCase(
         "Rest-api-toolset-test",
         "Rest api toolset test case",

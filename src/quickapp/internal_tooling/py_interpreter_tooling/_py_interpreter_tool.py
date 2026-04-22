@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 from urllib.parse import unquote
 
@@ -7,6 +6,7 @@ from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
 from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
@@ -170,7 +170,7 @@ class _PyInterpreterTool(StagedBaseTool):
 
         # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
-            target_path = unquote(os.path.basename(file_name))
+            target_path = unquote(posix_path_last_segment(file_name))
 
             if target_path in loaded_file_names:
                 continue
@@ -206,7 +206,7 @@ class _PyInterpreterTool(StagedBaseTool):
             if not matched:
                 logger.warning("No matching attachment found for: %s", file_name)
                 errors.append(
-                    f"{unquote(os.path.basename(file_name))}: "
+                    f"{unquote(posix_path_last_segment(file_name))}: "
                     f"no matching attachment found in conversation"
                 )
 

@@ -1,16 +1,19 @@
 import copy
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
+from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
+from quickapp.agent.orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
 from quickapp.common import (
     DIAL_API_KEY,
     ORCHESTRATOR_AZURE_CLIENT,
@@ -20,6 +23,7 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
+from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
@@ -68,6 +72,24 @@ class AgentModule(Module):
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
+        binder.bind(
+            OrchestratorDeploymentCapabilities,
+            to=OrchestratorDeploymentCapabilities,
+            scope=request_scope,
+        )
+        binder.bind(
+            OrchestratorDeploymentCacheService,
+            to=OrchestratorDeploymentCacheService,
+            scope=singleton,
+        )
+        binder.bind(_OrchestratorDeploymentInitializer, to=_OrchestratorDeploymentInitializer)
+
+    @multiprovider
+    def _provide_completion_initializers(
+        self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
+    ) -> list[CompletionInitializer]:
+        # Runs before Dial/MCP completion initializers (AgentModule is first in AppFactory).
+        return [initializer_provider.get()]
 
     @provider
     def provide_openai_client(

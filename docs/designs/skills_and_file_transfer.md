@@ -642,10 +642,10 @@ The following bugs/improvements were identified during design review and require
 
 1. **Builtin skill file:** Create `config/predefined/skills/tool-call-file-parameter-formatting/SKILL.md` with the
    file transfer skill content in the directory-based layout.
-2. **`predefined_content_provider.py`:** Add directory-based scanning for `ContentType.SKILL` in `_load_all()` —
+2. **`predefined_content_provider.py`:** Add directory-based scanning for `ContentType.SKILL` in `_load_all()`  - 
    iterate subdirectories looking for `SKILL.md` instead of globbing `*.md` files. Key stored content by directory
    name.
-3. **`agent_skills_provider.py`:** Add name-to-directory validation in `_load_skills()` — verify `metadata.name`
+3. **`agent_skills_provider.py`:** Add name-to-directory validation in `_load_skills()` - verify `metadata.name`
    matches the directory name (provider key) and skip with warning if not. Remove duplicate-name deduplication logic
    (no longer needed since directory names are unique within a merged layer). Update name validation regex to reject
    consecutive hyphens (`--`) per the Agent Skills spec.

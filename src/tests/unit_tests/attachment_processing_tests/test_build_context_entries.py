@@ -2,6 +2,7 @@ from quickapp.attachment_processing._context_entries import (
     ContextEntry,
     ContextEntryStatus,
     build_context_entries,
+    should_enable_lazy_context_fetch_tool,
 )
 from quickapp.config.context import Context, FileContextConfig, UserDefinedContextConfig
 
@@ -154,3 +155,29 @@ class TestBuildContextEntries:
         assert by_url["files/bucket/kept.pdf"].status is None
         assert by_url["files/bucket/new.pdf"].status == ContextEntryStatus.new
         assert by_url["files/bucket/gone.txt"].status == ContextEntryStatus.removed
+
+
+class TestShouldEnableLazyContextFetchTool:
+    def test_true_when_pdf_context_and_deployment_accepts_pdf(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
+        assert should_enable_lazy_context_fetch_tool(contexts, ["application/pdf"]) is True
+
+    def test_true_when_non_pdf_inferred_and_deployment_accepts_that_mime(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
+        assert should_enable_lazy_context_fetch_tool(contexts, ["text/plain"]) is True
+
+    def test_false_when_inferred_mime_not_accepted_by_deployment(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
+        assert should_enable_lazy_context_fetch_tool(contexts, ["application/pdf"]) is False
+
+    def test_false_when_deployment_excludes_file_mime(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
+        assert should_enable_lazy_context_fetch_tool(contexts, ["image/*"]) is False
+
+    def test_false_when_input_attachment_types_none(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
+        assert should_enable_lazy_context_fetch_tool(contexts, None) is False
+
+    def test_false_when_input_attachment_types_empty(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
+        assert should_enable_lazy_context_fetch_tool(contexts, []) is False

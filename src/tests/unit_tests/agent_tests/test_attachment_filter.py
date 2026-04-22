@@ -1,6 +1,28 @@
+from unittest.mock import MagicMock
+
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent.orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
+from quickapp.attachment_processing._tool_configs import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import FileContextConfig
+
+
+def _attachment_filter(
+    *,
+    contexts: list | None = None,
+    input_attachment_types: list[str] | None = None,
+) -> _AttachmentFilter:
+    app = MagicMock(spec=ApplicationConfig)
+    app.contexts = contexts if contexts is not None else []
+    caps = OrchestratorDeploymentCapabilities()
+    if input_attachment_types is not None:
+        caps.populate_from_dial_model(
+            MagicMock(id="orch", input_attachment_types=input_attachment_types)
+        )
+    return _AttachmentFilter(app_config=app, orchestrator_capabilities=caps)
 
 
 def _msg(
@@ -32,7 +54,7 @@ def _attachment(
 
 class Test_AttachmentFilter:
     def test_image_attachments_kept_inline(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "look at this",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
@@ -42,7 +64,7 @@ class Test_AttachmentFilter:
         assert result[0].custom_content.attachments[0].type == "image/png"
 
     def test_non_image_attachments_removed(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "check this",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
@@ -51,7 +73,7 @@ class Test_AttachmentFilter:
         assert len(result[0].custom_content.attachments) == 0
 
     def test_xml_metadata_injected_for_attachments(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "original content",
             [
@@ -72,7 +94,7 @@ class Test_AttachmentFilter:
         assert result[0].custom_content.attachments[0].title == "photo.png"
 
     def test_mixed_attachments_only_images_kept(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "",
             [
@@ -89,7 +111,7 @@ class Test_AttachmentFilter:
         assert types == {"image/png", "image/jpeg"}
 
     def test_filter_does_not_mutate_original_messages(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "hello",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
@@ -104,7 +126,7 @@ class Test_AttachmentFilter:
 
     def test_filter_idempotent_on_repeated_calls(self):
         """Calling transform twice on the same list produces identical output."""
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "hello",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
@@ -123,7 +145,7 @@ class Test_AttachmentFilter:
     # --- Multi-message tests ---
 
     def test_multi_message_each_filtered_independently(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg1 = _user_msg(
             "first",
             [
@@ -150,7 +172,7 @@ class Test_AttachmentFilter:
         assert "<title>data.csv</title>" in content1
 
     def test_multi_message_non_attachment_messages_unchanged(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         plain_msg = _user_msg("just text")
         attach_msg = _user_msg(
             "with file",
@@ -168,7 +190,7 @@ class Test_AttachmentFilter:
     # --- Role-based tests ---
 
     def test_assistant_message_image_attachments_stripped(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _msg(
             Role.ASSISTANT,
             "response",
@@ -181,7 +203,7 @@ class Test_AttachmentFilter:
         assert "<title>photo.png</title>" in content
 
     def test_tool_message_attachments_stripped(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _msg(
             Role.TOOL,
             "tool output",
@@ -195,12 +217,12 @@ class Test_AttachmentFilter:
     # --- Edge case tests ---
 
     def test_empty_message_list(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         result = transformer.transform([])
         assert result == []
 
     def test_content_none_with_attachments(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _msg(
             Role.USER,
             None,
@@ -212,7 +234,7 @@ class Test_AttachmentFilter:
         assert "<title>doc.pdf</title>" in content
 
     def test_reference_url_conditional_absent(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "test",
             [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
@@ -223,7 +245,7 @@ class Test_AttachmentFilter:
         assert "<reference_url>" not in content
 
     def test_reference_url_conditional_present(self):
-        transformer = _AttachmentFilter()
+        transformer = _attachment_filter()
         msg = _user_msg(
             "test",
             [
@@ -238,3 +260,91 @@ class Test_AttachmentFilter:
         result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<reference_url>/refs/doc.pdf</reference_url>" in content
+
+    def test_fetch_tool_pdf_retained_when_whitelisted(self):
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _attachment_filter(
+            contexts=contexts, input_attachment_types=["application/pdf"]
+        )
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_1",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"context_url": "files/bucket/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_1",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].type == "application/pdf"
+
+    def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _attachment_filter(
+            contexts=contexts, input_attachment_types=["application/pdf"]
+        )
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_other",
+                    type="function",
+                    function=FunctionCall(name="some_other_tool", arguments="{}"),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content="out",
+            tool_call_id="call_other",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 0
+
+    def test_fetch_tool_pdf_stripped_when_url_not_in_config(self):
+        url = "files/bucket/report.pdf"
+        transformer = _attachment_filter(contexts=[], input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_2",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments="{}",
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content="out",
+            tool_call_id="call_fetch_2",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 0

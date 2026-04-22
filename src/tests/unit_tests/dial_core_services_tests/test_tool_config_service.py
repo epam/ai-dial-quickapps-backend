@@ -105,6 +105,32 @@ class TestGetBasicToolConfig:
         dial_client.application.get.assert_awaited_once_with("my-app")
 
     @pytest.mark.asyncio
+    async def test_get_deployment_or_application_model_returns_deployment(self):
+        dep = _make_deployment_model(deployment_id="gpt-4", has_configuration=False)
+        dial_client = _make_async_dial(deployment_model=dep)
+        svc = _make_service(dial_client)
+
+        result = await svc.get_deployment_or_application_model("gpt-4")
+
+        assert result is dep
+        dial_client.deployments.get.assert_awaited_once_with("gpt-4")
+        dial_client.application.get.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_deployment_or_application_model_falls_back_to_application(self):
+        app = _make_deployment_model(deployment_id="my-app")
+        dial_client = _make_async_dial(
+            deployments_get_side_effect=_make_dial_exception(404),
+            application_model=app,
+        )
+        svc = _make_service(dial_client)
+
+        result = await svc.get_deployment_or_application_model("my-app")
+
+        assert result is app
+        dial_client.application.get.assert_awaited_once_with("my-app")
+
+    @pytest.mark.asyncio
     async def test_non_404_dial_exception_propagates(self):
         dial_client = _make_async_dial(
             deployments_get_side_effect=_make_dial_exception(500),
