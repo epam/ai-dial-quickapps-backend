@@ -70,7 +70,7 @@ There is also **no extension point** in the current pipeline for transforming `T
 `ProcessingContext` is included from day one even though it only carries `tool_call_id` and `tool_name` today. Adding fields to `ProcessingContext` later is non-breaking; changing the `process()` signature later is breaking for every processor. The 3-line class now saves a migration later.
 
 ```python
-# src/quickapp/common/abstract/completion_result_processor.py
+# src/quickapp/common/abstract/tool_call_result_processor.py
 
 class ProcessingContext(BaseModel):
     tool_call_id: str | None
@@ -139,7 +139,7 @@ for tool_call in tool_calls:
 
 **What:** First concrete implementation of `ToolCallResultProcessor`. Detects oversized responses (by size only, regardless of content type) and offloads them.
 
-**Module:** `src/quickapp/completion_result_offload/`
+**Module:** `src/quickapp/tool_call_result_offload/`
 
 **Algorithm:**
 
@@ -175,11 +175,11 @@ flowchart TD
 - `excluded_tools: set[str]` — default `{"read_file_lines", "search_in_file"}`
 - `enabled: bool` — default `True`
 
-**Per-app override:** The app manifest may include a `completion_result_offload` section with a `size_threshold` field. When present, it overrides the global setting for that application only. The override is surfaced to `LargeResponseProcessor` via `ProcessingContext.size_threshold_override` (see Component 1). Absent → global default applies.
+**Per-app override:** The app manifest may include a `tool_call_result_offload` section with a `size_threshold` field. When present, it overrides the global setting for that application only. The override is surfaced to `LargeResponseProcessor` via `ProcessingContext.size_threshold_override` (see Component 1). Absent → global default applies.
 
 **Priority:** `100` (default). No other processors planned today.
 
-**Owner:** `src/quickapp/completion_result_offload/_large_response_processor.py`
+**Owner:** `src/quickapp/tool_call_result_offload/_large_response_processor.py`
 
 ---
 
@@ -215,7 +215,7 @@ flowchart TD
 
 **Preview gating:** Module is **preview-feature-gated**. `configure(binder)` checks `ApplicationConfig.enable_preview_features` (same pattern other preview modules use); when the flag is off, **nothing** is bound — no processor, no tools. This keeps the feature invisible in production deployments until it stabilizes. Once stable, the gate is removed and the module becomes always-on.
 
-**Owner:** `src/quickapp/completion_result_offload/completion_result_offload_module.py`
+**Owner:** `src/quickapp/tool_call_result_offload/tool_call_result_offload_module.py`
 
 **Change:** New file; one-line addition in `app_factory.py`.
 
@@ -326,16 +326,16 @@ sequenceDiagram
 ### Environment variables (pydantic-settings)
 
 ```
-COMPLETION_RESULT_OFFLOAD__ENABLED=true
-COMPLETION_RESULT_OFFLOAD__SIZE_THRESHOLD=40000
-COMPLETION_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","search_in_file"]
+TOOL_CALL_RESULT_OFFLOAD__ENABLED=true
+TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD=40000
+TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","search_in_file"]
 ```
 
 ### Per-app manifest override (example)
 
 ```json
 {
-  "completion_result_offload": {
+  "tool_call_result_offload": {
     "size_threshold": 20000
   }
 }
@@ -381,7 +381,7 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 - New optional DI binding `list[ToolCallResultProcessor]`. Defaults to an empty list if no module provides processors (via existing `@multiprovider` semantics, the binding resolves to an empty list when no providers exist; confirm during implementation).
 - Feature is **preview-gated** by `ENABLE_PREVIEW_FEATURES`. When disabled (the production default today), neither the processor nor the text-file tools are bound — LLM sees no change.
-- When preview is enabled, feature can still be disabled entirely via `COMPLETION_RESULT_OFFLOAD__ENABLED=false`.
+- When preview is enabled, feature can still be disabled entirely via `TOOL_CALL_RESULT_OFFLOAD__ENABLED=false`.
 
 ---
 
@@ -391,10 +391,10 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 | File | Purpose |
 |------|---------|
-| `common/abstract/completion_result_processor.py` | `ToolCallResultProcessor` ABC, `ProcessingContext` model |
-| `completion_result_offload/_large_response_processor.py` | First processor implementation |
-| `completion_result_offload/_settings.py` | `ToolCallResultOffloadSettings` pydantic-settings |
-| `completion_result_offload/completion_result_offload_module.py` | DI wiring (preview-gated) |
+| `common/abstract/tool_call_result_processor.py` | `ToolCallResultProcessor` ABC, `ProcessingContext` model |
+| `tool_call_result_offload/_large_response_processor.py` | First processor implementation |
+| `tool_call_result_offload/_settings.py` | `ToolCallResultOffloadSettings` pydantic-settings |
+| `tool_call_result_offload/tool_call_result_offload_module.py` | DI wiring (preview-gated) |
 | `text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
 | `text_file_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
 | `text_file_tooling/text_file_tooling_module.py` | `TextFileToolingModule` DI wiring |
@@ -413,7 +413,7 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 ### Tests
 
-- Unit: `src/tests/completion_result_offload/` covering threshold / exclusion / fail-open branches for `LargeResponseProcessor`; `src/tests/text_file_tooling/` covering each text-file tool.
+- Unit: `src/tests/tool_call_result_offload/` covering threshold / exclusion / fail-open branches for `LargeResponseProcessor`; `src/tests/text_file_tooling/` covering each text-file tool.
 - Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (UC-3).
 
 ---
