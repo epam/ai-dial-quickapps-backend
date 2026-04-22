@@ -48,13 +48,23 @@ class TestOffloadConfigResolution:
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.size_threshold == 10_000
 
-    def test_excluded_tools_always_from_env(self):
+    def test_excluded_tools_falls_back_to_env_when_app_not_set(self):
         settings = _make_settings(excluded_tools={"tool_a", "tool_b"})
         app_offload = MagicMock()
         app_offload.enabled = True
         app_offload.size_threshold = 40_000
+        app_offload.excluded_tools = None
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.excluded_tools == frozenset({"tool_a", "tool_b"})
+
+    def test_app_excluded_tools_overrides_env(self):
+        settings = _make_settings(excluded_tools={"tool_a", "tool_b"})
+        app_offload = MagicMock()
+        app_offload.enabled = True
+        app_offload.size_threshold = 40_000
+        app_offload.excluded_tools = {"tool_c"}
+        config = _resolve(settings, _make_app_config(app_offload=app_offload))
+        assert config.excluded_tools == frozenset({"tool_c"})
 
     def test_excluded_tools_is_frozenset(self):
         settings = _make_settings(excluded_tools={"tool_a"})

@@ -39,7 +39,11 @@ class ToolCallResultOffloadModule(Module):
         return ResolvedConfig(
             enabled=app.enabled if app is not None else settings.enabled,
             size_threshold=app.size_threshold if app is not None else settings.size_threshold,
-            excluded_tools=frozenset(settings.excluded_tools),
+            excluded_tools=frozenset(
+                app.excluded_tools
+                if app is not None and app.excluded_tools is not None
+                else settings.excluded_tools
+            ),
         )
 
     @multiprovider

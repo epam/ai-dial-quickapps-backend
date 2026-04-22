@@ -167,6 +167,14 @@ class ToolCallResultOffloadAppConfig(BaseModel):
             "When set, overrides the global TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var."
         ),
     )
+    excluded_tools: set[str] | None = Field(
+        default=None,
+        description=(
+            "Per-app override for the set of tool names exempt from offloading. "
+            "When set, replaces the global TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var. "
+            "When null (default), the global setting is used."
+        ),
+    )
 
 
 class ToolDefaults(BaseModel):
