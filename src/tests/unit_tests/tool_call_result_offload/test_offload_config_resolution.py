@@ -36,23 +36,43 @@ class TestOffloadConfigResolution:
         settings = _make_settings(enabled=True)
         app_offload = MagicMock()
         app_offload.enabled = False
-        app_offload.size_threshold = 40_000
+        app_offload.size_threshold = None
+        app_offload.excluded_tools = None
+        config = _resolve(settings, _make_app_config(app_offload=app_offload))
+        assert config.enabled is False
+
+    def test_app_enabled_none_falls_back_to_env(self):
+        settings = _make_settings(enabled=False)
+        app_offload = MagicMock()
+        app_offload.enabled = None
+        app_offload.size_threshold = None
+        app_offload.excluded_tools = None
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.enabled is False
 
     def test_app_size_threshold_overrides_env(self):
         settings = _make_settings(size_threshold=40_000)
         app_offload = MagicMock()
-        app_offload.enabled = True
+        app_offload.enabled = None
         app_offload.size_threshold = 10_000
+        app_offload.excluded_tools = None
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.size_threshold == 10_000
+
+    def test_app_size_threshold_none_falls_back_to_env(self):
+        settings = _make_settings(size_threshold=99_000)
+        app_offload = MagicMock()
+        app_offload.enabled = None
+        app_offload.size_threshold = None
+        app_offload.excluded_tools = None
+        config = _resolve(settings, _make_app_config(app_offload=app_offload))
+        assert config.size_threshold == 99_000
 
     def test_excluded_tools_falls_back_to_env_when_app_not_set(self):
         settings = _make_settings(excluded_tools={"tool_a", "tool_b"})
         app_offload = MagicMock()
-        app_offload.enabled = True
-        app_offload.size_threshold = 40_000
+        app_offload.enabled = None
+        app_offload.size_threshold = None
         app_offload.excluded_tools = None
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.excluded_tools == frozenset({"tool_a", "tool_b"})
@@ -60,8 +80,8 @@ class TestOffloadConfigResolution:
     def test_app_excluded_tools_overrides_env(self):
         settings = _make_settings(excluded_tools={"tool_a", "tool_b"})
         app_offload = MagicMock()
-        app_offload.enabled = True
-        app_offload.size_threshold = 40_000
+        app_offload.enabled = None
+        app_offload.size_threshold = None
         app_offload.excluded_tools = {"tool_c"}
         config = _resolve(settings, _make_app_config(app_offload=app_offload))
         assert config.excluded_tools == frozenset({"tool_c"})

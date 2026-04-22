@@ -34,11 +34,17 @@ class ToolCallResultOffloadModule(Module):
     ) -> ResolvedConfig:
         # Per-app config is None when the preview feature is disabled or not configured —
         # in that case every field falls back to the global env-based setting.
-        # excluded_tools has no per-app override — always taken from global settings.
+        # Each field is resolved independently: null means "use env default".
         app = app_config.tool_defaults.tool_call_result_offload
         return ResolvedConfig(
-            enabled=app.enabled if app is not None else settings.enabled,
-            size_threshold=app.size_threshold if app is not None else settings.size_threshold,
+            enabled=(
+                app.enabled if app is not None and app.enabled is not None else settings.enabled
+            ),
+            size_threshold=(
+                app.size_threshold
+                if app is not None and app.size_threshold is not None
+                else settings.size_threshold
+            ),
             excluded_tools=frozenset(
                 app.excluded_tools
                 if app is not None and app.excluded_tools is not None

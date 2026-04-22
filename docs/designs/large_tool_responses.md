@@ -174,7 +174,7 @@ flowchart TD
 - `excluded_tools: set[str]` — default `{"read_file_lines", "search_in_file"}`
 - `enabled: bool` — default `True`
 
-**Per-app override:** The app manifest may include a `tool_defaults.tool_call_result_offload` section (a `ToolCallResultOffloadAppConfig` Pydantic model, preview-gated). All three fields (`enabled`, `size_threshold`, `excluded_tools`) can be overridden per-app. `excluded_tools` defaults to `null` (meaning "use env default"); the other two fields have the same defaults as the env settings.
+**Per-app override:** The app manifest may include a `tool_defaults.tool_call_result_offload` section (a `ToolCallResultOffloadAppConfig` Pydantic model, preview-gated). All three fields (`enabled`, `size_threshold`, `excluded_tools`) default to `null`, meaning "use the env default". Each field is resolved independently — a non-null value overrides only that field; the rest fall back to env settings.
 
 Config resolution happens **once per request** in `ToolCallResultOffloadModule._provide_offload_config` (a request-scoped `@provider`), which merges env settings with the per-app config into a `ResolvedConfig` dataclass. `LargeResponseProcessor` receives only the resolved config — it has no knowledge of global settings or `ApplicationConfig`.
 
@@ -339,15 +339,13 @@ TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","search_in_file"]
 {
   "tool_defaults": {
     "tool_call_result_offload": {
-      "enabled": true,
-      "size_threshold": 20000,
-      "excluded_tools": ["read_file_lines", "search_in_file", "my_custom_tool"]
+      "size_threshold": 20000
     }
   }
 }
 ```
 
-The per-app config is nested under `tool_defaults` (alongside `timeout_seconds`). All three fields override their global env-var counterparts for that application only. `excluded_tools` defaults to `null` in the manifest (meaning "use env default"); setting it to a list replaces the env default entirely for that app.
+The per-app config is nested under `tool_defaults` (alongside `timeout_seconds`). All three fields default to `null` (omitting them is equivalent to `null`). A non-null value overrides only that field; unset fields fall back to env settings. The example above lowers the threshold for one app while leaving `enabled` and `excluded_tools` governed by env vars.
 
 ### LLM-visible notice (example content the LLM sees after offload)
 
