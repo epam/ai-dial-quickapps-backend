@@ -31,6 +31,7 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer, PreIn
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
@@ -220,6 +221,10 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:
+        return []
+
+    @multiprovider
+    def provide_tool_call_result_processors(self) -> list[ToolCallResultProcessor]:
         return []
 
     @multiprovider
