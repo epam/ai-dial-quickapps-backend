@@ -15,6 +15,9 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_settings import ToolSettings
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import (
@@ -55,6 +58,8 @@ class AppModule(Module):
         binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
+        binder.bind(ToolSettings, to=ToolSettings, scope=singleton)
+        binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
@@ -93,13 +98,18 @@ class AppModule(Module):
 
     @provider
     def __provide_async_dial(
-        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
+        self,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        bearer: DIAL_BEARER,
+        timeout_resolver: ToolTimeoutResolver,
     ) -> AsyncDial:
         return AsyncDial(
             base_url=dial_settings.url,
             api_key=api_key.get_secret_value(),
             api_version=dial_settings.api_version,
             bearer_token=bearer.get_secret_value() if bearer else None,
+            timeout=build_async_dial_timeout(timeout_resolver.resolve()),
         )
 
     @provider

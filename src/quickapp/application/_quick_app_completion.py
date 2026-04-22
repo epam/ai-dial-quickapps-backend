@@ -13,6 +13,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 
 from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler
+from ._messages_validator import validate_messages_shape
 from ._messages_setup import _MessagesSetup
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
@@ -39,6 +40,7 @@ class _QuickAppCompletion(ChatCompletion):
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
+        validate_messages_shape(request.messages)
         timer_service = self.__injector.get(PerformanceTimer)
         timer_service.start_period(self.__timer_period_name, level=1)
         with response.create_single_choice() as choice:

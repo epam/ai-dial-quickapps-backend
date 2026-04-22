@@ -1,5 +1,4 @@
-from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
-from quickapp.common.completion_result import CompletionResult
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.message_metadata import (
     MessageMetadata,
     TimestampMetadata,
@@ -7,9 +6,10 @@ from quickapp.common.message_metadata import (
     set_metadata_in_state,
 )
 from quickapp.common.time_provider import TimeProvider
+from quickapp.common.tool_call_result import ToolCallResult
 
 
-class _TimestampMetadataEnricher(CompletionResultEnricher):
+class _TimestampMetadataEnricher(ToolCallResultEnricher):
     """Stamps every tool result with its production timestamp.
 
     Uses "fill if absent" semantics — if the result already carries
@@ -20,7 +20,7 @@ class _TimestampMetadataEnricher(CompletionResultEnricher):
     def __init__(self, time_provider: TimeProvider):
         self.__time_provider = time_provider
 
-    def enrich(self, result: CompletionResult) -> None:
+    def enrich(self, result: ToolCallResult) -> None:
         if result.state is None:
             result.state = {}
 

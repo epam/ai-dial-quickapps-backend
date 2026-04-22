@@ -34,6 +34,7 @@ from quickapp.dial_core_services.exceptions import (
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 from quickapp.usage_statistics._pricing_service import _PricingService
+from tests.unit_tests.common.common import noop_timeout_resolver_provider
 
 # ---------------------------------------------------------------------------
 # Shared test configuration
@@ -123,6 +124,7 @@ def _tool_config_service(client: AsyncDial) -> ToolConfigCoreService:
     return ToolConfigCoreService(
         dial_settings=_dial_settings(),
         dial_client_provider=_provider(client),
+        timeout_resolver_provider=noop_timeout_resolver_provider(),
     )
 
 
@@ -212,6 +214,7 @@ class TestToolConfigServiceHttpCalls:
         svc = ToolConfigCoreService(
             dial_settings=_dial_settings(),
             dial_client_provider=provider,
+            timeout_resolver_provider=noop_timeout_resolver_provider(),
         )
         result = await svc.get_basic_tool_config("test-model", api_key=SecretStr(API_KEY))
 

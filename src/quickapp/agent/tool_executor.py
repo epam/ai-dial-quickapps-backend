@@ -4,8 +4,8 @@ import logging
 
 from injector import inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
-from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
+from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 
@@ -18,7 +18,7 @@ class ToolExecutor:
     def __init__(
         self,
         tools: list[StagedBaseTool],
-        enrichers: list[CompletionResultEnricher],
+        enrichers: list[ToolCallResultEnricher],
         perf_timer: PerformanceTimer,
     ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
@@ -26,7 +26,7 @@ class ToolExecutor:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
-    async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[CompletionResult]:
+    async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[ToolCallResult]:
         tasks = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)

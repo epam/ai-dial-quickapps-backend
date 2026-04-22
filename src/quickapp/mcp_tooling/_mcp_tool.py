@@ -5,12 +5,14 @@ from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
@@ -39,6 +41,7 @@ class _MCPTool(StagedBaseTool):
         file_service: DialFileService,  # todo combine DialFileService and AttachmentService.
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
+        timeout_resolver: ToolTimeoutResolver,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -58,6 +61,7 @@ class _MCPTool(StagedBaseTool):
         self.__file_service: DialFileService = file_service
         self.__dial_toolset_id = dial_toolset_id
         self.__login_service: InteractiveLoginService = login_service
+        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
@@ -130,69 +134,75 @@ class _MCPTool(StagedBaseTool):
 
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
 
         logger.debug(f"MCP tool called with {kwargs}")
 
-        try:
-            tool_call_result = await self.__connection_manager.call_mcp_tool(
-                self.__tool.name, **kwargs
-            )
-        except MCPUnauthorizedException:
-            if self.__dial_toolset_id is None:
-                raise
-            login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
-            if login_result != LoginResult.SUCCESS:
-                raise
-            tool_call_result = await self.__connection_manager.call_mcp_tool(
-                self.__tool.name, **kwargs
-            )
-        # Handle error flag if present
-        if getattr(tool_call_result, "isError", False):
-            logger.error(
-                "MCP tool call returned isError=True; structuredContent: %s",
-                getattr(tool_call_result, "structuredContent", None),
-            )
-
-        contents = getattr(tool_call_result, "content", []) or []
-        # Separate text blocks from non-text blocks
-        text_parts: list[str] = []
-        non_text_contents: list[Any] = []
-
-        for block in contents:
-            btype = getattr(block, "type", None)
-            if btype == "text":
-                text_parts.append(getattr(block, "text", "") or "")
-            elif btype in ("image", "audio", "resource", "resource_link"):
-                non_text_contents.append(block)
-            else:
-                logger.warning("Unsupported content block type: %s; treating as non-text", btype)
-                non_text_contents.append(block)
-
-        tool_content = "\n\n".join(filter(None, text_parts))
-
-        logger.debug(
-            "Tool returned text length %d and %d non-text content blocks",
-            len(tool_content),
-            len(non_text_contents),
-        )
-
-        attachments = []
-        for content in non_text_contents:
-            attachment = self._content_to_attachment(content)
-            if attachment is not None and self._should_upload(attachment.type):
-                attachment = await self.__dial_attachment_service.upload_attachment_to_core(
-                    attachment
+        timeout = self.__timeout_resolver.resolve()
+        # Wrap the outer body: anyio task groups can raise BaseExceptionGroup, which
+        # is not an Exception and would otherwise bypass `StagedBaseTool.arun()`.
+        async with translate_timeout(self.__tool.name, timeout):
+            try:
+                tool_call_result = await self.__connection_manager.call_mcp_tool(
+                    self.__tool.name, **kwargs
                 )
-                attachments.append(attachment)
+            except MCPUnauthorizedException:
+                if self.__dial_toolset_id is None:
+                    raise
+                login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
+                if login_result != LoginResult.SUCCESS:
+                    raise
+                tool_call_result = await self.__connection_manager.call_mcp_tool(
+                    self.__tool.name, **kwargs
+                )
+            # Handle error flag if present
+            if getattr(tool_call_result, "isError", False):
+                logger.error(
+                    "MCP tool call returned isError=True; structuredContent: %s",
+                    getattr(tool_call_result, "structuredContent", None),
+                )
 
-        result = CompletionResult(
-            content=tool_content,
-            content_type="text/markdown",
-            attachments=attachments or None,
-        )
+            contents = getattr(tool_call_result, "content", []) or []
+            # Separate text blocks from non-text blocks
+            text_parts: list[str] = []
+            non_text_contents: list[Any] = []
 
-        if stage_wrapper:
-            stage_wrapper.add_result(result)
+            for block in contents:
+                btype = getattr(block, "type", None)
+                if btype == "text":
+                    text_parts.append(getattr(block, "text", "") or "")
+                elif btype in ("image", "audio", "resource", "resource_link"):
+                    non_text_contents.append(block)
+                else:
+                    logger.warning(
+                        "Unsupported content block type: %s; treating as non-text", btype
+                    )
+                    non_text_contents.append(block)
 
-        return result
+            tool_content = "\n\n".join(filter(None, text_parts))
+
+            logger.debug(
+                "Tool returned text length %d and %d non-text content blocks",
+                len(tool_content),
+                len(non_text_contents),
+            )
+
+            attachments = []
+            for content in non_text_contents:
+                attachment = self._content_to_attachment(content)
+                if attachment is not None and self._should_upload(attachment.type):
+                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
+                        attachment
+                    )
+                    attachments.append(attachment)
+
+            result = ToolCallResult(
+                content=tool_content,
+                content_type="text/markdown",
+                attachments=attachments or None,
+            )
+
+            if stage_wrapper:
+                stage_wrapper.add_result(result)
+
+            return result

@@ -87,7 +87,7 @@ flowchart TD
     end
     subgraph "Per-Iteration (each LLM call)"
         B["Timestamp Annotation Transformer<br/>(PreInvocationTransformer)"]
-        C["Timestamp Metadata Enricher<br/>(CompletionResultEnricher)"]
+        C["Timestamp Metadata Enricher<br/>(ToolCallResultEnricher)"]
     end
     D["CurrentTimestampTool"]
     E["TimeProvider"]
@@ -142,18 +142,18 @@ Historical timestamps are restored from state, not re-injected.
 
 ### 3. Tool Response Metadata Enrichment
 
-- **What:** `CompletionResultEnricher` ABC in `common/abstract/` and
+- **What:** `ToolCallResultEnricher` ABC in `common/abstract/` and
   `_TimestampMetadataEnricher` implementation in `timestamp_tooling`.
 - **Owner:** ABC in `common/abstract/`, implementation in `timestamp_tooling`.
 - **Semantics:** After each tool completes in `ToolExecutor`, the enricher stamps the result's
   state with timestamp metadata (production time, timezone, source). Uses "fill if absent"
   semantics — if a tool already set metadata, the enricher preserves it.
-- **Change:** `ToolExecutor` receives `list[CompletionResultEnricher]` via DI and runs them
-  on each `CompletionResult` after tool execution. The ABC is needed to keep `agent/` decoupled
+- **Change:** `ToolExecutor` receives `list[ToolCallResultEnricher]` via DI and runs them
+  on each `ToolCallResult` after tool execution. The ABC is needed to keep `agent/` decoupled
   from `timestamp_tooling/` — `ToolExecutor` depends on the abstraction, not the concrete
   implementation.
 
-The metadata is stored in `CompletionResult.state` under a `_message_metadata` key, using a
+The metadata is stored in `ToolCallResult.state` under a `_message_metadata` key, using a
 `MessageMetadata` Pydantic model that nests `TimestampMetadata`.
 
 ### 4. Per-Invocation Annotation Transformer
@@ -492,7 +492,7 @@ None.
 ### Non-breaking changes
 
 - New `features` field on `ApplicationConfig` — defaults to empty `Features()`.
-- New `CompletionResultEnricher` pipeline in `ToolExecutor` — empty list means no change.
+- New `ToolCallResultEnricher` pipeline in `ToolExecutor` — empty list means no change.
 - New `PreInvocationTransformer` pipeline in `AssistantInvoker` — empty list means no change.
 - `_AttachmentFilter` becoming a `PreInvocationTransformer` is an internal refactor with no
   config or behavioral change.
@@ -501,7 +501,7 @@ None.
 
 ### `common/abstract/`
 
-- **Add** `CompletionResultEnricher` ABC (`completion_result_enricher.py`)
+- **Add** `ToolCallResultEnricher` ABC (`tool_call_result_enricher.py`)
 - **Add** `PreInvocationTransformer` ABC (in `base_transformer.py`)
 
 ### `common/`
@@ -526,7 +526,7 @@ None.
 
 ### `agent/`
 
-- **Modify** `ToolExecutor.execute()` — run `CompletionResultEnricher` chain after tool execution
+- **Modify** `ToolExecutor.execute()` — run `ToolCallResultEnricher` chain after tool execution
 - **Modify** `AssistantInvoker.__prepare_messages()` — run `PreInvocationTransformer` chain
 - **Refactor** `_AttachmentFilter` → `PreInvocationTransformer` subclass
 

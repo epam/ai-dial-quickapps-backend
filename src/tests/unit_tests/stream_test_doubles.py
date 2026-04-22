@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 
 from aidial_sdk.chat_completion import Choice
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 
 
@@ -52,5 +52,5 @@ class DummyStageWrapper(BaseStageWrapper):
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
         return ""
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         return ""

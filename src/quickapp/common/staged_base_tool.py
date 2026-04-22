@@ -10,9 +10,9 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
-from .completion_result import CompletionResult
-from .exceptions import InvalidToolCallParameterException
+from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
 from .perf_timer.perf_timer import PerformanceTimer
+from .tool_call_result import ToolCallResult
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type, substitute_media_type
 
@@ -43,12 +43,12 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
-    ) -> CompletionResult: ...
+    ) -> ToolCallResult: ...
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Use only async version")
 
-    async def arun(self, tool_call_id: str, *args: Any, **kwargs: Any) -> CompletionResult:
+    async def arun(self, tool_call_id: str, *args: Any, **kwargs: Any) -> ToolCallResult:
         display = self._tool_config.display
         if display and display.stage and not display.stage.show:
             return await self._run_in_stage_report_success(tool_call_id, None, *args, **kwargs)
@@ -77,7 +77,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             except Exception as e:
                 logger.exception("Error occurred while running tool")
                 fallback = self._tool_config.fallback_configuration
-                if fallback.display_error_in_stage:
+                if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
                     stage_wrapper.add_exception(e)
                 else:
                     stage_wrapper.add_exception(
@@ -96,7 +96,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         stage_wrapper: BaseStageWrapper | None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         params = await self._pre_process_params(**kwargs)
         timer_name = f"tool_{tool_call_id}"
         if stage_wrapper:
@@ -105,9 +105,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             timer_name = f"tool_{stage_wrapper.name}_{tool_call_id}"
         try:
             self.__perf_timer.start_period(timer_name, 3)
-            result: CompletionResult = await self._run_in_stage_async(
-                stage_wrapper, *args, **params
-            )
+            result: ToolCallResult = await self._run_in_stage_async(stage_wrapper, *args, **params)
             result.tool_call_id = tool_call_id
             if result.attachments:
                 attachment_cfg = self._tool_config.attachment

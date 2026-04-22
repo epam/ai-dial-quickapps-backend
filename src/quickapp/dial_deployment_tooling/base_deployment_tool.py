@@ -12,7 +12,7 @@ from aidial_sdk.chat_completion import CustomContent, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from injector import AssistedBuilder
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
@@ -65,7 +65,7 @@ class BaseDeploymentTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None,
         attachment_urls: list[str] | None = None,
         **kwargs,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
         history = None
         if self.__content_propagation and self.__content_propagation.propagate_history:

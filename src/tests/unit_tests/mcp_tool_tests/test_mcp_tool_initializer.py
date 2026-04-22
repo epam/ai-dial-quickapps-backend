@@ -17,10 +17,23 @@ from quickapp.mcp_tooling._mcp_tool import _MCPTool
 
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 def build_side_effect(tool, tool_config):
-    return _MCPTool(tool, tool_config, MagicMock(), MagicMock())
+    return _MCPTool(
+        tool=tool,
+        tool_config=tool_config,
+        connection_manager=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        state_holder=MagicMock(),
+        dial_attachment_service=MagicMock(),
+        perf_timer=MagicMock(),
+        file_service=MagicMock(),
+        dial_toolset_id=None,
+        login_service=MagicMock(),
+        timeout_resolver=noop_timeout_resolver(),
+    )
 
 
 @pytest.fixture
@@ -88,6 +101,7 @@ def mcp_tool1(
         file_service=MagicMock(),
         dial_toolset_id=None,
         login_service=MagicMock(),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
 
@@ -113,6 +127,7 @@ def mcp_tool2(
         file_service=MagicMock(),
         dial_toolset_id=None,
         login_service=MagicMock(),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
 
@@ -145,6 +160,7 @@ def builder_mock():
             file_service=MagicMock(),
             dial_toolset_id=None,
             login_service=MagicMock(),
+            timeout_resolver=noop_timeout_resolver(),
         )
 
     m = MagicMock()
@@ -292,6 +308,7 @@ async def test_connection_manager_build_headers(auth, header_name, expected_head
         toolset_info=toolset_info,
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
+        timeout_resolver=noop_timeout_resolver(),
     )
 
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
@@ -318,6 +335,7 @@ async def test_connection_manager_build_headers_client_id_secret():
         toolset_info=toolset_info,
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
+        timeout_resolver=noop_timeout_resolver(),
     )
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
 

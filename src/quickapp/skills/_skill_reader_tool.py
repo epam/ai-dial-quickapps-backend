@@ -3,7 +3,7 @@ from typing import Any
 
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -42,40 +42,40 @@ class _SkillReaderTool(StagedBaseTool):
         skill_name: str | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         """Execute the skill reader tool."""
         if not skill_name:
             error_msg = "Missing required parameter: skill_name"
             logger.error(error_msg)
-            result = CompletionResult(content=error_msg, content_type="text/plain")
+            result = ToolCallResult(content=error_msg, content_type="text/plain")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
             return result
 
         try:
             content = self.__skills_provider.get_skill_content(skill_name)
-            result = CompletionResult(content=content, content_type="text/markdown")
+            result = ToolCallResult(content=content, content_type="text/markdown")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
             return result
         except FileNotFoundError as e:
             error_msg = f"Error: {str(e)}"
             logger.warning(error_msg)
-            result = CompletionResult(content=error_msg, content_type="text/plain")
+            result = ToolCallResult(content=error_msg, content_type="text/plain")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
             return result
         except ValueError as e:
             error_msg = f"Error: {str(e)}"
             logger.warning(error_msg)
-            result = CompletionResult(content=error_msg, content_type="text/plain")
+            result = ToolCallResult(content=error_msg, content_type="text/plain")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
             return result
         except Exception as e:
             error_msg = f"Error reading skill file: {str(e)}"
             logger.error(error_msg, exc_info=True)
-            result = CompletionResult(content=error_msg, content_type="text/plain")
+            result = ToolCallResult(content=error_msg, content_type="text/plain")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
             return result

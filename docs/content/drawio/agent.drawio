@@ -652,7 +652,7 @@
         <mxCell id="R-qZtiFWiI0F61YLrtzS-21" value="• Open stage&#xa;• Set name&#xa;• Format params&#xa;• Execute&#xa;• Format result&#xa;• Add timing&#xa;• Close stage" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#666666;fontFamily=Open Sans;" parent="1" vertex="1">
           <mxGeometry x="580" y="340" width="120" height="90" as="geometry" />
         </mxCell>
-        <mxCell id="R-qZtiFWiI0F61YLrtzS-22" value="CompletionResults" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
+        <mxCell id="R-qZtiFWiI0F61YLrtzS-22" value="ToolCallResults" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontStyle=1;fontFamily=Open Sans;" parent="1" vertex="1">
           <mxGeometry x="300" y="490" width="200" height="50" as="geometry" />
         </mxCell>
         <mxCell id="R-qZtiFWiI0F61YLrtzS-23" value="content, content_type, attachments, usage" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=9;fontColor=#666666;fontFamily=Open Sans;" parent="1" vertex="1">

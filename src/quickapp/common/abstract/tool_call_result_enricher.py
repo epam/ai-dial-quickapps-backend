@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 
-from quickapp.common.completion_result import CompletionResult
+from quickapp.common.tool_call_result import ToolCallResult
 
 
-class CompletionResultEnricher(ABC):
-    """Enriches a CompletionResult after tool execution.
+class ToolCallResultEnricher(ABC):
+    """Enriches a ToolCallResult after tool execution.
 
     Implementations are applied by ToolExecutor to every tool result.
     Enrichers should use "fill if absent" semantics — if the result
@@ -12,4 +12,4 @@ class CompletionResultEnricher(ABC):
     """
 
     @abstractmethod
-    def enrich(self, result: CompletionResult) -> None: ...
+    def enrich(self, result: ToolCallResult) -> None: ...

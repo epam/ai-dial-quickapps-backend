@@ -4,7 +4,7 @@ from typing import Any, cast
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.config.tools.base import BaseOpenAITool, BaseTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
@@ -134,7 +134,7 @@ class BaseStageWrapper(ABC):
 
         return str(result_value)
 
-    def add_result(self, result: CompletionResult) -> None:
+    def add_result(self, result: ToolCallResult) -> None:
         debug_info = self._build_debug_info_from_result(result)
         self.append_stage_content(debug_info)
         if result.attachments:
@@ -142,4 +142,4 @@ class BaseStageWrapper(ABC):
                 self.add_attachment(att)
 
     @abstractmethod
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str: ...
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str: ...
