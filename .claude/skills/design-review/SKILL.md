@@ -1,9 +1,9 @@
 ---
 name: design-review
-description: Reviews a QuickApps design document in docs/designs/ by delegating the full review to a fresh sub-agent with an isolated context, so the raw exploration and review prose never pollute the main conversation. The sub-agent reads the doc, grounds its analysis in the actual codebase and project docs, identifies problems and edge cases, and appends a numbered Review Notes block directly to the design doc. On revision passes it increments the round number. When the user explicitly approves, it strips the review notes and flips the doc's Status to Approved per docs/designs/README.md. Trigger this skill whenever the user asks to review a design document, run a design review, critique a design doc, validate a design proposal, or mentions "/design-review" with or without a path. Also trigger when the user asks to approve a design doc or mark it as approved.
+description: Use when the user asks to review, critique, validate, or approve a design doc under docs/designs/. Appends a Review Notes block; on explicit approval, strips notes and flips Status to Approved.
 context: fork
-agent: Explore
-model: opus[1m]
+agent: general-purpose
+model: opus
 effort: xhigh
 ---
 
