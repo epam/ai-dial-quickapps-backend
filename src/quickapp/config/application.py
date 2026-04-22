@@ -180,6 +180,10 @@ class ToolDefaults(BaseModel):
             "or each client's library default if neither is set."
         ),
     )
+    tool_call_result_offload: ToolCallResultOffloadAppConfig | None = PreviewField(  # type: ignore[assignment]
+        default_factory=ToolCallResultOffloadAppConfig,
+        description="Per-app configuration for large tool-response offloading.",
+    )
 
 
 class ApplicationConfig(BaseApplicationTypeConfig):
@@ -213,10 +217,6 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     tool_defaults: ToolDefaults = Field(
         default_factory=ToolDefaults,
         description="Defaults applied to every tool call (e.g. timeout).",
-    )
-    tool_call_result_offload: ToolCallResultOffloadAppConfig | None = PreviewField(  # type: ignore[assignment]
-        default_factory=ToolCallResultOffloadAppConfig,
-        description="Per-app configuration for large tool-response offloading.",
     )
 
     @model_validator(mode="after")

@@ -28,9 +28,9 @@ def _make_app_config(size_threshold_override: int | None = None) -> MagicMock:
     if size_threshold_override is not None:
         override = MagicMock()
         override.size_threshold = size_threshold_override
-        cfg.tool_call_result_offload = override
+        cfg.tool_defaults.tool_call_result_offload = override
     else:
-        cfg.tool_call_result_offload = None
+        cfg.tool_defaults.tool_call_result_offload = None
     return cfg
 
 

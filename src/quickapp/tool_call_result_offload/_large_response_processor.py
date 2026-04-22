@@ -37,9 +37,10 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         if ctx.tool_name in self._settings.excluded_tools:
             return result
 
+        app_offload_config = self._app_config.tool_defaults.tool_call_result_offload
         threshold = (
-            self._app_config.tool_call_result_offload.size_threshold
-            if self._app_config.tool_call_result_offload is not None
+            app_offload_config.size_threshold
+            if app_offload_config is not None
             else self._settings.size_threshold
         )
         content_bytes = result.content.encode("utf-8")
