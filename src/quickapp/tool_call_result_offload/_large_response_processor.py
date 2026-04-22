@@ -34,9 +34,12 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         if ctx.tool_name in self._config.excluded_tools:
             return result
 
-        threshold = self._config.size_threshold
+        if len(result.content) < self._config.size_threshold:
+            return result
+
         content_bytes = result.content.encode("utf-8")
-        if len(content_bytes) < threshold:
+        content_size = len(content_bytes)
+        if content_size < self._config.size_threshold:
             return result
 
         timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
@@ -62,7 +65,7 @@ class LargeResponseProcessor(ToolCallResultProcessor):
 
         file_url = uploaded.url
         notice = (
-            f"Response from '{ctx.tool_name}' was too large ({len(content_bytes)} chars) and\n"
+            f"Response from '{ctx.tool_name}' was too large ({content_size} bytes) and\n"
             f"has been saved to: {file_url}\n"
             "Use one of:\n"
             "  - read_file_lines(file_url, start_line, end_line)\n"
@@ -72,7 +75,7 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         state = dict(result.state or {})
         state["offloaded_response"] = {
             "file_url": file_url,
-            "original_size": len(content_bytes),
+            "original_size": content_size,
             "content_type": result.content_type,
         }
 

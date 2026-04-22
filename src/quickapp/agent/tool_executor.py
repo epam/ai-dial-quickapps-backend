@@ -37,9 +37,9 @@ class ToolExecutor:
         valid_calls: list[AccumulatedToolCall] = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)
-            args = json.loads(tc.arguments)
-            logger.debug(f"Making tool calls: {tc.name} with args:{args}")
             if tool:
+                args = json.loads(tc.arguments)
+                logger.debug(f"Making tool calls: {tc.name} with args:{args}")
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
                 valid_calls.append(tc)
 
