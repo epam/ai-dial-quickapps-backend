@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
 
 from aidial_client import AsyncDial
 from injector import inject
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillResolutionWarning, SkillValidationError
@@ -12,9 +12,10 @@ from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills.agent_skills_provider import SkillMetadata
 
 
-@dataclass(frozen=True)
-class ResolvedDialPromptSkill:
+class ResolvedDialPromptSkill(BaseModel):
     """A successfully fetched DIAL prompt skill, including its source URL."""
+
+    model_config = ConfigDict(frozen=True)
 
     url: str
     metadata: SkillMetadata

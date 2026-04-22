@@ -1,6 +1,7 @@
 # Design: DIAL Prompts as Skills
 
-- **Status:** Implemented
+- **Status:** Approved
+- **Approved:** 2026-04-22
 - **Dependencies:**
   - [Agent Skills and File Transfer](skills_and_file_transfer.md) (implemented)
 
@@ -102,7 +103,6 @@ skills:                           # NEW
 
 class DialPromptSkillConfig(BaseModel):
     type: Literal["dial-prompt"] = Field(
-        default="dial-prompt",
         description="Skill sourced from a DIAL prompt.",
     )
     url: Annotated[str, DialResourceConfigField(
@@ -115,9 +115,23 @@ SkillConfig = Annotated[
 ]
 ```
 
+The `type` field drops `default="dial-prompt"`: on a `Literal` discriminator, a default can interfere with
+Pydantic v2's discriminated-union dispatch once a second variant joins (the field must be explicit in the
+input JSON for the discriminator to resolve). Editor autofill keeps working via the JSON schema's
+`const`/`enum` hint.
+
 The `type` discriminator is `"dial-prompt"` rather than `"dial"` because DIAL will later introduce first-class
 skill entities. Reserving `"dial"` (or `"dial-skill"`) for that future integration avoids a rename or
 backward-compatibility shim.
+
+**Single-variant discriminator — intentional scaffolding.** `SkillConfig` is defined as an `Annotated[…,
+Field(discriminator="type")]` even though it currently has only one variant. In Pydantic v2 the
+`discriminator=…` is a no-op until a second member joins the union, so functionally the alias is equivalent
+to `SkillConfig = DialPromptSkillConfig`. The annotated form is kept deliberately to (a) make the JSON
+schema's `oneOf`/`anyOf` shape ready for the first additional variant and (b) signal to callers that
+`type` is the discriminator key. When the second variant lands (see "Out of Scope" — `"custom"` inline
+skills, native `"dial-skill"` entities), the alias expands to `Union[DialPromptSkillConfig,
+OtherSkillConfig]` with no change in call sites.
 
 **`url` field annotation — `DialResourceConfigField`:** The `url` field is annotated with the existing
 `DialResourceConfigField` (emits `dial:resource: true` in the JSON schema). This is the same annotation used by
@@ -279,9 +293,11 @@ ApplicationConfig.skills
          └── Return list of resolved skills
 ```
 
-**Content guard:** Before parsing, the resolver checks `prompt.content`. If `content` is `None` or empty, the
-skill is recorded as a warning (e.g., "DIAL prompt at \<url\> has no content"). This handles prompts that exist
-but have no body — `parse_frontmatter` expects a `str`, so a `None` would otherwise raise a `TypeError`.
+**Content guard:** Before parsing, the resolver checks `prompt.content`. If `content` is `None`, empty, or
+whitespace-only (matching the current `not prompt.content.strip()` check), the skill is recorded as a
+warning (e.g., "DIAL prompt at \<url\> has no content"). This handles prompts that exist but have no body —
+`parse_frontmatter` expects a non-trivial `str`, so a `None`/empty body would otherwise raise or produce an
+unhelpful "no frontmatter" error.
 
 **Validation rules** (same as predefined skills, enforced by `parse_frontmatter`):
 - Must have YAML frontmatter delimited by `---`
@@ -299,20 +315,30 @@ function in `skills/` (e.g. `skills/_frontmatter.py`), importable by both the pr
 times in the `skills` array, it is fetched once. After fetching, if two different DIAL prompts resolve to the
 same skill `name`, the first one (by config order) wins and the duplicate is recorded as a warning.
 
-**Structured warning reporting.** The resolver does **not** log warnings itself. Instead, it returns warnings
-alongside resolved skills so the caller can surface them to the user:
+**URL normalization is not performed.** Deduplication uses the raw `cfg.url` string. Two entries spelled
+differently (trailing slash, URL-encoded vs. decoded, mixed case in a bucket name) are treated as distinct
+and fetched twice. If both resolve to the same skill `name`, the second one produces a duplicate-name
+warning. This is acceptable for a preview feature; canonicalizing via `DialStorageResourceMixin.get_api_path`
+before dedup can be added later if spelling variants become a real problem in practice.
+
+**Structured warning reporting.** The resolver does **not** log warnings or render UI stages itself. Instead,
+it returns warnings alongside resolved skills so the caller — the initializer (see §6) — can route them to the
+request-scoped skills context for later rendering. `SkillResolutionWarning` is a frozen Pydantic model (per
+CODESTYLE §8) with two fields: `url` and `reason`. The resolver's signature:
 
 ```python
-@dataclass
-class SkillResolutionWarning:
-    url: str
-    reason: str
-
 async def resolve(
     self,
     skill_configs: list[DialPromptSkillConfig],
-) -> tuple[list[tuple[SkillMetadata, str]], list[SkillResolutionWarning]]:
+) -> DialPromptSkillResolverOutput:
 ```
+
+`DialPromptSkillResolverOutput` is a frozen Pydantic model with two fields, `resolved:
+list[ResolvedDialPromptSkill]` and `warnings: list[SkillResolutionWarning]`. A named output model is used
+rather than a bare tuple so callers read the fields by name (CODESTYLE §8 — "Pydantic models for complex
+structures"). `ResolvedDialPromptSkill` (also a frozen Pydantic model) carries the source `url`, the parsed
+`SkillMetadata`, and the full `content` — the initializer needs the URL for collision-warning messages and
+for future cross-request debugging.
 
 All failure modes — fetch exceptions, empty content, invalid frontmatter (via `SkillValidationError`), and
 duplicate names — produce a `SkillResolutionWarning` with the prompt URL and a human-readable reason. The
@@ -325,22 +351,34 @@ error type). Without `return_exceptions=True`, the first exception would cancel 
 
 **DI module — `DialPromptSkillsModule`:** Decorated with `@preview_module` and registered in `AppFactory`
 alongside the other feature modules. When `ENABLE_PREVIEW_FEATURES=false`, `AppFactory` filters out the module
-entirely — no resolver is bound, and no DIAL prompt fetching occurs. Binds `DialPromptSkillResolver` at
-`request_scope`.
+entirely — no resolver is bound, and no DIAL prompt fetching occurs. Binds `DialPromptSkillResolver`,
+`_DialPromptSkillInitializer`, and `_DialPromptSkillsContext` at `request_scope` (see §6), and exposes the
+initializer as a `CompletionInitializer` and the context's warnings list via `@multiprovider` — same pattern as
+`MCPToolingModule`.
 
 ### 4. Async transformer and prompt provider interfaces
 
 **Owner:** `common/abstract/` package.
 
-**What:** `PromptPartProvider.get_prompt_part()` and `MessagesTransformer.transform()` become async. This
-eliminates the need for a separate pre-resolve step — the `SkillsRegistry` fetches DIAL prompts lazily inside
-its `get_prompt_part()` call, at the natural point where skills are consumed.
+**What:** `PromptPartProvider.get_prompt_part()` and `MessagesTransformer.transform()` are `async`. Even though
+skill resolution has moved to the initialization phase (see §6) and the registry itself no longer performs
+I/O in `get_prompt_part()`, the async signatures are retained as the general contract for these extension
+points.
 
-**Why?** `PromptPartProvider.get_prompt_part()` and `MessagesTransformer.transform()` are currently synchronous.
-A synchronous interface would force skill resolution into a separate pre-step outside the transformer pipeline
-(e.g. in `_RequestContextSetup`), leaking domain-specific logic into a generic setup class. Making the
-interfaces async lets `SkillsRegistry` fetch DIAL prompts inside its own `get_prompt_part()` — skill resolution
-happens where skills are consumed (prompt assembly), not in a separate orchestration step.
+**Why keep async despite eager resolution?** The interfaces were originally made async so that
+`PromptPartProvider`s could perform asynchronous I/O during prompt assembly. With the refactor in §6, the
+skills registry no longer needs that capability. We retain the async contract for two reasons: (1) concrete
+near-term providers plausibly need async — e.g. a future `DynamicContextPromptProvider` that fetches
+user-specific project context per request, or an `UserMemoryPromptProvider` that reads from a user-scoped
+state service — both fit the `PromptPartProvider` slot naturally but need I/O at prompt-assembly time; and
+(2) reverting the signature would ripple through every transformer implementation, test, and call site for
+negligible benefit. `async def` methods whose bodies are fully synchronous incur only a trivial overhead per
+call.
+
+An alternative — reverting to a synchronous interface and keeping the eager-resolution wiring — was
+considered. It removes dead asynchrony but doubles the size of the refactor's diff without removing any
+runtime cost on the hot path. Out of scope for this revision; can be reconsidered if no async
+`PromptPartProvider` materializes.
 
 **Changes:**
 
@@ -361,12 +399,12 @@ happens where skills are consumed (prompt assembly), not in a separate orchestra
 | `_InjectFileTransferInstructionTransformer.transform()` | No |
 | `_TimestampInjectionTransformer.transform()` | No |
 
-**Call site:** `_RequestContextSetup.setup()` already calls `_MessagesSetup.setup()` — it just needs to
-`await` it. No new dependencies on `_RequestContextSetup`.
+**Call site.** `_MessagesSetup.setup()` is invoked in the post-initializer phase — see §6.1 for the new
+pipeline order. The signature is unchanged; only the call site moves.
 
 **`PreInvocationTransformer` is not affected.** `base_transformer.py` defines both `MessagesTransformer` (runs
 once at setup) and `PreInvocationTransformer` (runs before every LLM call in
-`AssistantInvoker.__prepare_messages()`). Only `MessagesTransformer` becomes async. `PreInvocationTransformer`
+`AssistantInvoker.__prepare_messages()`). Only `MessagesTransformer` is async. `PreInvocationTransformer`
 remains synchronous — it has no async needs and runs in a different call path.
 
 **`ConfigurationRequest` path:** `_MessagesSetup.setup()` is only called for `Request` (chat completion),
@@ -377,61 +415,84 @@ not for `ConfigurationRequest`. No change needed.
 **Owner:** `skills/` package.
 
 **What:** A request-scoped `SkillsRegistry` that merges predefined skills (from the singleton
-`AgentSkillsProvider`) with external skills (from resolvers like `DialPromptSkillResolver`) into a unified
-skill set for the current request. Implements `PromptPartProvider` — fetches and merges lazily on first
-`get_prompt_part()` call.
+`AgentSkillsProvider`) with external skills that were already resolved during the initialization phase (see
+§6) into a unified skill set for the current request. Implements `PromptPartProvider`.
 
 **Why a new component?** `AgentSkillsProvider` is a singleton that loads skills eagerly at startup. External
 skills (e.g. from DIAL prompts) are per-request (they depend on user credentials and may change between
 requests). Merging these two sources requires a request-scoped component.
 
+**Resolution timing — eager, not lazy.** External skills are fetched during the initialization phase by
+`_DialPromptSkillInitializer` (see §6), which populates `_DialPromptSkillsContext` before the agent invoker
+runs. By the time any `PromptPartProvider` is consulted, every DIAL prompt skill has already been fetched
+(or failed), and every warning has already been collected. The registry therefore does **no I/O** — it is a
+pure in-memory merge over two ready data sources.
+
+The prior revision of this design had the registry perform lazy fetching inside `get_prompt_part()` and
+render UI stages for failures. That conflated three responsibilities in one class: I/O orchestration, data
+merging, and presentation. Moving I/O to a dedicated initializer (§6) and presentation to a dedicated
+handler (§6) aligns skills with the MCP tool initialization pattern — see `_MCPToolInitializer`,
+`_MCPToolingContext`, and `_InitializationErrorHandler`.
+
 **Semantics:**
 
-- Constructed per-request with injected `AgentSkillsProvider` (singleton), `DialPromptSkillResolver`
-  (request-scoped, optional), `ProviderOf[ApplicationConfig]` (deferred access via `.get()` — required
-  because `ApplicationConfig` is populated on `_RequestContext` after DI construction; same pattern as
-  `ConfigBasedPromptProvider`, `_AttachmentNotificationInjector`, and `_TimestampInjectionTransformer`),
-  and `ProviderOf[Stage]` (for surfacing warnings to the user).
-- `async get_prompt_part() -> str` — on first call: reads `skills` config via `provider_of.get()`, fetches
-  DIAL prompt skills via the resolver, merges with predefined, generates combined XML, caches everything.
-  On subsequent calls: returns cached XML. The entire fetch-merge block is wrapped in `try/except` — if
-  the fetch fails catastrophically (e.g. DIAL Core outage), falls back to predefined-only skills. A DIAL
-  Core failure never prevents the request from being served. A failed fetch sets a "resolved" flag —
-  subsequent calls (including `get_skill_content()`) use whatever was cached (predefined only) and do not
-  re-attempt the DIAL prompt fetch within the same request.
-- `async get_skill_content(name: str) -> str` — returns full content for a skill by name. Triggers
-  lazy fetch if cache is not yet populated (same cache as `get_prompt_part()`). Making this async eliminates
-  the implicit ordering invariant between prompt assembly and `read_skill` execution. If the lazy fetch fails,
-  only predefined skills are cached — `get_skill_content()` for a DIAL prompt skill raises `FileNotFoundError`,
-  preserving the existing error contract used by `_SkillReaderTool._run_in_stage_async()`. If the name is not
-  in the merged set at all, `FileNotFoundError` is raised.
-- The lazy fetch + cache pattern means no explicit `resolve()` call is needed anywhere.
+- Constructed per-request with injected `AgentSkillsProvider` (singleton), and `_DialPromptSkillsContext`
+  (request-scoped, optional — see §6). The registry no longer depends on `DialPromptSkillResolver`,
+  `ProviderOf[ApplicationConfig]`, or `ProviderOf[Stage]`.
+- `async get_prompt_part() -> str` — builds the merged metadata list (predefined + context-resolved DIAL
+  prompt skills, with collisions dropped) and returns the combined XML. Cached in-memory after the first
+  call for the rest of the request. No fetching, no error handling here — by contract, the context is
+  populated (or empty) by the time this method runs. Stays `async` to match the `PromptPartProvider` ABC
+  (§4).
+- `get_skill_content(name: str) -> str` — **synchronous**. Returns full content for a skill by name. If
+  the skill is predefined, looks up in `AgentSkillsProvider.get_all_skill_contents()`. If the skill is a
+  DIAL prompt skill, looks up in the context's merged content map. Raises `FileNotFoundError` when the
+  name is not in the merged set — preserving the existing error contract used by
+  `_SkillReaderTool._run_in_stage_async()`. Not part of `PromptPartProvider` or any other abstract base;
+  under the eager model it is a pure dict lookup. Making it sync avoids a misleading `await` at the one
+  caller (`_SkillReaderTool`) and signals clearly that all resolution has already happened.
 
 **DI wiring when preview is disabled:** When `DialPromptSkillsModule` is filtered out (preview off),
-`DialPromptSkillResolver` is not bound. `SkillsRegistry` handles this via optional injection
-(`DialPromptSkillResolver | None = None`). When `None`, `get_prompt_part()` returns only predefined skills
-XML — no DIAL prompt fetching occurs.
+`_DialPromptSkillsContext` is not bound. `SkillsRegistry` handles this via optional injection
+(`_DialPromptSkillsContext | None = None`). When `None`, the registry sees only predefined skills — no DIAL
+prompt skills ever appear.
 
 **Merge semantics:**
 1. Start with all predefined skills (from `AgentSkillsProvider`). These are admin-configured and always take
    precedence.
-2. Add DIAL prompt skills. If a DIAL prompt skill has the same `name` as a predefined skill, the DIAL prompt
-   skill is **skipped** — predefined wins. The collision is added to the warnings list.
+2. Add DIAL prompt skills from the context. If a DIAL prompt skill has the same `name` as a predefined
+   skill, the DIAL prompt skill is **skipped** — predefined wins. The collision produces a
+   `SkillResolutionWarning` that is pushed into the context (so the warning stage in §6 picks it up).
+   Collision detection happens in the registry, not the initializer, because only the registry can compare
+   against predefined names.
 3. The registry generates combined XML from the merged metadata list. XML generation is owned exclusively
    by `SkillsRegistry` — no other component produces XML.
 
-**User-facing warning stage.** After resolution, if any warnings were collected (from the resolver's return
-value or from the registry's own merge-time collisions), the registry opens a stage via `ProviderOf[Stage]`
-and renders all warnings as a markdown list — following the same pattern as `_InitializationErrorHandler`.
-This ensures the user sees exactly which skills failed and why, rather than warnings being silently lost in
-server logs. The stage is closed with `Status.COMPLETED` (the request proceeds with remaining skills).
+**Skill precedence summary.** Combining §3's resolver-level dedup with the registry's predefined-wins rule
+gives a single three-level precedence:
 
-No `logger.warning()` calls are made for DIAL prompt skill issues — all diagnostic output goes through the
-stage. (Predefined skill issues at startup still use logging, since there is no request-scoped stage
-available.)
+| Priority | Source | Behavior on conflict |
+|---|---|---|
+| 1 (highest) | Predefined skill (`AgentSkillsProvider`) | Always wins |
+| 2 | First DIAL prompt skill by config order with a given `name` | Beats subsequent DIAL prompt entries with the same name |
+| 3 (lowest) | Subsequent DIAL prompt skills with an already-seen name | Dropped; duplicate-name `SkillResolutionWarning` emitted |
 
-**Concurrency:** Multiple DIAL prompt fetches within a single request are parallelized with `asyncio.gather()`
-inside the resolver for better latency when multiple skills are configured.
+A DIAL prompt skill demoted by rule 1 produces a "predefined takes precedence" warning; one demoted by
+rule 3 produces a "duplicate skill name" warning. Both flow to the same stage via the context.
+
+**`SkillMetadata.metadata` typing.** The refactor also tightens the `metadata` field annotation on
+`SkillMetadata` from the current bare `dict` (at `src/quickapp/skills/agent_skills_provider.py:18`) to
+`dict[str, str] | None`. This field appears in every JSON schema emitted by `make dump_app_schema` and in
+every response of `/v1/configuration-support/skills`, so a precise type pays off more than a typical
+internal refinement.
+
+**Collision warnings are detected at merge, reported via the context.** The initializer cannot detect
+predefined-vs-DIAL-prompt name collisions (it has no reference to the predefined set). The registry detects
+them during its merge and appends them to the same `_DialPromptSkillsContext`. Because the context feeds the
+warning handler (§6.4), collision warnings reach the user through the same stage as fetch/validation
+warnings — one consolidated UI surface. The pipeline reshuffle in §6.1 is what makes this safe: the registry
+runs its merge (in the post-init phase, during `_AddSystemPromptTransformer`) *before* the warning handler
+reads the merged list.
 
 **`AgentSkillsProvider` becomes a pure data store.** The singleton drops its `PromptPartProvider`
 implementation entirely — no more `get_prompt_part()`, `get_skills_xml()`, `_generate_xml()`, or
@@ -440,8 +501,8 @@ implementation entirely — no more `get_prompt_part()`, `get_skills_xml()`, `_g
 - `get_all_skill_contents() -> dict[str, str]` — returns `{name: full_content}` for all predefined skills.
 - `get_skill_content(name: str) -> str` — still needed by `_InjectFileTransferInstructionTransformer`.
 
-Each skill source (`AgentSkillsProvider`, `DialPromptSkillResolver`) produces `list[SkillMetadata]` + content.
-The registry is the single point that merges metadata, converts to XML, and exposes the result via
+Each skill source (`AgentSkillsProvider`, `_DialPromptSkillsContext`) produces `list[SkillMetadata]` +
+content. The registry is the single point that merges metadata, converts to XML, and exposes the result via
 `PromptPartProvider`.
 
 **`_InjectFileTransferInstructionTransformer` stays on `AgentSkillsProvider`.** This transformer only reads the
@@ -450,6 +511,201 @@ of user config. It does not need the registry and should not depend on it.
 
 **Impact on `_SkillReaderTool`:** The tool's dependency changes from `AgentSkillsProvider` to `SkillsRegistry`.
 When the agent calls `read_skill`, the registry looks up the skill by name in the merged (deduplicated) set.
+
+### 6. Eager resolution — pipeline reshuffle, initializer, context, and warning handler
+
+**Owner:** `dial_prompt_skills/` package for the new components; `application/` package for the pipeline
+reshuffle; `skills/` package for the warning handler. The wiring mirrors MCP tooling.
+
+**Why eager.** The previous revision of this design resolved DIAL prompt skills lazily inside
+`SkillsRegistry.get_prompt_part()` and rendered failures through a stage that `SkillsRegistry` opened
+directly. That shape has two problems:
+
+1. **Responsibility smear.** The registry owned I/O, data merging, and UI presentation in one class. Each
+   of those concerns evolves for different reasons.
+2. **Inconsistency with MCP tool initialization.** Tool failures already flow through
+   `_MCPToolingContext.append_exception` → `list[ToolInitializationException]` multiprovider →
+   `_InitializationErrorHandler`. Skills invented a parallel, incompatible presentation mechanism.
+
+Moving skill resolution to the initializer phase requires a pipeline reshuffle (§6.1) because message
+transformation currently runs *before* initializers. Everything else in this section depends on that
+reshuffle being in place.
+
+#### 6.1 Pipeline reshuffle — message transformation moves post-initializer
+
+Today, `_QuickAppCompletion.chat_completion()` runs:
+
+```
+_RequestContextSetup.setup(request, choice)   # includes _MessagesSetup.setup() inline
+invoke_initializers(InitializerType.completion)
+_InitializationErrorHandler.handle_initialization_errors()
+Orchestrator.invoke()
+```
+
+`_RequestContextSetup.setup()` awaits `_MessagesSetup.setup()` (see `_request_context_setup.py:59`), which
+runs every `MessagesTransformer` — including `_AddSystemPromptTransformer`, which calls every
+`PromptPartProvider.get_prompt_part()`, including `SkillsRegistry.get_prompt_part()`. So by the time
+initializers run, the system-prompt XML has already been built. An eager
+`_DialPromptSkillInitializer` that populates state after that point would be wasted: the XML would never see
+the DIAL prompt skills.
+
+This revision splits `_RequestContextSetup` into two phases and moves message transformation to a new step
+that runs **after** initializers:
+
+| Step | Responsibility | Runs |
+|---|---|---|
+| `_RequestContextSetup.setup_pre_init(request, choice)` | populate `api_key`, `bearer`, `application_config`, raw `messages`, `forwarded_headers`, `client_channel_id`, `response_format` | before `invoke_initializers` |
+| `invoke_initializers(InitializerType.completion)` | run initializers — including `_DialPromptSkillInitializer` and existing tool initializers | — |
+| `_InitializationErrorHandler.handle_initialization_errors()` | render "Tool initialization errors" stage | — |
+| `_RequestContextSetup.finalize_messages()` | internally calls `_MessagesSetup.setup()` and stores the transformed messages on `_RequestContext`; runs every `MessagesTransformer`, including `_AddSystemPromptTransformer` which produces the system prompt | after handler above |
+| `_SkillResolutionWarningHandler.handle_skill_resolution_warnings()` | render "Skill loading warnings" stage (see §6.4) | after messages finalize |
+| `Orchestrator.invoke()` | run the agent | — |
+
+`finalize_messages()` is a method on `_RequestContextSetup`, not a direct call to `_MessagesSetup` from
+`_QuickAppCompletion`. Keeping the split inside one class means `_QuickAppCompletion` only knows two
+context-setup entry points (pre-init, finalize), and `_RequestContextSetup` stays the single authority over
+what lives on `_RequestContext`.
+
+All existing `MessagesTransformer` implementations continue to work unchanged — they just run later. The
+split only affects the order of the two halves of context setup. No transformer today depends on initializer
+output *except* `_AddSystemPromptTransformer` via the new `SkillsRegistry` contract in §5; the reshuffle is
+what unlocks that dependency.
+
+**Interaction with `_InjectFileTransferInstructionTransformer`.** This transformer reads the predefined
+`tool-call-file-parameter-formatting` skill from `AgentSkillsProvider` (a singleton populated at startup). It
+does not depend on any request-scoped initializer. It runs in the post-init phase like every other
+`MessagesTransformer` — nothing changes from its perspective.
+
+**Backward compatibility.** `_MessagesSetup.setup()` keeps its signature; only its call site moves. External
+API is untouched.
+
+#### 6.2 `_DialPromptSkillInitializer` (`CompletionInitializer`)
+
+**Owner:** `dial_prompt_skills/`.
+
+Implements `CompletionInitializer.initialize()`. Reads `ApplicationConfig.skills` via `ProviderOf`, delegates
+to `DialPromptSkillResolver.resolve(skill_configs)`, and pushes both halves of the return tuple into
+`_DialPromptSkillsContext`. If `skills` is `None`/empty, the initializer is a no-op. If the resolver raises,
+the initializer catches the exception and records a dedicated *catastrophic* entry — see §6.3's
+`catastrophic_failure` field — then returns. The request proceeds with predefined skills only. This matches
+the graceful-degradation semantics in §3.
+
+**Reachability of the catastrophic branch.** The resolver's per-URL paths already go through
+`asyncio.gather(return_exceptions=True)`, so individual fetch failures become per-URL
+`SkillResolutionWarning`s, not raised exceptions. And because `AsyncDial` is injected into the resolver's
+constructor, any client-construction failure would surface during `invoke_initializers`'s injector lookup,
+not inside `initialize()`. The catastrophic branch therefore only covers a narrow class of synchronous
+bugs — e.g. `asyncio.gather` raising before it can schedule (unlikely), or a `TypeError`/`AttributeError`
+from a coding mistake in the resolver. We still keep the distinct field (rather than folding into
+`warnings` with an empty `url`) because when it fires the UI header should say "DIAL prompts as a whole
+could not be loaded" rather than presenting a lone stray warning that is indistinguishable from a
+per-URL issue. If in practice this field never fires in production over several releases, we can collapse
+it into the warnings list then.
+
+Registered as one of `list[CompletionInitializer]` via `DialPromptSkillsModule`'s `@multiprovider`, same way
+`_MCPToolInitializer` is registered by `MCPToolingModule`.
+
+**Initializer concurrency.** `invoke_initializers` iterates and awaits each initializer sequentially (see
+`src/quickapp/common/base_initializer.py:30-34`). DIAL prompt fetches do **not** overlap MCP tool
+initialization: the DIAL prompt initializer runs before or after the MCP one depending on registration
+order. Parallelism within `_DialPromptSkillInitializer` comes from `asyncio.gather` *inside* its
+`resolve()` delegate (§3), which fans out per-URL fetches. Inter-initializer concurrency would require
+changing `invoke_initializers` to `asyncio.gather` across all initializers — a separate concern with its
+own trade-offs (ordering assumptions, error-propagation semantics) and is out of scope for this design.
+
+**Request-scoped `AsyncDial`.** `DialPromptSkillResolver.__init__` takes `AsyncDial` as a constructor
+dependency. `AppModule` already provides a request-scoped `AsyncDial` bound with the current request's
+`api-key` — the same instance used by `DialFileService` and `ToolConfigCoreService`. The resolver's
+injection relies on that binding; this design does not introduce a new `AsyncDial` scope.
+
+#### 6.3 `_DialPromptSkillsContext` (request-scoped)
+
+**Owner:** `dial_prompt_skills/`.
+
+A thread-safe bag of request-scoped state. Mirrors `_MCPToolingContext` in spirit but does **not** subclass
+`ToolingContextBase` — the base class pins `_tools` / `_exceptions` as field names, which do not fit the
+skills domain. `_DialPromptSkillsContext` is a standalone class with skills-specific field names
+(`_resolved_skills`, `_warnings`, `_catastrophic_failure`). If a third request-scoped context with the same
+shape appears, the three can be refactored onto a shared generic base; until then, the code reads more
+clearly without the indirection.
+
+| `_MCPToolingContext` | `_DialPromptSkillsContext` |
+|---|---|
+| `_tools: list[StagedBaseTool]` | `_resolved_skills: list[ResolvedDialPromptSkill]` |
+| `_exceptions: list[ToolInitializationException]` | `_warnings: list[SkillResolutionWarning]` |
+| — | `_catastrophic_failure: SkillResolutionWarning \| None` |
+| `append_tool` / `extend_tools` | `extend_resolved_skills` |
+| `append_exception` | `append_warning` / `extend_warnings` / `set_catastrophic_failure` |
+| `_lock: threading.Lock` | `_lock: threading.Lock` |
+
+**Catastrophic failures are a distinct field, not a sentinel warning.** A per-URL failure is a
+`SkillResolutionWarning(url=..., reason=...)`; a top-level failure (DIAL prompts as a whole could not be
+loaded) is captured in the `_catastrophic_failure` field. The warning handler (§6.4) renders them
+differently (different header, different severity wording). This removes the `url=""` sentinel from the
+previous revision — no magic values, no special-casing in the warning renderer beyond "does this field
+exist?".
+
+`DialPromptSkillsModule` exposes the warnings list via `@multiprovider -> list[SkillResolutionWarning]`. The
+catastrophic field is **not** exposed as a separate binding — `injector` resolves by exact type and
+`Optional[X]` is fragile to bind. Instead, `_SkillResolutionWarningHandler` injects
+`_DialPromptSkillsContext | None` directly (same optional-injection style as `SkillsRegistry`) and reads
+`context.catastrophic_failure` as a property. This mirrors how `_MCPToolingContext.exceptions` is exposed
+through the context object itself.
+
+**Collision warnings from `SkillsRegistry`.** The registry appends predefined-vs-external name collisions to
+the context's warnings list during its merge (see §5). Because the merge runs in the post-init phase (§6.1)
+and the warning handler runs *after* the merge (§6.1 table), these collisions surface in the same stage as
+fetch/validation warnings — one consolidated UI surface. No primer initializer is needed.
+
+**Mutator call sites.** The initializer calls `extend_warnings(resolver_output.warnings)` with the
+resolver's list in one shot; `SkillsRegistry` calls `append_warning(...)` once per predefined-vs-external
+collision it detects during merge; the initializer calls `set_catastrophic_failure(...)` when it catches a
+resolver-level exception.
+
+If a second skill source is introduced later (e.g. `"custom"` inline skills with their own initializer), it
+appends to the same context and gets rendered in the same stage at no extra wiring cost — identical to how
+multiple tool initializers feed one error handler today.
+
+#### 6.4 `_SkillResolutionWarningHandler`
+
+**Owner:** `skills/`.
+
+A small class analogous to `_InitializationErrorHandler`. Injected with `ProviderOf[Stage]` and
+`_DialPromptSkillsContext | None` (optional — `None` when preview is disabled). **The handler reads both
+warnings and catastrophic failure from the context — one source of truth, matching how
+`_MCPToolingContext.exceptions` is consumed.** The `@multiprovider -> list[SkillResolutionWarning]` exposed
+by `DialPromptSkillsModule` (§3) exists for other potential consumers (future metrics, logs, tests), not
+for the handler itself. One method, `handle_skill_resolution_warnings()`:
+
+- Returns immediately if context is `None` (preview disabled).
+- Reads `context.warnings` and `context.catastrophic_failure`. If both are empty/`None`, returns (no stage
+  rendered).
+- Opens a fresh `Stage` titled **"Skill loading warnings"** — distinct from the
+  `_InitializationErrorHandler` stage ("🚨 Tool initialization errors 🚨"). `ProviderOf[Stage]` yields a new
+  `Stage` per `.get()` call (via `Choice.create_stage()` semantics), so the two handlers do not share a
+  stage.
+- If `catastrophic_failure` is set, renders it first with a distinct header explaining that DIAL prompts as
+  a whole could not be loaded (fallback to predefined-only is in effect).
+- Renders each warning as a bullet (`**{url}**: {reason}`).
+- Closes with `Status.COMPLETED` — the request proceeds with remaining skills; this is a warning, not a
+  failure.
+
+The handler does not trigger skill resolution or merging itself — those are already complete by the time
+it runs (see §6.1 call ordering). `SkillsRegistry` no longer injects `ProviderOf[Stage]`.
+
+**Stage ownership summary.**
+
+| Handler | Stage name | Close status | Source |
+|---|---|---|---|
+| `_InitializationErrorHandler` | "🚨 Tool initialization errors 🚨" | `FAILED` (UI-only; the request still proceeds) | tool initializers |
+| `_SkillResolutionWarningHandler` | "Skill loading warnings" | `COMPLETED` | DIAL prompt skill resolver + registry merge |
+
+**DI wiring when preview is disabled.** `DialPromptSkillsModule` is filtered out as before. With preview off:
+- `_DialPromptSkillInitializer` is not bound; no DIAL prompt fetching occurs.
+- `_DialPromptSkillsContext` is not bound; `SkillsRegistry` falls back to `None` via optional injection and
+  sees only predefined skills. No collisions possible, so no collision warnings.
+- The `list[SkillResolutionWarning]` multiprovider returns an empty list and the catastrophic provider
+  returns `None`, so `_SkillResolutionWarningHandler` is a no-op.
 
 ---
 
@@ -489,8 +745,10 @@ Two new endpoints on the `_Controller` in `configuration_support/`:
 
 **1. List predefined skills — `GET /v1/configuration-support/skills`**
 
-Returns `list[SkillMetadata]` (name, description, and optional fields like license, compatibility). The
-controller depends on `AgentSkillsProvider` (which holds parsed metadata), not `ConfigResolver`. This mirrors
+Returns `list[SkillMetadata]` — the full canonical model including `name`, `description`, `license`,
+`compatibility`, `metadata`, and `allowed_tools`. No fields are trimmed: the editor needs visibility into
+everything the frontmatter declared so it can display (e.g.) allowed-tool lists or licensing. The controller
+depends on `AgentSkillsProvider` (which holds parsed metadata), not `ConfigResolver`. This mirrors
 the `/system-prompts` endpoint pattern (returns structured metadata, not just names).
 
 This endpoint is **predefined-only** — DIAL prompt skills are per-request (depend on user credentials) and
@@ -510,7 +768,8 @@ pattern as the existing `GET /v1/configuration-support/template/{deployment}` en
 { "type": "dial-prompt", "url": "prompts/<bucket>/skills/my-skill" }
 ```
 
-**Response on success:** `SkillMetadata` (name, description, and optional fields).
+**Response on success:** `SkillMetadata` — the same canonical shape as the listing endpoint, including
+`allowed_tools` and any other optional frontmatter fields.
 
 **Response on failure:** HTTP error with a descriptive detail message:
 - 404 — resource not found or inaccessible (e.g. DIAL prompt does not exist, permission denied).
@@ -573,6 +832,7 @@ A user creates a prompt in DIAL with content following the Agent Skills format:
 ---
 name: code-review-guidelines
 description: Guidelines for reviewing code changes. Use when the user asks for a code review.
+allowed-tools: [read_file, grep]
 metadata:
   author: "team-platform"
   version: "1.0"
@@ -623,6 +883,7 @@ The agent's system prompt includes:
   <skill>
     <name>code-review-guidelines</name>
     <description>Guidelines for reviewing code changes. Use when the user asks for a code review.</description>
+    <allowed_tools>read_file grep</allowed_tools>
     <metadata>
       <entry key="author">team-platform</entry>
       <entry key="version">1.0</entry>
@@ -630,6 +891,9 @@ The agent's system prompt includes:
   </skill>
 </available_skills>
 ```
+
+The `<allowed_tools>` element is a single space-joined string (matching what `generate_skills_xml` emits and
+the space-separated `allowed-tools` form accepted in frontmatter), not nested `<tool>` children.
 
 When the user asks "review my latest changes," the agent recognizes the relevant skill, calls `read_skill` with
 `skill_name: "code-review-guidelines"`, receives the full markdown content, and follows the instructions.
@@ -674,9 +938,34 @@ None. The `skills` field is optional and defaults to `None`. Existing applicatio
   unchanged.
 - `ai-dial-client-python` gains a new `prompts` resource. Existing consumers of the library are unaffected.
 - **Internal interface refactor:** `PromptPartProvider.get_prompt_part()` and `MessagesTransformer.transform()`
-  become async. All existing implementations must add `async` to their method signatures. Test files that call
+  are `async`. All existing implementations must add `async` to their method signatures. Test files that call
   `_MessagesSetup.setup()` or mock these interfaces need corresponding `await` / `AsyncMock` updates. This is
-  not a public API break but touches multiple files across packages.
+  not a public API break but touches multiple files across packages. (§4 explains why the async contract
+  remains after the eager-resolution refactor.)
+
+### Internal refactor from prior design revision
+
+The prior revision of this design resolved DIAL prompt skills lazily inside `SkillsRegistry.get_prompt_part()`
+and rendered failures from a stage the registry opened itself. This revision moves resolution to a
+`CompletionInitializer`, moves message transformation to run post-initializer (§6.1), and moves stage
+rendering to a dedicated handler (§6.4). The change is internal only:
+
+- No user-visible config or behavior changes — the same `skills` config field, the same warning stage, same
+  `read_skill` semantics.
+- `_QuickAppCompletion.chat_completion()` runs phases in a new order: context pre-init → initializers →
+  tool-init error handler → message finalization → skill-resolution warning handler → agent. This is an
+  internal re-ordering; no external API changes.
+- `_RequestContextSetup` is split: the old `.setup()` becomes `setup_pre_init()` (everything except message
+  transformation) + `finalize_messages()` (runs `_MessagesSetup.setup()`). Callers update one line.
+- `SkillsRegistry`'s constructor signature changes: drops `DialPromptSkillResolver`,
+  `ProviderOf[ApplicationConfig]`, and `ProviderOf[Stage]`; adds optional `_DialPromptSkillsContext`. Tests
+  that build a registry directly with these dependencies must be updated (the existing
+  `test_skills_registry.py` fixtures construct it with mocks, and will need to be rewritten around the
+  context).
+- A new `_SkillResolutionWarningHandler` is called once per request from `_QuickAppCompletion`, in the slot
+  described above.
+- Pydantic models replace the earlier `@dataclass` declarations for `ResolvedDialPromptSkill` and
+  `SkillResolutionWarning`, per CODESTYLE §8.
 
 ---
 
@@ -695,27 +984,33 @@ None. The `skills` field is optional and defaults to `None`. Existing applicatio
 
 | Component | Change |
 |---|---|
-| **`config/skill.py`** (new) | `DialPromptSkillConfig` (`type: "dial-prompt"`) model with `DialResourceConfigField`-annotated `url`, `SkillConfig` discriminated union |
+| **`config/skill.py`** (new) | `DialPromptSkillConfig` (`type: "dial-prompt"`) model with `DialResourceConfigField`-annotated `url`, `SkillConfig` discriminated union. Drop the `default="dial-prompt"` from the `type` field (currently at `config/skill.py:10`) — unnecessary on a `Literal` and can interfere with discriminated-union dispatch once a second variant joins. |
 | **`config/application.py`** | Add `skills: list[SkillConfig] \| None` field to `ApplicationConfig` |
 | **`skills/_frontmatter.py`** (new) | Extracted `parse_frontmatter()` function (from `AgentSkillsProvider._parse_frontmatter`); raises `SkillValidationError` on invalid content |
-| **`skills/_exceptions.py`** (new) | `SkillValidationError` exception class |
+| **`skills/_exceptions.py`** (new) | `SkillValidationError` exception class and `SkillResolutionWarning` Pydantic model |
 | **`skills/_xml.py`** (new) | `generate_skills_xml()` and `escape_xml()` — moved from `AgentSkillsProvider`, imported only by `SkillsRegistry` |
-| **`skills/agent_skills_provider.py`** | Remove `PromptPartProvider` implementation and XML generation; delegate to `_frontmatter.parse_frontmatter()`; expose `get_all_skills()`, `get_all_skill_contents()`, `get_skill_content()` as pure data store |
+| **`skills/agent_skills_provider.py`** | Remove `PromptPartProvider` implementation and XML generation; delegate to `_frontmatter.parse_frontmatter()`; expose `get_all_skills()`, `get_all_skill_contents()`, `get_skill_content()` as pure data store. Tighten `SkillMetadata.metadata` annotation from bare `dict` to `dict[str, str] \| None`. |
 | **`dial_prompt_skills/` package** (new) | New package for DIAL prompt skill source integration |
-| **`dial_prompt_skills/_dial_prompt_skill_resolver.py`** (new) | Request-scoped resolver: fetches DIAL prompts via `AsyncDial`, validates as skills; returns structured `SkillResolutionWarning` list alongside resolved skills (no logging) |
-| **`dial_prompt_skills/dial_prompt_skills_module.py`** (new) | `@preview_module` DI module: binds `DialPromptSkillResolver` at request-scope |
-| **`common/abstract/base_prompt_provider.py`** | `get_prompt_part()` becomes `async` |
-| **`common/abstract/base_transformer.py`** | `MessagesTransformer.transform()` becomes `async` |
-| **`application/_messages_setup.py`** | `setup()` becomes `async`, awaits each transformer |
-| **`agent/_messages_transformers.py`** | `_AddSystemPromptTransformer.transform()` becomes `async`, awaits `get_prompt_part()` |
-| **All other `MessagesTransformer` impls** | Add `async` keyword, no body changes |
-| **`skills/_skills_registry.py`** (new) | Request-scoped registry: merges predefined + external skills lazily in async `get_prompt_part()`, serves `read_skill` lookups; surfaces resolution warnings to user via `ProviderOf[Stage]` |
-| **`skills/skills_module.py`** | Register `SkillsRegistry` (request-scope) as `PromptPartProvider`; remove `AgentSkillsProvider`'s `PromptPartProvider` multiprovider registration |
-| **`skills/_skill_reader_tool.py`** | Change dependency from `AgentSkillsProvider` to `SkillsRegistry`; `await` the now-async `get_skill_content()` |
-| **`configuration_support/_controller.py`** | Add `GET /v1/configuration-support/skills` (predefined listing) and `POST /v1/configuration-support/skills/validate` (validates any `SkillConfig` entry) endpoints; add `AgentSkillsProvider` and `DialSettings` as constructor dependencies |
-| **Test files** | Update sync calls to `_MessagesSetup.setup()`, `transform()`, `get_prompt_part()` to `await`; update mocks to `AsyncMock` |
-| **`app_factory.py`** | Register `DialPromptSkillsModule` in injector module list |
-| **App schema** | Regenerated via `make dump_app_schema` to include `skills` field |
-| **`docs/agent.md`** | Update skills section to cover DIAL prompt skills |
-| **`docs/skills.md`** | Add "DIAL Prompt Skills" section with usage instructions |
-| **`CLAUDE.md`** | Update architecture notes for skills |
+| **`dial_prompt_skills/_dial_prompt_skill_resolver.py`** (new) | Request-scoped resolver: fetches DIAL prompts via request-scoped `AsyncDial`, validates as skills; returns `list[ResolvedDialPromptSkill]` + `list[SkillResolutionWarning]` (frozen Pydantic models per CODESTYLE §8). Never renders UI or logs. |
+| **`dial_prompt_skills/_dial_prompt_skills_context.py`** (new) | Request-scoped, thread-safe bag of `resolved_skills`, `warnings`, and an optional `catastrophic_failure: SkillResolutionWarning \| None`. Mirror of `_MCPToolingContext`. |
+| **`dial_prompt_skills/_dial_prompt_skill_initializer.py`** (new) | `CompletionInitializer` that reads `ApplicationConfig.skills`, calls the resolver, and populates the context. No-op when `skills` is empty; top-level failures set the context's `catastrophic_failure` field (not a sentinel warning). |
+| **`dial_prompt_skills/dial_prompt_skills_module.py`** (new) | `@preview_module` DI module: binds resolver, initializer, and context at request-scope. Exposes the initializer via `multiprovider -> list[CompletionInitializer]` and the warnings list via `multiprovider -> list[SkillResolutionWarning]` — same shape as `MCPToolingModule`. The catastrophic failure field is read directly off the injected `_DialPromptSkillsContext` (no separate `Optional` binding). |
+| **`common/abstract/base_prompt_provider.py`** | `get_prompt_part()` is `async` (unchanged from prior revision). |
+| **`common/abstract/base_transformer.py`** | `MessagesTransformer.transform()` is `async` (unchanged from prior revision). |
+| **`application/_messages_setup.py`** | `setup()` is `async`, awaits each transformer (unchanged from prior revision). |
+| **`application/_request_context_setup.py`** | Split into `setup_pre_init()` (config, api_key, raw messages, forwarded headers, client channel, response_format) and `finalize_messages()` (runs `_MessagesSetup.setup()`). See §6.1. |
+| **`application/_quick_app_completion.py`** | New call sequence: `setup_pre_init` → `invoke_initializers` → `_InitializationErrorHandler` → `finalize_messages` → `_SkillResolutionWarningHandler` → `Orchestrator.invoke`. See §6.1. |
+| **`agent/_messages_transformers.py`** | `_AddSystemPromptTransformer.transform()` awaits `get_prompt_part()` (unchanged from prior revision). |
+| **All other `MessagesTransformer` impls** | `async` keyword, no body changes (unchanged from prior revision). |
+| **`skills/_skills_registry.py`** | Request-scoped registry: merges predefined (`AgentSkillsProvider`) + external (`_DialPromptSkillsContext`) data in `get_prompt_part()`. No I/O, no stage rendering. Appends predefined-vs-external name collisions to the context as `SkillResolutionWarning`. |
+| **`skills/_skill_resolution_warning_handler.py`** (new) | Injects `ProviderOf[Stage]` and `_DialPromptSkillsContext \| None`; reads `context.warnings` and `context.catastrophic_failure` (one source of truth). Renders one "Skill loading warnings" stage if non-empty. Distinct stage from `_InitializationErrorHandler`. |
+| **`skills/skills_module.py`** | Register `SkillsRegistry` (request-scope) as `PromptPartProvider`; register `_SkillResolutionWarningHandler`; remove `AgentSkillsProvider`'s `PromptPartProvider` multiprovider registration. |
+| **`skills/_skill_reader_tool.py`** | Change dependency from `AgentSkillsProvider` to `SkillsRegistry`; call synchronous `get_skill_content()` (no `await`). |
+| **`configuration_support/_controller.py`** | Add `GET /v1/configuration-support/skills` (predefined listing) and `POST /v1/configuration-support/skills/validate` (validates any `SkillConfig` entry) endpoints; add `AgentSkillsProvider` and `DialSettings` as constructor dependencies. |
+| **Test files** | Update `test_skills_registry.py` to construct the registry from `_DialPromptSkillsContext` instead of a resolver + stage. Add tests for `_DialPromptSkillInitializer` and `_SkillResolutionWarningHandler`. Existing async-transformer test updates remain from prior revision. |
+| **`app_factory.py`** | Register `DialPromptSkillsModule` in injector module list. |
+| **`CODESTYLE.md`** | Add §8 rule: Pydantic `BaseModel` over `@dataclass`. |
+| **`CLAUDE.md`** | Add "Data containers" bullet under Code Style. |
+| **App schema** | Regenerated via `make dump_app_schema` to include `skills` field. |
+| **`docs/agent.md`** | Update skills section to cover DIAL prompt skills. |
+| **`docs/skills.md`** | Add "DIAL Prompt Skills" section with usage instructions. |

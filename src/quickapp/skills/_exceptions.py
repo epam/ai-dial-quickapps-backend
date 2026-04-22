@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from pydantic import BaseModel, ConfigDict
 
 
 class SkillValidationError(Exception):
@@ -12,9 +12,10 @@ class SkillValidationError(Exception):
         super().__init__(f"Skill validation failed for '{source_id}': {reason}")
 
 
-@dataclass(frozen=True)
-class SkillResolutionWarning:
+class SkillResolutionWarning(BaseModel):
     """A non-fatal issue encountered while resolving a DIAL prompt skill."""
+
+    model_config = ConfigDict(frozen=True)
 
     url: str
     reason: str

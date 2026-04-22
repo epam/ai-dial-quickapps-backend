@@ -91,6 +91,7 @@ See `CODESTYLE.md` for full details. Key rules:
 
 - **DI**: Constructor injection only — never instantiate services directly across module boundaries.
 - **Types**: Always add type hints. Use modern generics: `list[str]`, `dict[str, int]`, `str | None`.
+- **Data containers**: Use Pydantic `BaseModel` (not `@dataclass`) for value objects; use `model_config = ConfigDict(frozen=True)` when immutability is wanted.
 - **Visibility**: `_` prefix for all internal attributes/methods.
 - **Logging**: Use `logging` module; never `print()`.
 - **Imports**: stdlib → third-party → local, explicit only (no `*` imports).
