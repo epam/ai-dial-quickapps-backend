@@ -2,7 +2,7 @@ from typing import Any
 
 from injector import inject
 
-from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.common import TimedStageWrapper, ToolCallResult
 
 
 @inject
@@ -18,6 +18,6 @@ class _SkillReaderStageWrapper(TimedStageWrapper):
         """Build debug information from an exception."""
         return f"### Error:\n{exception}\n"
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         """Build debug information from the result."""
         return f"### Skill Content:\n{result.content}\n"

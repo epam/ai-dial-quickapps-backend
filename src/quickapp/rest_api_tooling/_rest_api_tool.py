@@ -5,7 +5,7 @@ import httpx
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
-from quickapp.common import CompletionResult, ForwardedHeaders, StagedBaseTool
+from quickapp.common import ForwardedHeaders, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -55,7 +55,7 @@ class _RestApiTool(StagedBaseTool):
 
     async def _run_in_stage_async(
         self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(self._tool_config.open_ai_tool.function.name, timeout):
             request_details = (
@@ -108,7 +108,7 @@ class _RestApiTool(StagedBaseTool):
                 if attachments and rac and not rac.include_body_as_content:
                     content = f"See attached file: {attachments[0].title}"
 
-                result = CompletionResult(
+                result = ToolCallResult(
                     content=content,
                     content_type=response.headers.get('Content-Type', ""),
                     attachments=attachments,

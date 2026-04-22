@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
@@ -58,7 +58,7 @@ async def test_successful_call_no_login():
 
     result = await tool._run_in_stage_async(None)
 
-    assert isinstance(result, CompletionResult)
+    assert isinstance(result, ToolCallResult)
     assert result.content == "ok"
     login.request_signin.assert_not_awaited()
     conn.call_mcp_tool.assert_awaited_once()

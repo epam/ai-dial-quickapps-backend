@@ -2,7 +2,7 @@ from typing import Any
 
 from injector import inject
 
-from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.common import TimedStageWrapper, ToolCallResult
 
 
 @inject
@@ -14,5 +14,5 @@ class _CurrentTimestampStageWrapper(TimedStageWrapper):
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
         return f"### Exception:\n\r{exception}\n\r"
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         return f"### Current Timestamp:\n\r{result.content}\n\r"

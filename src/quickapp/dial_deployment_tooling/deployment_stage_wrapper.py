@@ -3,7 +3,7 @@ from typing import Any
 from aidial_client import DialException
 from injector import inject
 
-from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.common import TimedStageWrapper, ToolCallResult
 
 
 @inject
@@ -31,6 +31,6 @@ class DeploymentStageWrapper(TimedStageWrapper):
             )
         return "> #### Exception:\nGeneral exception occurred while calling other DIAL deployment\n"
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         # For Deployment tools we stream content into choice on the tool execution level
         return ""

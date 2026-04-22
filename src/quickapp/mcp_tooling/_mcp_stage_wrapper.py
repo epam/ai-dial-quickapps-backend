@@ -5,7 +5,7 @@ from typing import Any
 from injector import inject
 from pydantic import BaseModel
 
-from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.common import TimedStageWrapper, ToolCallResult
 from quickapp.common.response_formatter import ResponseFormatter
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,7 @@ class _MCPStageWrapper(TimedStageWrapper):
             stage_result += f"> ##### Request:\n```json\n{formatted_request}\n```\n\n"
         return stage_result
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         formatted_response = (
             result.content
             if not result.content_type or not result.content
@@ -47,7 +47,7 @@ class _MCPStageWrapper(TimedStageWrapper):
         raise TypeError(f"Object of type {type(obj).__name__} isn't JSON serializable")
 
     @staticmethod
-    def __format_response(result: CompletionResult) -> str | None:
+    def __format_response(result: ToolCallResult) -> str | None:
         formatters = {
             "json": ResponseFormatter.format_json,
             "xml": ResponseFormatter.format_xml,

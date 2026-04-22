@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 from httpx import HTTPStatusError, RequestError
 from injector import inject
 
-from quickapp.common import CompletionResult, TimedStageWrapper
+from quickapp.common import TimedStageWrapper, ToolCallResult
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +19,7 @@ class _RestApiStageWrapper(TimedStageWrapper):
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return f"> ##### Request:\n```json\n{json.dumps(parameters, indent=4, default=self.__serialize)}\n```\n\n"
 
-    def _build_debug_info_from_result(self, result: CompletionResult) -> str:
+    def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         formatted_response = (
             result.content
             if not result.content_type or not result.content
@@ -56,7 +56,7 @@ class _RestApiStageWrapper(TimedStageWrapper):
         raise TypeError(f"Object of type {obj.__class__.__name__} isn't JSON serializable")
 
     @staticmethod
-    def __format_response(result: CompletionResult) -> str:
+    def __format_response(result: ToolCallResult) -> str:
         main_type = result.content_type.split(';')[0].split('/')[1].lower()
         formatters = {
             'json': _RestApiStageWrapper.__format_json,

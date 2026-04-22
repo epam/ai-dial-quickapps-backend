@@ -1,6 +1,6 @@
 from typing import Any
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.common.exceptions import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
 from quickapp.common.tool_fallback.applicable_mixin import ApplicableStrategyMixin
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
@@ -43,7 +43,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
         if not message:
             raise error
 
-        return CompletionResult(
+        return ToolCallResult(
             content=message, tool_call_id=tool_call_id, content_type="text/markdown"
         )
 
@@ -52,7 +52,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
         strategies: list[ToolFallbackStrategyModel],
         tool_call_id: str,
         error: ToolTimeoutError,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         for strategy in strategies:
             if strategy.trigger_on is None:
                 continue
@@ -60,13 +60,13 @@ class FallbackProcessor(ApplicableStrategyMixin):
                 continue
             strategy_message = FallbackProcessor._handle_fallback_strategy(strategy, error)
             if strategy_message:
-                return CompletionResult(
+                return ToolCallResult(
                     content=strategy_message,
                     tool_call_id=tool_call_id,
                     content_type="text/markdown",
                 )
 
-        return CompletionResult(
+        return ToolCallResult(
             content=_format_timeout_message(error),
             tool_call_id=tool_call_id,
             content_type="text/markdown",

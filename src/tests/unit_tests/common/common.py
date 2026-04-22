@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
 from injector import Binder, Injector, Module, ProviderOf
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig
@@ -87,7 +87,7 @@ def create_app_configuration(toolsets: list[ToolSet]) -> ApplicationConfig:
     )
 
 
-def build_tool_expected_result(tool_result: CompletionResult):
+def build_tool_expected_result(tool_result: ToolCallResult):
     result_dict = tool_result.model_dump()
     result_dict["propagate_to_choice"] = AttachmentConfig()
     return result_dict
