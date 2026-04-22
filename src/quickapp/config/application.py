@@ -151,6 +151,17 @@ class Features(BaseModel):
     )
 
 
+class ToolCallResultOffloadAppConfig(BaseModel):
+    size_threshold: int = Field(
+        default=40_000,
+        gt=0,
+        description=(
+            "Per-app override for the offload size threshold (bytes). "
+            "When set, overrides the global TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var."
+        ),
+    )
+
+
 class ToolDefaults(BaseModel):
     """Defaults applied to every tool call unless overridden locally.
 
@@ -202,6 +213,10 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     tool_defaults: ToolDefaults = Field(
         default_factory=ToolDefaults,
         description="Defaults applied to every tool call (e.g. timeout).",
+    )
+    tool_call_result_offload: ToolCallResultOffloadAppConfig | None = PreviewField(  # type: ignore[assignment]
+        default_factory=ToolCallResultOffloadAppConfig,
+        description="Per-app configuration for large tool-response offloading.",
     )
 
     @model_validator(mode="after")
