@@ -10,9 +10,8 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.tool_call_result_offload._settings import ToolCallResultOffloadSettings
+from quickapp.tool_call_result_offload._settings import ResolvedConfig
 
 logger = logging.getLogger(__name__)
 
@@ -23,29 +22,19 @@ class LargeResponseProcessor(ToolCallResultProcessor):
 
     def __init__(
         self,
-        settings: ToolCallResultOffloadSettings,
+        config: ResolvedConfig,
         attachment_service: AttachmentService,
-        app_config: ApplicationConfig,
     ) -> None:
-        self._settings = settings
+        self._config = config
         self._attachment_service = attachment_service
-        self._app_config = app_config
 
     async def process(self, result: ToolCallResult, ctx: ProcessingContext) -> ToolCallResult:
-        app_offload_config = self._app_config.tool_defaults.tool_call_result_offload
-        enabled = (
-            app_offload_config.enabled if app_offload_config is not None else self._settings.enabled
-        )
-        if not enabled:
+        if not self._config.enabled:
             return result
-        if ctx.tool_name in self._settings.excluded_tools:
+        if ctx.tool_name in self._config.excluded_tools:
             return result
 
-        threshold = (
-            app_offload_config.size_threshold
-            if app_offload_config is not None
-            else self._settings.size_threshold
-        )
+        threshold = self._config.size_threshold
         content_bytes = result.content.encode("utf-8")
         if len(content_bytes) < threshold:
             return result

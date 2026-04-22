@@ -7,13 +7,13 @@ from aidial_sdk.chat_completion import Attachment
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.tool_call_result_offload._large_response_processor import LargeResponseProcessor
-from quickapp.tool_call_result_offload._settings import ToolCallResultOffloadSettings
+from quickapp.tool_call_result_offload._settings import ResolvedConfig
 
 
-def _make_settings(**overrides) -> ToolCallResultOffloadSettings:
-    defaults = dict(enabled=True, size_threshold=100, excluded_tools={"excluded_tool"})
+def _make_config(**overrides) -> ResolvedConfig:
+    defaults = dict(enabled=True, size_threshold=100, excluded_tools=frozenset({"excluded_tool"}))
     defaults.update(overrides)
-    return ToolCallResultOffloadSettings.model_construct(**defaults)
+    return ResolvedConfig(**defaults)
 
 
 def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") -> MagicMock:
@@ -23,32 +23,13 @@ def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") 
     return svc
 
 
-def _make_app_config(
-    size_threshold_override: int | None = None,
-    enabled_override: bool | None = None,
-) -> MagicMock:
-    cfg = MagicMock()
-    if size_threshold_override is not None or enabled_override is not None:
-        override = MagicMock()
-        override.size_threshold = (
-            size_threshold_override if size_threshold_override is not None else 40_000
-        )
-        override.enabled = enabled_override if enabled_override is not None else True
-        cfg.tool_defaults.tool_call_result_offload = override
-    else:
-        cfg.tool_defaults.tool_call_result_offload = None
-    return cfg
-
-
 def _make_processor(
-    settings: ToolCallResultOffloadSettings | None = None,
+    config: ResolvedConfig | None = None,
     upload_url: str = "https://storage/offloaded.txt",
-    app_config=None,
 ) -> LargeResponseProcessor:
     return LargeResponseProcessor(
-        settings=settings or _make_settings(),
+        config=config or _make_config(),
         attachment_service=_make_attachment_service(upload_url),
-        app_config=app_config or _make_app_config(),
     )
 
 
@@ -106,18 +87,10 @@ class TestLargeResponseProcessor:
         assert out.content == content
 
     @pytest.mark.asyncio
-    async def test_disabled_processor_skips_offload(self):
+    async def test_disabled_skips_offload(self):
         content = "x" * 200
         result = ToolCallResult(content=content, content_type="text/plain")
-        proc = _make_processor(settings=_make_settings(enabled=False))
-        out = await proc.process(result, _make_ctx())
-        assert out.content == content
-
-    @pytest.mark.asyncio
-    async def test_per_app_enabled_false_skips_offload(self):
-        content = "x" * 200
-        result = ToolCallResult(content=content, content_type="text/plain")
-        proc = _make_processor(app_config=_make_app_config(enabled_override=False))
+        proc = _make_processor(config=_make_config(enabled=False))
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
@@ -127,11 +100,7 @@ class TestLargeResponseProcessor:
         result = ToolCallResult(content=content, content_type="text/plain")
         svc = MagicMock()
         svc.upload_attachment_to_core = AsyncMock(side_effect=RuntimeError("storage down"))
-        proc = LargeResponseProcessor(
-            settings=_make_settings(),
-            attachment_service=svc,
-            app_config=_make_app_config(),
-        )
+        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
@@ -143,20 +112,15 @@ class TestLargeResponseProcessor:
         no_url_attachment.url = None
         svc = MagicMock()
         svc.upload_attachment_to_core = AsyncMock(return_value=no_url_attachment)
-        proc = LargeResponseProcessor(
-            settings=_make_settings(),
-            attachment_service=svc,
-            app_config=_make_app_config(),
-        )
+        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
     @pytest.mark.asyncio
-    async def test_per_app_threshold_override(self):
-        # global threshold=100 would offload, but override=200 means 150-byte content passes through
+    async def test_high_threshold_skips_offload(self):
         content = "x" * 150
         result = ToolCallResult(content=content, content_type="text/plain")
-        proc = _make_processor(app_config=_make_app_config(size_threshold_override=200))
+        proc = _make_processor(config=_make_config(size_threshold=200))
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
@@ -178,11 +142,7 @@ class TestLargeResponseProcessor:
         content = "hello world " * 20  # > 100 bytes
         result = ToolCallResult(content=content, content_type="text/plain")
         svc = _make_attachment_service()
-        proc = LargeResponseProcessor(
-            settings=_make_settings(),
-            attachment_service=svc,
-            app_config=_make_app_config(),
-        )
+        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
         await proc.process(result, _make_ctx())
         uploaded_att: Attachment = svc.upload_attachment_to_core.call_args[0][0]
         assert uploaded_att.data is not None

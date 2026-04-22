@@ -1,5 +1,16 @@
+from dataclasses import dataclass
+
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+@dataclass(frozen=True)
+class ResolvedConfig:
+    # Default values come from env (ToolCallResultOffloadSettings).
+    # Individual fields can be overridden per-app via ToolCallResultOffloadAppConfig.
+    enabled: bool
+    size_threshold: int
+    excluded_tools: frozenset[str]
 
 
 class ToolCallResultOffloadSettings(BaseSettings):

@@ -1,12 +1,16 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, multiprovider, singleton
+from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.preview import preview_module
+from quickapp.config.application import ApplicationConfig
 from quickapp.tool_call_result_offload._large_response_processor import LargeResponseProcessor
-from quickapp.tool_call_result_offload._settings import ToolCallResultOffloadSettings
+from quickapp.tool_call_result_offload._settings import (
+    ResolvedConfig,
+    ToolCallResultOffloadSettings,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +24,23 @@ class ToolCallResultOffloadModule(Module):
         )
         binder.bind(LargeResponseProcessor, to=LargeResponseProcessor, scope=request_scope)
         logger.debug("ToolCallResultOffloadModule configuration completed")
+
+    @request_scope
+    @provider
+    def _provide_offload_config(
+        self,
+        settings: ToolCallResultOffloadSettings,
+        app_config: ApplicationConfig,
+    ) -> ResolvedConfig:
+        # Per-app config is None when the preview feature is disabled or not configured —
+        # in that case every field falls back to the global env-based setting.
+        # excluded_tools has no per-app override — always taken from global settings.
+        app = app_config.tool_defaults.tool_call_result_offload
+        return ResolvedConfig(
+            enabled=app.enabled if app is not None else settings.enabled,
+            size_threshold=app.size_threshold if app is not None else settings.size_threshold,
+            excluded_tools=frozenset(settings.excluded_tools),
+        )
 
     @multiprovider
     def _provide_processors(
