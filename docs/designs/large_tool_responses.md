@@ -1,6 +1,6 @@
 # Design: Large Tool Response Processing
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - None
 - **Related:** [Issue #64](https://github.com/epam/ai-dial-quickapps-backend/issues/64)
@@ -41,8 +41,8 @@ There is also **no extension point** in the current pipeline for transforming `T
 
 ### UC-3: Agent requests too much back → recursive offload
 
-**Trigger:** The LLM calls `read_file_lines(start=0, end=100000)` on a very large file.\
-**Behavior:** The read tool returns a `ToolCallResult` with the large content. Because `search_in_file` / `read_file_*` tools are in the exclusion list, `LargeResponseProcessor` **skips** them — the large content **is not re-offloaded**. The LLM sees its own oversized request filling the context.\
+**Trigger:** The LLM calls `read_file_lines(start_line=0, end_line=100000)` on a very large file.\
+**Behavior:** The read tool returns a `ToolCallResult` with the large content. Because `search_in_file` / `read_file_lines` are in the default exclusion list, `LargeResponseProcessor` **skips** them — the large content **is not re-offloaded**. The LLM sees its own oversized request filling the context.\
 **Outcome:** The LLM learns (from context cost / follow-up iterations) to request smaller slices. No infinite loop; no duplicate storage of the same data.
 
 > **Alternatives considered (deferred):** Hard limits on read-tool parameters (`end_line - start_line ≤ N`), truncation to threshold with a "truncated" notice, pagination tokens, or summarization. Each has trade-offs (loss of data, complexity, cost) — see the Out of Scope section for follow-up notes.
@@ -75,7 +75,6 @@ There is also **no extension point** in the current pipeline for transforming `T
 class ProcessingContext(BaseModel):
     tool_call_id: str | None
     tool_name: str
-    size_threshold_override: int | None = None  # per-app override; None → use global default
     # Future: toolset/tool-level config overrides
 
 class ToolCallResultProcessor(ABC):
@@ -170,12 +169,14 @@ flowchart TD
 
 **Note on content type / extension:** Size-only filtering is intentional for v1. The original `content_type` is preserved on the attachment so DIAL can render it. The stored file name uses a `.txt` extension as a conservative default since responses are always treated as text strings; extension-from-content-type is deferred (see Out of Scope). This does not affect the LLM's ability to read the file back — read tools operate on bytes/lines regardless of extension.
 
-**Settings:** `ToolCallResultOffloadSettings` (pydantic-settings), registered as singleton.
+**Settings:** `ToolCallResultOffloadSettings` (pydantic-settings), registered as singleton. Sets env-level defaults:
 - `size_threshold: int` — byte threshold (compared against `len(result.content.encode("utf-8"))`); default `40_000` (≈ 40 KB; see _Threshold calibration_ in Design Decisions)
 - `excluded_tools: set[str]` — default `{"read_file_lines", "search_in_file"}`
 - `enabled: bool` — default `True`
 
-**Per-app override:** The app manifest may include a `tool_call_result_offload` section with a `size_threshold` field. When present, it overrides the global setting for that application only. The override is surfaced to `LargeResponseProcessor` via `ProcessingContext.size_threshold_override` (see Component 1). Absent → global default applies.
+**Per-app override:** The app manifest may include a `tool_defaults.tool_call_result_offload` section (a `ToolCallResultOffloadAppConfig` Pydantic model, preview-gated). All three fields (`enabled`, `size_threshold`, `excluded_tools`) can be overridden per-app. `excluded_tools` defaults to `null` (meaning "use env default"); the other two fields have the same defaults as the env settings.
+
+Config resolution happens **once per request** in `ToolCallResultOffloadModule._provide_offload_config` (a request-scoped `@provider`), which merges env settings with the per-app config into a `ResolvedConfig` dataclass. `LargeResponseProcessor` receives only the resolved config — it has no knowledge of global settings or `ApplicationConfig`.
 
 **Priority:** `100` (default). No other processors planned today.
 
@@ -209,7 +210,8 @@ flowchart TD
 **What:** New `injector.Module` that:
 
 - Binds `ToolCallResultOffloadSettings` as singleton.
-- Provides `LargeResponseProcessor` into the `list[ToolCallResultProcessor]` multiprovider.
+- Provides a request-scoped `ResolvedConfig` via `@provider`, merging env settings with per-app config.
+- Binds `LargeResponseProcessor` (request-scoped) and provides it into the `list[ToolCallResultProcessor]` multiprovider.
 - Does **not** register text-file tools directly — those are wired by `TextFileToolingModule` (Component 4).
 - Registers itself in `src/quickapp/app_factory.py` alongside other feature modules.
 
@@ -273,7 +275,7 @@ sequenceDiagram
 sequenceDiagram
     participant LLM
     participant TE as ToolExecutor
-    participant Tool as read_file_lines / _chars / search_in_file
+    participant Tool as read_file_lines / search_in_file
     participant DFS as DialFileService<br/>(request-scoped cache)
     participant DIAL as DIAL file storage
     participant LRP as LargeResponseProcessor
@@ -314,7 +316,7 @@ sequenceDiagram
 
 - **Regex search.** `search_in_file` ships with substring + `case_insensitive` only. Regex requires DoS protection (timeout, catastrophic backtracking mitigation via the `regex` library), bounds checks, and careful error surfaces. Addressed in a follow-up design when the use case becomes concrete.
 - **Content-type-based routing.** v1 applies size-only filtering — any large `content` is offloaded regardless of `content_type`. Future work: allow-list / deny-list per content type, per-type processors (e.g., compress JSON differently from plain text), extension-from-content-type for stored file names.
-- **Configuration hierarchy (app → toolset → tool).** App-level `size_threshold` override is in scope (v1). Toolset- and tool-level overrides are deferred. `ProcessingContext` is designed to accept additional override fields when that layer is added.
+- **Configuration hierarchy (app → toolset → tool).** App-level overrides (`enabled`, `size_threshold`, `excluded_tools`) are in scope (v1). Toolset- and tool-level overrides are deferred. `ProcessingContext` is designed to accept additional override fields when that layer is added.
 - **Explicit file cleanup / retention.** Offloaded files live in the same DIAL bucket as all other attachments and inherit DIAL Core's retention policy. No QuickApps-side cleanup today.
 - **Caching strategy for read-back downloads.** `DialFileService` already caches within a request; whether to extend or introduce additional caching (e.g., LRU per file URL) is deferred to implementation, based on observed behavior.
 - **Additional processors** (compression, PII scrubbing, format conversion). The abstraction supports them; concrete processors are not part of this design.
@@ -335,13 +337,17 @@ TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","search_in_file"]
 
 ```json
 {
-  "tool_call_result_offload": {
-    "size_threshold": 20000
+  "tool_defaults": {
+    "tool_call_result_offload": {
+      "enabled": true,
+      "size_threshold": 20000,
+      "excluded_tools": ["read_file_lines", "search_in_file", "my_custom_tool"]
+    }
   }
 }
 ```
 
-The per-app `size_threshold` overrides the global env-var for that application only. All other global settings (`enabled`, `excluded_tools`) remain in effect unless a future iteration extends the manifest schema to cover them.
+The per-app config is nested under `tool_defaults` (alongside `timeout_seconds`). All three fields override their global env-var counterparts for that application only. `excluded_tools` defaults to `null` in the manifest (meaning "use env default"); setting it to a list replaces the env default entirely for that app.
 
 ### LLM-visible notice (example content the LLM sees after offload)
 
@@ -392,24 +398,27 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 | File | Purpose |
 |------|---------|
 | `common/abstract/tool_call_result_processor.py` | `ToolCallResultProcessor` ABC, `ProcessingContext` model |
-| `tool_call_result_offload/_large_response_processor.py` | First processor implementation |
-| `tool_call_result_offload/_settings.py` | `ToolCallResultOffloadSettings` pydantic-settings |
-| `tool_call_result_offload/tool_call_result_offload_module.py` | DI wiring (preview-gated) |
+| `tool_call_result_offload/_settings.py` | `ToolCallResultOffloadSettings` pydantic-settings; `ResolvedConfig` dataclass |
+| `tool_call_result_offload/_large_response_processor.py` | First processor implementation — receives `ResolvedConfig` directly |
+| `tool_call_result_offload/tool_call_result_offload_module.py` | DI wiring (preview-gated); request-scoped `@provider` that resolves config |
 | `text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
 | `text_file_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
-| `text_file_tooling/text_file_tooling_module.py` | `TextFileToolingModule` DI wiring |
+| `text_file_tooling/text_file_tooling_module.py` | `TextFileToolingModule` DI wiring (preview-gated) |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
 | `agent/tool_executor.py` | Inject `list[ToolCallResultProcessor]`, sort by priority in constructor, apply chain after enrichers |
-| `app_factory.py` | Register `ToolCallResultOffloadModule` |
+| `agent/agent_module.py` | Add baseline empty `@multiprovider` for `list[ToolCallResultProcessor]` |
+| `config/application.py` | Add `ToolCallResultOffloadAppConfig` under `ToolDefaults` (preview-gated) |
+| `app_factory.py` | Register `ToolCallResultOffloadModule` and `TextFileToolingModule` |
 
 ### New interfaces
 
 - `ToolCallResultProcessor.process(result, ctx) -> ToolCallResult`
 - `ProcessingContext(tool_call_id, tool_name)`
+- `ResolvedConfig(enabled, size_threshold, excluded_tools)` — frozen dataclass produced once per request by the DI module
 
 ### Tests
 
