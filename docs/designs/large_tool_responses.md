@@ -75,7 +75,8 @@ There is also **no extension point** in the current pipeline for transforming `T
 class ProcessingContext(BaseModel):
     tool_call_id: str | None
     tool_name: str
-    # Future: application/toolset/tool-level config overrides
+    size_threshold_override: int | None = None  # per-app override; None → use global default
+    # Future: toolset/tool-level config overrides
 
 class ToolCallResultProcessor(ABC):
     priority: int = 100  # lower = earlier in chain
@@ -170,9 +171,11 @@ flowchart TD
 **Note on content type / extension:** Size-only filtering is intentional for v1. The original `content_type` is preserved on the attachment so DIAL can render it. The stored file name uses a `.txt` extension as a conservative default since responses are always treated as text strings; extension-from-content-type is deferred (see Out of Scope). This does not affect the LLM's ability to read the file back — read tools operate on bytes/lines regardless of extension.
 
 **Settings:** `ToolCallResultOffloadSettings` (pydantic-settings), registered as singleton.
-- `size_threshold: int` — character threshold (compared against `len(result.content)`); starting default `4000`, tuned during implementation
+- `size_threshold: int` — byte threshold (compared against `len(result.content.encode("utf-8"))`); default `40_000` (≈ 40 KB; see _Threshold calibration_ in Design Decisions)
 - `excluded_tools: set[str]` — default `{"read_file_lines", "search_in_file"}`
 - `enabled: bool` — default `True`
+
+**Per-app override:** The app manifest may include a `completion_result_offload` section with a `size_threshold` field. When present, it overrides the global setting for that application only. The override is surfaced to `LargeResponseProcessor` via `ProcessingContext.size_threshold_override` (see Component 1). Absent → global default applies.
 
 **Priority:** `100` (default). No other processors planned today.
 
@@ -311,7 +314,7 @@ sequenceDiagram
 
 - **Regex search.** `search_in_file` ships with substring + `case_insensitive` only. Regex requires DoS protection (timeout, catastrophic backtracking mitigation via the `regex` library), bounds checks, and careful error surfaces. Addressed in a follow-up design when the use case becomes concrete.
 - **Content-type-based routing.** v1 applies size-only filtering — any large `content` is offloaded regardless of `content_type`. Future work: allow-list / deny-list per content type, per-type processors (e.g., compress JSON differently from plain text), extension-from-content-type for stored file names.
-- **Configuration hierarchy (global → app → toolset → tool).** Interface is designed to accept a richer `ProcessingContext` in the future, but today only a single global `ToolCallResultOffloadSettings` applies. Next step is defining how app/toolset/tool configs compose.
+- **Configuration hierarchy (app → toolset → tool).** App-level `size_threshold` override is in scope (v1). Toolset- and tool-level overrides are deferred. `ProcessingContext` is designed to accept additional override fields when that layer is added.
 - **Explicit file cleanup / retention.** Offloaded files live in the same DIAL bucket as all other attachments and inherit DIAL Core's retention policy. No QuickApps-side cleanup today.
 - **Caching strategy for read-back downloads.** `DialFileService` already caches within a request; whether to extend or introduce additional caching (e.g., LRU per file URL) is deferred to implementation, based on observed behavior.
 - **Additional processors** (compression, PII scrubbing, format conversion). The abstraction supports them; concrete processors are not part of this design.
@@ -324,9 +327,21 @@ sequenceDiagram
 
 ```
 COMPLETION_RESULT_OFFLOAD__ENABLED=true
-COMPLETION_RESULT_OFFLOAD__SIZE_THRESHOLD=4000
+COMPLETION_RESULT_OFFLOAD__SIZE_THRESHOLD=40000
 COMPLETION_RESULT_OFFLOAD__EXCLUDED_TOOLS=["read_file_lines","search_in_file"]
 ```
+
+### Per-app manifest override (example)
+
+```json
+{
+  "completion_result_offload": {
+    "size_threshold": 20000
+  }
+}
+```
+
+The per-app `size_threshold` overrides the global env-var for that application only. All other global settings (`enabled`, `excluded_tools`) remain in effect unless a future iteration extends the manifest schema to cover them.
 
 ### LLM-visible notice (example content the LLM sees after offload)
 
@@ -414,3 +429,16 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 - **Lines over characters.** LLMs cannot reliably estimate character/byte offsets in an opaque file. Line numbers are natural and directly surfaced by grep results, making `read_file_chars` unusable in practice.
 - **Two tools over one.** Combining grep and line-read into a single `file_query(mode=...)` tool was considered. Rejected because conditional parameters (either `query` or `start_line`/`end_line` depending on mode) confuse weaker models and add validation complexity for marginal token savings.
 - **Grep is often sufficient alone.** `search_in_file` returns ±N context lines around each match. In most workflows the LLM does not need a separate line-read at all; `read_file_lines` covers only the case where a larger contiguous chunk is needed.
+
+---
+
+### Threshold calibration: 40 KB default, per-app override
+
+**Decision:** Default `size_threshold = 40_000` bytes (UTF-8). Per-app overrides are supported via the app manifest.
+
+**Rationale:**
+
+- **Anchored to context window size.** Most current models (Claude, GPT-4o, Llama 3) offer 128K–200K token context windows. At ~4 bytes per token (English UTF-8), that is roughly 512 KB–800 KB of raw text. A threshold of 40 KB is ~5% of a typical 200K-token context — large enough to avoid noisy offloads of medium-sized responses, small enough to protect the context window from single-tool floods.
+- **Why not derive the threshold from the model's actual context size?** QuickApps does not currently have access to the model's declared context limit at request time (the deployment name does not map to a known context window without an external registry). Using a fixed, well-reasoned default avoids that dependency. If model metadata becomes available in the future, the threshold can be made adaptive.
+- **Why per-app override?** Different applications have different tool response profiles. A log-analysis app may want a lower threshold (e.g., 20 KB) to keep iterations focused; a data-retrieval app may tolerate larger inline responses. The global default is a safe starting point; the override lets operators tune without redeploying.
+- **Comparison unit: bytes, not characters.** `len(result.content)` counts Unicode code points, which is misleading for multi-byte scripts (CJK, Arabic). Encoding the content to UTF-8 first (`len(content.encode("utf-8"))`) gives a stable, byte-accurate measure that matches what actually gets serialised on the wire and counted toward token budgets.
