@@ -152,6 +152,13 @@ class Features(BaseModel):
 
 
 class ToolCallResultOffloadAppConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Per-app override to enable or disable large tool-response offloading. "
+            "When set to false, overrides the global TOOL_CALL_RESULT_OFFLOAD__ENABLED env var."
+        ),
+    )
     size_threshold: int = Field(
         default=40_000,
         gt=0,

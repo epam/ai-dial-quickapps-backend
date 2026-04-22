@@ -32,12 +32,15 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         self._app_config = app_config
 
     async def process(self, result: ToolCallResult, ctx: ProcessingContext) -> ToolCallResult:
-        if not self._settings.enabled:
+        app_offload_config = self._app_config.tool_defaults.tool_call_result_offload
+        enabled = (
+            app_offload_config.enabled if app_offload_config is not None else self._settings.enabled
+        )
+        if not enabled:
             return result
         if ctx.tool_name in self._settings.excluded_tools:
             return result
 
-        app_offload_config = self._app_config.tool_defaults.tool_call_result_offload
         threshold = (
             app_offload_config.size_threshold
             if app_offload_config is not None

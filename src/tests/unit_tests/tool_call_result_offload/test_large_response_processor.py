@@ -23,11 +23,17 @@ def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") 
     return svc
 
 
-def _make_app_config(size_threshold_override: int | None = None) -> MagicMock:
+def _make_app_config(
+    size_threshold_override: int | None = None,
+    enabled_override: bool | None = None,
+) -> MagicMock:
     cfg = MagicMock()
-    if size_threshold_override is not None:
+    if size_threshold_override is not None or enabled_override is not None:
         override = MagicMock()
-        override.size_threshold = size_threshold_override
+        override.size_threshold = (
+            size_threshold_override if size_threshold_override is not None else 40_000
+        )
+        override.enabled = enabled_override if enabled_override is not None else True
         cfg.tool_defaults.tool_call_result_offload = override
     else:
         cfg.tool_defaults.tool_call_result_offload = None
@@ -104,6 +110,14 @@ class TestLargeResponseProcessor:
         content = "x" * 200
         result = ToolCallResult(content=content, content_type="text/plain")
         proc = _make_processor(settings=_make_settings(enabled=False))
+        out = await proc.process(result, _make_ctx())
+        assert out.content == content
+
+    @pytest.mark.asyncio
+    async def test_per_app_enabled_false_skips_offload(self):
+        content = "x" * 200
+        result = ToolCallResult(content=content, content_type="text/plain")
+        proc = _make_processor(app_config=_make_app_config(enabled_override=False))
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
