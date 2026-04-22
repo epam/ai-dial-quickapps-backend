@@ -13,8 +13,8 @@ from quickapp.common.presentation_settings import PresentationSettings
 
 from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler
-from ._messages_validator import validate_messages_shape
 from ._messages_setup import _MessagesSetup
+from ._messages_validator import validate_messages_shape
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 

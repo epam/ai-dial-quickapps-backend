@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.completion_result import CompletionResult
+from quickapp.common import ToolCallResult
 from quickapp.common.synthetic_injection.injection_enums import (
     InjectionFrequency,
     InjectionPosition,
@@ -20,7 +20,7 @@ def _make_staged_tool(sanitized_name: str, run_content: str = "tool result") -> 
     tool_open_ai = SimpleNamespace(function=tool_fn)
     tool_config = SimpleNamespace(open_ai_tool=tool_open_ai)
 
-    result = CompletionResult(content=run_content, content_type="text/plain")
+    result = ToolCallResult(content=run_content, content_type="text/plain")
     arun_mock = AsyncMock(return_value=result)
 
     tool = MagicMock()
