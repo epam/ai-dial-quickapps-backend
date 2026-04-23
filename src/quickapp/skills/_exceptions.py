@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 class SkillValidationError(Exception):
     """Raised by ``parse_frontmatter`` when skill content is invalid."""
 

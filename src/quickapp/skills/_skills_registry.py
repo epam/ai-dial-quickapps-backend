@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
