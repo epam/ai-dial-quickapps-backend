@@ -12,6 +12,7 @@ from quickapp.common import (
     StagedBaseTool,
 )
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
@@ -19,7 +20,6 @@ from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
-from ._di_types import DialDeploymentToolCacheService
 from .deployment_stage_wrapper import DeploymentStageWrapper
 from .dial_completion_service import DialCompletionService
 

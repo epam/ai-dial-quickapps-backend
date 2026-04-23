@@ -1,18 +1,8 @@
 # Design: DIAL App Toolset (Phase 1 — MCP-or-chat-completion routing)
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-04-23
 - **Issue:** [#215](https://github.com/epam/ai-dial-quickapps-backend/issues/215)
-- **Dependencies:**
-  - [ai-dial-core#1479](https://github.com/epam/ai-dial-core/issues/1479) — publishes an `mcp` signal on `features`
-    for deployments/applications. The issue body shows a plain `bool`; confirm the final shape before merge
-    (plain `bool` vs a nested object such as `{"url": ...}`). The resolver's presence check must match whatever
-    ships.
-  - [ai-dial-core#1477](https://github.com/epam/ai-dial-core/issues/1477) — exposes the MCP endpoint at
-    `/v1/deployments/{id}/mcp` (and moves the toolset endpoint to `/v1/toolsets/{id}/mcp`).
-  - `ai-dial-client-python` — must surface the `features.mcp` signal as a typed field on
-    `aidial_client.types.deployment.Features`. While the client release is being cut, the resolver may read
-    `features.model_extra.get("mcp")` as a short-lived bridge (`Features` inherits from `ExtraAllowModel`, so
-    `model_extra` exposes unknown fields); the typed field must replace the bridge before Phase 1 merges.
 
 ## Problem Statement
 
@@ -47,6 +37,14 @@ Two concrete symptoms follow:
   wiring of `_MCPToolInitializer` and `_DeploymentToolInitializer` gains an additional source of toolsets (see
   Proposed Design); their existing app-config traversal remains unchanged.
 
+**Preview posture.** Phase 1 ships GA, not behind `@preview_module` / `ENABLE_PREVIEW_FEATURES`. Rationale: the
+deployment-scoped MCP endpoint and the `features.mcp` signal have both landed in DIAL Core, and the fallback
+branch — the safety net for deployments that don't advertise MCP — exercises only paths that are already GA in
+QuickApps. The one acknowledged gap (interactive sign-in on the deployment-scoped MCP endpoint; see UC-4 and
+Out of Scope) surfaces as a `ToolInitializationException` rather than a broken request, which is the same
+failure mode every other toolset type already has when it can't initialise. If operational experience shows a
+reason to gate, flipping the module to `@preview_module` is a one-line change.
+
 ---
 
 ## Use Cases
@@ -57,7 +55,7 @@ Two concrete symptoms follow:
 The DIAL metadata for `my-app` returns `features.mcp == true`.
 
 **Behaviour:** During initialization, QuickApps resolves the deployment metadata, detects MCP support, constructs
-an MCP connection to `/v1/deployments/my-app/mcp` (API-Key authed with the request's DIAL key), and lists the tools
+an MCP connection to `/v1/toolset/my-app/mcp` (API-Key authed with the request's DIAL key), and lists the tools
 the app exposes. Each MCP tool is registered as a separate QuickApp tool, named `{toolset_name}_{mcp_tool_name}`.
 
 **Outcome:** The agent sees N tools for the DIAL app, invokes them individually, and their results are processed
@@ -71,10 +69,13 @@ through the existing `_MCPTool` path (including attachment handling and the stag
 **Behaviour:** QuickApps falls back to chat completion: it resolves the deployment through
 `ToolConfigCoreService.get_basic_tool_config` (producing a `DialDeploymentTool` with a `query` parameter, and any
 configuration schema fields it exposes), and registers a single tool through the existing `DeploymentTool` path.
-The tool name is `{toolset_name}_{deployment_id}_tool`.
+The tool name follows the rule in §"Synthesised tool name" below.
 
-**Outcome:** From the caller's perspective, the toolset still works. The behaviour matches today's
-`DialDeploymentSimpleTool` exactly, except the tool is exposed through the new toolset type.
+**Outcome:** From the caller's perspective, the toolset still works. The agent-visible surface matches today's
+`DialDeploymentSimpleTool`: the same `query` parameter, the same `attachment_urls` when the deployment declares
+`input_attachment_types`, and the same configuration-schema-derived fields. Differences introduced by the new
+type — `attachment` / `fallback_configuration` propagation (see §"Chat-completion fallback branch") — are
+additive.
 
 ### UC-3: Deployment not found or inaccessible
 
@@ -110,6 +111,13 @@ is tracked in Out of Scope and will be addressed in a follow-up once DIAL Core p
 **Outcome:** The agent sees exactly the whitelisted tools. When the deployment does not advertise MCP, the flag has
 no effect (there is only one synthetic `query` tool) and QuickApps logs a warning if `allowed_tools` was provided.
 
+**Known quirk (inherited from existing `MCPToolSet`):** `allowed_tools` filters on the raw MCP tool name, but the
+agent-visible name goes through `sanitize_toolname` (see §"Synthesised tool name"). Two MCP tools whose raw
+names differ only in characters that `sanitize_toolname` strips would both survive the filter and then collide
+in the registry. This is not introduced by `DialAppToolSet`; it already affects `DialMCPToolSet` / `MCPToolSet`
+and is left as-is for Phase 1 so the new type matches existing behaviour. In practice DIAL MCP servers name
+tools conservatively, so this edge case has not surfaced operationally.
+
 ---
 
 ## Proposed Design
@@ -138,24 +146,42 @@ transport is decided at initialisation time based on the deployment metadata.
 | `name`                   | No       | String               | Inherited from `BaseToolSet`. Used as the MCP tool-name prefix, same as today's MCP toolsets.                          |
 | `description`            | No       | String               | Inherited. Optional admin description.                                                                                 |
 | `enabled`                | No       | Boolean              | Inherited. Default `true`.                                                                                             |
-| `allowed_tools`          | No       | List[String]         | MCP-only: whitelist the subset of tool names that reach the agent. Ignored (with a warning) in the chat-completion fallback. |
-| `attachment`             | No       | `AttachmentConfig`   | Applied to both transports, same as existing tool types.                                                               |
-| `fallback_configuration` | No       | `ToolFallbackConfig` | Applied to both transports.                                                                                            |
+| `allowed_tools`          | No       | List[String]         | MCP branch only: whitelists the subset of tool names that reach the agent. Meaningless in the fallback branch (one synthetic `query` tool); logged as a warning if set.                   |
+| `attachment`             | No       | `AttachmentConfig`   | Propagated on both branches. MCP: set on the synthesised `MCPToolSet`. Fallback: overrides `DialDeploymentTool.attachment` via `model_copy`. |
+| `fallback_configuration` | No       | `ToolFallbackConfig` | Propagated on both branches. MCP: set on the synthesised `MCPToolSet`. Fallback: overrides `DialDeploymentTool.fallback_configuration` (defaulted by `_convert_to_openai_tool_format` to `ToolFallbackConfig(strategies=[ContinueStrategyModel()])`) via `model_copy`. |
 
 **Rationale for a new type rather than a flag on `DialDeploymentSimpleTool`:** an MCP-backed DIAL app produces a
 *set* of tools, which is fundamentally a toolset concept. A flag would either overload the semantics of a tool
 (yielding N tools from one tool definition) or require the toolset to decide the arity retroactively. Using a
-toolset type aligns with the structural reality and sidesteps that ambiguity. This also makes the long-term
-deprecation of `DialDeploymentSimpleTool` cleaner — the new type becomes the recommended path, and the old type
-remains for explicit chat-completion-only use cases.
+toolset type aligns with the structural reality and sidesteps that ambiguity. It also leaves the door open to a
+future deprecation decision for `DialDeploymentSimpleTool` (deferred to Phase 2; see Out of Scope) without
+forcing that call now.
 
 **Alternative considered — extend `DialMCPToolSet` with a resource-type discriminator.** Instead of a new toolset
 type, `DialMCPToolSet` could gain a `dial_resource_type: Literal["toolset", "deployment"]` field that switches the
-URL template from `/v1/toolsets/{id}/mcp` to `/v1/deployments/{id}/mcp`. This keeps the DIAL-internal MCP surface
+URL template from `/v1/toolset/{id}/mcp` to `/v1/toolset/{id}/mcp`. This keeps the DIAL-internal MCP surface
 in one place, but has two disadvantages: (1) the `deployment` variant must silently fall back to chat completion
 when the deployment doesn't expose MCP, forcing `DialMCPToolSet` to host chat-completion logic it otherwise has no
 business with; (2) the `dial_id` field semantics become overloaded (toolset id vs deployment id), which leaks into
 schema, logs, and error messages. A sibling type keeps each abstraction's invariants clean.
+
+### Synthesised tool name
+
+The agent-visible tool name depends on the branch. Both rules go through `sanitize_toolname` (which preserves
+`[a-zA-Z0-9_-]` and truncates at 64 chars; see `src/quickapp/common/utils.py`). The MCP rule matches the existing
+`_MCPToolInitializer._process_toolset` convention; the fallback rule matches the existing
+`_DeploymentToolInitializer.__init_deployment_tool` convention for `DialDeploymentSimpleTool`.
+
+| Branch   | Rule                                                                               | Example (toolset `"ticket-triage"`, deployment `"support-triage"`)               |
+|----------|------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|
+| MCP      | `sanitize_toolname(f"{toolset.name}_{mcp_tool.name}")`                             | `ticket-triage_classify` (MCP tool `classify`)                                   |
+| Fallback | `sanitize_toolname(f"{toolset.name}_{deployment_id.replace('-', '_')}_tool")`      | `ticket-triage_support_triage_tool`                                              |
+
+Note the hyphen-to-underscore rewrite on the deployment-id segment of the fallback rule: it comes from
+`ToolConfigCoreService._convert_to_openai_tool_format`, which builds the deployment-side function name as
+`f"{deployment.id.replace('-', '_')}_tool"`. `sanitize_toolname` itself preserves hyphens, so the toolset-name
+segment retains them. This mixed hyphens/underscores pattern is intentional compatibility with today's
+`DialDeploymentSimpleTool` output, not a regression.
 
 ### New DI module: `DialAppToolingModule` (resolver)
 
@@ -170,16 +196,20 @@ initializers consume alongside their current sources.
 `application/_quick_app_completion.py:41-67` — so it cannot be used for chat-time resolution). The resolver
 exposes an idempotent async `resolve()` method that:
 
-1. For every `DialAppToolSet` in `app_config.tool_sets`, fetches deployment/application metadata via a new
-   `ToolConfigCoreService` helper (see *Caching*) and inspects `features.mcp`.
-2. If MCP is advertised, builds a fully-formed `MCPToolSet` (URL `/v1/deployments/{deployment_id}/mcp`,
+1. For every `DialAppToolSet` in `app_config.tool_sets`, fetches raw deployment/application metadata via a new
+   `ToolConfigCoreService.get_deployment_metadata(deployment_id)` helper (see *Caching*) and inspects
+   `features.mcp`.
+2. If MCP is advertised, builds a fully-formed `MCPToolSet` (URL `/v1/toolset/{deployment_id}/mcp`,
    `MCPApiKeyAuthorization` with `DIAL_API_KEY`, protocol `streamable_http`, `name`, `allowed_tools`,
    `attachment`, `fallback_configuration` copied from the `DialAppToolSet`) and appends it to the context.
-3. Otherwise, calls `get_basic_tool_config(deployment_id)` to produce a fully-built `DialDeploymentTool` and
-   appends `(toolset_name, DialDeploymentTool)` to the context. `allowed_tools` — meaningless on the
-   fallback branch — is logged as a warning at this point. `attachment` and `fallback_configuration` cannot be
-   carried (neither `DialDeploymentSimpleTool` nor the chat-completion path applies them today); the resolver
-   logs a warning if they were set on the `DialAppToolSet`.
+3. Otherwise, obtains a `DialDeploymentTool` by calling `get_basic_tool_config(deployment_id)` **through
+   `DialDeploymentToolCacheService`** with key `basic_config_{deployment_id}` — the same key that
+   `_DeploymentToolInitializer.__init_simple_deployment_tool` uses, so the fallback fetch shares the existing
+   singleton cache with `DialDeploymentSimpleTool` configs pointing at the same deployment. The resolver then
+   produces a customised copy via `DialDeploymentTool.model_copy(update={"attachment": ts.attachment,
+   "fallback_configuration": ts.fallback_configuration})` so the toolset's values override the defaults built
+   by `_convert_to_openai_tool_format`, and appends `(toolset_name, DialDeploymentTool)` to the context.
+   `allowed_tools` — meaningless on the fallback branch — is logged as a warning at this point.
 
 The output is written into a new request-scoped `_DialAppResolverContext`:
 
@@ -195,7 +225,9 @@ whichever downstream initializer runs first triggers resolution; subsequent call
 **DI scopes.** Both `_DialAppResolver` and `_DialAppResolverContext` are bound at `request_scope`, matching
 `_MCPToolingContext` and `_DeploymentToolingContext`. Request-scoping is load-bearing: the idempotency flag must
 reset each request, and both downstream initializers must receive the same resolver instance so only one actually
-performs the fetches.
+performs the fetches. The initializers' own scopes are incidental here — `_MCPToolInitializer` happens to be
+`request_scope` and `_DeploymentToolInitializer` is currently unscoped, but the shared-resolver guarantee
+depends on the resolver and context being request-scoped, not on the initializer bindings.
 
 **Change:** `AppFactory.create` registers `DialAppToolingModule` in `app_factory.py` alongside the existing
 modules. `_MCPToolInitializer` and `_DeploymentToolInitializer` are both modified: each gains a resolver
@@ -223,18 +255,19 @@ flowchart TD
 
 **Semantics:**
 
-- One metadata fetch per `DialAppToolSet` per request, via a new helper on `ToolConfigCoreService` that returns
-  both the raw `Deployment`/`Application` object (for `features.mcp`) and the `DialDeploymentTool` derived from
-  it (needed only on the fallback branch). See *Caching*.
+- One raw-metadata fetch per `DialAppToolSet` per request, via a new
+  `ToolConfigCoreService.get_deployment_metadata(deployment_id)` helper that returns the raw
+  `Deployment | Application` object. This fetch is needed only for the `features.mcp` routing decision.
 - If MCP is advertised, the resolver builds a fully-formed `MCPToolSet` and appends it to
   `_DialAppResolverContext.resolved_mcp_toolsets`. `_MCPToolInitializer._process_toolset` already handles plain
   `MCPToolSet`s (no DIAL-toolset-info lookup), so no new logic is needed on the MCP side beyond the
   extra-iteration change documented under *MCP transport branch*.
-- Otherwise the resolver calls `get_basic_tool_config(deployment_id)` and appends
-  `(toolset_name, DialDeploymentTool)` to `resolved_deployment_tools`. `_DeploymentToolInitializer`
-  consumes these by passing each pair directly to its existing `__init_deployment_tool` method, bypassing the
-  `__init_simple_deployment_tool` indirection (and its cache key) entirely — the resolver has already performed
-  the fetch and the conversion.
+- Otherwise the resolver calls `get_basic_tool_config(deployment_id)` **through `DialDeploymentToolCacheService`**
+  (same key as `__init_simple_deployment_tool`), applies the toolset's `attachment` and `fallback_configuration`
+  via `model_copy`, and appends `(toolset_name, DialDeploymentTool)` to `resolved_deployment_tools`.
+  `_DeploymentToolInitializer` hands each pair to its existing `__init_deployment_tool` method directly — we
+  skip the `__init_simple_deployment_tool` wrapper (because the resolver has already done the cache lookup and
+  the customisation), but we keep its cache key so the two entry points share the singleton cache.
 
 **Why resolve in a separate initializer rather than inline inside the MCP / Deployment initializers?** Keeping the
 routing logic in one place avoids the two downstream initializers having to duplicate
@@ -247,9 +280,8 @@ When MCP is advertised, the resolver builds a plain `MCPToolSet` (not `DialMCPTo
 `_DialAppResolverContext.resolved_mcp_toolsets`. `_MCPToolInitializer` iterates this list in addition to its
 existing injected `toolset_list`.
 
-- **Endpoint URL:** `{DIAL base URL}/v1/deployments/{deployment_id}/mcp`. This is the deployment-scoped MCP path
-  introduced in ai-dial-core #1477. The existing `DialMCPToolSet` continues to use the toolset-scoped path —
-  the two co-exist.
+- **Endpoint URL:** `{DIAL base URL}/v1/toolset/{deployment_id}/mcp`. The existing
+  `DialMCPToolSet` continues to use the toolset-scoped path (`/v1/toolset/{id}/mcp`) — the two co-exist.
 - **Authorization:** `MCPApiKeyAuthorization` with the request's DIAL API key (injected via `DIAL_API_KEY`),
   header name `Api-Key`. Same mechanism as `DialMCPToolSet`.
 - **Protocol:** `streamable_http`. DIAL Apps expose MCP exclusively over streamable HTTP, so the resolver
@@ -272,24 +304,30 @@ actually respects phase ordering.
 
 ### Chat-completion fallback branch
 
-When MCP is not advertised, the resolver calls `get_basic_tool_config(deployment_id)` itself and appends
-`(toolset_name, DialDeploymentTool)` to `_DialAppResolverContext.resolved_deployment_tools`.
-`_DeploymentToolInitializer.initialize()` iterates these pairs and calls its own existing
-`__init_deployment_tool(tool_config, toolset_name)` on each — the initializer is still the only component that
-constructs a `DeploymentTool`; the resolver's job is to produce the pre-resolved `DialDeploymentTool` input.
-`__init_simple_deployment_tool` is not involved in this path at all (the resolver has already fetched and
-converted the metadata). The existing scan of `app_config.tool_sets` is unchanged, so regular
-`DeploymentToolSet` configs still route through the old path.
+When MCP is not advertised, the resolver calls `get_basic_tool_config(deployment_id)` **through the singleton
+`DialDeploymentToolCacheService`** with the same `basic_config_{deployment_id}` key that
+`_DeploymentToolInitializer.__init_simple_deployment_tool` uses. The resolver then applies the `DialAppToolSet`'s
+`attachment` and `fallback_configuration` onto the returned (cached or freshly built) `DialDeploymentTool` via
+`model_copy(update=...)`, and appends `(toolset_name, customised_tool)` to
+`_DialAppResolverContext.resolved_deployment_tools`. `_DeploymentToolInitializer.initialize()` iterates these
+pairs and calls its own existing `__init_deployment_tool(tool_config, toolset_name)` on each — the initializer
+is still the only component that constructs a `DeploymentTool`; the resolver's job is to produce the
+pre-resolved, customised `DialDeploymentTool` input. `__init_simple_deployment_tool` is not invoked for
+`DialAppToolSet` entries (the resolver has already done its work), but they share its cache key, so a process
+that mixes `DialAppToolSet` and `DialDeploymentSimpleTool` entries pointing at the same deployment only fetches
+each deployment once. The existing scan of `app_config.tool_sets` is unchanged, so regular `DeploymentToolSet`
+configs still route through the old path.
 
-Net effect: one `{toolset_name}_{deployment_id}_tool` is registered, accepting `query` and optional
-`attachment_urls`, identical to what today's `DialDeploymentSimpleTool` produces.
+Net effect: a tool named per §"Synthesised tool name" (fallback rule) is registered, accepting `query` and —
+when the deployment advertises `input_attachment_types` — `attachment_urls`. The agent-visible behaviour and
+schema match today's `DialDeploymentSimpleTool`; the `attachment` and `fallback_configuration` fields on the
+`DialAppToolSet` additionally tune the tool's post-processing (MIME-type filtering, fallback strategies) in the
+same way they tune MCP tools.
 
-- **Warnings (emitted by the resolver at resolution time, not by downstream initializers). Each warning names
-  the offending `DialAppToolSet` by its `name` so admins can locate the config entry quickly:**
-  - `allowed_tools` set on a `DialAppToolSet` whose deployment does not advertise MCP → warning: "ignored on
+- **Warning (emitted by the resolver at resolution time, not by downstream initializers; names the offending
+  `DialAppToolSet` by its `name` so admins can locate the config entry quickly):**
+  - `allowed_tools` set on a `DialAppToolSet` whose deployment does not advertise MCP → "ignored on
     chat-completion fallback (single synthetic tool)".
-  - `attachment` or `fallback_configuration` set on the `DialAppToolSet` → warning: "not propagated on
-    chat-completion fallback in Phase 1 (tracked as follow-up to extend `DialDeploymentSimpleTool`)".
 - **History / content propagation:** not configurable via `DialAppToolSet` in Phase 1. Callers that need
   `content_propagation` or `custom_fields.configuration` continue to use `DialDeploymentTool` directly.
 
@@ -302,21 +340,30 @@ up unchanged.
 
 ### Caching
 
-The resolver performs at most one DIAL Core fetch per `DialAppToolSet` per request. Because it owns the fetch
-and hands over a fully-resolved `MCPToolSet` or `DialDeploymentTool`, the downstream initializers never look
-the deployment up again.
+Two fetches may happen per `DialAppToolSet` per request:
 
-Per-request memoisation is implicit: `_DialAppResolver` is request-scoped and its `resolve()` is idempotent
-(guarded by `_resolved: bool`), so every `DialAppToolSet` is fetched exactly once per request regardless of
-how many downstream initializers `await` the resolver. No entry is written into `DialDeploymentToolCacheService`
-by the resolver, keeping that cache's type (`CacheService[DialDeploymentTool]`) untouched.
+1. **Raw metadata fetch** for the `features.mcp` routing decision, via the new
+   `ToolConfigCoreService.get_deployment_metadata(deployment_id)` helper. This is *not* cached cross-request —
+   the resolver performs it each request. Per-request, `_DialAppResolver.resolve()` is idempotent (guarded by
+   `_resolved: bool`) and request-scoped, so multiple downstream initializers `await`ing the resolver never
+   cause a duplicate fetch within one request.
+2. **`get_basic_tool_config` fetch** on the fallback branch only, routed through the existing singleton
+   `DialDeploymentToolCacheService` under key `basic_config_{deployment_id}`. This is the same key
+   `_DeploymentToolInitializer.__init_simple_deployment_tool` uses, so `DialAppToolSet` and
+   `DialDeploymentSimpleTool` configs pointing at the same deployment share one DIAL Core roundtrip
+   process-wide, matching today's memoisation for `DialDeploymentSimpleTool`. The customisation step
+   (`attachment` / `fallback_configuration` propagation) runs on a `model_copy` of the cached value, not on the
+   shared cache entry.
 
-To produce the `(raw_metadata, DialDeploymentTool)` pair the resolver needs, `ToolConfigCoreService` gains a
-helper `get_deployment_with_tool_config(deployment_id)` that performs the existing deployment/application lookup
-plus the `_convert_to_openai_tool_format` conversion in one call and returns both values. This helper is not
-cached through `DialDeploymentToolCacheService` — the resolver's request-scope + idempotency already gives the
-needed de-duplication. The MCP tool-list fetch uses the per-request MCP session as today. No new cache layer is
-introduced.
+The raw-metadata fetch is intentionally not cached cross-request. It is cheap (a single
+`dial_client.deployments.get` or `.application.get`), the resolver already request-scopes it, and caching it
+would require a new singleton cache for a single-field routing check whose correctness must track live DIAL
+Core state (an operator flipping `features.mcp` on a deployment should take effect on the next request, not
+wait out a TTL). If usage patterns later show this to be a hot path, adding a short-TTL cache for raw metadata
+is a straightforward follow-up.
+
+No new cache layer is introduced; `DialDeploymentToolCacheService`'s type (`CacheService[DialDeploymentTool]`)
+is untouched. The MCP tool-list fetch uses the per-request MCP session as today.
 
 ### Implementation notes (non-normative)
 
@@ -327,9 +374,9 @@ introduced.
   `async resolve()` method (guarded by an internal `_resolved: bool` flag); both `_MCPToolInitializer` and
   `_DeploymentToolInitializer` inject the resolver and `await self.__resolver.resolve()` at the top of their
   `initialize()`. This does not depend on multiprovider emission order.
-- `features.mcp` presence check: the exact shape depends on ai-dial-core #1479 (plain `bool` vs a nested object
-  such as `{"url": ...}`); the resolver's check (`features.mcp is True` or `features.mcp is not None`) is a
-  one-line change to pin at integration time.
+- `features.mcp` presence check: `Features.mcp` is a plain `Optional[bool]`. The resolver checks
+  `deployment.features is not None and deployment.features.mcp is True` — absent, `None`, and `False` all route
+  to the chat-completion branch.
 
 ---
 
@@ -337,9 +384,9 @@ introduced.
 
 ### Document the MCP URL path difference
 
-`DialMCPToolSet` uses `/v1/toolset/{id}/mcp` (currently; slated to move to `/v1/toolsets/{id}/mcp` per core #1477)
-while `DialAppToolSet` uses `/v1/deployments/{id}/mcp`. The doc (CONFIGURATION.md) and `docs/agent.md` should call
-out the two distinct paths so readers understand when each applies.
+`DialMCPToolSet` uses `/v1/toolset/{id}/mcp` (toolset-resource-scoped) while `DialAppToolSet` uses
+`/v1/toolset/{id}/mcp`. The doc (CONFIGURATION.md) and `docs/agent.md` should call out
+the two distinct paths so readers understand when each applies.
 
 ### Schema regeneration
 
@@ -352,17 +399,16 @@ external consumers (UI, validators) see it.
 
 - **Interactive sign-in on the deployment-scoped MCP endpoint.** `InteractiveLoginService.request_signin_batch`
   sends a JSON-RPC `toolset/signin` keyed on `toolsetId`; DIAL Core does not yet publish an equivalent RPC for
-  deployments. Phase 1 surfaces 401s on `/v1/deployments/{id}/mcp` as `ToolInitializationException`. Re-enabling
+  deployments. Phase 1 surfaces 401s on `/v1/toolset/{id}/mcp` as `ToolInitializationException`. Re-enabling
   interactive login on this path requires the DIAL Core contract to be defined first and is tracked as a
   follow-up.
 - **Duplicate-resource handling.** Two collision modes are possible: (1) the same `deployment_id` appears in a
   `DialAppToolSet` **and** a `DialDeploymentSimpleTool` inside the same app config, and the resolver routes the
   `DialAppToolSet` down the chat-completion fallback; (2) two `DialAppToolSet` entries share the same
-  `deployment_id` and the same toolset `name`. In both cases the synthesised tool name
-  (`{toolset_name}_{deployment_id}_tool` or the MCP-side prefix) can collide, hitting `sanitize_toolname` and the
-  existing registry uniqueness checks. Phase 1 does not detect or deduplicate either case; admins are expected
-  not to configure duplicates. Emitting a warning on detection is acceptable Phase 1 work if cheap, but rejecting
-  the request is deferred to Phase 2 alongside the wider deprecation story.
+  `deployment_id` and the same toolset `name`. In both cases the synthesised tool names (see §"Synthesised tool
+  name") can collide, tripping the existing registry uniqueness checks. Phase 1 does not detect or deduplicate
+  either case; admins are expected not to configure duplicates. Emitting a warning on detection is acceptable
+  Phase 1 work if cheap, but rejecting the request is deferred to Phase 2 alongside the wider deprecation story.
 - **Deprecation of `DialDeploymentSimpleTool`.** Deferred to Phase 2. Phase 1 keeps the type untouched so existing
   configurations continue to work. Phase 2 will decide between a soft deprecation (schema warning + log) and a
   hard removal across releases.
@@ -397,9 +443,9 @@ external consumers (UI, validators) see it.
 }
 ```
 
-With `features.mcp == true` on `support-triage`, the agent sees two tools:
-`ticket_triage_classify` and `ticket_triage_summarize`. Attachments of type `application/pdf` are forwarded;
-other types are filtered.
+With `features.mcp == true` on `support-triage`, the agent sees two tools (MCP rule from §"Synthesised tool
+name"): `ticket-triage_classify` and `ticket-triage_summarize`. Attachments of type `application/pdf` are
+forwarded; other types are filtered.
 
 ### Non-MCP DIAL app (fallback to chat completion)
 
@@ -411,12 +457,9 @@ other types are filtered.
 }
 ```
 
-With `features.mcp` absent or false, the agent sees one tool: `legacychatbot_legacy_bot_v1_tool`, accepting a
-`query` string (and optionally `attachment_urls` if the deployment advertises `input_attachment_types`).
-Behaviour matches today's `DialDeploymentSimpleTool`. Note: `sanitize_toolname` preserves hyphens on the toolset
-prefix, while the deployment-id segment is underscore-normalised by `_convert_to_openai_tool_format`, so a
-hyphenated toolset `name` produces a tool name with mixed hyphens and underscores. This is stylistic, not a
-correctness issue.
+With `features.mcp` absent or false, the agent sees one tool (fallback rule from §"Synthesised tool name"):
+`legacychatbot_legacy_bot_v1_tool`, accepting a `query` string (and optionally `attachment_urls` if the
+deployment advertises `input_attachment_types`). Agent-visible schema matches today's `DialDeploymentSimpleTool`.
 
 ### Coexistence with existing types
 
@@ -445,14 +488,8 @@ emitted by `make dump_app_schema` gains a new union variant but existing variant
 
 - New toolset type in the discriminated `ToolSet` union.
 - New DI module.
-- New MCP endpoint path (`/v1/deployments/{id}/mcp`) exercised only by the new toolset type.
+- New MCP endpoint path (`/v1/toolset/{id}/mcp`) exercised only by the new toolset type.
 - Documentation updates in `CONFIGURATION.md` and `docs/agent.md`.
-
-### Client-python dependency
-
-`ai-dial-client-python` must release a version with `Features.mcp` typed before Phase 1 merges. The short-lived
-`model_extra.get("mcp")` bridge mentioned in the implementation notes is acceptable during development but must
-not ship to users.
 
 ---
 
@@ -480,16 +517,21 @@ not ship to users.
 - `src/quickapp/dial_deployment_tooling/_deployment_tool_initializer.py` — `__init__` gains a `_DialAppResolver`
   dependency and an injected `_DialAppResolverContext`; `initialize()` awaits `resolve()` once, then (in
   addition to its existing `app_config.tool_sets` scan) iterates `resolved_deployment_tools` and calls
-  `__init_deployment_tool(tool_config, toolset_name)` directly on each pair (no re-fetch via
-  `__init_simple_deployment_tool`).
+  `__init_deployment_tool(tool_config, toolset_name)` on each pair. `__init_simple_deployment_tool` is not
+  invoked for `DialAppToolSet` entries; the resolver does the cache lookup (under the shared key
+  `basic_config_{deployment_id}`) and the `attachment` / `fallback_configuration` customisation itself.
 - `src/quickapp/dial_core_services/tool_config_service.py` — add
-  `get_deployment_with_tool_config(deployment_id)` helper that returns the raw `Deployment | Application` and
-  the derived `DialDeploymentTool` in a single call. Not cached; per-request de-duplication is handled by the
-  request-scoped resolver's idempotent `resolve()`.
+  `get_deployment_metadata(deployment_id, api_key: SecretStr | None = None)` helper that returns the raw
+  `Deployment | Application`. Mirrors `get_basic_tool_config`'s existing resolution contract: calls
+  `dial_client.deployments.get(deployment_id)` first, falls back to `dial_client.application.get(deployment_id)`
+  on a 404 `DialException`, and raises `RuntimeError` if neither resolves (same error text format as
+  `get_basic_tool_config`). The optional `api_key` parameter is accepted for controller-path parity with
+  `get_basic_tool_config`; the completion-path resolver passes `None` and lets the helper use the injected
+  `AsyncDial` provider. The helper is used only for the routing-decision read of `features.mcp` and is not
+  cached cross-request.
 - `CONFIGURATION.md` — document the new toolset type and contrast with `DialMCPToolSet` / `DeploymentToolSet`.
-- `docs/agent.md` — mention the new DI module in the module list; note the `/v1/deployments/{id}/mcp` path.
+- `docs/agent.md` — mention the new DI module in the module list; note the `/v1/toolset/{id}/mcp` path.
 - `docs/generated-app-schema.json` — regenerated via `make dump_app_schema`.
-- `pyproject.toml` — bump `ai-dial-client-python` to a version that surfaces `Features.mcp`.
 
 **Unchanged:**
 

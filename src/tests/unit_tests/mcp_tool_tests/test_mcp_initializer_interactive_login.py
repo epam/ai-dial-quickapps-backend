@@ -93,6 +93,11 @@ def _make_initializer(
     dial_setting = MagicMock()
     dial_setting.url = "http://dial-core"
 
+    dial_app_resolver = MagicMock()
+    dial_app_resolver.resolve = AsyncMock()
+    dial_app_resolver_context = MagicMock()
+    dial_app_resolver_context.resolved_mcp_toolsets = []
+
     initializer = _MCPToolInitializer(
         toolset_list=toolset_list,
         mcp_context=mcp_context,
@@ -103,6 +108,8 @@ def _make_initializer(
         dial_mcp_cache=dial_mcp_cache,
         tool_config_service=MagicMock(),
         login_service=login_service,
+        dial_app_resolver=dial_app_resolver,
+        dial_app_resolver_context=dial_app_resolver_context,
     )
     return initializer, mcp_context, login_service
 

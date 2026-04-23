@@ -435,6 +435,32 @@ The context loaded by URL:
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
 
+#### DialAppToolSet Configuration
+
+Use `DialAppToolSet` to reference a DIAL application or deployment by its id and have QuickApps choose the
+transport automatically at initialization time. If the deployment advertises MCP (`features.mcp == true`),
+**all** MCP tools it publishes are surfaced as first-class QuickApp tools over the path
+`/v1/toolset/{deployment_id}/mcp` (current DIAL Core behaviour; this will move to
+`/v1/deployments/{deployment_id}/mcp` once the matching DIAL Core change ships). Otherwise the toolset
+falls back to the existing chat-completion path (single synthetic `query` tool per deployment), matching
+`DialDeploymentSimpleTool` behaviour.
+
+This differs from `DialMCPToolSet` semantically: `DialMCPToolSet` points at a DIAL *toolset* resource
+(identified by `dial_id`), while `DialAppToolSet` points at a DIAL *deployment/application* (identified by
+`deployment_id`). Both currently hit the same `/v1/toolset/{id}/mcp` path prefix in DIAL Core, but the ids
+have different semantics and will diverge once the deployment-scoped endpoint lands.
+
+| Field                  | Required | Type               | Description                                                                                                                                                                                | Default Value |
+|------------------------|----------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| name                   | Yes      | String             | The name of the tool set. Used as the tool-name prefix on both branches.                                                                                                                   | -             |
+| description            | No       | String             | The description of the tool set.                                                                                                                                                           | `null`        |
+| enabled                | No       | Boolean            | Whether the toolset is enabled.                                                                                                                                                            | `true`        |
+| type                   | Yes      | String             | The type of the tool set.                                                                                                                                                                  | `dial-app`    |
+| deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
+| allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
+| attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
+| fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
+
 #### InternalToolSet Configuration
 
 | Field       | Required | Type                                        | Description                      | Default Value |

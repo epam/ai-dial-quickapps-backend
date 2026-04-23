@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -32,12 +32,18 @@ def _make_deployment_tool(name: str) -> DialDeploymentTool:
 
 
 def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
+    dial_app_resolver = MagicMock()
+    dial_app_resolver.resolve = AsyncMock()
+    dial_app_resolver_context = MagicMock()
+    dial_app_resolver_context.resolved_deployment_tools = []
     return _DeploymentToolInitializer(
         context=MagicMock(),
         tool_config_service=MagicMock(),
         builder=builder,
         app_config=create_app_configuration([toolset]),
         deployment_cache=MagicMock(),
+        dial_app_resolver=dial_app_resolver,
+        dial_app_resolver_context=dial_app_resolver_context,
     )
 
 

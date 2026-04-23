@@ -24,6 +24,8 @@ from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.dial_app_tooling._dial_app_resolver import _DialAppResolver
+from quickapp.dial_app_tooling._dial_app_resolver_context import _DialAppResolverContext
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
@@ -115,6 +117,8 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
+        dial_app_resolver: _DialAppResolver,
+        dial_app_resolver_context: _DialAppResolverContext,
     ):
         self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
         self.__mcp_context: _MCPToolingContext = mcp_context
@@ -127,6 +131,8 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
+        self.__dial_app_resolver: _DialAppResolver = dial_app_resolver
+        self.__dial_app_resolver_context: _DialAppResolverContext = dial_app_resolver_context
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -146,24 +152,31 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        if not self.__toolset_list:
+        await self.__dial_app_resolver.resolve()
+        toolsets: list[MCPToolSet | DialMCPToolSet] = [
+            *self.__toolset_list,
+            *self.__dial_app_resolver_context.resolved_mcp_toolsets,
+        ]
+        if not toolsets:
             return
 
-        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
+        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in toolsets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        unauthorized = self._classify_initialization_results(results)
+        unauthorized = self._classify_initialization_results(toolsets, results)
         if not unauthorized:
             return
 
         await self._interactive_login_and_retry(unauthorized)
 
     def _classify_initialization_results(
-        self, results: list[BaseException | None]
+        self,
+        toolsets: list[MCPToolSet | DialMCPToolSet],
+        results: list[BaseException | None],
     ) -> list[DialMCPToolSet]:
         """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
         unauthorized: list[DialMCPToolSet] = []
-        for ts, result in zip(self.__toolset_list, results):
+        for ts, result in zip(toolsets, results):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):
