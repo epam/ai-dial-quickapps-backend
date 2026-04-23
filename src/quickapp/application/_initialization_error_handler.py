@@ -8,6 +8,13 @@ from quickapp.common.exceptions import (
     ToolInitializationException,
 )
 
+_STAGE_NAME = "Initialization issues"
+_TOOL_SECTION = "#### Tool initialization"
+_SKILL_SECTION = "#### Skill loading"
+_CATASTROPHIC_HEADER = (
+    "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
+)
+
 
 @inject
 class _InitializationErrorHandler:
@@ -28,43 +35,38 @@ class _InitializationErrorHandler:
         if not exceptions:
             return
 
-        tool_entries = [e for e in exceptions if isinstance(e, ToolInitializationException)]
-        skill_entries = [e for e in exceptions if isinstance(e, SkillInitializationException)]
+        tools: list[ToolInitializationException] = []
+        catastrophics: list[SkillCatastrophicInitializationException] = []
+        per_url_skills: list[SkillInitializationException] = []
+        for exc in exceptions:
+            if isinstance(exc, ToolInitializationException):
+                tools.append(exc)
+            elif isinstance(exc, SkillCatastrophicInitializationException):
+                catastrophics.append(exc)
+            elif isinstance(exc, SkillInitializationException) and exc.url is not None:
+                per_url_skills.append(exc)
 
-        markdown_lines: list[str] = []
-        if tool_entries:
-            markdown_lines.append("#### Tool initialization")
-            for tool_exc in tool_entries:
-                markdown_lines.append(
-                    f"- **{tool_exc.tool_name}{tool_exc.toolset_name}**: {tool_exc}"
-                )
+        sections: list[list[str]] = []
+        if tools:
+            section = [_TOOL_SECTION]
+            for tool_exc in tools:
+                section.append(f"- **{tool_exc.tool_name}{tool_exc.toolset_name}**: {tool_exc}")
                 if tool_exc.details:
-                    markdown_lines.append(f"```\n{tool_exc.details}\n```")
+                    section.append(f"```\n{tool_exc.details}\n```")
+            sections.append(section)
 
-        if skill_entries:
-            if tool_entries:
-                markdown_lines.append("")
-            markdown_lines.append("#### Skill loading")
-            catastrophics = [
-                e for e in skill_entries if isinstance(e, SkillCatastrophicInitializationException)
-            ]
-            per_url = [
-                e
-                for e in skill_entries
-                if not isinstance(e, SkillCatastrophicInitializationException)
-            ]
+        if catastrophics or per_url_skills:
+            section = [_SKILL_SECTION]
             if catastrophics:
-                markdown_lines.append(
-                    "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
-                )
+                section.append(_CATASTROPHIC_HEADER)
                 for catastrophic_exc in catastrophics:
-                    markdown_lines.append(f"- {catastrophic_exc.reason}")
-            for skill_exc in per_url:
-                markdown_lines.append(f"- **{skill_exc.url}**: {skill_exc.reason}")
+                    section.append(f"- {catastrophic_exc.reason}")
+            for skill_exc in per_url_skills:
+                section.append(f"- **{skill_exc.url}**: {skill_exc.reason}")
+            sections.append(section)
 
-        status = Status.FAILED if any(e.is_hard for e in exceptions) else Status.COMPLETED
         stage = self.__stage_provider.get()
         stage.open()
-        stage.append_name("Initialization issues")
-        stage.append_content("\n".join(markdown_lines))
-        stage.close(status)
+        stage.append_name(_STAGE_NAME)
+        stage.append_content("\n\n".join("\n".join(section) for section in sections))
+        stage.close(Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED)

@@ -77,4 +77,4 @@ class _RequestContextSetup:
         """
         context = self.__context_provider.get()
         transformed = await self.__messages_setup.run_transformers(context.messages)
-        context.replace_messages(transformed)
+        context._replace_messages(transformed)

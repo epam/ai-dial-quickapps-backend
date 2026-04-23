@@ -7,10 +7,10 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
 )
 from quickapp.config.skill import DialPromptSkillConfig
-from quickapp.dial_prompt_skills import ResolvedDialPromptSkill, _DialPromptSkillsContext
+from quickapp.dial_prompt_skills import _DialPromptSkillsContext
 from quickapp.dial_prompt_skills._dial_prompt_skill_initializer import _DialPromptSkillInitializer
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolverOutput
-from quickapp.skills._skill_metadata import SkillMetadata
+from tests.unit_tests.common.common import make_resolved_dial_prompt_skill as _resolved
 
 
 def _make_config_provider(skills: list[DialPromptSkillConfig] | None = None) -> MagicMock:
@@ -19,14 +19,6 @@ def _make_config_provider(skills: list[DialPromptSkillConfig] | None = None) -> 
     provider = MagicMock()
     provider.get.return_value = config
     return provider
-
-
-def _resolved(url: str, name: str, content: str = "body") -> ResolvedDialPromptSkill:
-    return ResolvedDialPromptSkill(
-        url=url,
-        metadata=SkillMetadata(name=name, description="d"),
-        content=content,
-    )
 
 
 class TestDialPromptSkillInitializer:

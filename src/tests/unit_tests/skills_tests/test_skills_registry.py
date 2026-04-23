@@ -3,22 +3,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from quickapp.common.exceptions import SkillInitializationException
-from quickapp.dial_prompt_skills import ResolvedDialPromptSkill, _DialPromptSkillsContext
+from quickapp.dial_prompt_skills import _DialPromptSkillsContext
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._skills_registry import SkillsRegistry
-
-
-def _resolved(
-    url: str,
-    name: str,
-    description: str = "A skill",
-    content: str = "content",
-) -> ResolvedDialPromptSkill:
-    return ResolvedDialPromptSkill(
-        url=url,
-        metadata=SkillMetadata(name=name, description=description),
-        content=content,
-    )
+from tests.unit_tests.common.common import make_resolved_dial_prompt_skill as _resolved
 
 
 def _make_predefined_provider(
