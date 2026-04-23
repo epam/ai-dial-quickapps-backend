@@ -91,9 +91,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
 
 def _deterministic_call_id(tool_name: str, arguments: dict) -> str:
-    args_hash = hashlib.sha256(
-        json.dumps(arguments, sort_keys=True).encode()
-    ).hexdigest()[:6]
+    args_hash = hashlib.sha256(json.dumps(arguments, sort_keys=True).encode()).hexdigest()[:6]
     return f"synth_once_{tool_name}_{args_hash}"
 
 
