@@ -53,7 +53,7 @@ class _SkillReaderTool(StagedBaseTool):
             return result
 
         try:
-            content = await self.__skills_registry.get_skill_content(skill_name)
+            content = self.__skills_registry.get_skill_content(skill_name)
             result = ToolCallResult(content=content, content_type="text/markdown")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
