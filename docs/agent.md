@@ -85,8 +85,14 @@ Completion initializers are invoked to prepare the request for orchestration. Th
 
 ### 6. Error Handling
 
-Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
-functionality even when some tools fail to initialize.
+Tool-initialization failures and skill-loading failures (invalid DIAL prompt frontmatter, fetch errors,
+duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
+common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
+multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
+sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
+itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
+failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
+UI cue.
 
 ### 7. Orchestrator Invocation
 
