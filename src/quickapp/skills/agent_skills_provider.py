@@ -188,7 +188,7 @@ class AgentSkillsProvider(PromptPartProvider):
         """Return XML metadata for all available skills."""
         return self._xml_metadata
 
-    def get_prompt_part(self) -> str:
+    async def get_prompt_part(self) -> str:
         """Return skills XML for inclusion in the system prompt."""
         return self.get_skills_xml()
 

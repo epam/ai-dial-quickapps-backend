@@ -9,7 +9,7 @@ class PromptPartProvider(ABC):
     """
 
     @abstractmethod
-    def get_prompt_part(self) -> str:
+    async def get_prompt_part(self) -> str:
         """Return the prompt part provided by this provider.
 
         Returns:

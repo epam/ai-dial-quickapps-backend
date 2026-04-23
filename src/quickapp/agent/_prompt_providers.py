@@ -15,7 +15,7 @@ class ConfigBasedPromptProvider(PromptPartProvider):
     def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
         self.__config_provider = config_provider
 
-    def get_prompt_part(self) -> str:
+    async def get_prompt_part(self) -> str:
         """Return the system prompt from config.
 
         Returns:
