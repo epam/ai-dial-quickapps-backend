@@ -3,7 +3,7 @@ import re
 import yaml
 
 from quickapp.skills._exceptions import SkillValidationError
-from quickapp.skills.agent_skills_provider import SkillMetadata
+from quickapp.skills._skill_metadata import SkillMetadata
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 _SKILL_NAME_RE = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")

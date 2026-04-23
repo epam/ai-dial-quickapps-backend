@@ -15,7 +15,8 @@ from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
+from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 CONFIG_SUPPORT_URI = "/v1/configuration-support"
 

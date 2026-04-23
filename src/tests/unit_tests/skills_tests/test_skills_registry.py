@@ -5,8 +5,8 @@ import pytest
 
 from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
 from quickapp.skills._exceptions import SkillResolutionWarning
+from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._skills_registry import SkillsRegistry
-from quickapp.skills.agent_skills_provider import SkillMetadata
 
 
 def _resolved(

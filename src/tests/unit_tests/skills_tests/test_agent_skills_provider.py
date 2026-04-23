@@ -8,8 +8,9 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._xml import generate_skills_xml
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 # ---------------------------------------------------------------------------
 # parse_frontmatter unit tests
@@ -129,7 +130,7 @@ class TestParseFrontmatter:
 # ---------------------------------------------------------------------------
 
 
-class TestGenerateXml:
+class TestGenerateSkillsXml:
     """Tests for generate_skills_xml()."""
 
     def test_empty_list_returns_empty_string(self):

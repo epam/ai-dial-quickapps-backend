@@ -1,22 +1,13 @@
 import logging
 
 from injector import inject
-from pydantic import BaseModel
 
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
+from quickapp.skills._exceptions import SkillValidationError
+from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills._skill_metadata import SkillMetadata
 
 logger = logging.getLogger(__name__)
-
-
-class SkillMetadata(BaseModel):
-    """Metadata extracted from a skill file's YAML frontmatter."""
-
-    name: str
-    description: str
-    license: str | None = None
-    compatibility: str | None = None
-    metadata: dict | None = None
-    allowed_tools: list[str] | None = None
 
 
 @inject
@@ -34,10 +25,6 @@ class AgentSkillsProvider:
         self._load_skills()
 
     def _load_skills(self) -> None:
-        """Load all skill files and cache metadata and contents."""
-        from quickapp.skills._exceptions import SkillValidationError
-        from quickapp.skills._frontmatter import parse_frontmatter
-
         skill_names = self._provider.list_names(ContentType.SKILL)
 
         if not skill_names:

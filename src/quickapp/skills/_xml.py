@@ -1,6 +1,6 @@
 from xml.sax.saxutils import escape as _stdlib_escape
 
-from quickapp.skills.agent_skills_provider import SkillMetadata
+from quickapp.skills._skill_metadata import SkillMetadata
 
 _QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
 
