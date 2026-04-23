@@ -5,8 +5,16 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
+from quickapp.config.tools.display.paramenter import (
+    FormattedParameterConfig,
+    ParameterDisplayConfig,
+)
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
+
+_file_display_config = ParameterDisplayConfig(
+    stage=FormattedParameterConfig(name="**File:** ", formatter=lambda value: value.split("/")[-1])
+)
 
 READ_FILE_LINES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
@@ -22,6 +30,7 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
                     "file_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="URL of the file to read.",
+                        display=_file_display_config,
                     ),
                     "start_line": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.integer,
@@ -55,6 +64,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                     "file_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="URL of the file to search.",
+                        display=_file_display_config,
                     ),
                     "pattern": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,

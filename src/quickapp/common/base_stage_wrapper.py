@@ -129,6 +129,9 @@ class BaseStageWrapper(ABC):
             else param_value
         )
 
+        if display_config.formatter:
+            result_value = display_config.formatter(result_value)
+
         if display_config.format:
             result_value = f"\n```{display_config.format}\n{result_value}\n\n```"
 

@@ -1,6 +1,7 @@
-from typing import Annotated, Literal
+from typing import Annotated, Callable, Literal
 
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 
 class CodeBlockFormatConfig(BaseModel):
@@ -60,6 +61,11 @@ class FormattedParameterConfig(BaseModel):
     format: str | None = Field(
         default=None,
         description="The format of the parameter value. If present then the value will be wrapped in ```{format} {parameter value}```.",
+    )
+    formatter: SkipJsonSchema[Callable[[str], str] | None] = Field(
+        default=None,
+        description="Runtime-only callable to transform the parameter value before display. Set programmatically; not serializable from JSON config.",
+        exclude=True,
     )
 
 
