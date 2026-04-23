@@ -65,8 +65,11 @@ class _InitializationErrorHandler:
                 section.append(f"- **{skill_exc.url}**: {skill_exc.reason}")
             sections.append(section)
 
+        status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED
         stage = self.__stage_provider.get()
         stage.open()
-        stage.append_name(_STAGE_NAME)
-        stage.append_content("\n\n".join("\n".join(section) for section in sections))
-        stage.close(Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED)
+        try:
+            stage.append_name(_STAGE_NAME)
+            stage.append_content("\n\n".join("\n".join(section) for section in sections))
+        finally:
+            stage.close(status)
