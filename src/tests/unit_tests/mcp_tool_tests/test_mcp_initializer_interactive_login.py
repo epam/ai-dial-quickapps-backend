@@ -7,7 +7,7 @@ from aidial_client import ToolsetInfo
 from aidial_client.types.deployment import Features
 from pydantic import SecretStr
 
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services._login_result import LoginResult

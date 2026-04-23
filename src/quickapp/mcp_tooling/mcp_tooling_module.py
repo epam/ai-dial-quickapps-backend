@@ -5,7 +5,7 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPToolSet

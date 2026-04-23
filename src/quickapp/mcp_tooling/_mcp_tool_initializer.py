@@ -10,8 +10,8 @@ from injector import AssistedBuilder, ProviderOf, inject
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
-from quickapp.common.tool_initialization_exception import ToolInitializationException
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
