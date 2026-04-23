@@ -32,6 +32,21 @@ class DialPromptSkillResolverOutput(BaseModel):
     exceptions: list[SkillInitializationException]
 
 
+async def fetch_and_validate_dial_prompt_skill(
+    client: AsyncDial, url: str
+) -> tuple[SkillMetadata, str]:
+    """Fetch a DIAL prompt by URL and validate it as a skill.
+
+    Raises ``DialException`` if the fetch fails and ``SkillValidationError``
+    if the prompt is empty or its frontmatter is invalid.
+    """
+    prompt = await client.prompts.get(url)
+    if prompt.content is None or not prompt.content.strip():
+        raise SkillValidationError(url, "DIAL prompt has no content")
+    metadata = parse_frontmatter(prompt.content, url)
+    return metadata, prompt.content
+
+
 @inject
 class DialPromptSkillResolver:
     """Request-scoped resolver that fetches DIAL prompts and validates them as skills."""
@@ -97,15 +112,7 @@ class DialPromptSkillResolver:
         self,
         config: DialPromptSkillConfig,
     ) -> ResolvedDialPromptSkill:
-        """Fetch a single DIAL prompt and validate it as a skill."""
-        prompt = await self._dial_client.prompts.get(config.url)
-
-        if prompt.content is None or not prompt.content.strip():
-            raise SkillValidationError(config.url, "DIAL prompt has no content")
-
-        metadata = parse_frontmatter(prompt.content, config.url)
-        return ResolvedDialPromptSkill(
-            url=config.url,
-            metadata=metadata,
-            content=prompt.content,
+        metadata, content = await fetch_and_validate_dial_prompt_skill(
+            self._dial_client, config.url
         )
+        return ResolvedDialPromptSkill(url=config.url, metadata=metadata, content=content)

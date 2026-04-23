@@ -1,3 +1,5 @@
+import logging
+
 from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
@@ -7,6 +9,8 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
     ToolInitializationException,
 )
+
+logger = logging.getLogger(__name__)
 
 _STAGE_NAME = "Initialization issues"
 _TOOL_SECTION = "#### Tool initialization"
@@ -30,6 +34,10 @@ class _InitializationErrorHandler:
         try:
             exceptions = self.__initialization_exceptions_provider.get()
         except Exception:
+            logger.warning(
+                "Initialization exceptions provider failed; skipping stage render",
+                exc_info=True,
+            )
             exceptions = []
 
         if not exceptions:
@@ -45,6 +53,11 @@ class _InitializationErrorHandler:
                 catastrophics.append(exc)
             elif isinstance(exc, SkillInitializationException) and exc.url is not None:
                 per_url_skills.append(exc)
+            else:
+                logger.warning(
+                    "Unhandled InitializationException subclass %s; not rendered to stage",
+                    type(exc).__name__,
+                )
 
         sections: list[list[str]] = []
         if tools:

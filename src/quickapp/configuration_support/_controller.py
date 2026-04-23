@@ -13,8 +13,10 @@ from quickapp.config.skill import DialPromptSkillConfig, SkillConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import (
+    fetch_and_validate_dial_prompt_skill,
+)
 from quickapp.skills._exceptions import SkillValidationError
-from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -102,7 +104,8 @@ class _Controller:
         )
 
         try:
-            prompt = await dial_client.prompts.get(config.url)
+            metadata, _ = await fetch_and_validate_dial_prompt_skill(dial_client, config.url)
+            return metadata
         except DialException as e:
             if e.status_code == 401:
                 raise HTTPException(
@@ -118,15 +121,6 @@ class _Controller:
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail=f"Failed to fetch prompt: {e.message}",
             )
-
-        if prompt.content is None or not prompt.content.strip():
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=f"Prompt at '{config.url}' has no content",
-            )
-
-        try:
-            return parse_frontmatter(prompt.content, config.url)
         except SkillValidationError as e:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
