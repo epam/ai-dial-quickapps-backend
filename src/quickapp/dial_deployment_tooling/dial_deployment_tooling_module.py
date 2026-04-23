@@ -7,7 +7,7 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 
