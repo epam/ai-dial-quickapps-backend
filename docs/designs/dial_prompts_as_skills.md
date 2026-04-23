@@ -1,7 +1,6 @@
 # Design: DIAL Prompts as Skills
 
-- **Status:** Approved
-- **Approved:** 2026-04-22
+- **Status:** Draft
 - **Dependencies:**
   - [Agent Skills and File Transfer](skills_and_file_transfer.md) (implemented)
 
