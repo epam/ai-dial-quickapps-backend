@@ -1,7 +1,8 @@
 import threading
 
 from quickapp.common import StagedBaseTool
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+
+from .exceptions import ToolInitializationException
 
 
 class ToolingContextBase:

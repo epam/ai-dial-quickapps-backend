@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 
 
 @inject
