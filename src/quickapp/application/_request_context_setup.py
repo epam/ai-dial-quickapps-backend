@@ -56,7 +56,7 @@ class _RequestContextSetup:
         )
         log_customised_catch_all_strategies(context.application_config)
         if isinstance(request, Request):
-            context.messages = self.__messages_setup.setup(request.messages)
+            context.messages = await self.__messages_setup.setup(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
         if choice:

@@ -1,3 +1,4 @@
+import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.config.predefined_content_provider import (
@@ -40,37 +41,41 @@ def _assert_synthetic_pair(messages: list[Message], assistant_idx: int) -> None:
 class TestInjectFileTransferInstructionTransformer:
     """Tests for _InjectFileTransferInstructionTransformer."""
 
-    def test_skill_with_name_tool_call_file_parameter_formatting_is_present(self):
+    @pytest.mark.asyncio
+    async def test_skill_with_name_tool_call_file_parameter_formatting_is_present(self):
         """Verify the file-transfer skill is loaded and injected as a synthetic tool call."""
         transformer = _make_transformer()
-        result = transformer.transform([])
+        result = await transformer.transform([])
 
         assert len(result) == 2, "Expected assistant tool call + tool response"
         _assert_synthetic_pair(result, 0)
 
-    def test_injects_after_first_user_message_with_system(self):
+    @pytest.mark.asyncio
+    async def test_injects_after_first_user_message_with_system(self):
         """Synthetic pair is inserted after the first USER message, not after SYSTEM."""
         messages = [
             Message(role=Role.SYSTEM, content="system prompt"),
             Message(role=Role.USER, content="hello"),
         ]
-        result = _make_transformer().transform(messages)
+        result = await _make_transformer().transform(messages)
 
         assert len(result) == 4
         assert result[0].role == Role.SYSTEM
         assert result[1].role == Role.USER
         _assert_synthetic_pair(result, 2)
 
-    def test_injects_after_first_user_message_without_system(self):
+    @pytest.mark.asyncio
+    async def test_injects_after_first_user_message_without_system(self):
         """When there is no system message, inject after the first USER."""
         messages = [Message(role=Role.USER, content="hello")]
-        result = _make_transformer().transform(messages)
+        result = await _make_transformer().transform(messages)
 
         assert len(result) == 3
         assert result[0].role == Role.USER
         _assert_synthetic_pair(result, 1)
 
-    def test_injects_after_first_user_with_multiple_users(self):
+    @pytest.mark.asyncio
+    async def test_injects_after_first_user_with_multiple_users(self):
         """Synthetic pair is injected after the FIRST user message only."""
         messages = [
             Message(role=Role.SYSTEM, content="system prompt"),
@@ -78,7 +83,7 @@ class TestInjectFileTransferInstructionTransformer:
             Message(role=Role.ASSISTANT, content="reply"),
             Message(role=Role.USER, content="second"),
         ]
-        result = _make_transformer().transform(messages)
+        result = await _make_transformer().transform(messages)
 
         assert len(result) == 6
         assert result[0].role == Role.SYSTEM
@@ -90,24 +95,26 @@ class TestInjectFileTransferInstructionTransformer:
         assert result[5].role == Role.USER
         assert result[5].content == "second"
 
-    def test_no_user_message_appends_at_end(self):
+    @pytest.mark.asyncio
+    async def test_no_user_message_appends_at_end(self):
         """When there is no USER message, synthetic pair is appended at the end."""
         messages = [Message(role=Role.SYSTEM, content="system prompt")]
-        result = _make_transformer().transform(messages)
+        result = await _make_transformer().transform(messages)
 
         assert len(result) == 3
         assert result[0].role == Role.SYSTEM
         _assert_synthetic_pair(result, 1)
 
-    def test_skips_if_synthetic_already_present(self):
+    @pytest.mark.asyncio
+    async def test_skips_if_synthetic_already_present(self):
         """Transformer is idempotent — does not inject twice."""
         messages = [
             Message(role=Role.SYSTEM, content="system prompt"),
             Message(role=Role.USER, content="hello"),
         ]
         transformer = _make_transformer()
-        first_pass = transformer.transform(messages)
-        second_pass = transformer.transform(first_pass)
+        first_pass = await transformer.transform(messages)
+        second_pass = await transformer.transform(first_pass)
 
         assert len(second_pass) == len(first_pass)
         assert second_pass == first_pass
