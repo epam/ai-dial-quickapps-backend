@@ -231,10 +231,11 @@ Where the new `ToolCallResultProcessor` chain sits inside `ToolExecutor`, alongs
 
 ```mermaid
 flowchart LR
-    Tool[Tool.arun] --> Result[ToolCallResult]
-    Result --> Enrich[Enrichers chain<br/>existing]
-    Enrich --> Proc[Processors chain<br/>NEW<br/>sorted by priority]
-    Proc --> Hist[Canonical message history<br/>via Orchestrator]
+    Tool["Tool.arun\n(MCP / REST / internal / DIAL)"]
+    Tool -->|"① raw result"| Stage["DIAL Stage\n(visible to user)"]
+    Tool -->|"② same raw result"| Enrich["Enrichers chain\nexisting"]
+    Enrich --> Proc["Processors chain\nNEW — sorted by priority"]
+    Proc -->|"③ processed result"| Hist["Canonical message history\nvia Orchestrator"]
     subgraph Proc_detail[Processors chain]
       direction TB
       P1[LargeResponseProcessor<br/>priority 100]
@@ -242,6 +243,8 @@ flowchart LR
     end
     Proc -.-> Proc_detail
 ```
+
+> **Note:** Each tool type (MCP, REST, internal, DIAL deployment) writes its raw `ToolCallResult` to the DIAL stage inside `arun()`, before the result is returned to `ToolExecutor`. This means the stage always displays the **original, unprocessed content** — even when `LargeResponseProcessor` later replaces it with a short notice in canonical history. The LLM sees the compact notice; the user in the DIAL UI sees the full response in the stage.
 
 ### Offload (write path)
 
