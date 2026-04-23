@@ -19,7 +19,7 @@ class _AddSystemPromptTransformer(MessagesTransformer):
         # Construct system prompt from all providers
         prompt_parts = []
         for provider in self.__prompt_providers:
-            part = provider.get_prompt_part()
+            part = await provider.get_prompt_part()
             if part:  # Only add non-empty parts
                 prompt_parts.append(part)
 
