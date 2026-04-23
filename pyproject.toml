@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     # Core framework & DI
-    "aidial-client>=0.7.0,<0.8.0",                # DIAL API client
+    "aidial-client>=0.7.1,<0.8.0",                # DIAL API client
     "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
     "pydantic-settings>=2.12.0,<3.0.0",           # Settings management
