@@ -1,5 +1,6 @@
 import base64
 import logging
+import re
 from datetime import datetime, timezone
 
 from aidial_sdk.chat_completion import Attachment
@@ -42,8 +43,9 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         if content_size < self._config.size_threshold:
             return result
 
-        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3]
-        filename = f"offloaded-responses/{ctx.tool_name}-{timestamp}.txt"
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M-%S.%f")[:-3]
+        safe_tool_name = re.sub(r"[_:]", "-", ctx.tool_name)
+        filename = f"offloaded-responses/{safe_tool_name}-{timestamp}.txt"
 
         upload_attachment = Attachment(
             title=filename,
