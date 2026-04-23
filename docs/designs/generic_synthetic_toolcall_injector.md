@@ -1,6 +1,6 @@
 # Design: Generic Synthetic Tool-Call Injector
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - None
 
