@@ -44,11 +44,15 @@ class _QuickAppCompletion(ChatCompletion):
         timer_service.start_period(self.__timer_period_name, level=1)
         with response.create_single_choice() as choice:
             try:
-                await self.__injector.get(_RequestContextSetup).setup(request, choice)
-                timer_service.add_milestone(self.__timer_period_name, "request context setup")
+                request_context_setup = self.__injector.get(_RequestContextSetup)
+                await request_context_setup.setup_pre_init(request, choice)
+                timer_service.add_milestone(self.__timer_period_name, "request context pre-init")
                 await invoke_initializers(self.__injector, InitializerType.completion)
+                timer_service.add_milestone(self.__timer_period_name, "initializers")
+                await request_context_setup.finalize_messages()
+                timer_service.add_milestone(self.__timer_period_name, "messages finalized")
                 self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
-                timer_service.add_milestone(self.__timer_period_name, "tools initialization")
+                timer_service.add_milestone(self.__timer_period_name, "initialization issues")
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
             except Exception as e:
@@ -63,7 +67,7 @@ class _QuickAppCompletion(ChatCompletion):
                         stage.append_content(timer_service.get_report_md())
 
     async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
-        await self.__injector.get(_RequestContextSetup).setup(request)
+        await self.__injector.get(_RequestContextSetup).setup_pre_init(request)
         await invoke_initializers(self.__injector, InitializerType.configuration)
         if not self.__injector.binder.has_explicit_binding_for(list[Configuration]):
             return ConfigurationResponse()

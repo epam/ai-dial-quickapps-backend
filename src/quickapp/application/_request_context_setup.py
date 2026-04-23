@@ -44,9 +44,14 @@ class _RequestContextSetup:
         application_config = ApplicationConfig.model_validate(application_properties)
         return self.__config_resolver.resolve_config(application_config)
 
-    async def setup(
+    async def setup_pre_init(
         self, request: Request | ConfigurationRequest, choice: Choice | None = None
     ) -> None:
+        """Populate every request-scoped field that does not depend on
+        initializer output. ``context.messages`` is set to the post-
+        ``extract_tool_calls`` shape; transformers run later via
+        :meth:`finalize_messages`.
+        """
         context = self.__context_provider.get()
         context.api_key = SecretStr(request.api_key)
         context.bearer = SecretStr(request.bearer_token) if request.bearer_token else None
@@ -56,7 +61,7 @@ class _RequestContextSetup:
         )
         log_customised_catch_all_strategies(context.application_config)
         if isinstance(request, Request):
-            context.messages = await self.__messages_setup.setup(request.messages)
+            context.messages = self.__messages_setup.extract_tool_calls(request.messages)
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
         if choice:
@@ -64,3 +69,12 @@ class _RequestContextSetup:
 
         if isinstance(request, Request) and request.response_format:
             context.response_format = request.response_format
+
+    async def finalize_messages(self) -> None:
+        """Run the transformer chain against ``context.messages`` after
+        initializers have populated their feature contexts. Overwrites
+        ``context.messages`` with the transformed result.
+        """
+        context = self.__context_provider.get()
+        transformed = await self.__messages_setup.run_transformers(context.messages)
+        context.replace_messages(transformed)
