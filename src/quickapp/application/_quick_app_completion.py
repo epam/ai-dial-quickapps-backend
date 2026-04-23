@@ -47,7 +47,7 @@ class _QuickAppCompletion(ChatCompletion):
                 await self.__injector.get(_RequestContextSetup).setup(request, choice)
                 timer_service.add_milestone(self.__timer_period_name, "request context setup")
                 await invoke_initializers(self.__injector, InitializerType.completion)
-                self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
+                self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
                 timer_service.add_milestone(self.__timer_period_name, "tools initialization")
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
