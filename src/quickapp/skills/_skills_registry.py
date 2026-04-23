@@ -6,9 +6,9 @@ from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_prompt_skills import DialPromptSkillResolver
-from quickapp.skills._exceptions import SkillResolutionWarning
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -51,7 +51,7 @@ class SkillsRegistry(PromptPartProvider):
 
             merged_skills = list(predefined_skills)
             merged_contents = dict(predefined_contents)
-            warnings: list[SkillResolutionWarning] = []
+            exceptions: list[SkillInitializationException] = []
             catastrophic_reason: str | None = None
 
             if self._dial_prompt_resolver is not None:
@@ -59,14 +59,12 @@ class SkillsRegistry(PromptPartProvider):
                     config = self._config_provider.get()
                     skill_configs = config.skills or []
                     if skill_configs:
-                        resolved, resolver_warnings = await self._dial_prompt_resolver.resolve(
-                            skill_configs
-                        )
-                        warnings.extend(resolver_warnings)
-                        for skill in resolved:
+                        output = await self._dial_prompt_resolver.resolve(skill_configs)
+                        exceptions.extend(output.exceptions)
+                        for skill in output.resolved:
                             if skill.metadata.name in predefined_names:
-                                warnings.append(
-                                    SkillResolutionWarning(
+                                exceptions.append(
+                                    SkillInitializationException(
                                         url=skill.url,
                                         reason="Has the same name as a predefined"
                                         " skill; predefined takes precedence",
@@ -81,12 +79,13 @@ class SkillsRegistry(PromptPartProvider):
                         f"falling back to predefined-only: {exc}"
                     )
 
-            # `catastrophic_reason` and `warnings` are mutually exclusive: the
-            # resolver either returns (warnings only) or raises (catastrophic only).
+            # `catastrophic_reason` and `exceptions` are mutually exclusive: the
+            # resolver either returns (per-URL exceptions only) or raises
+            # (catastrophic only).
             if catastrophic_reason is not None:
                 self._render_catastrophic_stage(catastrophic_reason)
-            elif warnings:
-                self._render_warnings_stage(warnings)
+            elif exceptions:
+                self._render_exceptions_stage(exceptions)
 
             self._all_contents = merged_contents
             self._xml_cache = generate_skills_xml(merged_skills)
@@ -103,13 +102,13 @@ class SkillsRegistry(PromptPartProvider):
         )
         stage.close(Status.COMPLETED)
 
-    def _render_warnings_stage(self, warnings: list[SkillResolutionWarning]) -> None:
+    def _render_exceptions_stage(self, exceptions: list[SkillInitializationException]) -> None:
         stage = self._stage_provider.get()
         stage.open()
         stage.append_name("Skill loading warnings")
         lines = ["#### Some DIAL prompt skills could not be loaded:"]
-        for w in warnings:
-            lines.append(f"- **{w.url}**: {w.reason}")
+        for exc in exceptions:
+            lines.append(f"- **{exc.url}**: {exc.reason}")
         stage.append_content("\n".join(lines))
         stage.close(Status.COMPLETED)
 

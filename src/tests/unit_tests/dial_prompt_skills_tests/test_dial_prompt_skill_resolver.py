@@ -50,11 +50,11 @@ class TestDialPromptSkillResolver:
         resolver = _make_resolver(prompts_get_return=prompt)
 
         configs = [_make_config("prompts/bucket/my-skill")]
-        result, warnings = await resolver.resolve(configs)
+        output = await resolver.resolve(configs)
 
-        assert len(result) == 1
-        assert len(warnings) == 0
-        skill = result[0]
+        assert len(output.resolved) == 1
+        assert len(output.exceptions) == 0
+        skill = output.resolved[0]
         assert skill.url == "prompts/bucket/my-skill"
         assert skill.metadata.name == "my-skill"
         assert skill.metadata.description == "A test skill from DIAL"
@@ -65,33 +65,33 @@ class TestDialPromptSkillResolver:
         prompt = _make_prompt(content="")
         resolver = _make_resolver(prompts_get_return=prompt)
 
-        result, warnings = await resolver.resolve([_make_config()])
+        output = await resolver.resolve([_make_config()])
 
-        assert len(result) == 0
-        assert len(warnings) == 1
-        assert "no content" in warnings[0].reason.lower()
+        assert len(output.resolved) == 0
+        assert len(output.exceptions) == 1
+        assert "no content" in output.exceptions[0].reason.lower()
 
     @pytest.mark.asyncio
     async def test_none_content_skipped(self):
         prompt = _make_prompt(content=None)
         resolver = _make_resolver(prompts_get_return=prompt)
 
-        result, warnings = await resolver.resolve([_make_config()])
+        output = await resolver.resolve([_make_config()])
 
-        assert len(result) == 0
-        assert len(warnings) == 1
-        assert "no content" in warnings[0].reason.lower()
+        assert len(output.resolved) == 0
+        assert len(output.exceptions) == 1
+        assert "no content" in output.exceptions[0].reason.lower()
 
     @pytest.mark.asyncio
     async def test_invalid_frontmatter_skipped(self):
         prompt = _make_prompt(content="No frontmatter here, just text.")
         resolver = _make_resolver(prompts_get_return=prompt)
 
-        result, warnings = await resolver.resolve([_make_config()])
+        output = await resolver.resolve([_make_config()])
 
-        assert len(result) == 0
-        assert len(warnings) == 1
-        assert "frontmatter" in warnings[0].reason.lower()
+        assert len(output.resolved) == 0
+        assert len(output.exceptions) == 1
+        assert "frontmatter" in output.exceptions[0].reason.lower()
 
     @pytest.mark.asyncio
     async def test_url_deduplication(self):
@@ -103,10 +103,10 @@ class TestDialPromptSkillResolver:
 
         same_url = "prompts/bucket/my-skill"
         configs = [_make_config(same_url), _make_config(same_url)]
-        result, warnings = await resolver.resolve(configs)
+        output = await resolver.resolve(configs)
 
-        assert len(result) == 1
-        assert len(warnings) == 0
+        assert len(output.resolved) == 1
+        assert len(output.exceptions) == 0
         dial_client.prompts.get.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -124,14 +124,14 @@ class TestDialPromptSkillResolver:
             _make_config("prompts/bucket/skill-a"),
             _make_config("prompts/bucket/skill-b"),
         ]
-        result, warnings = await resolver.resolve(configs)
+        output = await resolver.resolve(configs)
 
-        assert len(result) == 1
-        assert result[0].url == "prompts/bucket/skill-a"
-        assert result[0].metadata.name == "my-skill"
-        assert len(warnings) == 1
-        assert warnings[0].url == "prompts/bucket/skill-b"
-        assert "Duplicate" in warnings[0].reason
+        assert len(output.resolved) == 1
+        assert output.resolved[0].url == "prompts/bucket/skill-a"
+        assert output.resolved[0].metadata.name == "my-skill"
+        assert len(output.exceptions) == 1
+        assert output.exceptions[0].url == "prompts/bucket/skill-b"
+        assert "Duplicate" in output.exceptions[0].reason
 
     @pytest.mark.asyncio
     async def test_fetch_failure_does_not_block_others(self):
@@ -148,18 +148,18 @@ class TestDialPromptSkillResolver:
             _make_config("prompts/bucket/broken"),
             _make_config("prompts/bucket/working"),
         ]
-        result, warnings = await resolver.resolve(configs)
+        output = await resolver.resolve(configs)
 
-        assert len(result) == 1
-        assert result[0].url == "prompts/bucket/working"
-        assert result[0].metadata.name == "my-skill"
-        assert len(warnings) == 1
-        assert warnings[0].url == "prompts/bucket/broken"
-        assert "Network error" in warnings[0].reason
+        assert len(output.resolved) == 1
+        assert output.resolved[0].url == "prompts/bucket/working"
+        assert output.resolved[0].metadata.name == "my-skill"
+        assert len(output.exceptions) == 1
+        assert output.exceptions[0].url == "prompts/bucket/broken"
+        assert "Network error" in output.exceptions[0].reason
 
     @pytest.mark.asyncio
     async def test_empty_configs_returns_empty(self):
         resolver = _make_resolver()
-        result, warnings = await resolver.resolve([])
-        assert result == []
-        assert warnings == []
+        output = await resolver.resolve([])
+        assert output.resolved == []
+        assert output.exceptions == []

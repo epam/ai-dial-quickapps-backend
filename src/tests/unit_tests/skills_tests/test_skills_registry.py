@@ -3,10 +3,21 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.exceptions import SkillInitializationException
 from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
-from quickapp.skills._exceptions import SkillResolutionWarning
+from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolverOutput
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._skills_registry import SkillsRegistry
+
+
+def _output(
+    resolved: list[ResolvedDialPromptSkill] | None = None,
+    exceptions: list[SkillInitializationException] | None = None,
+) -> DialPromptSkillResolverOutput:
+    return DialPromptSkillResolverOutput(
+        resolved=resolved or [],
+        exceptions=exceptions or [],
+    )
 
 
 def _resolved(
@@ -121,9 +132,10 @@ class TestSkillsRegistryWithResolver:
         predefined_contents = {"predefined": "Predefined content"}
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = (
-            [_resolved("prompts/b/dial-skill", "dial-skill", "From DIAL", "DIAL skill content")],
-            [],
+        resolver.resolve.return_value = _output(
+            resolved=[
+                _resolved("prompts/b/dial-skill", "dial-skill", "From DIAL", "DIAL skill content")
+            ],
         )
 
         registry = SkillsRegistry(
@@ -144,9 +156,10 @@ class TestSkillsRegistryWithResolver:
         predefined_contents = {"shared-name": "Predefined content"}
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = (
-            [_resolved("prompts/b/collides", "shared-name", "DIAL version", "DIAL content")],
-            [],
+        resolver.resolve.return_value = _output(
+            resolved=[
+                _resolved("prompts/b/collides", "shared-name", "DIAL version", "DIAL content")
+            ],
         )
 
         registry = SkillsRegistry(
@@ -184,7 +197,7 @@ class TestSkillsRegistryWithResolver:
     @pytest.mark.asyncio
     async def test_lazy_resolution_only_resolves_once(self):
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([], [])
+        resolver.resolve.return_value = _output()
 
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
@@ -201,9 +214,10 @@ class TestSkillsRegistryWithResolver:
     @pytest.mark.asyncio
     async def test_get_skill_content_for_dial_prompt_skill(self):
         resolver = AsyncMock()
-        resolver.resolve.return_value = (
-            [_resolved("prompts/b/only", "dial-only", content="DIAL prompt skill content")],
-            [],
+        resolver.resolve.return_value = _output(
+            resolved=[
+                _resolved("prompts/b/only", "dial-only", content="DIAL prompt skill content")
+            ],
         )
 
         registry = SkillsRegistry(
@@ -222,7 +236,7 @@ class TestSkillsRegistryWithResolver:
 
         async def slow_resolve(_configs):
             await asyncio.sleep(0.01)
-            return ([_resolved("prompts/b/only", "dial-only", content="C")], [])
+            return _output(resolved=[_resolved("prompts/b/only", "dial-only", content="C")])
 
         resolver = AsyncMock()
         resolver.resolve.side_effect = slow_resolve
@@ -265,9 +279,8 @@ class TestSkillsRegistryStageWarnings:
     @pytest.mark.asyncio
     async def test_warnings_open_stage(self):
         resolver = AsyncMock()
-        resolver.resolve.return_value = (
-            [],
-            [SkillResolutionWarning(url="prompts/b/s", reason="fetch failed")],
+        resolver.resolve.return_value = _output(
+            exceptions=[SkillInitializationException(url="prompts/b/s", reason="fetch failed")]
         )
 
         stage_provider = _make_stage_provider()
@@ -292,7 +305,7 @@ class TestSkillsRegistryStageWarnings:
     @pytest.mark.asyncio
     async def test_no_warnings_no_stage(self):
         resolver = AsyncMock()
-        resolver.resolve.return_value = ([], [])
+        resolver.resolve.return_value = _output()
 
         stage_provider = _make_stage_provider()
         registry = SkillsRegistry(
@@ -312,9 +325,10 @@ class TestSkillsRegistryStageWarnings:
         predefined_contents = {"shared": "Predefined content"}
 
         resolver = AsyncMock()
-        resolver.resolve.return_value = (
-            [_resolved("prompts/b/dial-collides", "shared", "DIAL version", "DIAL content")],
-            [],
+        resolver.resolve.return_value = _output(
+            resolved=[
+                _resolved("prompts/b/dial-collides", "shared", "DIAL version", "DIAL content")
+            ],
         )
 
         stage_provider = _make_stage_provider()

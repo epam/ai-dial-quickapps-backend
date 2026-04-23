@@ -6,8 +6,9 @@ from aidial_client import AsyncDial
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
+from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
-from quickapp.skills._exceptions import SkillResolutionWarning, SkillValidationError
+from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._skill_metadata import SkillMetadata
 
@@ -22,6 +23,15 @@ class ResolvedDialPromptSkill(BaseModel):
     content: str
 
 
+class DialPromptSkillResolverOutput(BaseModel):
+    """Return shape of ``DialPromptSkillResolver.resolve``."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
+
+    resolved: list[ResolvedDialPromptSkill]
+    exceptions: list[SkillInitializationException]
+
+
 @inject
 class DialPromptSkillResolver:
     """Request-scoped resolver that fetches DIAL prompts and validates them as skills."""
@@ -32,16 +42,15 @@ class DialPromptSkillResolver:
     async def resolve(
         self,
         skill_configs: list[DialPromptSkillConfig],
-    ) -> tuple[list[ResolvedDialPromptSkill], list[SkillResolutionWarning]]:
+    ) -> DialPromptSkillResolverOutput:
         """Resolve skill configs into validated ``ResolvedDialPromptSkill`` entries.
-
-        Returns a tuple of (resolved_skills, warnings).
 
         - Deduplicates by URL before fetching.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
         - Deduplicates by skill name after fetching (first configured wins).
+        - Every per-URL failure becomes a ``SkillInitializationException`` in
+          the ``exceptions`` list — per the unified initialization-issues flow.
         """
-        # Deduplicate by URL (preserve first occurrence)
         seen_urls: set[str] = set()
         unique_configs: list[DialPromptSkillConfig] = []
         for cfg in skill_configs:
@@ -50,31 +59,31 @@ class DialPromptSkillResolver:
                 unique_configs.append(cfg)
 
         if not unique_configs:
-            return [], []
+            return DialPromptSkillResolverOutput(resolved=[], exceptions=[])
 
-        # Fetch in parallel
         results = await asyncio.gather(
             *(self._fetch_one(cfg) for cfg in unique_configs),
             return_exceptions=True,
         )
 
-        # Filter exceptions, deduplicate by name, collect warnings
         resolved: list[ResolvedDialPromptSkill] = []
-        warnings: list[SkillResolutionWarning] = []
+        exceptions: list[SkillInitializationException] = []
         seen_names: set[str] = set()
 
         for i, result in enumerate(results):
             url = unique_configs[i].url
             if isinstance(result, BaseException):
-                warnings.append(SkillResolutionWarning(url=url, reason=str(result)))
+                exceptions.append(SkillInitializationException(url=url, reason=str(result)))
                 continue
 
             if result.metadata.name in seen_names:
-                warnings.append(
-                    SkillResolutionWarning(
+                exceptions.append(
+                    SkillInitializationException(
                         url=url,
-                        reason=f"Duplicate skill name '{result.metadata.name}';"
-                        " keeping first occurrence",
+                        reason=(
+                            f"Duplicate skill name '{result.metadata.name}';"
+                            " keeping first occurrence"
+                        ),
                     )
                 )
                 continue
@@ -82,7 +91,7 @@ class DialPromptSkillResolver:
             seen_names.add(result.metadata.name)
             resolved.append(result)
 
-        return resolved, warnings
+        return DialPromptSkillResolverOutput(resolved=resolved, exceptions=exceptions)
 
     async def _fetch_one(
         self,
