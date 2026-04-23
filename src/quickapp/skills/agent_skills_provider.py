@@ -1,25 +1,15 @@
 import logging
-import re
 
-import yaml
 from injector import inject
-from pydantic import BaseModel
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
+from quickapp.skills._exceptions import SkillValidationError
+from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills._xml import generate_skills_xml
 
 logger = logging.getLogger(__name__)
-
-
-class SkillMetadata(BaseModel):
-    """Metadata extracted from a skill file's YAML frontmatter."""
-
-    name: str
-    description: str
-    license: str | None = None
-    compatibility: str | None = None
-    metadata: dict | None = None
-    allowed_tools: list[str] | None = None
 
 
 @inject
@@ -34,127 +24,7 @@ class AgentSkillsProvider(PromptPartProvider):
         self._provider = provider
         self._load_skills()
 
-    @staticmethod
-    def _parse_frontmatter(content: str, file_name: str) -> SkillMetadata | None:
-        """Parse YAML frontmatter delimited by ``---`` and return validated SkillMetadata."""
-        frontmatter_pattern = r'^---\s*\n(.*?)\n---\s*\n'
-        match = re.match(frontmatter_pattern, content, re.DOTALL)
-
-        if not match:
-            logger.warning(f"No YAML frontmatter found in {file_name}")
-            return None
-
-        try:
-            parsed = yaml.safe_load(match.group(1))
-        except yaml.YAMLError as exc:
-            logger.error(f"Failed to parse YAML frontmatter in {file_name}: {exc}")
-            return None
-
-        if not isinstance(parsed, dict):
-            logger.warning(f"YAML frontmatter is not a dictionary in {file_name}")
-            return None
-
-        # Normalize 'allowed-tools' hyphenated key to 'allowed_tools'
-        if 'allowed-tools' in parsed:
-            allowed_tools_value = parsed.pop('allowed-tools')
-            if isinstance(allowed_tools_value, str):
-                parsed['allowed_tools'] = allowed_tools_value.split()
-            elif isinstance(allowed_tools_value, list):
-                parsed['allowed_tools'] = allowed_tools_value
-            else:
-                logger.warning(f"Invalid allowed-tools format in {file_name}")
-
-        name = parsed.get('name')
-        description = parsed.get('description')
-
-        if not name or not description:
-            logger.warning(f"Missing required fields (name/description) in {file_name}")
-            return None
-
-        if len(name) > 64:
-            logger.warning(f"Skill name exceeds 64 characters in {file_name}: {name}")
-            return None
-
-        if '--' in name or not re.match(r'^[a-z0-9]([a-z0-9-]*[a-z0-9])?$', name):
-            logger.warning(
-                f"Invalid skill name format in {file_name}: {name}"
-                " (must be lowercase letters, numbers, hyphens;"
-                " no leading/trailing or consecutive hyphens)"
-            )
-            return None
-
-        if len(description) > 1024:
-            logger.warning(f"Description exceeds 1024 characters in {file_name}")
-            return None
-
-        compatibility = parsed.get('compatibility')
-        if compatibility is not None and len(compatibility) > 500:
-            logger.warning(f"Compatibility exceeds 500 characters in {file_name}, truncating")
-            compatibility = compatibility[:500]
-
-        return SkillMetadata(
-            name=name,
-            description=description,
-            license=parsed.get('license'),
-            compatibility=compatibility,
-            metadata=parsed.get('metadata') or None,
-            allowed_tools=parsed.get('allowed_tools'),
-        )
-
-    def _generate_xml(self, skills: list[SkillMetadata]) -> str:
-        """Generate XML representation of available skills for the system prompt."""
-        if not skills:
-            return ""
-
-        xml_parts = ["<available_skills>"]
-
-        for skill_metadata in skills:
-            xml_parts.append("  <skill>")
-            xml_parts.append(f"    <name>{self._escape_xml(skill_metadata.name)}</name>")
-            xml_parts.append(
-                f"    <description>{self._escape_xml(skill_metadata.description)}</description>"
-            )
-            if skill_metadata.license:
-                xml_parts.append(
-                    f"    <license>{self._escape_xml(skill_metadata.license)}</license>"
-                )
-            if skill_metadata.compatibility:
-                xml_parts.append(
-                    f"    <compatibility>{self._escape_xml(skill_metadata.compatibility)}</compatibility>"
-                )
-            if skill_metadata.allowed_tools:
-                allowed_tools = " ".join(skill_metadata.allowed_tools)
-                xml_parts.append(
-                    f"    <allowed_tools>{self._escape_xml(allowed_tools)}</allowed_tools>"
-                )
-            if skill_metadata.metadata:
-                xml_parts.append("    <metadata>")
-                for key in sorted(skill_metadata.metadata):
-                    raw_value = skill_metadata.metadata[key]
-                    value = "" if raw_value is None else str(raw_value)
-                    xml_parts.append(
-                        f"      <entry key=\"{self._escape_xml(str(key))}\">{self._escape_xml(value)}</entry>"
-                    )
-                xml_parts.append("    </metadata>")
-            xml_parts.append("  </skill>")
-
-        xml_parts.append("</available_skills>")
-
-        return "\n".join(xml_parts)
-
-    @staticmethod
-    def _escape_xml(text: str) -> str:
-        """Escape XML special characters."""
-        return (
-            text.replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-            .replace('"', "&quot;")
-            .replace("'", "&apos;")
-        )
-
     def _load_skills(self) -> None:
-        """Load all skill files and generate XML metadata."""
         skill_names = self._provider.list_names(ContentType.SKILL)
 
         if not skill_names:
@@ -166,22 +36,25 @@ class AgentSkillsProvider(PromptPartProvider):
             try:
                 logger.debug(f"Loading skill `{file_stem}`")
                 content = self._provider.read_text(ContentType.SKILL, file_stem)
-                metadata = self._parse_frontmatter(content, file_stem)
-                if metadata is None:
-                    continue
-                if metadata.name != file_stem:
-                    logger.warning(
-                        "Skill name '%s' does not match directory name '%s'; skipping",
-                        metadata.name,
-                        file_stem,
-                    )
-                    continue
-                skills.append(metadata)
+                metadata = parse_frontmatter(content, file_stem)
+            except SkillValidationError as exc:
+                logger.warning(str(exc))
+                continue
             except Exception as exc:
                 logger.error(f"Failed to parse skill `{file_stem}`: {exc}")
+                continue
+
+            if metadata.name != file_stem:
+                logger.warning(
+                    "Skill name '%s' does not match directory name '%s'; skipping",
+                    metadata.name,
+                    file_stem,
+                )
+                continue
+            skills.append(metadata)
 
         self._skills = skills
-        self._xml_metadata = self._generate_xml(skills)
+        self._xml_metadata = generate_skills_xml(skills)
         logger.info(f"Loaded {len(skills)} skill(s)")
 
     def get_skills_xml(self) -> str:
