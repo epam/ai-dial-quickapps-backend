@@ -1,4 +1,7 @@
-class ToolInitializationException(Exception):
+from .initialization import InitializationException
+
+
+class ToolInitializationException(InitializationException):
     """Raised when a tool or toolset fails to initialize properly."""
 
     def __init__(
