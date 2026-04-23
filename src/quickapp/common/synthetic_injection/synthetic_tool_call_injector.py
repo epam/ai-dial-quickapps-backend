@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
     position: InjectionPosition
     frequency: InjectionFrequency
-    call_id_prefix: str = "synthetic_"
+    call_id_prefix: str = "synth_"
 
     @abstractmethod
     async def get_tool_name(self) -> str: ...
@@ -37,16 +38,17 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     async def transform(self, messages: list[Message]) -> list[Message]:
         tool_name = await self.get_tool_name()
+        arguments = await self.get_arguments()
         call_id: str
 
         # 1. Frequency gate
         match self.frequency:
             case InjectionFrequency.ONCE:
-                call_id = f"synthetic_once_{tool_name}"  # deterministic; call_id_prefix not used
+                call_id = _deterministic_call_id(tool_name, arguments)
                 if _has_tool_call_id(messages, call_id):
                     return messages
             case InjectionFrequency.REFRESH:
-                call_id = f"synthetic_once_{tool_name}"  # deterministic; call_id_prefix not used
+                call_id = _deterministic_call_id(tool_name, arguments)
                 messages = _remove_pair_by_call_id(messages, call_id)
             case InjectionFrequency.CONDITIONAL:
                 if not self.condition(messages):
@@ -63,7 +65,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
             return messages
 
         # 3. Pair construction
-        arguments = await self.get_arguments()
         pair = _build_pair(tool_name, call_id, arguments, content)
 
         # 4. Position splice
@@ -87,6 +88,13 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _deterministic_call_id(tool_name: str, arguments: dict) -> str:
+    args_hash = hashlib.sha256(
+        json.dumps(arguments, sort_keys=True).encode()
+    ).hexdigest()[:6]
+    return f"synth_once_{tool_name}_{args_hash}"
 
 
 def _has_tool_call_id(messages: list[Message], call_id: str) -> bool:

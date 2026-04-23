@@ -47,6 +47,23 @@ class _RefreshBeforeLastUserInjector(SyntheticToolCallInjector):
         return "refreshed content"
 
 
+class _ParamDrivenOnceInjector(SyntheticToolCallInjector):
+    position = InjectionPosition.END
+    frequency = InjectionFrequency.ONCE
+
+    def __init__(self, arguments: dict):
+        self._arguments = arguments
+
+    async def get_tool_name(self) -> str:
+        return "param_tool"
+
+    async def get_arguments(self) -> dict:
+        return self._arguments
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return f"content for {self._arguments}"
+
+
 class _ConditionalEndInjector(SyntheticToolCallInjector):
     position = InjectionPosition.END
     frequency = InjectionFrequency.CONDITIONAL
@@ -96,9 +113,7 @@ def _assert_synthetic_pair(
     assert assistant.tool_calls is not None and len(assistant.tool_calls) == 1
     assert assistant.tool_calls[0].function.name == tool_name
     call_id = assistant.tool_calls[0].id
-    assert call_id.startswith(
-        "synthetic_"
-    ), f"call_id should start with 'synthetic_', got {call_id!r}"
+    assert call_id, f"call_id should be non-empty, got {call_id!r}"
 
     assert tool.role == Role.TOOL
     assert tool.tool_call_id == call_id
@@ -187,7 +202,7 @@ class TestOnceAfterFirstUser:
         id1 = result1[1].tool_calls[0].id
         id2 = result2[1].tool_calls[0].id
         assert id1 == id2
-        assert id1 == "synthetic_once_once_tool"
+        assert id1.startswith("synth_once_once_tool_")
 
     @pytest.mark.asyncio
     async def test_no_user_message_appends_at_end(self):
@@ -325,3 +340,39 @@ class TestCustomCallIdPrefix:
         assert result[1].tool_calls is not None
         call_id = result[1].tool_calls[0].id
         assert call_id.startswith("my_prefix_")
+
+
+# ---------------------------------------------------------------------------
+# Tests: ONCE with different arguments
+# ---------------------------------------------------------------------------
+
+
+class TestOnceDifferentArguments:
+    @pytest.mark.asyncio
+    async def test_both_injected_when_args_differ(self):
+        injector_a = _ParamDrivenOnceInjector({"key": "a"})
+        injector_b = _ParamDrivenOnceInjector({"key": "b"})
+        messages = [_user("hello")]
+
+        result = await injector_a.transform(messages)
+        result = await injector_b.transform(result)
+
+        # Both pairs injected: 1 user + 2 × (assistant + tool) = 5
+        assert len(result) == 5
+        assert result[1].tool_calls is not None
+        assert result[3].tool_calls is not None
+        call_id_a = result[1].tool_calls[0].id
+        call_id_b = result[3].tool_calls[0].id
+        assert call_id_a != call_id_b
+
+    @pytest.mark.asyncio
+    async def test_deduplicated_when_args_same(self):
+        injector_a = _ParamDrivenOnceInjector({"key": "same"})
+        injector_b = _ParamDrivenOnceInjector({"key": "same"})
+        messages = [_user("hello")]
+
+        result = await injector_a.transform(messages)
+        result = await injector_b.transform(result)
+
+        # Second injector sees the existing call_id and skips — only one pair
+        assert len(result) == 3
