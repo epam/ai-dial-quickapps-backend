@@ -2,7 +2,7 @@
 
 - **Status:** Implemented
 - **Dependencies:**
-  - None
+  - [File Management Tools](file_tools.md) — provides the `read_file_lines` / `search_in_file` tools the LLM uses to read offloaded content back on demand.
 - **Related:** [Issue #64](https://github.com/epam/ai-dial-quickapps-backend/issues/64)
 
 ## Problem Statement
@@ -18,7 +18,7 @@ There is also **no extension point** in the current pipeline for transforming `T
 
 - Provide a generic extension point for post-processing `ToolCallResult` in `ToolExecutor`, applied **once** per tool call and persisted to canonical history.
 - Implement **large response offload** as the first consumer of this extension point: detect oversized responses by size alone (no content-type filtering in v1), upload them to DIAL file storage, replace the response content with a short reference + attachment.
-- Give the agent **file-reading tools** to pull content back on demand (line range, char range, substring search with optional context).
+- Rely on [File Management Tools](file_tools.md) (`read_file_lines`, `search_in_file`) for read-back — they are the agent-facing half of this feature and are specified in their own design.
 - Keep performance impact **negligible for small responses**; net-positive for large ones (trades one HTTP upload for smaller LLM context).
 - Make the extension point **future-ready for a configuration hierarchy** (global → application → toolset → tool), without paying the cost of hierarchy logic today.
 - **Fail-open** on upload errors: a broken DIAL file storage must not break agent iterations.
@@ -33,31 +33,17 @@ There is also **no extension point** in the current pipeline for transforming `T
 **Behavior:** `LargeResponseProcessor` detects `len(content) ≥ threshold` and (the tool is not in the exclusion list). Content is uploaded to DIAL file storage. The `ToolCallResult.content` is replaced with a short notice containing the file URL and instructions to use `read_file_lines` / `search_in_file`. The file is attached to the result.\
 **Outcome:** Canonical history contains only the short notice + attachment. The stage shows a compact, readable message. The LLM sees a small message and a file it can read on demand.
 
-### UC-2: Agent searches inside an offloaded file
+### UC-2: Agent reads offloaded content back
 
-**Trigger:** The LLM calls `search_in_file(file_url=..., pattern="error", context_lines=2)`.\
-**Behavior:** The tool downloads the file from DIAL storage, performs a substring search, returns matching chunks with ±2 lines of context as `ToolCallResult(content=..., content_type="text/plain")`.\
-**Outcome:** The LLM gets a focused snippet instead of the full file; it can iterate.
+**Trigger:** The LLM calls `read_file_lines` or `search_in_file` on the offloaded `file_url`.\
+**Behavior:** Covered by [File Management Tools](file_tools.md). The key interaction with this design is that both tool names are in `LargeResponseProcessor`'s default `excluded_tools`, so read-back results are never re-offloaded (no recursive loop, no duplicate storage).\
+**Outcome:** The LLM can narrow in on the content it needs. If it requests an oversized slice, it pays the context cost directly — expected self-correction.
 
-### UC-3: Agent requests too much back → recursive offload
-
-**Trigger:** The LLM calls `read_file_lines(start_line=0, end_line=100000)` on a very large file.\
-**Behavior:** The read tool returns a `ToolCallResult` with the large content. Because `search_in_file` / `read_file_lines` are in the default exclusion list, `LargeResponseProcessor` **skips** them — the large content **is not re-offloaded**. The LLM sees its own oversized request filling the context.\
-**Outcome:** The LLM learns (from context cost / follow-up iterations) to request smaller slices. No infinite loop; no duplicate storage of the same data.
-
-> **Alternatives considered (deferred):** Hard limits on read-tool parameters (`end_line - start_line ≤ N`), truncation to threshold with a "truncated" notice, pagination tokens, or summarization. Each has trade-offs (loss of data, complexity, cost) — see the Out of Scope section for follow-up notes.
-
-### UC-4: DIAL file storage is unavailable during offload
+### UC-3: DIAL file storage is unavailable during offload
 
 **Trigger:** Upload to DIAL file storage fails with a 5xx error.\
 **Behavior:** `LargeResponseProcessor` logs a warning and returns the original `ToolCallResult` unchanged (fail-open).\
 **Outcome:** Large content goes into the LLM context — not ideal, but the agent iteration completes. No user-visible error.
-
-### UC-5: Multiple reads of the same offloaded file in one request
-
-**Trigger:** The LLM calls `read_file_lines` on the same `file_url` several times within a single request (e.g., first to inspect structure, then to grab specific ranges).\
-**Behavior:** The download is performed **once** and cached by `DialFileService` (request-scoped, keyed by `SHA256(url)`, 10 MB limit per file — already implemented). Subsequent calls hit the cache.\
-**Outcome:** No repeated GETs to DIAL; low latency on follow-up reads.
 
 ---
 
@@ -184,24 +170,12 @@ Config resolution happens **once per request** in `ToolCallResultOffloadModule._
 
 ---
 
-### Component 4: Text-file internal tools (`text_file_tooling`)
+### Component 4: Text-file internal tools
 
-**What:** Two new internal tools in their own module `src/quickapp/text_file_tooling/`. They are registered by `TextFileToolingModule` — contributed to the same internal-tool multiprovider that other internal tools (e.g., Python interpreter) also feed.
+Specified separately in [File Management Tools](file_tools.md). Relevant facts for this design:
 
-**Tools:**
-
-| Tool | Parameters | Behavior |
-|------|------------|----------|
-| `read_file_lines` | `file_url: str`, `start_line: int`, `end_line: int` | Download file, split by `\n`, slice `[start_line:end_line]`. Return as `text/plain`. |
-| `search_in_file` | `file_url: str`, `pattern: str`, `context_lines: int = 0`, `case_insensitive: bool = False` | Download file, substring search line-by-line, return matching lines ± `context_lines` as `text/plain`. |
-
-**Rationale for two tools:** Character-based reading (`read_file_chars`) was rejected because LLMs cannot reliably estimate character offsets; line numbers are surfaced naturally by grep results. A combined `file_query(mode=...)` tool was also considered and rejected — see _Design Decisions_ section.
-
-**Error handling:** Invalid input (bad range, missing file, etc.) → `InvalidToolCallParameterException` → existing `FallbackProcessor` returns the error to the LLM as a tool-call error.
-
-**Behavior under re-offload:** Their results bypass `LargeResponseProcessor` (via `excluded_tools` default). If the LLM requests a too-large slice, it pays the context cost directly — expected self-correction loop (UC-3).
-
-**Owner:** `src/quickapp/text_file_tooling/`
+- The tools are named `read_file_lines` and `search_in_file`; these names appear in `LargeResponseProcessor`'s default `excluded_tools` so read-back results are never re-offloaded.
+- They are wired by their own `TextFileToolingModule` (also preview-gated). `ToolCallResultOffloadModule` has **no dependency** on that module — the two are independent and can be enabled/disabled separately.
 
 ---
 
@@ -212,7 +186,7 @@ Config resolution happens **once per request** in `ToolCallResultOffloadModule._
 - Binds `ToolCallResultOffloadSettings` as singleton.
 - Provides a request-scoped `ResolvedConfig` via `@provider`, merging env settings with per-app config.
 - Binds `LargeResponseProcessor` (request-scoped) and provides it into the `list[ToolCallResultProcessor]` multiprovider.
-- Does **not** register text-file tools directly — those are wired by `TextFileToolingModule` (Component 4).
+- Does **not** register text-file tools — those are wired by `TextFileToolingModule` (see [File Management Tools](file_tools.md)).
 - Registers itself in `src/quickapp/app_factory.py` alongside other feature modules.
 
 **Preview gating:** Module is **preview-feature-gated**. `configure(binder)` checks `ApplicationConfig.enable_preview_features` (same pattern other preview modules use); when the flag is off, **nothing** is bound — no processor, no tools. This keeps the feature invisible in production deployments until it stabilizes. Once stable, the gate is removed and the module becomes always-on.
@@ -402,9 +376,8 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 | `tool_call_result_offload/_settings.py` | `ToolCallResultOffloadSettings` pydantic-settings; `ResolvedConfig` dataclass |
 | `tool_call_result_offload/_large_response_processor.py` | First processor implementation — receives `ResolvedConfig` directly |
 | `tool_call_result_offload/tool_call_result_offload_module.py` | DI wiring (preview-gated); request-scoped `@provider` that resolves config |
-| `text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` internal tool |
-| `text_file_tooling/_search_in_file_tool.py` | `search_in_file` internal tool |
-| `text_file_tooling/text_file_tooling_module.py` | `TextFileToolingModule` DI wiring (preview-gated) |
+
+Text-file tool files are listed in [File Management Tools](file_tools.md).
 
 ### Modified files
 
@@ -413,7 +386,7 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 | `agent/tool_executor.py` | Inject `list[ToolCallResultProcessor]`, sort by priority in constructor, apply chain after enrichers |
 | `agent/agent_module.py` | Add baseline empty `@multiprovider` for `list[ToolCallResultProcessor]` |
 | `config/application.py` | Add `ToolCallResultOffloadAppConfig` under `ToolDefaults` (preview-gated) |
-| `app_factory.py` | Register `ToolCallResultOffloadModule` and `TextFileToolingModule` |
+| `app_factory.py` | Register `ToolCallResultOffloadModule` (and, separately, `TextFileToolingModule` per its own design) |
 
 ### New interfaces
 
@@ -423,22 +396,16 @@ None. Existing tool responses smaller than the threshold pass through unchanged.
 
 ### Tests
 
-- Unit: `src/tests/tool_call_result_offload/` covering threshold / exclusion / fail-open branches for `LargeResponseProcessor`; `src/tests/text_file_tooling/` covering each text-file tool.
-- Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (UC-3).
+- Unit: `src/tests/tool_call_result_offload/` covering threshold / exclusion / fail-open branches for `LargeResponseProcessor`. Text-file tool tests are covered in their own design.
+- Integration: end-to-end case with a large REST response in the existing integration suite; recursive-read-back case (covered via the text-file tools' exclusion, UC-2).
 
 ---
 
 ## Design Decisions
 
-### Text-file tool set: two tools, line-based reading
+### Text-file tool set
 
-**Decision:** `text_file_tooling` exposes exactly two tools — `search_in_file` and `read_file_lines`. Character-based reading (`read_file_chars`) was considered and rejected.
-
-**Rationale:**
-
-- **Lines over characters.** LLMs cannot reliably estimate character/byte offsets in an opaque file. Line numbers are natural and directly surfaced by grep results, making `read_file_chars` unusable in practice.
-- **Two tools over one.** Combining grep and line-read into a single `file_query(mode=...)` tool was considered. Rejected because conditional parameters (either `query` or `start_line`/`end_line` depending on mode) confuse weaker models and add validation complexity for marginal token savings.
-- **Grep is often sufficient alone.** `search_in_file` returns ±N context lines around each match. In most workflows the LLM does not need a separate line-read at all; `read_file_lines` covers only the case where a larger contiguous chunk is needed.
+Rationale for exposing exactly `read_file_lines` + `search_in_file` (line-based, two orthogonal tools) is documented in [File Management Tools](file_tools.md#out-of-scope).
 
 ---
 
