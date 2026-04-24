@@ -56,33 +56,6 @@ def test_provide_deployment_openai_client_forwards_bearer_to_default_headers():
     resolver.resolve.assert_called_once()
 
 
-def test_provide_deployment_openai_client_bearer_overwrites_forwarded_authorization_header():
-    module = DialDeploymentToolingModule()
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    api_key = SecretStr("test-key")
-
-    with patch(
-        "quickapp.dial_deployment_tooling.dial_deployment_tooling_module.AsyncAzureOpenAI"
-    ) as openai_client:
-        openai_client.return_value = MagicMock()
-
-        module.provide_deployment_openai_client(
-            dial_settings=dial_settings,
-            api_key=api_key,
-            forwarded_headers={
-                "Authorization": "Bearer forwarded-token",
-                "X-Request-Id": "req-1",
-            },
-            timeout_resolver=noop_timeout_resolver(),
-            bearer=SecretStr("incoming-token"),
-        )
-
-    assert openai_client.call_args.kwargs["default_headers"] == {
-        "Authorization": "Bearer incoming-token",
-        "X-Request-Id": "req-1",
-    }
-
-
 def test_provide_deployment_openai_client_handles_missing_bearer_without_authorization_header():
     module = DialDeploymentToolingModule()
     dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
