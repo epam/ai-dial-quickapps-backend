@@ -4,7 +4,6 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import ToolInitializationException
-from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
@@ -38,35 +37,21 @@ class _DeploymentToolInitializer(CompletionInitializer):
             if isinstance(toolset, DeploymentToolSet) and toolset.enabled:
                 for tool in toolset.tools:
                     if isinstance(tool, DialDeploymentTool) and tool.enabled:
-                        self.__init_deployment_tool(tool, toolset.name)
+                        self.__init_deployment_tool(tool)
                     if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled:
-                        await self.__init_simple_deployment_tool(tool, toolset.name)
+                        await self.__init_simple_deployment_tool(tool)
 
-    def __init_deployment_tool(self, tool: DialDeploymentTool, toolset_name: str):
-        prefixed_name = sanitize_toolname(f"{toolset_name}_{tool.open_ai_tool.function.name}")
-        prefixed_tool = tool.model_copy(
-            update={
-                "open_ai_tool": tool.open_ai_tool.model_copy(
-                    update={
-                        "function": tool.open_ai_tool.function.model_copy(
-                            update={"name": prefixed_name}
-                        )
-                    }
-                )
-            }
-        )
+    def __init_deployment_tool(self, tool: DialDeploymentTool):
         built_tool = self.__builder.build(
             application_id=tool.deployment.name,
-            application_name=prefixed_name,
-            description=prefixed_tool.open_ai_tool.function.description,
+            application_name=tool.open_ai_tool.function.name,
+            description=tool.open_ai_tool.function.description,
             content_propagation=tool.content_propagation,
-            tool_config=prefixed_tool,
+            tool_config=tool,
         )
         self.__deployment_context.append_tool(built_tool)
 
-    async def __init_simple_deployment_tool(
-        self, tool_info: DialDeploymentSimpleTool, toolset_name: str
-    ):
+    async def __init_simple_deployment_tool(self, tool_info: DialDeploymentSimpleTool):
         try:
             tool_config = await self.__deployment_cache.get(
                 f"basic_config_{tool_info.deployment_id}",
@@ -75,7 +60,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
             )
             if tool_config is None:
                 raise ToolInitializationException(f"No tool config for {tool_info.deployment_id}")
-            self.__init_deployment_tool(tool_config, toolset_name)
+            self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)

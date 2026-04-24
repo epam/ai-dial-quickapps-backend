@@ -51,10 +51,10 @@ async def test_tool_names_prefixed_with_toolset_name():
     await _make_initializer(toolset, builder).initialize()
 
     builder.build.assert_called_once()
-    assert builder.build.call_args.kwargs["application_name"] == "chat-hub_image_generation_tool"
+    assert builder.build.call_args.kwargs["application_name"] == "image_generation_tool"
     assert (
         builder.build.call_args.kwargs["tool_config"].open_ai_tool.function.name
-        == "chat-hub_image_generation_tool"
+        == "image_generation_tool"
     )
 
 
@@ -67,8 +67,5 @@ async def test_tool_names_hyphenated_toolset_name_preserved():
 
     await _make_initializer(toolset, builder).initialize()
 
-    assert builder.build.call_args.kwargs["application_name"] == "my-api-toolset_search_web"
-    assert (
-        builder.build.call_args.kwargs["tool_config"].open_ai_tool.function.name
-        == "my-api-toolset_search_web"
-    )
+    assert builder.build.call_args.kwargs["application_name"] == "search_web"
+    assert builder.build.call_args.kwargs["tool_config"].open_ai_tool.function.name == "search_web"
