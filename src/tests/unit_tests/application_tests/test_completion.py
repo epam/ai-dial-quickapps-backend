@@ -127,11 +127,12 @@ def make_request_completion():
         provider = SimpleNamespace(get=lambda: request_context)
 
         config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
-        messages_setup = _MessagesSetup([], request_context)
+        messages_setup = _MessagesSetup([])
 
         request_context_setup = _RequestContextSetup(
             context_provider=provider,
             config_resolver=config_resolver,
+            messages_setup=messages_setup
         )
 
         mapping = {

@@ -10,6 +10,7 @@ from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+from ._messages_setup import _MessagesSetup
 
 from ._request_context import _RequestContext
 
@@ -31,9 +32,11 @@ class _RequestContextSetup:
         self,
         context_provider: ProviderOf[_RequestContext],
         config_resolver: ConfigResolver,
+        messages_setup: _MessagesSetup,
     ):
         self.__context_provider = context_provider
         self.__config_resolver = config_resolver
+        self.__messages_setup = messages_setup
 
     def __resolve_application_config(self, application_properties):
         application_config = ApplicationConfig.model_validate(application_properties)
@@ -73,4 +76,4 @@ class _RequestContextSetup:
         context = self.__context_provider.get()
         context.messages = self.__messages_setup.extract_tool_calls(messages)
         transformed = await self.__messages_setup.run_transformers(context.messages)
-        context._replace_messages(transformed)
+        context.replace_messages(transformed)

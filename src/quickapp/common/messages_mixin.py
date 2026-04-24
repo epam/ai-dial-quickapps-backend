@@ -37,7 +37,7 @@ class MessagesMixin(BaseModel):
             raise RuntimeError("Messages are already set")
         self._messages = messages
 
-    def _replace_messages(self, messages: list[Message]) -> None:
+    def replace_messages(self, messages: list[Message]) -> None:
         """Overwrite the message list. Name-protected escape hatch used by
         ``_RequestContextSetup.setup_messages`` to write the transformer-chain
         output after the raw (post-``extract_tool_calls``) list has already
