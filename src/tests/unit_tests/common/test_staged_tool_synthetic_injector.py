@@ -30,15 +30,18 @@ def _make_staged_tool(sanitized_name: str, run_content: str = "tool result") -> 
 
 
 class _ConcreteInjector(StagedToolSyntheticInjector):
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.ALWAYS
-
     def __init__(self, tools, tool_name: str):
         super().__init__(tools)
         self._tool_name = tool_name
 
     async def get_tool_name(self) -> str:
         return self._tool_name
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
 
 class TestStagedToolSyntheticInjector:

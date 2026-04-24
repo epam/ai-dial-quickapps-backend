@@ -20,8 +20,6 @@ class _TimestampInjectionTransformer(SyntheticToolCallInjector):
     """Appends a synthetic tool-call + tool-result pair with the current
     timestamp at the end of the message list on every request turn."""
 
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.ALWAYS
     call_id_prefix = SYNTHETIC_TIMESTAMP_CALL_PREFIX
 
     @inject
@@ -35,6 +33,12 @@ class _TimestampInjectionTransformer(SyntheticToolCallInjector):
 
     async def get_tool_name(self) -> str:
         return CURRENT_TIMESTAMP_TOOL_NAME
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         features = self.__config_provider.get().features

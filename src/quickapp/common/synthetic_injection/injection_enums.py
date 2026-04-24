@@ -11,4 +11,3 @@ class InjectionFrequency(StrEnum):
     ONCE = "once"  # inject once; skip if already present in history
     ALWAYS = "always"  # always append; accumulates across turns
     REFRESH = "refresh"  # remove existing pair if present, then inject fresh one
-    CONDITIONAL = "conditional"  # inject only when condition() returns True

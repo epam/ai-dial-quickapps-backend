@@ -22,15 +22,18 @@ class _InjectFileTransferInstructionTransformer(SyntheticToolCallInjector):
     """Injects a synthetic skill-reader tool call after the first USER message,
     exactly once per conversation."""
 
-    position = InjectionPosition.AFTER_FIRST_USER
-    frequency = InjectionFrequency.ONCE
-
     @inject
     def __init__(self, skills_provider: AgentSkillsProvider):
         self.__skills_provider = skills_provider
 
     async def get_tool_name(self) -> str:
         return SKILL_READER_TOOL_NAME
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ONCE
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.AFTER_FIRST_USER
 
     async def get_arguments(self) -> dict:
         return {"skill_name": BUILTIN_FILE_TRANSFER_SKILL}

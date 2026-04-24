@@ -27,9 +27,6 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
     """Injects synthetic tool call/result messages to inform the agent about
     available contexts when changes are detected."""
 
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.CONDITIONAL
-
     @inject
     def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
         self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
@@ -37,12 +34,17 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
     async def get_tool_name(self) -> str:
         return AVAILABLE_CONTEXT_TOOL_NAME
 
-    def condition(self, messages: list[Message]) -> bool:
-        contexts = list(self.__config_provider.get().contexts)
-        return should_activate_context_tool(contexts, messages)
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         contexts = list(self.__config_provider.get().contexts)
+        if not should_activate_context_tool(contexts, messages):
+            return None
+
         seen_entries = extract_seen_entries_from_messages(messages)
         current_urls, entries = build_context_entries(contexts, seen_entries)
 

@@ -15,47 +15,59 @@ from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
 
 
 class _AlwaysEndInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.ALWAYS
-
     async def get_tool_name(self) -> str:
         return "test_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return "test content"
 
 
 class _OnceAfterFirstUserInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.AFTER_FIRST_USER
-    frequency = InjectionFrequency.ONCE
-
     async def get_tool_name(self) -> str:
         return "once_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ONCE
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.AFTER_FIRST_USER
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return "once content"
 
 
 class _RefreshBeforeLastUserInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.BEFORE_LAST_USER
-    frequency = InjectionFrequency.REFRESH
-
     async def get_tool_name(self) -> str:
         return "refresh_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.REFRESH
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.BEFORE_LAST_USER
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return "refreshed content"
 
 
 class _ParamDrivenOnceInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.ONCE
-
     def __init__(self, arguments: dict):
         self._arguments = arguments
 
     async def get_tool_name(self) -> str:
         return "param_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ONCE
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
     async def get_arguments(self) -> dict:
         return self._arguments
@@ -65,8 +77,7 @@ class _ParamDrivenOnceInjector(SyntheticToolCallInjector):
 
 
 class _ConditionalEndInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.CONDITIONAL
+    """Condition logic lives in get_content(); get_frequency() always returns ALWAYS."""
 
     def __init__(self, condition_result: bool = True):
         self._condition_result = condition_result
@@ -74,22 +85,49 @@ class _ConditionalEndInjector(SyntheticToolCallInjector):
     async def get_tool_name(self) -> str:
         return "cond_tool"
 
-    def condition(self, messages: list[Message]) -> bool:
-        return self._condition_result
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
-        return "cond content"
+        return "cond content" if self._condition_result else None
 
 
 class _NullContentInjector(SyntheticToolCallInjector):
-    position = InjectionPosition.END
-    frequency = InjectionFrequency.ALWAYS
-
     async def get_tool_name(self) -> str:
         return "null_tool"
 
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
+
     async def get_content(self, messages: list[Message]) -> str | None:
         return None
+
+
+class _SwitchableInjector(SyntheticToolCallInjector):
+    """Injector whose frequency can be changed between calls — used to test
+    transitions between ALWAYS and REFRESH."""
+
+    def __init__(self, frequency: InjectionFrequency, content: str = "content"):
+        self._frequency = frequency
+        self._content = content
+
+    async def get_tool_name(self) -> str:
+        return "switch_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return self._frequency
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return self._content
 
 
 # ---------------------------------------------------------------------------
@@ -261,7 +299,54 @@ class TestRefreshBeforeLastUser:
 
 
 # ---------------------------------------------------------------------------
-# Tests: CONDITIONAL + END
+# Tests: REFRESH removes last injected pair regardless of call_id type
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshRemovesLast:
+    @pytest.mark.asyncio
+    async def test_refresh_removes_uuid_based_pair(self):
+        """REFRESH should remove a previously ALWAYS-injected (UUID) pair."""
+        injector = _SwitchableInjector(InjectionFrequency.ALWAYS)
+        messages = [_user("hello")]
+
+        # First call: ALWAYS → UUID-based call_id
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        # Switch to REFRESH
+        injector._frequency = InjectionFrequency.REFRESH
+        result2 = await injector.transform(result)
+
+        # Old UUID pair removed, new deterministic pair added — still 3
+        assert len(result2) == 3
+        _assert_synthetic_pair(result2, 1, "switch_tool", "content")
+
+    @pytest.mark.asyncio
+    async def test_refresh_removes_only_last_pair(self):
+        """REFRESH must not touch historical pairs — only the most recent one."""
+        injector = _SwitchableInjector(InjectionFrequency.ALWAYS, content="v1")
+        messages = [_user("hello")]
+
+        # Two ALWAYS injections accumulate
+        result = await injector.transform(messages)
+        injector._content = "v2"
+        result = await injector.transform(result)
+        assert len(result) == 5  # user + pair(v1) + pair(v2)
+
+        # Switch to REFRESH — should remove v2 (last) and add v3
+        injector._frequency = InjectionFrequency.REFRESH
+        injector._content = "v3"
+        result = await injector.transform(result)
+
+        # v1 pair preserved, v2 removed, v3 added → still 5
+        assert len(result) == 5
+        _assert_synthetic_pair(result, 1, "switch_tool", "v1")
+        _assert_synthetic_pair(result, 3, "switch_tool", "v3")
+
+
+# ---------------------------------------------------------------------------
+# Tests: conditional injection via get_content returning None
 # ---------------------------------------------------------------------------
 
 
@@ -325,12 +410,16 @@ class TestCustomCallIdPrefix:
     @pytest.mark.asyncio
     async def test_custom_prefix_applied(self):
         class _PrefixedInjector(SyntheticToolCallInjector):
-            position = InjectionPosition.END
-            frequency = InjectionFrequency.ALWAYS
             call_id_prefix = "my_prefix_"
 
             async def get_tool_name(self) -> str:
                 return "prefixed_tool"
+
+            async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+                return InjectionFrequency.ALWAYS
+
+            async def get_position(self, messages: list[Message]) -> InjectionPosition:
+                return InjectionPosition.END
 
             async def get_content(self, messages: list[Message]) -> str | None:
                 return "content"
