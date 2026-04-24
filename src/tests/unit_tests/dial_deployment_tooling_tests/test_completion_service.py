@@ -13,6 +13,7 @@ from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamH
 from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
+from tests.unit_tests.common.common import noop_timeout_resolver
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper
 
 
@@ -47,6 +48,7 @@ def completion_service(azure_client):
         dial_client=None,
         forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
 
@@ -307,6 +309,7 @@ async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url
         dial_client=dial_client,
         forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
     )
     result = await service._resolve_attachment(file_relative_url)
 
@@ -326,6 +329,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(azure_client, mock_
         dial_client=None,
         forwarded_headers=forwarded,
         stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
     await service.complete_request_async(

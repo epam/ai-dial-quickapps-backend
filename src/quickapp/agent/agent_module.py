@@ -22,7 +22,7 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
-from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
@@ -160,7 +160,7 @@ class AgentModule(Module):
         return [attachment_filter]
 
     @multiprovider
-    def provide_completion_result_enrichers(self) -> list[CompletionResultEnricher]:
+    def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:
         return []
 
     @multiprovider

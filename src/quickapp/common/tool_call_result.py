@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 from quickapp.common.deployment_usage import DeploymentUsage
 
 
-class CompletionResult(BaseModel):
+class ToolCallResult(BaseModel):
     tool_call_id: str | None = None
     content: str
     content_type: str

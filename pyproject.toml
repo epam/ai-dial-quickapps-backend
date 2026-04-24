@@ -1,6 +1,6 @@
 [project]
 name = "QuickApps"
-version = "0.7.0rc"
+version = "0.0.0"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     # Core framework & DI
-    "aidial-client>=0.6.2,<0.7.0",                # DIAL API client
+    "aidial-client>=0.7.1,<0.8.0",                # DIAL API client
     "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
     "pydantic-settings>=2.12.0,<3.0.0",           # Settings management
@@ -31,7 +31,7 @@ dependencies = [
     "bs4>=0.0.2,<0.0.3",                          # BeautifulSoup4 meta-package
 
     # Authentication & networking
-    "authlib>=1.6.9,<2.0.0",                      # OAuth / JWT authentication
+    "authlib>=1.6.11,<2.0.0",                      # OAuth / JWT authentication
     "urllib3>=2.6.3,<3.0.0",                      # HTTP client library
 
     # Utilities

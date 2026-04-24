@@ -7,7 +7,9 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import InitializationException
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
@@ -36,12 +38,14 @@ class DialDeploymentToolingModule(Module):
         dial_settings: DialSettings,
         api_key: DIAL_API_KEY,
         forwarded_headers: ForwardedHeaders,
+        timeout_resolver: ToolTimeoutResolver,
     ) -> DEPLOYMENT_AZURE_CLIENT:
         return AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             api_version=dial_settings.api_version,
             default_headers=forwarded_headers or None,
+            timeout=build_async_dial_timeout(timeout_resolver.resolve()),
         )
 
     @multiprovider
@@ -60,5 +64,5 @@ class DialDeploymentToolingModule(Module):
     @multiprovider
     def __provide_initialization_exceptions(
         self, context: _DeploymentToolingContext
-    ) -> list[ToolInitializationException]:
+    ) -> list[InitializationException]:
         return context.exceptions

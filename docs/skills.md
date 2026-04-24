@@ -125,6 +125,68 @@ optional features. The table below summarises what is and isn't supported.
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
 For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).
 
+## DIAL Prompt Skills `[Preview]`
+
+In addition to predefined skills bundled at build time, users can configure skills sourced from
+**DIAL prompts** — text content stored via the DIAL Core prompts API (`/v1/prompts/`). A DIAL prompt
+whose content follows the Agent Skills specification (valid YAML frontmatter with `name` and
+`description`) can be referenced in a QuickApp config and used as a skill.
+
+### Configuration
+
+Add a `skills` array to the application config:
+
+```json
+{
+  "orchestrator": { "..." : "..." },
+  "contexts": [],
+  "tool_sets": [],
+  "skills": [
+    {
+      "type": "dial-prompt",
+      "url": "prompts/<bucket>/<folder>/<prompt-name>"
+    }
+  ]
+}
+```
+
+The `url` field must be a relative path including the `prompts/` resource type prefix
+(e.g. `prompts/my-bucket/skills/code-review`). This follows the same convention as file context URLs
+(`files/<bucket>/...`). DIAL Core auto-shares the referenced prompt at deployment time via the
+`dial:resource` annotation.
+
+### Skill Validation
+
+DIAL prompt skills are validated at request time using the same rules as predefined skills:
+
+- Must have YAML frontmatter delimited by `---`
+- `name` (required): max 64 chars, lowercase alphanumeric + hyphens
+- `description` (required): max 1024 chars
+- Prompts with no content, empty content, or invalid frontmatter are silently skipped with a warning log
+
+### Name Collision
+
+If a DIAL prompt skill has the same `name` as a predefined (admin-configured) skill, the **predefined
+skill takes precedence**. The DIAL prompt skill is skipped and a warning is logged.
+
+### Error Handling
+
+- **Invalid prompt**: Skipped with a warning. Other skills remain available.
+- **Inaccessible prompt** (404, 403): Skipped with a warning. The request is served with remaining skills.
+- **DIAL Core outage**: Falls back to predefined-only skills. A DIAL Core failure never prevents
+  the request from being served.
+
+### Limitations
+
+- DIAL prompts are single text documents — they cannot contain `scripts/`, `references/`, or `assets/`
+  subdirectories.
+- DIAL prompts are fetched fresh on each request (no cross-request caching).
+- The `skills` config field is a **preview feature** — it requires `ENABLE_PREVIEW_FEATURES=true`.
+
+For design details, see [the design doc](designs/dial_prompts_as_skills.md).
+
+---
+
 ## Migrating from Agent Instructions
 
 The `config/predefined/instructions/` directory convention and `AgentInstructionsProvider` have been removed. The skills

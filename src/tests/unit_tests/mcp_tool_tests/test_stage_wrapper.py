@@ -5,7 +5,7 @@ import pytest
 from aidial_sdk.chat_completion import Stage
 from pydantic import BaseModel
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
 
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
@@ -39,7 +39,7 @@ def params():
 
 
 def test_result_and_param(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content=json.dumps({"content": "response content"}), content_type="application/json"
     )
 
@@ -100,7 +100,7 @@ def test_serialize_non_serializable(mock_stage, wrapper):
 
 
 def test_xml_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="<root><child>data</child></root>", content_type="application/xml"
     )
     expected_params = """> ##### Request:
@@ -124,7 +124,7 @@ def test_xml_build_debug_info_from_params_and_result(mock_stage, wrapper, params
 
 
 def test_html_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="<html><body><p>data</p></body></html>", content_type="text/html"
     )
     expected_params = """> ##### Request:
@@ -159,7 +159,7 @@ def test_html_build_debug_info_from_params_and_result(mock_stage, wrapper, param
 
 
 def test_csv_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(content="col1,col2\nval1,val2", content_type="text/csv")
+    result = ToolCallResult(content="col1,col2\nval1,val2", content_type="text/csv")
     expected_params = """> ##### Request:
 ```json
 {
@@ -199,7 +199,7 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
 
 
 def test_exception_handling_in_format_response(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="{'content': 'response content'}", content_type="application/json"
     )
 

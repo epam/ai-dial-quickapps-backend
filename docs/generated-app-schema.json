@@ -1023,6 +1023,28 @@
       "title": "DialMCPToolSet",
       "type": "object"
     },
+    "DialPromptSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-prompt",
+          "default": "dial-prompt",
+          "description": "Skill sourced from a DIAL prompt.",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialPromptSkillConfig",
+      "type": "object"
+    },
     "DialSystemPromptConfig": {
       "properties": {
         "type": {
@@ -2874,6 +2896,37 @@
         "dial:propertyOrder": 5
       }
     },
+    "skills": {
+      "anyOf": [
+        {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DialPromptSkillConfig"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of user-configured agent skills.",
+      "title": "Skills",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 6
+      }
+    },
     "features": {
       "anyOf": [
         {
@@ -2886,7 +2939,33 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 6
+        "dial:propertyOrder": 7
+      }
+    },
+    "tool_defaults": {
+      "description": "Defaults applied to every tool call (e.g. timeout).",
+      "properties": {
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeout (in seconds) applied to all tool calls in this app. When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, or each client's library default if neither is set.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "ToolDefaults",
+      "type": "object",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 8
       }
     }
   },

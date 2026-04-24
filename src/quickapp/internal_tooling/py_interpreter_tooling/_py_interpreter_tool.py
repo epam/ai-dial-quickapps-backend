@@ -5,7 +5,7 @@ from urllib.parse import unquote
 from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
-from quickapp.common import DIAL_API_KEY, CompletionResult, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, StagedBaseTool, ToolCallResult
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
@@ -13,6 +13,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
@@ -63,6 +64,7 @@ class _PyInterpreterTool(StagedBaseTool):
         dial_api_key: DIAL_API_KEY,
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
+        timeout_resolver: ToolTimeoutResolver,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -81,6 +83,7 @@ class _PyInterpreterTool(StagedBaseTool):
         self.__display_content_processor: DisplayContentProcessor = display_content_processor
         self.__dial_settings: DialSettings = dial_settings
         self.__dial_api_key: DIAL_API_KEY = dial_api_key
+        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.stage_name_component = "Calling Python Code Interpreter"
 
     async def _run_in_stage_async(
@@ -88,7 +91,7 @@ class _PyInterpreterTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         try:
             code: str = kwargs["code"]
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")
@@ -130,14 +133,14 @@ class _PyInterpreterTool(StagedBaseTool):
                         execution_result
                     )
 
-                result = CompletionResult(
+                result = ToolCallResult(
                     content=f"\n```json\n{execution_result.model_dump_json(indent=2)}\n```\n",
                     content_type=MediaTypes.JSON,
                     attachments=attachments,
                 )
 
         except _PyInterpreterError as e:
-            result = CompletionResult(
+            result = ToolCallResult(
                 content=str(e),
                 content_type=MediaTypes.JSON,
                 attachments=None,
@@ -189,6 +192,7 @@ class _PyInterpreterTool(StagedBaseTool):
                             attachment_url=attachment_url,
                             attachment=attachment,
                             dial_url=self.__dial_settings.url,
+                            timeout=self.__timeout_resolver.resolve(),
                         )
 
                         await client.transfer_input_file(

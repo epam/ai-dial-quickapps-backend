@@ -8,6 +8,7 @@ import pytest
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_connection_manager import _extract_http_401, _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 
 def _make_http_status_error(status_code: int) -> httpx.HTTPStatusError:
@@ -69,6 +70,7 @@ def _make_connection_manager(
         toolset_info=toolset,
         oauth_token_fetcher=MagicMock(),
         dial_settings=MagicMock(url="https://dial-core"),
+        timeout_resolver=noop_timeout_resolver(),
     )
 
 

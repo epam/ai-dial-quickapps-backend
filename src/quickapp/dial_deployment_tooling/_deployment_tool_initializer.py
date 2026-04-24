@@ -3,7 +3,7 @@ import logging
 from injector import AssistedBuilder, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.deployment import DialDeploymentTool

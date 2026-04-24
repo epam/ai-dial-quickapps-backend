@@ -8,6 +8,7 @@ from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
+from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
@@ -62,6 +63,26 @@ class Features(BaseModel):
     )
 
 
+class ToolDefaults(BaseModel):
+    """Defaults applied to every tool call unless overridden locally.
+
+    Container (rather than a bare field on `ApplicationConfig`) so future
+    tool-wide defaults can land as sibling fields without a breaking schema
+    change.
+    """
+
+    timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        le=3600,
+        description=(
+            "Timeout (in seconds) applied to all tool calls in this app. "
+            "When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, "
+            "or each client's library default if neither is set."
+        ),
+    )
+
+
 class ApplicationConfig(BaseApplicationTypeConfig):
     _dial_schema_id = "quickapps2"
     _dial_application_type_display_name = "Quick App 2.0"
@@ -78,9 +99,17 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
     )
+    skills: list[SkillConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Optional list of user-configured agent skills.",
+    )
     features: Features | None = Field(
         default_factory=Features,
         description="QuickApps Agent features configuration.",
+    )
+    tool_defaults: ToolDefaults = Field(
+        default_factory=ToolDefaults,
+        description="Defaults applied to every tool call (e.g. timeout).",
     )
 
     @model_validator(mode="after")

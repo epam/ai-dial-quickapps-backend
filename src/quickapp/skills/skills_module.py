@@ -10,6 +10,7 @@ from quickapp.skills._inject_file_transfer_instruction_transformer import (
     _InjectFileTransferInstructionTransformer,
 )
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
+from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -20,6 +21,7 @@ class SkillsModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
+        binder.bind(SkillsRegistry, to=SkillsRegistry, scope=request_scope)
         binder.bind(_SkillReaderTool, to=_SkillReaderTool, scope=request_scope)
         binder.bind(
             _InjectFileTransferInstructionTransformer,
@@ -43,9 +45,9 @@ class SkillsModule(Module):
     @multiprovider
     def _provide_prompt_parts(
         self,
-        skills_provider: AgentSkillsProvider,
+        skills_registry: SkillsRegistry,
     ) -> list[PromptPartProvider]:
-        return [skills_provider]
+        return [skills_registry]
 
     @multiprovider
     def _provide_message_transformers(

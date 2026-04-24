@@ -5,7 +5,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
-from quickapp.common.abstract.completion_result_enricher import CompletionResultEnricher
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.preview import preview_module
 from quickapp.common.time_provider import TimeProvider
 from quickapp.config.application import ApplicationConfig
@@ -88,7 +88,7 @@ class TimestampModule(Module):
         self,
         app_config: ApplicationConfig,
         time_provider: TimeProvider,
-    ) -> list[CompletionResultEnricher]:
+    ) -> list[ToolCallResultEnricher]:
         if not self._is_timestamp_feature_enabled(app_config):
             return []
         return [_TimestampMetadataEnricher(time_provider)]

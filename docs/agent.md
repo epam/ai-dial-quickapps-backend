@@ -42,7 +42,17 @@ When a chat completion request arrives, it flows through several stages before t
 
 The chat completion endpoint receives the incoming request with messages, configuration, and authentication credentials.
 
-### 2. Context Setup
+### 2. Messages Shape Validation
+
+The raw `messages` array is validated against the QuickApps contract `(System)? (User Assistant)* User`
+before any other request processing. The check runs outside the `create_single_choice` block so an
+`InvalidRequestError` (raised from `validate_messages_shape` in `_messages_validator.py`) propagates to
+the aidial_sdk exception handler and produces an HTTP 400 response. All rule violations are collected in
+a single pass and returned together in `display_message`, so clients see every problem at once rather
+than one at a time. Tool messages and misplaced system messages are rejected here because they are
+orchestrator-internal and must never arrive from the client.
+
+### 3. Context Setup
 
 A request-scoped context is created to hold:
 
@@ -51,20 +61,25 @@ A request-scoped context is created to hold:
 - Conversation messages
 - Response choice object for streaming output
 
-### 3. Configuration Resolution
+### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
 definitions from the predefined configuration files.
 
-### 4. Completion Initialization
+### 5. Completion Initialization
 
-Completion initializers are invoked to prepare the request for orchestration. This includes:
+Completion initializers are invoked to prepare the request for orchestration. Initializers run
+*before* message preprocessing so that feature contexts they populate (e.g. resolved DIAL-prompt
+skills) are visible to transformers:
 
-- **Message preprocessing**: `_MessagesSetup` (called from `_RequestContextSetup.setup()`) expands packed tool call
-  state and runs all `MessagesTransformer` instances (adding system prompts, injecting context notifications).
-  After this step, messages are fully expanded and ready for the orchestrator.
-- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
-  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+- **Tool and skill construction**: Each tool module's initializer constructs tool instances based
+  on the application configuration (REST API, DIAL deployment, MCP, internal). The
+  `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
+  available to the system-prompt transformer.
+- **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
+  `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
+  `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
+  this step, messages are fully expanded and ready for the orchestrator.
 - **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
   `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
   to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
@@ -73,12 +88,18 @@ Completion initializers are invoked to prepare the request for orchestration. Th
   `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
   the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
-### 5. Error Handling
+### 6. Error Handling
 
-Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
-functionality even when some tools fail to initialize.
+Tool-initialization failures and skill-loading failures (invalid DIAL prompt frontmatter, fetch errors,
+duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
+common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
+multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
+sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
+itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
+failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
+UI cue.
 
-### 6. Orchestrator Invocation
+### 7. Orchestrator Invocation
 
 The orchestrator is retrieved from the DI container and its invoke method is called, starting the agent loop.
 
@@ -166,7 +187,7 @@ When the LLM requests multiple tools, the Tool Executor runs them concurrently u
 3. Timed for performance tracking
 
 Results are collected and returned in order matching the original tool calls. After execution,
-`CompletionResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
+`ToolCallResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
 result with its production time).
 
 ### Stage Wrapper Pattern
@@ -200,7 +221,15 @@ Tools support configurable fallback strategies for error handling:
 
 Errors can optionally be displayed in the stage for debugging purposes.
 
-<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
+### Timeouts
+
+Tool-call timeouts are unified via `ToolTimeoutResolver` (request-scoped). Resolution order: `ApplicationConfig.tool_defaults.timeout_seconds` → `DEFAULT_TOOL_TIMEOUT_SECONDS` env var → each client's library default. A `None` result means "do not override" — every client keeps its historical behaviour.
+
+When a tool call exceeds the resolved budget, `translate_timeout` (async context manager in `common/tool_timeout_utils.py`) converts the library exception (`httpx.TimeoutException`, `asyncio.TimeoutError`, `openai.APITimeoutError`, or a timeout-coded `mcp.McpError`) into a typed `ToolTimeoutError`. `BaseExceptionGroup`s from anyio task groups are split; any timeout leaf classifies the whole group as a timeout.
+
+`FallbackProcessor` has a dedicated branch for `ToolTimeoutError`: user strategies with an explicit `trigger_on` can pre-empt, otherwise a built-in template message naming the tool and timeout is returned. **Implicit catch-all strategies (`trigger_on=None`) are skipped for timeouts** — this is the key semantic shift versus prior behaviour. `_request_context_setup` logs an INFO line per customised catch-all so operators can spot impacted toolsets at a glance.
+
+<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
 ---
@@ -361,7 +390,8 @@ The application is composed of 13 specialized DI modules:
 11. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
   (when gated), attachment change detection injector
 12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
-13. **Skills Module**: Skill reader tool, agent skills provider
+13. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+14. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -423,7 +453,9 @@ Tools are organized into toolsets that share common configuration:
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
+`SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
+(see [Skills documentation](skills.md#dial-prompt-skills-preview) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 

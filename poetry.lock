@@ -2,14 +2,14 @@
 
 [[package]]
 name = "aidial-client"
-version = "0.6.2"
+version = "0.7.1"
 description = "A Python client library for the AI DIAL API"
 optional = false
 python-versions = "<3.14,>=3.10"
 groups = ["main"]
 files = [
-    {file = "aidial_client-0.6.2-py3-none-any.whl", hash = "sha256:9b344062b790b36c851938b135dd83d1fd627019cf07c2e0090162844c2cebee"},
-    {file = "aidial_client-0.6.2.tar.gz", hash = "sha256:405a22ad45a5c2137b33409ff63d9eaad9c4ab281d3a75c28547a07bc57c6efd"},
+    {file = "aidial_client-0.7.1-py3-none-any.whl", hash = "sha256:41d753000ec87a397f6f1176a678ee7eacbc94fe3c9133222e14f7ae9ac0e230"},
+    {file = "aidial_client-0.7.1.tar.gz", hash = "sha256:67bc74487b923e86fd6de2ca824ee05c13cedd35304350ddbe1e0758943fbe40"},
 ]
 
 [package.dependencies]
@@ -166,14 +166,14 @@ files = [
 
 [[package]]
 name = "authlib"
-version = "1.6.10"
+version = "1.6.11"
 description = "The ultimate Python library in building OAuth and OpenID Connect servers and clients."
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "authlib-1.6.10-py2.py3-none-any.whl", hash = "sha256:aa639b43292554539924a3b4aaa9e81cd67ab64d3e28b22428c61f1200240287"},
-    {file = "authlib-1.6.10.tar.gz", hash = "sha256:856a4f54d6ef3361ca6bb6d14a27e8b88f8097cca795fb428ffe13720e2ecde6"},
+    {file = "authlib-1.6.11-py2.py3-none-any.whl", hash = "sha256:c8687a9a26451c51a34a06fa17bb97cb15bba46a6a626755e2d7f50da8bff3e3"},
+    {file = "authlib-1.6.11.tar.gz", hash = "sha256:64db35b9b01aeccb4715a6c9a6613a06f2bd7be2ab9d2eb89edd1dfc7580a38f"},
 ]
 
 [package.dependencies]
@@ -5810,4 +5810,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "8f419cccbcfc23dc4fc6ccc4888c33f2ceef371124cd0791718cb722b004e87c"
+content-hash = "aef1d05033e11ff9bc0fcf307b8fb84e738eed924b73ffc950a6c695e55c8b22"

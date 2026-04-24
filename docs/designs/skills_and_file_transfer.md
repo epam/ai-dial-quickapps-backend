@@ -396,7 +396,7 @@ offending parameter name and a human-readable error description. Raised in the f
 **Recovery flow:** `StagedBaseTool.arun()` catches `InvalidToolCallParameterException` before the generic `Exception`
 handler. Instead of applying the tool's configured fallback strategies, it constructs an inline `RetryStrategyModel`
 with instructions describing the invalid parameter and error message. `FallbackProcessor.process_fallback()` returns
-a `CompletionResult` containing the retry instructions, which the orchestrator delivers back to the LLM as a tool
+a `ToolCallResult` containing the retry instructions, which the orchestrator delivers back to the LLM as a tool
 response. The agent sees the error description and can re-attempt the tool call with corrected parameters in the next
 iteration.
 

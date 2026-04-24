@@ -13,6 +13,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 
 from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler
+from ._messages_validator import validate_messages_shape
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 
@@ -38,15 +39,20 @@ class _QuickAppCompletion(ChatCompletion):
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
+        validate_messages_shape(request.messages)
         timer_service = self.__injector.get(PerformanceTimer)
         timer_service.start_period(self.__timer_period_name, level=1)
         with response.create_single_choice() as choice:
             try:
-                await self.__injector.get(_RequestContextSetup).setup(request, choice)
-                timer_service.add_milestone(self.__timer_period_name, "request context setup")
+                request_context_setup = self.__injector.get(_RequestContextSetup)
+                await request_context_setup.setup_context(request, choice)
+                timer_service.add_milestone(self.__timer_period_name, "request context pre-init")
                 await invoke_initializers(self.__injector, InitializerType.completion)
-                self.__injector.get(_InitializationErrorHandler).handle_initialization_errors()
-                timer_service.add_milestone(self.__timer_period_name, "tools initialization")
+                timer_service.add_milestone(self.__timer_period_name, "initializers")
+                await request_context_setup.setup_messages(request.messages)
+                timer_service.add_milestone(self.__timer_period_name, "messages finalized")
+                self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
+                timer_service.add_milestone(self.__timer_period_name, "initialization issues")
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
             except Exception as e:
@@ -61,7 +67,7 @@ class _QuickAppCompletion(ChatCompletion):
                         stage.append_content(timer_service.get_report_md())
 
     async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
-        await self.__injector.get(_RequestContextSetup).setup(request)
+        await self.__injector.get(_RequestContextSetup).setup_context(request)
         await invoke_initializers(self.__injector, InitializerType.configuration)
         if not self.__injector.binder.has_explicit_binding_for(list[Configuration]):
             return ConfigurationResponse()

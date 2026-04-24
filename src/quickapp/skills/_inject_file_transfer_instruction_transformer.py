@@ -28,7 +28,7 @@ class _InjectFileTransferInstructionTransformer(MessagesTransformer):
     def __init__(self, skills_provider: AgentSkillsProvider):
         self.__skills_provider = skills_provider
 
-    def transform(self, messages: list[Message]) -> list[Message]:
+    async def transform(self, messages: list[Message]) -> list[Message]:
         # Check if synthetic tool call already exists in history
         if self._has_synthetic_tool_call(messages):
             logger.debug("Synthetic file transfer instruction already present, skipping injection")

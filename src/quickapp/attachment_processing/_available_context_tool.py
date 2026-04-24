@@ -11,7 +11,7 @@ from quickapp.attachment_processing._context_entries import (
     build_context_entries,
     extract_seen_entries_from_messages,
 )
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
@@ -54,10 +54,10 @@ class _AvailableContextTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         response = self._get_response()
         content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
-        result = CompletionResult(content=content, content_type="application/json")
+        result = ToolCallResult(content=content, content_type="application/json")
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result

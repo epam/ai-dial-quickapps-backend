@@ -27,10 +27,9 @@ class _MessagesSetup:
         self.__transformers = transformers
         logger.debug(f"Messages transformers: {transformers}")
 
-    def setup(self, messages: list[Message]) -> list[Message]:
-        messages = self.extract_tool_calls(messages)
+    async def run_transformers(self, messages: list[Message]) -> list[Message]:
         for transformer in self.__transformers:
-            messages = transformer.transform(messages)
+            messages = await transformer.transform(messages)
         return messages
 
     @staticmethod
