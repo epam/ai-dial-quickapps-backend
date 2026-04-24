@@ -50,7 +50,7 @@ class DialDeploymentToolingModule(Module):
         headers = dict(forwarded_headers or {})
 
         if bearer:
-            headers.setdefault("Authorization", f"Bearer {bearer.get_secret_value()}")
+            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
 
         return AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
