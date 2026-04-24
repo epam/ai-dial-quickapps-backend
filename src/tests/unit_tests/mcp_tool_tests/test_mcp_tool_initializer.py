@@ -2,6 +2,7 @@ import base64
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
+from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
@@ -388,3 +389,63 @@ async def test_tool_names_prefixed_with_toolset_name(initializer_factory, builde
     assert len(calls) == 2
     names = [c.kwargs["tool_config"].open_ai_tool.function.name for c in calls]
     assert names == ["mcp-local-toolset_tool1", "mcp-local-toolset_tool2"]
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_forwards_request_bearer_for_dial_internal_server():
+    server_info = MCPServerInfo(
+        url="https://dial.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+    )
+    toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
+
+    conn_manager = _MCPConnectionManager(
+        toolset_info=toolset_info,
+        oauth_token_fetcher=AsyncMock(),
+        dial_settings=DialSettings(url="https://dial.test"),
+        timeout_resolver=noop_timeout_resolver(),
+        bearer=SecretStr("request-token"),
+    )
+
+    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+
+    assert headers["Authorization"] == "Bearer request-token"
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_does_not_forward_request_bearer_for_external_server():
+    server_info = MCPServerInfo(
+        url="https://external.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+    )
+    toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
+
+    conn_manager = _MCPConnectionManager(
+        toolset_info=toolset_info,
+        oauth_token_fetcher=AsyncMock(),
+        dial_settings=DialSettings(url="https://dial.test"),
+        timeout_resolver=noop_timeout_resolver(),
+        bearer=SecretStr("request-token"),
+    )
+
+    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+
+    assert "Authorization" not in headers
+
+
+@pytest.mark.asyncio
+async def test_connection_manager_handles_missing_request_bearer_for_dial_internal_server():
+    server_info = MCPServerInfo(
+        url="https://dial.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+    )
+    toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
+
+    conn_manager = _MCPConnectionManager(
+        toolset_info=toolset_info,
+        oauth_token_fetcher=AsyncMock(),
+        dial_settings=DialSettings(url="https://dial.test"),
+        timeout_resolver=noop_timeout_resolver(),
+        bearer=None,
+    )
+
+    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+
+    assert "Authorization" not in headers

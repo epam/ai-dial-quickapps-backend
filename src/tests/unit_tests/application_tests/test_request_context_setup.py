@@ -76,3 +76,35 @@ async def test_configuration_request_sets_client_channel_id_none():
     with _PATCH_MODEL_VALIDATE:
         await setup.setup_context(request)
     assert context.client_channel_id is None
+
+
+@pytest.mark.asyncio
+async def test_chat_request_sets_bearer_from_request_token():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+
+    assert context.bearer is not None
+    assert context.bearer.get_secret_value() == "test-bearer"
+
+
+@pytest.mark.asyncio
+async def test_configuration_request_sets_bearer_none():
+    setup, context = _make_setup()
+    request = _make_config_request()
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+
+    assert context.bearer is None
+
+
+@pytest.mark.asyncio
+async def test_chat_request_handles_missing_bearer_token():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={})
+    request.bearer_token = None
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+
+    assert context.bearer is None
