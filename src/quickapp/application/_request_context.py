@@ -11,6 +11,9 @@ from quickapp.config.application import ApplicationConfig
 # to other parts of the application during the request lifecycle.
 
 
+_FORBIDDEN_FORWARDED_HEADERS = frozenset({"api-key", "authorization"})
+
+
 def _validate_response_format(response_format: ResponseFormat | None) -> None:
     """Validate that response_format has the correct structure."""
     if response_format is None:
@@ -22,6 +25,16 @@ def _validate_response_format(response_format: ResponseFormat | None) -> None:
                 message="Invalid response format",
                 display_message="When type is 'json_schema', the 'json_schema' field must be provided",
             )
+
+
+def _validate_forwarded_headers(value: ForwardedHeaders) -> None:
+    if not value:
+        return
+    forbidden = sorted({key.lower() for key in value} & _FORBIDDEN_FORWARDED_HEADERS)
+    if forbidden:
+        raise RuntimeError(
+            f"Forwarded headers must not contain auth headers: {', '.join(forbidden)}"
+        )
 
 
 class _RequestContext(MessagesMixin):
@@ -102,6 +115,7 @@ class _RequestContext(MessagesMixin):
     def forwarded_headers(self, value: ForwardedHeaders) -> None:
         if self._forwarded_headers is not None:
             raise RuntimeError("Forwarded headers are already set")
+        _validate_forwarded_headers(value)
         self._forwarded_headers = value
 
     @property
