@@ -39,9 +39,9 @@ class MessagesMixin(BaseModel):
 
     def _replace_messages(self, messages: list[Message]) -> None:
         """Overwrite the message list. Name-protected escape hatch used by
-        ``_RequestContextSetup.finalize_messages`` to write the transformer-
-        chain output after the pre-init pass already stored the raw (post-
-        ``extract_tool_calls``) list. Distinct from the single-assignment
+        ``_RequestContextSetup.setup_messages`` to write the transformer-chain
+        output after the raw (post-``extract_tool_calls``) list has already
+        been stored via the public setter. Distinct from the single-assignment
         ``messages`` setter on purpose — accidental double-writes via the
         public setter remain a loud error.
         """

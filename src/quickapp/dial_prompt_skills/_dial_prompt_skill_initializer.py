@@ -19,7 +19,7 @@ class _DialPromptSkillInitializer(CompletionInitializer):
     it runs in the post-initializer phase.
 
     Reads ``ApplicationConfig.skills`` via ``ProviderOf`` (config isn't set on
-    ``_RequestContext`` until ``setup_pre_init``, which always runs before
+    ``_RequestContext`` until ``setup_context``, which always runs before
     initializers). Delegates to ``DialPromptSkillResolver`` and pushes the
     output into ``_DialPromptSkillsContext``.
 

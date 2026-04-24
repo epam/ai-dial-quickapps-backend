@@ -68,13 +68,18 @@ definitions from the predefined configuration files.
 
 ### 5. Completion Initialization
 
-Completion initializers are invoked to prepare the request for orchestration. This includes:
+Completion initializers are invoked to prepare the request for orchestration. Initializers run
+*before* message preprocessing so that feature contexts they populate (e.g. resolved DIAL-prompt
+skills) are visible to transformers:
 
-- **Message preprocessing**: `_MessagesSetup` (called from `_RequestContextSetup.setup()`) expands packed tool call
-  state and runs all `MessagesTransformer` instances (adding system prompts, injecting context notifications).
-  After this step, messages are fully expanded and ready for the orchestrator.
-- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
-  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+- **Tool and skill construction**: Each tool module's initializer constructs tool instances based
+  on the application configuration (REST API, DIAL deployment, MCP, internal). The
+  `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
+  available to the system-prompt transformer.
+- **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
+  `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
+  `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
+  this step, messages are fully expanded and ready for the orchestrator.
 - **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
   `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
   to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
