@@ -8,6 +8,7 @@ from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
+from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
@@ -97,6 +98,10 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     )
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
+    )
+    skills: list[SkillConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Optional list of user-configured agent skills.",
     )
     features: Features | None = Field(
         default_factory=Features,

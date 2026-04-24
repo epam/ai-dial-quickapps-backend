@@ -13,6 +13,7 @@ from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
@@ -49,6 +50,7 @@ class AppFactory:
             FileTransferModule(),
             AttachmentProcessingModule(),
             SkillsModule(),
+            DialPromptSkillsModule(),
             TimestampModule(),
         ]
         if FeatureSettings().enable_preview_features:

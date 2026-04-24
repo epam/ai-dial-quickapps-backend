@@ -68,13 +68,18 @@ definitions from the predefined configuration files.
 
 ### 5. Completion Initialization
 
-Completion initializers are invoked to prepare the request for orchestration. This includes:
+Completion initializers are invoked to prepare the request for orchestration. Initializers run
+*before* message preprocessing so that feature contexts they populate (e.g. resolved DIAL-prompt
+skills) are visible to transformers:
 
-- **Message preprocessing**: `_MessagesSetup` (called from `_RequestContextSetup.setup()`) expands packed tool call
-  state and runs all `MessagesTransformer` instances (adding system prompts, injecting context notifications).
-  After this step, messages are fully expanded and ready for the orchestrator.
-- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
-  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+- **Tool and skill construction**: Each tool module's initializer constructs tool instances based
+  on the application configuration (REST API, DIAL deployment, MCP, internal). The
+  `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
+  available to the system-prompt transformer.
+- **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
+  `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
+  `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
+  this step, messages are fully expanded and ready for the orchestrator.
 - **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
   `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
   to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
@@ -85,8 +90,14 @@ Completion initializers are invoked to prepare the request for orchestration. Th
 
 ### 6. Error Handling
 
-Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
-functionality even when some tools fail to initialize.
+Tool-initialization failures and skill-loading failures (invalid DIAL prompt frontmatter, fetch errors,
+duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
+common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
+multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
+sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
+itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
+failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
+UI cue.
 
 ### 7. Orchestrator Invocation
 
@@ -373,7 +384,8 @@ The application is composed of 13 specialized DI modules:
 10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
 11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
-13. **Skills Module**: Skill reader tool, agent skills provider
+13. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+14. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -435,7 +447,9 @@ Tools are organized into toolsets that share common configuration:
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
+`SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
+(see [Skills documentation](skills.md#dial-prompt-skills-preview) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 

@@ -22,7 +22,8 @@ def _make_setup() -> tuple[_RequestContextSetup, _RequestContext]:
     config_resolver = MagicMock()
     config_resolver.resolve_config.return_value = MagicMock()
     messages_setup = MagicMock()
-    messages_setup.setup = AsyncMock(return_value=[])
+    messages_setup.extract_tool_calls = MagicMock(return_value=[])
+    messages_setup.run_transformers = AsyncMock(return_value=[])
     setup = _RequestContextSetup(
         context_provider=context_provider,
         config_resolver=config_resolver,
@@ -55,7 +56,7 @@ async def test_chat_request_sets_client_channel_id_from_header():
     setup, context = _make_setup()
     request = _make_chat_request(headers={"X-DIAL-CLIENT-CHANNEL-ID": "ch-123"})
     with _PATCH_MODEL_VALIDATE:
-        await setup.setup(request)
+        await setup.setup_context(request)
     assert context.client_channel_id == "ch-123"
 
 
@@ -64,7 +65,7 @@ async def test_chat_request_sets_client_channel_id_none_when_no_header():
     setup, context = _make_setup()
     request = _make_chat_request(headers={})
     with _PATCH_MODEL_VALIDATE:
-        await setup.setup(request)
+        await setup.setup_context(request)
     assert context.client_channel_id is None
 
 
@@ -73,5 +74,5 @@ async def test_configuration_request_sets_client_channel_id_none():
     setup, context = _make_setup()
     request = _make_config_request()
     with _PATCH_MODEL_VALIDATE:
-        await setup.setup(request)
+        await setup.setup_context(request)
     assert context.client_channel_id is None

@@ -150,6 +150,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Validation**: Use Pydantic models for structured data validation instead of ad-hoc checks. Prefer `MyModel.model_validate(data)` over manual validation of dicts.
 - **Complex arguments**: Prefer Pydantic models (or typed structures) for complex function arguments instead of `dict[str, Any]` or nested dicts when the shape is fixed. Using `dict` is fine when keys and values are homogeneous (e.g. a mapping from id to a known type).
 - **Mutable defaults in Pydantic**: Do not use mutable default values (e.g. `items: list[str] = []`). Use `Field(default_factory=list)` (or similar) instead.
+- **Pydantic over dataclasses**: Use Pydantic `BaseModel` instead of `@dataclass` (including `frozen=True`) for value objects and data containers. Pydantic gives us consistent validation, serialization, and IDE/type integration across the codebase; mixing `dataclasses` with Pydantic fragments those guarantees. For immutability, set `model_config = ConfigDict(frozen=True)`.
 
 ---
 
@@ -179,5 +180,5 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Env**: Env-based config lives in a pydantic-settings class per module (or shared in `common/`), bound in the injector and injected; no `os.getenv` in application/tooling code.
 - **Naming**: Module class `XxxModule`, settings class `XxxSettings`, env names preserved via `Field(alias="ENV_VAR_NAME")`.
 - **Visibility**: Prefer protected (`_`) for internals; public only for the intended API.
-- **Types**: Use type hints and modern generics; use Pydantic for validation and complex arguments; avoid mutable defaults in Pydantic fields.
+- **Types**: Use type hints and modern generics; use Pydantic for validation and complex arguments (not `@dataclass`); avoid mutable defaults in Pydantic fields.
 - **Structure**: Clear module boundaries, explicit imports, no complex logic in class bodies, logging instead of print, declared dependencies.

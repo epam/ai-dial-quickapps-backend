@@ -121,7 +121,7 @@ def make_request_completion():
         )
         request.request_dial_application_properties = valid_app_props
 
-        init_handler = SimpleNamespace(handle_initialization_errors=lambda: None)
+        init_handler = SimpleNamespace(handle_initialization_issues=lambda: None)
 
         request_context = _RequestContext()
         provider = SimpleNamespace(get=lambda: request_context)

@@ -18,7 +18,7 @@ class TestExtractToolCallsFromStateProcessor:
     @pytest.mark.asyncio
     async def test_empty_messages_returns_empty(self):
         msgs_setup = _MessagesSetup([])
-        result = await msgs_setup.setup([])
+        result = msgs_setup.extract_tool_calls([])
         assert result == []
 
     @pytest.mark.asyncio
@@ -29,7 +29,7 @@ class TestExtractToolCallsFromStateProcessor:
             Message(role=Role.ASSISTANT, content="hi there"),
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         assert len(result) == 2
         assert result[0].role == Role.USER
@@ -46,7 +46,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         assert len(result) == 1
         assert result[0].content == "response"
@@ -70,7 +70,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Should have: ASSISTANT (from history), TOOL (from history), ASSISTANT (final)
         assert len(result) == 3
@@ -111,7 +111,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Should have: ASSISTANT (with 2 tool_calls), TOOL, TOOL, ASSISTANT (final)
         assert len(result) == 4
@@ -148,7 +148,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # 4 from history + 1 final = 5 messages
         assert len(result) == 5
@@ -189,7 +189,7 @@ class TestExtractToolCallsFromStateProcessor:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = await msgs_setup.setup(messages)
+            result = msgs_setup.extract_tool_calls(messages)
 
             # Should emit deprecation warning about legacy tool_execution_history format
             deprecation_warnings = [
@@ -229,7 +229,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = await msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Final message should not have tool_execution_history but keep other state
         final_msg = result[-1]
