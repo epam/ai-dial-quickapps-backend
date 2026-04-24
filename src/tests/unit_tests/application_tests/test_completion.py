@@ -132,7 +132,7 @@ def make_request_completion():
         request_context_setup = _RequestContextSetup(
             context_provider=provider,
             config_resolver=config_resolver,
-            messages_setup=messages_setup
+            messages_setup=messages_setup,
         )
 
         mapping = {

@@ -10,8 +10,8 @@ from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
-from ._messages_setup import _MessagesSetup
 
+from ._messages_setup import _MessagesSetup
 from ._request_context import _RequestContext
 
 logger = logging.getLogger(__name__)
