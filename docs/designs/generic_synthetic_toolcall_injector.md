@@ -361,8 +361,9 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
         return InjectionPosition.AFTER_FIRST_USER
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        call_id = _deterministic_call_id(await self.get_tool_name(), await self.get_arguments())
-        return InjectionFrequency.ONCE if _has_tool_call_id(messages, call_id) else InjectionFrequency.ALWAYS
+        # ONCE + versioned arguments: each version gets a distinct deterministic call_id.
+        # A new version is injected alongside older ones; the same version is never re-injected.
+        return InjectionFrequency.ONCE
 
     async def get_tool_name(self) -> str:
         return "skill_reader"

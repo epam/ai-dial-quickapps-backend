@@ -465,3 +465,4 @@ class TestOnceDifferentArguments:
 
         # Second injector sees the existing call_id and skips — only one pair
         assert len(result) == 3
+
