@@ -13,6 +13,8 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
+from quickapp.skills._skill_metadata import SkillMetadata
 
 MODULE_TYPE: TypeAlias = Callable[[Binder], None] | Module | type[Module]
 
@@ -103,3 +105,19 @@ def noop_timeout_resolver_provider(value: float = 300.0) -> MagicMock:
     provider = MagicMock(spec=ProviderOf)
     provider.get.return_value = noop_timeout_resolver(value=value)
     return provider
+
+
+def make_resolved_dial_prompt_skill(
+    url: str,
+    name: str,
+    description: str = "A skill",
+    content: str = "body",
+) -> ResolvedDialPromptSkill:
+    """Builder for ``ResolvedDialPromptSkill`` fixtures shared by skill/registry
+    and dial-prompt-skills tests.
+    """
+    return ResolvedDialPromptSkill(
+        url=url,
+        metadata=SkillMetadata(name=name, description=description),
+        content=content,
+    )

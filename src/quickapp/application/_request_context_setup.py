@@ -1,7 +1,6 @@
 import logging
 
-from aidial_sdk.chat_completion import Request
-from aidial_sdk.chat_completion.choice import Choice
+from aidial_sdk.chat_completion import Choice, Message, Request
 from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
@@ -40,9 +39,15 @@ class _RequestContextSetup:
         application_config = ApplicationConfig.model_validate(application_properties)
         return self.__config_resolver.resolve_config(application_config)
 
-    async def setup(
+    async def setup_context(
         self, request: Request | ConfigurationRequest, choice: Choice | None = None
     ) -> None:
+        """Populate every request-scoped field that does not depend on
+        initializer output (api_key, application_config, forwarded headers,
+        choice, response_format). ``context.messages`` is populated later by
+        :meth:`setup_messages`, which runs after initializers so that feature
+        contexts are available to message transformers.
+        """
         context = self.__context_provider.get()
         context.api_key = SecretStr(request.api_key)
         context.bearer = SecretStr(request.bearer_token) if request.bearer_token else None
@@ -59,3 +64,13 @@ class _RequestContextSetup:
 
         if isinstance(request, Request) and request.response_format:
             context.response_format = request.response_format
+
+    async def setup_messages(self, messages: list[Message]) -> None:
+        """Populate ``context.messages`` from the raw request messages and
+        run the transformer chain over them. Called after initializers so
+        transformers can see feature contexts populated during initialization.
+        """
+        context = self.__context_provider.get()
+        context.messages = self.__messages_setup.extract_tool_calls(messages)
+        transformed = await self.__messages_setup.run_transformers(context.messages)
+        context._replace_messages(transformed)

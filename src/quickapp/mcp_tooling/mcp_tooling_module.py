@@ -5,7 +5,7 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import InitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPToolSet
@@ -52,5 +52,5 @@ class MCPToolingModule(Module):
     @multiprovider
     def __provide_initialization_exceptions(
         self, context: _MCPToolingContext
-    ) -> list[ToolInitializationException]:
+    ) -> list[InitializationException]:
         return context.exceptions

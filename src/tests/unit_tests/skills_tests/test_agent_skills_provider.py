@@ -104,10 +104,25 @@ class TestParseFrontmatter:
         with pytest.raises(SkillValidationError):
             parse_frontmatter(content, "test")
 
+    def test_compatibility_exceeds_500_chars_raises(self):
+        long_compat = "x" * 501
+        content = (
+            f"---\nname: my-skill\ndescription: desc\n" f"compatibility: {long_compat}\n---\nBody\n"
+        )
+        with pytest.raises(SkillValidationError, match="Compatibility exceeds 500"):
+            parse_frontmatter(content, "test")
+
     def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
         with pytest.raises(SkillValidationError):
             parse_frontmatter(content, "test")
+
+    def test_error_carries_source_id_and_reason(self):
+        content = "No frontmatter"
+        with pytest.raises(SkillValidationError) as exc_info:
+            parse_frontmatter(content, "my-source")
+        assert exc_info.value.source_id == "my-source"
+        assert "No YAML frontmatter found" in exc_info.value.reason
 
 
 # ---------------------------------------------------------------------------
@@ -170,8 +185,8 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "my-valid-skill" in xml
+        skills = asp.get_all_skills()
+        assert any(s.name == "my-valid-skill" for s in skills)
 
     def test_name_mismatch_skips_skill(self, tmp_path: Path):
         skill_dir = tmp_path / "skills" / "dir-name"
@@ -184,9 +199,9 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "different-name" not in xml
-        assert "dir-name" not in xml
+        skill_names = [s.name for s in asp.get_all_skills()]
+        assert "different-name" not in skill_names
+        assert "dir-name" not in skill_names
 
     def test_mixed_valid_invalid_skills(self, tmp_path: Path):
         # Valid skill
@@ -205,9 +220,9 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "good-skill" in xml
-        assert "bad-skill" not in xml
+        skill_names = [s.name for s in asp.get_all_skills()]
+        assert "good-skill" in skill_names
+        assert "bad-skill" not in skill_names
 
 
 # ---------------------------------------------------------------------------
