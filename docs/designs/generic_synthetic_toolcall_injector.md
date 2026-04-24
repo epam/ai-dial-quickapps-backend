@@ -28,7 +28,7 @@ calls.
 - Provide a single `SyntheticToolCallInjector` base class that encapsulates position, frequency,
   idempotency, and message-pair construction.
 - Support a fixed set of named injection positions.
-- Support four injection frequencies: `ONCE`, `ALWAYS`, `REFRESH`, `CONDITIONAL`.
+- Support three injection frequencies: `ONCE`, `ALWAYS`, `REFRESH`.
 - Enable injection backed by any `StagedBaseTool` (MCP, REST, DIAL deployment) via live execution.
 - Make `MessagesTransformer.transform` async so tool calls can be awaited.
 - Run all message transformers **after** tool initialization so `StagedBaseTool` instances are
@@ -68,7 +68,7 @@ every request.
 **Trigger:** A chat request arrives and the set of available context URLs has changed since the
 previous turn.
 **Behavior:** A synthetic context-notification tool-call pair is appended only when the condition
-holds.
+holds. The condition is evaluated inside `get_content()`, which returns `None` to skip injection.
 **Outcome:** Identical to the current `_AttachmentNotificationInjector` behavior.
 
 ---
@@ -90,10 +90,9 @@ class InjectionPosition(StrEnum):
     END              = "end"               # append after all messages
 
 class InjectionFrequency(StrEnum):
-    ONCE        = "once"        # inject once; skip if already present in history
-    ALWAYS      = "always"      # always append; accumulates across turns
-    REFRESH     = "refresh"     # remove existing pair if present, then inject fresh one
-    CONDITIONAL = "conditional" # inject only when condition() returns True
+    ONCE    = "once"    # inject once; skip if already present in history
+    ALWAYS  = "always"  # always append; accumulates across turns
+    REFRESH = "refresh" # remove last synthetic pair for this tool, then inject fresh one
 ```
 
 **Change:** New files; no existing code modified.
@@ -109,15 +108,20 @@ Extends `MessagesTransformer`.
 
 **Semantics:**
 
-Subclasses declare `position` and `frequency` as class-level attributes and implement:
+Subclasses implement `get_frequency` and `get_position` as async methods, receiving the current
+message list so they can base their decision on conversation history:
 
 ```python
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
-    position:  InjectionPosition   # declared by subclass
-    frequency: InjectionFrequency  # declared by subclass
 
     @abstractmethod
     async def get_tool_name(self) -> str: ...
+
+    @abstractmethod
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency: ...
+
+    @abstractmethod
+    async def get_position(self, messages: list[Message]) -> InjectionPosition: ...
 
     async def get_arguments(self) -> dict:
         return {}
@@ -126,25 +130,24 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
     async def get_content(self, messages: list[Message]) -> str | None:
         # Return None to skip injection for this turn.
         ...
-
-    def condition(self, messages: list[Message]) -> bool:
-        # Override when frequency == CONDITIONAL.
-        return True
 ```
 
 The base `transform` implementation:
 
 1. **Frequency gate**
-   - `ONCE`: checks history for `tool_call_id == f"synthetic_once_{tool_name}"`. Skips if found.
-   - `REFRESH`: removes any existing pair with `tool_call_id` matching the deterministic prefix,
-     then proceeds to inject a fresh one.
-   - `CONDITIONAL`: calls `condition(messages)`. Skips if `False`.
+   - `ONCE`: checks history for `tool_call_id == _deterministic_call_id(tool_name, arguments)`.
+     Skips if found.
+   - `REFRESH`: removes the **last** synthetic pair for this tool (identified by `tool_name` and
+     `call_id_prefix`), then proceeds to inject a fresh one with a deterministic call_id. Targets
+     the last pair regardless of whether its call_id was deterministic or UUID-based, which
+     preserves older historical pairs while replacing only the most recent one.
    - `ALWAYS`: proceeds unconditionally.
 2. **Content fetch**: calls `get_content(messages)`. Returns messages unchanged if `None`.
+   Conditional injection logic belongs here — return `None` to skip.
 3. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair.
-   - `ONCE` and `REFRESH`: use deterministic `call_id = f"synthetic_once_{tool_name}"`.
-   - `ALWAYS` / `CONDITIONAL`: use `f"synthetic_{uuid4().hex[:12]}"`.
-4. **Position splice**: inserts the pair at the declared `position`.
+   - `ONCE` and `REFRESH`: use deterministic `call_id = _deterministic_call_id(tool_name, arguments)`.
+   - `ALWAYS`: uses `f"{call_id_prefix}{uuid4().hex[:12]}"`.
+4. **Position splice**: inserts the pair at the position returned by `get_position(messages)`.
    - `AFTER_FIRST_USER`: after the first `Role.USER` message; appends at end if no USER message
      exists.
    - `BEFORE_LAST_USER`: before the last `Role.USER` message; appends at end if no USER message
@@ -270,11 +273,11 @@ initialization, so the full `list[StagedBaseTool]` is available.
 All three existing injectors are rewritten as `SyntheticToolCallInjector` subclasses. Their
 custom position, idempotency, and pair-construction logic is deleted.
 
-| Injector | `position` | `frequency` | Notes |
+| Injector | `get_position` | `get_frequency` | Notes |
 |---|---|---|---|
 | `_TimestampInjectionTransformer` | `END` | `ALWAYS` | Config check moved to `get_content` returning `None` |
 | `_InjectFileTransferInstructionTransformer` | `AFTER_FIRST_USER` | `ONCE` | Hardcoded `SYNTHETIC_TOOL_CALL_ID` replaced by base deterministic id |
-| `_AttachmentNotificationInjector` | `END` | `CONDITIONAL` | `should_activate_context_tool` moved to `condition()` |
+| `_AttachmentNotificationInjector` | `END` | `ALWAYS` | `should_activate_context_tool` check moved into `get_content` returning `None` |
 
 ---
 
@@ -298,8 +301,11 @@ custom position, idempotency, and pair-construction logic is deleted.
 ```python
 # my_feature/agent_memory_injector.py
 class AgentMemoryInjector(StagedToolSyntheticInjector):
-    position  = InjectionPosition.AFTER_FIRST_USER
-    frequency = InjectionFrequency.REFRESH
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.AFTER_FIRST_USER
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.REFRESH
 
     async def get_tool_name(self) -> str:
         return "memory_server_get_memories"  # sanitized name as registered in StagedBaseTool
@@ -319,21 +325,53 @@ class AgentMemoryModule(Module):
 
 Register `AgentMemoryModule` in `app_factory.py` alongside other feature modules.
 
-### `CONDITIONAL` injector example
+### Conditional injector example
+
+Conditional logic belongs in `get_frequency` (to choose `ALWAYS` vs skip via `get_content`
+returning `None`) or directly in `get_content`. The example below injects only on the first turn
+by returning `None` on subsequent ones:
 
 ```python
 class FirstTurnGreetingInjector(SyntheticToolCallInjector):
-    position  = InjectionPosition.AFTER_FIRST_USER
-    frequency = InjectionFrequency.CONDITIONAL
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.AFTER_FIRST_USER
 
-    def condition(self, messages: list[Message]) -> bool:
-        return sum(1 for m in messages if m.role == Role.USER) == 1
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.ALWAYS
 
     async def get_tool_name(self) -> str:
         return "greeting_tool"
 
     async def get_content(self, messages: list[Message]) -> str | None:
+        user_count = sum(1 for m in messages if m.role == Role.USER)
+        if user_count > 1:
+            return None  # skip after the first turn
         return "Hello! Here is your personalised greeting."
+```
+
+### Version-aware injection
+
+When injected content changes across app versions but arguments stay the same, include a version
+identifier in `get_arguments()`. This gives each version a distinct deterministic call_id, so
+`ONCE` naturally accumulates historical versions alongside the new one:
+
+```python
+class VersionedSkillInjector(SyntheticToolCallInjector):
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.AFTER_FIRST_USER
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        call_id = _deterministic_call_id(await self.get_tool_name(), await self.get_arguments())
+        return InjectionFrequency.ONCE if _has_tool_call_id(messages, call_id) else InjectionFrequency.ALWAYS
+
+    async def get_tool_name(self) -> str:
+        return "skill_reader"
+
+    async def get_arguments(self) -> dict:
+        return {"skill_name": "my_skill", "version": CURRENT_SKILL_VERSION}
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return load_skill_content(CURRENT_SKILL_VERSION)
 ```
 
 ---
@@ -384,7 +422,7 @@ class FirstTurnGreetingInjector(SyntheticToolCallInjector):
 - Rewritten as `SyntheticToolCallInjector` subclass (`AFTER_FIRST_USER`, `ONCE`)
 
 ### `attachment_processing/_attachment_notification_injector.py`
-- Rewritten as `SyntheticToolCallInjector` subclass (`END`, `CONDITIONAL`)
+- Rewritten as `SyntheticToolCallInjector` subclass (`END`, `ALWAYS`); condition logic moved into `get_content`
 
 ### Tests
 - `test_extract_tool_calls_processor.py` — `setup()` calls become `await`; assertions move to
