@@ -2,7 +2,7 @@ import threading
 
 from quickapp.common import StagedBaseTool
 
-from .exceptions import ToolInitializationException
+from .exceptions import InitializationException, ToolInitializationException
 
 
 class ToolingContextBase:
@@ -10,7 +10,7 @@ class ToolingContextBase:
 
     def __init__(self):
         self._tools: list[StagedBaseTool] = []
-        self._exceptions: list[ToolInitializationException] = []
+        self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
 
     def append_tool(self, tool: StagedBaseTool) -> None:
@@ -26,7 +26,7 @@ class ToolingContextBase:
         return self._tools
 
     @property
-    def exceptions(self) -> list[ToolInitializationException]:
+    def exceptions(self) -> list[InitializationException]:
         return self._exceptions
 
     def append_exception(self, exception: ToolInitializationException) -> None:

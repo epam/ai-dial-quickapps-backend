@@ -53,4 +53,4 @@ class MCPToolingModule(Module):
     def __provide_initialization_exceptions(
         self, context: _MCPToolingContext
     ) -> list[InitializationException]:
-        return list(context.exceptions)
+        return context.exceptions

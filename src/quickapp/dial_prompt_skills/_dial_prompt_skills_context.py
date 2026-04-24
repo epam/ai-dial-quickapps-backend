@@ -1,6 +1,6 @@
 import threading
 
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import InitializationException, SkillInitializationException
 
 from ._dial_prompt_skill_resolver import ResolvedDialPromptSkill
 
@@ -15,7 +15,7 @@ class _DialPromptSkillsContext:
 
     def __init__(self) -> None:
         self._resolved_skills: list[ResolvedDialPromptSkill] = []
-        self._exceptions: list[SkillInitializationException] = []
+        self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
 
     @property
@@ -23,7 +23,7 @@ class _DialPromptSkillsContext:
         return self._resolved_skills
 
     @property
-    def exceptions(self) -> list[SkillInitializationException]:
+    def exceptions(self) -> list[InitializationException]:
         return self._exceptions
 
     def extend_resolved_skills(self, skills: list[ResolvedDialPromptSkill]) -> None:

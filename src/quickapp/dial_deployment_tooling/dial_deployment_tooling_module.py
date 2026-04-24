@@ -65,4 +65,4 @@ class DialDeploymentToolingModule(Module):
     def __provide_initialization_exceptions(
         self, context: _DeploymentToolingContext
     ) -> list[InitializationException]:
-        return list(context.exceptions)
+        return context.exceptions

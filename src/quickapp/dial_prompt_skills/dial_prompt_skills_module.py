@@ -34,4 +34,4 @@ class DialPromptSkillsModule(Module):
     def __provide_initialization_exceptions(
         self, context: _DialPromptSkillsContext
     ) -> list[InitializationException]:
-        return list(context.exceptions)
+        return context.exceptions
