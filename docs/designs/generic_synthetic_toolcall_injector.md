@@ -44,17 +44,20 @@ calls.
 
 **Trigger:** A chat request arrives for an agent wired with an MCP memory server.
 **Behavior:** Before the first LLM call, the agent calls the `get_memories` MCP tool with empty
-arguments. If a memory tool-call pair already exists in the message history (from a previous turn),
-it is replaced with a fresh one containing up-to-date memories. There is always exactly one memory
-pair in the conversation.
-**Outcome:** The LLM sees current memory contents on every turn without accumulating stale copies.
+arguments using `REFRESH_IF_CHANGED`. If memories have not changed since the last turn, injection
+is skipped. If memories have changed, the previous pair is replaced with a fresh one.
+**Outcome:** The LLM sees current memory contents on every turn without accumulating stale copies,
+and skips unnecessary injection when memories are unchanged.
 
 ### UC-2: File-transfer skill injection (existing, migrated)
 
 **Trigger:** A chat request arrives for an agent with the skills feature enabled.
-**Behavior:** The skill content is injected after the first USER message exactly once — if the
-synthetic call-id is already present in message history, injection is skipped.
-**Outcome:** Identical to the current `_InjectFileTransferInstructionTransformer` behavior.
+**Behavior:** The skill content is injected after the first USER message using `APPEND_IF_CHANGED`.
+If the content is already present in history with the same hash, injection is skipped. If the skill
+content changes (e.g. after an update), a new pair is appended alongside the old one to preserve
+conversation history consistency.
+**Outcome:** Functionally identical to the prior `ONCE` behavior when content is stable; appends
+on content change instead of silently keeping stale content.
 
 ### UC-3: Timestamp injection (existing, migrated)
 
@@ -90,9 +93,9 @@ class InjectionPosition(StrEnum):
     END              = "end"               # append after all messages
 
 class InjectionFrequency(StrEnum):
-    ONCE    = "once"    # inject once; skip if already present in history
-    ALWAYS  = "always"  # always append; accumulates across turns
-    REFRESH = "refresh" # remove last synthetic pair for this tool, then inject fresh one
+    ALWAYS             = "always"              # always append a new pair; accumulates across turns
+    APPEND_IF_CHANGED  = "append_if_changed"   # append new pair only if content changed since last injection for same tool+args
+    REFRESH_IF_CHANGED = "refresh_if_changed"  # replace last pair for same tool+args only if content changed
 ```
 
 **Change:** New files; no existing code modified.
@@ -126,6 +129,10 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
     async def get_arguments(self) -> dict:
         return {}
 
+    async def should_inject(self, messages: list[Message]) -> bool:
+        # Return False to skip injection entirely. Override to add preconditions.
+        return True
+
     @abstractmethod
     async def get_content(self, messages: list[Message]) -> str | None:
         # Return None to skip injection for this turn.
@@ -134,20 +141,22 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
 The base `transform` implementation:
 
-1. **Frequency gate**
-   - `ONCE`: checks history for `tool_call_id == _deterministic_call_id(tool_name, arguments)`.
-     Skips if found.
-   - `REFRESH`: removes the **last** synthetic pair for this tool (identified by `tool_name` and
-     `call_id_prefix`), then proceeds to inject a fresh one with a deterministic call_id. Targets
-     the last pair regardless of whether its call_id was deterministic or UUID-based, which
-     preserves older historical pairs while replacing only the most recent one.
-   - `ALWAYS`: proceeds unconditionally.
+1. **Precondition gate**: calls `should_inject(messages)`. Returns messages unchanged if `False`.
+   Use this for coarse preconditions (e.g. feature flags, missing config) that are independent
+   of content. Conditional injection logic that depends on content belongs in `get_content`.
 2. **Content fetch**: calls `get_content(messages)`. Returns messages unchanged if `None`.
-   Conditional injection logic belongs here — return `None` to skip.
-3. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair.
-   - `ONCE` and `REFRESH`: use deterministic `call_id = _deterministic_call_id(tool_name, arguments)`.
-   - `ALWAYS`: uses `f"{call_id_prefix}{uuid4().hex[:12]}"`.
-4. **Position splice**: inserts the pair at the position returned by `get_position(messages)`.
+3. **Frequency gate**: determines whether and how to inject based on content change detection.
+   - `ALWAYS`: proceeds unconditionally; uses a random `call_id`.
+   - `APPEND_IF_CHANGED`: computes `call_id = synth_{tool_name}_{args_hash[:6]}_{content_hash[:6]}`.
+     Skips if that exact `call_id` already exists in history (same tool + same args + same content).
+     Otherwise appends a new pair, preserving prior pairs.
+   - `REFRESH_IF_CHANGED`: same `call_id` scheme. Skips if already present. Otherwise removes the
+     **last** synthetic pair whose `call_id` starts with `synth_{tool_name}_{args_hash[:6]}_`
+     (same tool + same args, regardless of content), then injects the new pair. Pairs with
+     different args are not touched.
+4. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair using the computed
+   `call_id`.
+5. **Position splice**: inserts the pair at the position returned by `get_position(messages)`.
    - `AFTER_FIRST_USER`: after the first `Role.USER` message; appends at end if no USER message
      exists.
    - `BEFORE_LAST_USER`: before the last `Role.USER` message; appends at end if no USER message
@@ -276,8 +285,8 @@ custom position, idempotency, and pair-construction logic is deleted.
 | Injector | `get_position` | `get_frequency` | Notes |
 |---|---|---|---|
 | `_TimestampInjectionTransformer` | `END` | `ALWAYS` | Config check moved to `get_content` returning `None` |
-| `_InjectFileTransferInstructionTransformer` | `AFTER_FIRST_USER` | `ONCE` | Hardcoded `SYNTHETIC_TOOL_CALL_ID` replaced by base deterministic id |
-| `_AttachmentNotificationInjector` | `END` | `ALWAYS` | `should_activate_context_tool` check moved into `get_content` returning `None` |
+| `_InjectFileTransferInstructionTransformer` | `AFTER_FIRST_USER` | `APPEND_IF_CHANGED` | Migrated from `ONCE`; appends on content change instead of silently keeping stale content |
+| `_AttachmentNotificationInjector` | `END` | `ALWAYS` | `should_activate_context_tool` check moved to `should_inject()`; `get_content` handles only payload construction |
 
 ---
 
@@ -296,7 +305,7 @@ custom position, idempotency, and pair-construction logic is deleted.
 
 ## Configuration / Usage Examples
 
-### Custom MCP-backed injector with `REFRESH`
+### Custom MCP-backed injector with `REFRESH_IF_CHANGED`
 
 ```python
 # my_feature/agent_memory_injector.py
@@ -305,7 +314,7 @@ class AgentMemoryInjector(StagedToolSyntheticInjector):
         return InjectionPosition.AFTER_FIRST_USER
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.REFRESH
+        return InjectionFrequency.REFRESH_IF_CHANGED
 
     async def get_tool_name(self) -> str:
         return "memory_server_get_memories"  # sanitized name as registered in StagedBaseTool
@@ -351,9 +360,10 @@ class FirstTurnGreetingInjector(SyntheticToolCallInjector):
 
 ### Version-aware injection
 
-When injected content changes across app versions but arguments stay the same, include a version
-identifier in `get_arguments()`. This gives each version a distinct deterministic call_id, so
-`ONCE` naturally accumulates historical versions alongside the new one:
+`APPEND_IF_CHANGED` naturally handles versioned content: when skill content changes, a new pair
+is appended alongside older ones, preserving conversation history. When content is stable, injection
+is skipped. No explicit version tracking in arguments is required — the content hash in the
+`call_id` handles deduplication automatically:
 
 ```python
 class VersionedSkillInjector(SyntheticToolCallInjector):
@@ -361,15 +371,15 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
         return InjectionPosition.AFTER_FIRST_USER
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        # ONCE + versioned arguments: each version gets a distinct deterministic call_id.
-        # A new version is injected alongside older ones; the same version is never re-injected.
-        return InjectionFrequency.ONCE
+        # APPEND_IF_CHANGED: content hash in call_id ensures same content is never re-injected;
+        # updated content is appended alongside older pairs to preserve history.
+        return InjectionFrequency.APPEND_IF_CHANGED
 
     async def get_tool_name(self) -> str:
         return "skill_reader"
 
     async def get_arguments(self) -> dict:
-        return {"skill_name": "my_skill", "version": CURRENT_SKILL_VERSION}
+        return {"skill_name": "my_skill"}
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return load_skill_content(CURRENT_SKILL_VERSION)

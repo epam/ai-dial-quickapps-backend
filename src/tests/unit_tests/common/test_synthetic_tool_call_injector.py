@@ -28,43 +28,84 @@ class _AlwaysEndInjector(SyntheticToolCallInjector):
         return "test content"
 
 
-class _OnceAfterFirstUserInjector(SyntheticToolCallInjector):
+class _AppendIfChangedEndInjector(SyntheticToolCallInjector):
+    def __init__(self, content: str = "append content"):
+        self._content = content
+
     async def get_tool_name(self) -> str:
-        return "once_tool"
+        return "append_tool"
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.ONCE
+        return InjectionFrequency.APPEND_IF_CHANGED
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return self._content
+
+
+class _AppendIfChangedAfterFirstUserInjector(SyntheticToolCallInjector):
+    async def get_tool_name(self) -> str:
+        return "append_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.APPEND_IF_CHANGED
 
     async def get_position(self, messages: list[Message]) -> InjectionPosition:
         return InjectionPosition.AFTER_FIRST_USER
 
     async def get_content(self, messages: list[Message]) -> str | None:
-        return "once content"
+        return "append content"
 
 
-class _RefreshBeforeLastUserInjector(SyntheticToolCallInjector):
+class _RefreshIfChangedEndInjector(SyntheticToolCallInjector):
+    def __init__(self, content: str = "refresh content"):
+        self._content = content
+
     async def get_tool_name(self) -> str:
         return "refresh_tool"
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.REFRESH
+        return InjectionFrequency.REFRESH_IF_CHANGED
+
+    async def get_position(self, messages: list[Message]) -> InjectionPosition:
+        return InjectionPosition.END
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return self._content
+
+
+class _RefreshIfChangedBeforeLastUserInjector(SyntheticToolCallInjector):
+    async def get_tool_name(self) -> str:
+        return "refresh_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.REFRESH_IF_CHANGED
 
     async def get_position(self, messages: list[Message]) -> InjectionPosition:
         return InjectionPosition.BEFORE_LAST_USER
 
     async def get_content(self, messages: list[Message]) -> str | None:
-        return "refreshed content"
+        return "refresh content"
 
 
-class _ParamDrivenOnceInjector(SyntheticToolCallInjector):
-    def __init__(self, arguments: dict):
+class _ParamDrivenInjector(SyntheticToolCallInjector):
+    def __init__(
+        self,
+        arguments: dict,
+        frequency: InjectionFrequency,
+        content: str | None = None,
+    ):
         self._arguments = arguments
+        self._frequency = frequency
+        self._content = content
 
     async def get_tool_name(self) -> str:
         return "param_tool"
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.ONCE
+        return self._frequency
 
     async def get_position(self, messages: list[Message]) -> InjectionPosition:
         return InjectionPosition.END
@@ -73,7 +114,7 @@ class _ParamDrivenOnceInjector(SyntheticToolCallInjector):
         return self._arguments
 
     async def get_content(self, messages: list[Message]) -> str | None:
-        return f"content for {self._arguments}"
+        return self._content or f"content for {self._arguments}"
 
 
 class _ConditionalEndInjector(SyntheticToolCallInjector):
@@ -109,25 +150,21 @@ class _NullContentInjector(SyntheticToolCallInjector):
         return None
 
 
-class _SwitchableInjector(SyntheticToolCallInjector):
-    """Injector whose frequency can be changed between calls — used to test
-    transitions between ALWAYS and REFRESH."""
-
-    def __init__(self, frequency: InjectionFrequency, content: str = "content"):
-        self._frequency = frequency
-        self._content = content
-
+class _ShouldNotInjectInjector(SyntheticToolCallInjector):
     async def get_tool_name(self) -> str:
-        return "switch_tool"
+        return "gate_tool"
+
+    async def should_inject(self, messages: list[Message]) -> bool:
+        return False
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return self._frequency
+        return InjectionFrequency.ALWAYS
 
     async def get_position(self, messages: list[Message]) -> InjectionPosition:
         return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
-        return self._content
+        return "should not appear"
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +222,7 @@ class TestAlwaysEnd:
         result1 = await injector.transform(messages)
         result2 = await injector.transform(result1)
 
-        # ALWAYS: two pairs accumulated (3 + 2 = 5)
-        assert len(result2) == 5
+        assert len(result2) == 5  # 1 user + 2 pairs
 
     @pytest.mark.asyncio
     async def test_empty_messages_appends_pair(self):
@@ -195,16 +231,202 @@ class TestAlwaysEnd:
         assert len(result) == 2
         _assert_synthetic_pair(result, 0, "test_tool", "test content")
 
+    @pytest.mark.asyncio
+    async def test_uses_random_call_id(self):
+        injector = _AlwaysEndInjector()
+        messages = [_user("hi")]
+
+        result1 = await injector.transform(messages)
+        result2 = await injector.transform(messages)
+
+        assert result1[1].tool_calls is not None
+        assert result2[1].tool_calls is not None
+        id1 = result1[1].tool_calls[0].id
+        id2 = result2[1].tool_calls[0].id
+        assert id1 != id2  # random each time
+
 
 # ---------------------------------------------------------------------------
-# Tests: ONCE + AFTER_FIRST_USER
+# Tests: APPEND_IF_CHANGED
 # ---------------------------------------------------------------------------
 
 
-class TestOnceAfterFirstUser:
+class TestAppendIfChanged:
+    @pytest.mark.asyncio
+    async def test_injects_on_first_call(self):
+        injector = _AppendIfChangedEndInjector()
+        result = await injector.transform([_user("hello")])
+
+        assert len(result) == 3
+        _assert_synthetic_pair(result, 1, "append_tool", "append content")
+
+    @pytest.mark.asyncio
+    async def test_skips_when_content_unchanged(self):
+        injector = _AppendIfChangedEndInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        result2 = await injector.transform(result)
+        assert len(result2) == 3  # unchanged — same content hash
+
+    @pytest.mark.asyncio
+    async def test_appends_when_content_changed(self):
+        injector = _AppendIfChangedEndInjector(content="v1")
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        # Content changes — old pair kept, new pair appended at end
+        injector._content = "v2"
+        result = await injector.transform(result)
+
+        assert len(result) == 5
+        _assert_synthetic_pair(result, 1, "append_tool", "v1")
+        _assert_synthetic_pair(result, 3, "append_tool", "v2")
+
+    @pytest.mark.asyncio
+    async def test_uses_deterministic_call_id(self):
+        injector = _AppendIfChangedEndInjector()
+        result1 = await injector.transform([_user("hi")])
+        result2 = await injector.transform([_user("hi")])
+
+        assert result1[1].tool_calls is not None
+        assert result2[1].tool_calls is not None
+        id1 = result1[1].tool_calls[0].id
+        id2 = result2[1].tool_calls[0].id
+        assert id1 == id2
+        assert id1.startswith("synth_append_tool_")
+
+
+# ---------------------------------------------------------------------------
+# Tests: REFRESH_IF_CHANGED
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshIfChanged:
+    @pytest.mark.asyncio
+    async def test_injects_on_first_call(self):
+        injector = _RefreshIfChangedEndInjector()
+        result = await injector.transform([_user("hello")])
+
+        assert len(result) == 3
+        _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
+
+    @pytest.mark.asyncio
+    async def test_skips_when_content_unchanged(self):
+        injector = _RefreshIfChangedEndInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        result2 = await injector.transform(result)
+        assert len(result2) == 3  # unchanged — same content hash
+
+    @pytest.mark.asyncio
+    async def test_replaces_when_content_changed(self):
+        injector = _RefreshIfChangedEndInjector(content="v1")
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        # Content changes — old pair removed, new pair injected
+        injector._content = "v2"
+        result = await injector.transform(result)
+
+        assert len(result) == 3  # same size — replaced, not accumulated
+        _assert_synthetic_pair(result, 1, "refresh_tool", "v2")
+
+
+# ---------------------------------------------------------------------------
+# Tests: REFRESH_IF_CHANGED position
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshIfChangedBeforeLastUser:
+    @pytest.mark.asyncio
+    async def test_injects_before_last_user(self):
+        injector = _RefreshIfChangedBeforeLastUserInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+
+        assert len(result) == 3
+        _assert_synthetic_pair(result, 0, "refresh_tool", "refresh content")
+        assert result[2].role == Role.USER
+        assert result[2].content == "hello"
+
+    @pytest.mark.asyncio
+    async def test_no_user_message_appends_at_end(self):
+        injector = _RefreshIfChangedBeforeLastUserInjector()
+        messages = [Message(role=Role.SYSTEM, content="sys")]
+
+        result = await injector.transform(messages)
+
+        assert len(result) == 3
+        assert result[0].role == Role.SYSTEM
+        _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
+
+
+# ---------------------------------------------------------------------------
+# Tests: REFRESH_IF_CHANGED scoped to same tool+args
+# ---------------------------------------------------------------------------
+
+
+class TestRefreshIfChangedArgScoping:
+    @pytest.mark.asyncio
+    async def test_appends_when_args_differ(self):
+        """Different args = different scope; existing pair must not be removed."""
+        injector_a = _ParamDrivenInjector({"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED)
+        injector_b = _ParamDrivenInjector({"k": "b"}, InjectionFrequency.REFRESH_IF_CHANGED)
+        messages = [_user("hello")]
+
+        result = await injector_a.transform(messages)
+        result = await injector_b.transform(result)
+
+        assert len(result) == 5  # both pairs present
+
+    @pytest.mark.asyncio
+    async def test_replaces_only_matching_args_pair(self):
+        """Content change for args={k:a} must not remove the pair for args={k:b}."""
+        injector_a_v1 = _ParamDrivenInjector(
+            {"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED, content="a-v1"
+        )
+        injector_b = _ParamDrivenInjector(
+            {"k": "b"}, InjectionFrequency.REFRESH_IF_CHANGED, content="b-v1"
+        )
+        messages = [_user("hello")]
+
+        result = await injector_a_v1.transform(messages)
+        result = await injector_b.transform(result)
+        assert len(result) == 5
+
+        injector_a_v2 = _ParamDrivenInjector(
+            {"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED, content="a-v2"
+        )
+        result = await injector_a_v2.transform(result)
+
+        # args={k:a} pair replaced, args={k:b} pair preserved — still 5
+        assert len(result) == 5
+        tool_contents = [m.content for m in result if m.role == Role.TOOL]
+        assert "b-v1" in tool_contents
+        assert "a-v2" in tool_contents
+        assert "a-v1" not in tool_contents
+
+
+# ---------------------------------------------------------------------------
+# Tests: APPEND_IF_CHANGED + AFTER_FIRST_USER position
+# ---------------------------------------------------------------------------
+
+
+class TestAppendIfChangedAfterFirstUser:
     @pytest.mark.asyncio
     async def test_injects_after_first_user(self):
-        injector = _OnceAfterFirstUserInjector()
+        injector = _AppendIfChangedAfterFirstUserInjector()
         messages = [_user("first"), Message(role=Role.ASSISTANT, content="reply"), _user("second")]
 
         result = await injector.transform(messages)
@@ -212,137 +434,81 @@ class TestOnceAfterFirstUser:
         assert len(result) == 5
         assert result[0].role == Role.USER
         assert result[0].content == "first"
-        _assert_synthetic_pair(result, 1, "once_tool", "once content")
+        _assert_synthetic_pair(result, 1, "append_tool", "append content")
         assert result[3].role == Role.ASSISTANT
         assert result[4].role == Role.USER
         assert result[4].content == "second"
 
     @pytest.mark.asyncio
-    async def test_skips_if_already_present(self):
-        injector = _OnceAfterFirstUserInjector()
-        messages = [_user("hello")]
-
-        result1 = await injector.transform(messages)
-        assert len(result1) == 3
-
-        result2 = await injector.transform(result1)
-        assert len(result2) == 3  # unchanged
-
-    @pytest.mark.asyncio
-    async def test_uses_deterministic_call_id(self):
-        injector = _OnceAfterFirstUserInjector()
-        result1 = await injector.transform([_user("hi")])
-        result2 = await injector.transform([_user("hi")])
-
-        # Same deterministic call_id on both fresh runs
-        assert result1[1].tool_calls is not None
-        assert result2[1].tool_calls is not None
-        id1 = result1[1].tool_calls[0].id
-        id2 = result2[1].tool_calls[0].id
-        assert id1 == id2
-        assert id1.startswith("synth_once_once_tool_")
-
-    @pytest.mark.asyncio
     async def test_no_user_message_appends_at_end(self):
-        injector = _OnceAfterFirstUserInjector()
+        injector = _AppendIfChangedAfterFirstUserInjector()
         messages = [Message(role=Role.SYSTEM, content="sys")]
 
         result = await injector.transform(messages)
 
         assert len(result) == 3
         assert result[0].role == Role.SYSTEM
-        _assert_synthetic_pair(result, 1, "once_tool", "once content")
+        _assert_synthetic_pair(result, 1, "append_tool", "append content")
 
 
 # ---------------------------------------------------------------------------
-# Tests: REFRESH + BEFORE_LAST_USER
+# Tests: APPEND_IF_CHANGED with different arguments
 # ---------------------------------------------------------------------------
 
 
-class TestRefreshBeforeLastUser:
+class TestAppendIfChangedDifferentArgs:
     @pytest.mark.asyncio
-    async def test_injects_before_last_user(self):
-        injector = _RefreshBeforeLastUserInjector()
+    async def test_both_injected_when_args_differ(self):
+        injector_a = _ParamDrivenInjector({"key": "a"}, InjectionFrequency.APPEND_IF_CHANGED)
+        injector_b = _ParamDrivenInjector({"key": "b"}, InjectionFrequency.APPEND_IF_CHANGED)
         messages = [_user("hello")]
 
-        result = await injector.transform(messages)
+        result = await injector_a.transform(messages)
+        result = await injector_b.transform(result)
 
-        assert len(result) == 3
-        _assert_synthetic_pair(result, 0, "refresh_tool", "refreshed content")
-        assert result[2].role == Role.USER
-        assert result[2].content == "hello"
-
-    @pytest.mark.asyncio
-    async def test_removes_existing_and_reinjects(self):
-        injector = _RefreshBeforeLastUserInjector()
-        messages = [_user("hello")]
-
-        result1 = await injector.transform(messages)
-        assert len(result1) == 3
-
-        result2 = await injector.transform(result1)
-        # Old pair removed, new pair inserted — still 3 total (not 5)
-        assert len(result2) == 3
-        # The pair is still valid
-        _assert_synthetic_pair(result2, 0, "refresh_tool", "refreshed content")
-
-    @pytest.mark.asyncio
-    async def test_no_user_message_appends_at_end(self):
-        injector = _RefreshBeforeLastUserInjector()
-        messages = [Message(role=Role.SYSTEM, content="sys")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
-        assert result[0].role == Role.SYSTEM
-        _assert_synthetic_pair(result, 1, "refresh_tool", "refreshed content")
-
-
-# ---------------------------------------------------------------------------
-# Tests: REFRESH removes last injected pair regardless of call_id type
-# ---------------------------------------------------------------------------
-
-
-class TestRefreshRemovesLast:
-    @pytest.mark.asyncio
-    async def test_refresh_removes_uuid_based_pair(self):
-        """REFRESH should remove a previously ALWAYS-injected (UUID) pair."""
-        injector = _SwitchableInjector(InjectionFrequency.ALWAYS)
-        messages = [_user("hello")]
-
-        # First call: ALWAYS → UUID-based call_id
-        result = await injector.transform(messages)
-        assert len(result) == 3
-
-        # Switch to REFRESH
-        injector._frequency = InjectionFrequency.REFRESH
-        result2 = await injector.transform(result)
-
-        # Old UUID pair removed, new deterministic pair added — still 3
-        assert len(result2) == 3
-        _assert_synthetic_pair(result2, 1, "switch_tool", "content")
-
-    @pytest.mark.asyncio
-    async def test_refresh_removes_only_last_pair(self):
-        """REFRESH must not touch historical pairs — only the most recent one."""
-        injector = _SwitchableInjector(InjectionFrequency.ALWAYS, content="v1")
-        messages = [_user("hello")]
-
-        # Two ALWAYS injections accumulate
-        result = await injector.transform(messages)
-        injector._content = "v2"
-        result = await injector.transform(result)
-        assert len(result) == 5  # user + pair(v1) + pair(v2)
-
-        # Switch to REFRESH — should remove v2 (last) and add v3
-        injector._frequency = InjectionFrequency.REFRESH
-        injector._content = "v3"
-        result = await injector.transform(result)
-
-        # v1 pair preserved, v2 removed, v3 added → still 5
         assert len(result) == 5
-        _assert_synthetic_pair(result, 1, "switch_tool", "v1")
-        _assert_synthetic_pair(result, 3, "switch_tool", "v3")
+        assert result[1].tool_calls is not None
+        assert result[3].tool_calls is not None
+        call_id_a = result[1].tool_calls[0].id
+        call_id_b = result[3].tool_calls[0].id
+        assert call_id_a != call_id_b
+
+    @pytest.mark.asyncio
+    async def test_deduplicated_when_args_and_content_same(self):
+        injector_a = _ParamDrivenInjector({"key": "same"}, InjectionFrequency.APPEND_IF_CHANGED)
+        injector_b = _ParamDrivenInjector({"key": "same"}, InjectionFrequency.APPEND_IF_CHANGED)
+        messages = [_user("hello")]
+
+        result = await injector_a.transform(messages)
+        result = await injector_b.transform(result)
+
+        # Second injector sees same args + same content → skips
+        assert len(result) == 3
+
+
+# ---------------------------------------------------------------------------
+# Tests: should_inject gate
+# ---------------------------------------------------------------------------
+
+
+class TestShouldInjectGate:
+    @pytest.mark.asyncio
+    async def test_skips_injection_when_should_inject_false(self):
+        injector = _ShouldNotInjectInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+
+        assert result is messages  # unchanged
+
+    @pytest.mark.asyncio
+    async def test_injects_when_should_inject_true_by_default(self):
+        injector = _AlwaysEndInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+
+        assert len(result) == 3
 
 
 # ---------------------------------------------------------------------------
@@ -369,20 +535,6 @@ class TestConditionalEnd:
         result = await injector.transform(messages)
 
         assert result is messages
-
-    @pytest.mark.asyncio
-    async def test_uses_random_call_id(self):
-        injector = _ConditionalEndInjector(condition_result=True)
-        messages = [_user("hi")]
-
-        result1 = await injector.transform(messages)
-        result2 = await injector.transform(messages)
-
-        assert result1[1].tool_calls is not None
-        assert result2[1].tool_calls is not None
-        id1 = result1[1].tool_calls[0].id
-        id2 = result2[1].tool_calls[0].id
-        assert id1 != id2  # random each time
 
 
 # ---------------------------------------------------------------------------
@@ -429,39 +581,3 @@ class TestCustomCallIdPrefix:
         assert result[1].tool_calls is not None
         call_id = result[1].tool_calls[0].id
         assert call_id.startswith("my_prefix_")
-
-
-# ---------------------------------------------------------------------------
-# Tests: ONCE with different arguments
-# ---------------------------------------------------------------------------
-
-
-class TestOnceDifferentArguments:
-    @pytest.mark.asyncio
-    async def test_both_injected_when_args_differ(self):
-        injector_a = _ParamDrivenOnceInjector({"key": "a"})
-        injector_b = _ParamDrivenOnceInjector({"key": "b"})
-        messages = [_user("hello")]
-
-        result = await injector_a.transform(messages)
-        result = await injector_b.transform(result)
-
-        # Both pairs injected: 1 user + 2 × (assistant + tool) = 5
-        assert len(result) == 5
-        assert result[1].tool_calls is not None
-        assert result[3].tool_calls is not None
-        call_id_a = result[1].tool_calls[0].id
-        call_id_b = result[3].tool_calls[0].id
-        assert call_id_a != call_id_b
-
-    @pytest.mark.asyncio
-    async def test_deduplicated_when_args_same(self):
-        injector_a = _ParamDrivenOnceInjector({"key": "same"})
-        injector_b = _ParamDrivenOnceInjector({"key": "same"})
-        messages = [_user("hello")]
-
-        result = await injector_a.transform(messages)
-        result = await injector_b.transform(result)
-
-        # Second injector sees the existing call_id and skips — only one pair
-        assert len(result) == 3

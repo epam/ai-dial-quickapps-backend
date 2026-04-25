@@ -30,7 +30,7 @@ class _InjectFileTransferInstructionTransformer(SyntheticToolCallInjector):
         return SKILL_READER_TOOL_NAME
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.ONCE
+        return InjectionFrequency.APPEND_IF_CHANGED
 
     async def get_position(self, messages: list[Message]) -> InjectionPosition:
         return InjectionPosition.AFTER_FIRST_USER
