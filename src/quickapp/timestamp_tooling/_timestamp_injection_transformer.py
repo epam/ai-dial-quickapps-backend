@@ -1,10 +1,7 @@
 from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
-from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
-)
+from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
@@ -36,9 +33,6 @@ class _TimestampInjectionTransformer(SyntheticToolCallInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         features = self.__config_provider.get().features

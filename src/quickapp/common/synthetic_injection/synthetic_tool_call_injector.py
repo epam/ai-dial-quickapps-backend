@@ -8,10 +8,7 @@ from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
-)
+from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +21,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     @abstractmethod
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency: ...
-
-    @abstractmethod
-    async def get_position(self, messages: list[Message]) -> InjectionPosition: ...
 
     async def get_arguments(self) -> dict:
         return {}
@@ -53,7 +47,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         if content is None:
             return messages
 
-        # 3. Frequency gate
+        # 3. Frequency gate + implicit position
         frequency = await self.get_frequency(messages)
         args_hash = _hash6(json.dumps(arguments, sort_keys=True))
         content_hash = _hash6(content)
@@ -62,35 +56,24 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         match frequency:
             case InjectionFrequency.ALWAYS:
                 call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
+                idx = len(messages)
             case InjectionFrequency.APPEND_IF_CHANGED:
                 if _has_tool_call_id(messages, call_id):
                     return messages
+                has_prior = _has_any_pair_for_tool_and_args(
+                    messages, tool_name, args_hash, self.call_id_prefix
+                )
+                idx = len(messages) if has_prior else _after_first_user_idx(messages)
             case InjectionFrequency.REFRESH_IF_CHANGED:
                 if _has_tool_call_id(messages, call_id):
                     return messages
                 messages = _remove_last_injected_pair_for_tool_and_args(
                     messages, tool_name, args_hash, self.call_id_prefix
                 )
+                idx = _after_first_user_idx(messages)
 
-        # 4. Pair construction
+        # 4. Pair construction + splice
         pair = _build_pair(tool_name, call_id, arguments, content)
-
-        # 5. Position splice
-        position = await self.get_position(messages)
-        match position:
-            case InjectionPosition.AFTER_FIRST_USER:
-                idx = next(
-                    (i + 1 for i, m in enumerate(messages) if m.role == Role.USER),
-                    len(messages),
-                )
-            case InjectionPosition.BEFORE_LAST_USER:
-                idx = next(
-                    (i for i in range(len(messages) - 1, -1, -1) if messages[i].role == Role.USER),
-                    len(messages),
-                )
-            case InjectionPosition.END:
-                idx = len(messages)
-
         return messages[:idx] + list(pair) + messages[idx:]
 
 
@@ -103,8 +86,25 @@ def _hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
 
 
+def _after_first_user_idx(messages: list[Message]) -> int:
+    return next(
+        (i + 1 for i, m in enumerate(messages) if m.role == Role.USER),
+        len(messages),
+    )
+
+
 def _has_tool_call_id(messages: list[Message], call_id: str) -> bool:
     return any(m.role == Role.TOOL and m.tool_call_id == call_id for m in messages)
+
+
+def _has_any_pair_for_tool_and_args(
+    messages: list[Message], tool_name: str, args_hash: str, call_id_prefix: str
+) -> bool:
+    id_prefix = f"{call_id_prefix}{tool_name}_{args_hash}_"
+    return any(
+        m.role == Role.TOOL and m.tool_call_id is not None and m.tool_call_id.startswith(id_prefix)
+        for m in messages
+    )
 
 
 def _remove_last_injected_pair_for_tool_and_args(

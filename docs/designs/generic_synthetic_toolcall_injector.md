@@ -25,10 +25,9 @@ calls.
 
 ## Design Goals
 
-- Provide a single `SyntheticToolCallInjector` base class that encapsulates position, frequency,
-  idempotency, and message-pair construction.
-- Support a fixed set of named injection positions.
-- Support three injection frequencies: `ONCE`, `ALWAYS`, `REFRESH`.
+- Provide a single `SyntheticToolCallInjector` base class that encapsulates frequency,
+  idempotency, position, and message-pair construction.
+- Support three injection frequencies with implicit position rules: `ALWAYS`, `APPEND_IF_CHANGED`, `REFRESH_IF_CHANGED`.
 - Enable injection backed by any `StagedBaseTool` (MCP, REST, DIAL deployment) via live execution.
 - Make `MessagesTransformer.transform` async so tool calls can be awaited.
 - Run all message transformers **after** tool initialization so `StagedBaseTool` instances are
@@ -78,25 +77,23 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 
 ## Proposed Design
 
-### Component 1: `InjectionPosition` and `InjectionFrequency` enums
+### Component 1: `InjectionFrequency` enum
 
-**What:** Two enums added to `common/synthetic_injection/_injection_enums.py`.
+**What:** Enum added to `common/synthetic_injection/_injection_enums.py`.
 
 **Owner:** `common/synthetic_injection/`
 
 **Semantics:**
 
 ```python
-class InjectionPosition(StrEnum):
-    AFTER_FIRST_USER = "after_first_user"  # insert after the first USER message
-    BEFORE_LAST_USER = "before_last_user"  # insert before the last USER message
-    END              = "end"               # append after all messages
-
 class InjectionFrequency(StrEnum):
-    ALWAYS             = "always"              # always append a new pair; accumulates across turns
-    APPEND_IF_CHANGED  = "append_if_changed"   # append new pair only if content changed since last injection for same tool+args
-    REFRESH_IF_CHANGED = "refresh_if_changed"  # replace last pair for same tool+args only if content changed
+    ALWAYS             = "always"              # always append a new pair at END; accumulates across turns
+    APPEND_IF_CHANGED  = "append_if_changed"   # inject after first USER on first call; append at END if content changed
+    REFRESH_IF_CHANGED = "refresh_if_changed"  # inject after first USER; replace last pair for same tool+args if content changed
 ```
+
+Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
+enum. See Component 2 for the position rules.
 
 **Change:** New files; no existing code modified.
 
@@ -111,8 +108,8 @@ Extends `MessagesTransformer`.
 
 **Semantics:**
 
-Subclasses implement `get_frequency` and `get_position` as async methods, receiving the current
-message list so they can base their decision on conversation history:
+Subclasses implement `get_frequency` as an async method and optionally override `should_inject`,
+`get_arguments`, and `get_content`:
 
 ```python
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
@@ -122,9 +119,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     @abstractmethod
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency: ...
-
-    @abstractmethod
-    async def get_position(self, messages: list[Message]) -> InjectionPosition: ...
 
     async def get_arguments(self) -> dict:
         return {}
@@ -145,23 +139,19 @@ The base `transform` implementation:
    Use this for coarse preconditions (e.g. feature flags, missing config) that are independent
    of content. Conditional injection logic that depends on content belongs in `get_content`.
 2. **Content fetch**: calls `get_content(messages)`. Returns messages unchanged if `None`.
-3. **Frequency gate**: determines whether and how to inject based on content change detection.
-   - `ALWAYS`: proceeds unconditionally; uses a random `call_id`.
+3. **Frequency gate + implicit position**: determines whether and how to inject, and where.
+   - `ALWAYS`: proceeds unconditionally; uses a random `call_id`; appends at **END**.
    - `APPEND_IF_CHANGED`: computes `call_id = synth_{tool_name}_{args_hash[:6]}_{content_hash[:6]}`.
-     Skips if that exact `call_id` already exists in history (same tool + same args + same content).
-     Otherwise appends a new pair, preserving prior pairs.
+     Skips if that exact `call_id` already exists in history. On first injection (no prior pair for
+     this tool+args) inserts **after the first USER message**. On subsequent injections when content
+     changed, appends at **END** so the updated content appears after all prior history.
    - `REFRESH_IF_CHANGED`: same `call_id` scheme. Skips if already present. Otherwise removes the
      **last** synthetic pair whose `call_id` starts with `synth_{tool_name}_{args_hash[:6]}_`
-     (same tool + same args, regardless of content), then injects the new pair. Pairs with
-     different args are not touched.
+     (same tool + same args, regardless of content), then inserts the new pair **after the first
+     USER message**. Pairs with different args are not touched.
+   - All modes fall back to appending at END when no USER message exists.
 4. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair using the computed
    `call_id`.
-5. **Position splice**: inserts the pair at the position returned by `get_position(messages)`.
-   - `AFTER_FIRST_USER`: after the first `Role.USER` message; appends at end if no USER message
-     exists.
-   - `BEFORE_LAST_USER`: before the last `Role.USER` message; appends at end if no USER message
-     exists.
-   - `END`: appends after all messages.
 
 **Change:** New file. Replaces duplicated logic in all three existing injectors.
 
@@ -282,11 +272,11 @@ initialization, so the full `list[StagedBaseTool]` is available.
 All three existing injectors are rewritten as `SyntheticToolCallInjector` subclasses. Their
 custom position, idempotency, and pair-construction logic is deleted.
 
-| Injector | `get_position` | `get_frequency` | Notes |
-|---|---|---|---|
-| `_TimestampInjectionTransformer` | `END` | `ALWAYS` | Config check moved to `get_content` returning `None` |
-| `_InjectFileTransferInstructionTransformer` | `AFTER_FIRST_USER` | `APPEND_IF_CHANGED` | Migrated from `ONCE`; appends on content change instead of silently keeping stale content |
-| `_AttachmentNotificationInjector` | `END` | `ALWAYS` | `should_activate_context_tool` check moved to `should_inject()`; `get_content` handles only payload construction |
+| Injector | `get_frequency` | Notes |
+|---|---|---|
+| `_TimestampInjectionTransformer` | `ALWAYS` | Config check moved to `get_content` returning `None`; appends at END |
+| `_InjectFileTransferInstructionTransformer` | `APPEND_IF_CHANGED` | Migrated from `ONCE`; first inject after first USER, appends at END on content change |
+| `_AttachmentNotificationInjector` | `ALWAYS` | `should_activate_context_tool` check moved to `should_inject()`; appends at END |
 
 ---
 
@@ -310,9 +300,6 @@ custom position, idempotency, and pair-construction logic is deleted.
 ```python
 # my_feature/agent_memory_injector.py
 class AgentMemoryInjector(StagedToolSyntheticInjector):
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.AFTER_FIRST_USER
-
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.REFRESH_IF_CHANGED
 
@@ -342,9 +329,6 @@ by returning `None` on subsequent ones:
 
 ```python
 class FirstTurnGreetingInjector(SyntheticToolCallInjector):
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.AFTER_FIRST_USER
-
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
 
@@ -367,9 +351,6 @@ is skipped. No explicit version tracking in arguments is required — the conten
 
 ```python
 class VersionedSkillInjector(SyntheticToolCallInjector):
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.AFTER_FIRST_USER
-
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         # APPEND_IF_CHANGED: content hash in call_id ensures same content is never re-injected;
         # updated content is appended alongside older pairs to preserve history.
@@ -398,7 +379,7 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
 
 ### Non-breaking changes
 
-- `InjectionPosition`, `InjectionFrequency`, `SyntheticToolCallInjector`,
+- `InjectionFrequency`, `SyntheticToolCallInjector`,
   `StagedToolSyntheticInjector` are additive — no existing public API is removed.
 - Existing module registrations (`@multiprovider` on `list[MessagesTransformer]`) require no
   changes.
@@ -412,7 +393,7 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
 
 ### `common/synthetic_injection/` (new package)
 - `__init__.py`
-- `_injection_enums.py` — `InjectionPosition`, `InjectionFrequency`
+- `_injection_enums.py` — `InjectionFrequency`
 - `synthetic_tool_call_injector.py` — `SyntheticToolCallInjector`
 - `staged_tool_synthetic_injector.py` — `StagedToolSyntheticInjector`
 
@@ -427,13 +408,13 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
 - Adds `await injector.get(_MessagesSetup).setup(request.messages)` after `invoke_initializers()`
 
 ### `timestamp_tooling/_timestamp_injection_transformer.py`
-- Rewritten as `SyntheticToolCallInjector` subclass (`END`, `ALWAYS`)
+- Rewritten as `SyntheticToolCallInjector` subclass (`ALWAYS`)
 
 ### `skills/_inject_file_transfer_instruction_transformer.py`
-- Rewritten as `SyntheticToolCallInjector` subclass (`AFTER_FIRST_USER`, `ONCE`)
+- Rewritten as `SyntheticToolCallInjector` subclass (`APPEND_IF_CHANGED`)
 
 ### `attachment_processing/_attachment_notification_injector.py`
-- Rewritten as `SyntheticToolCallInjector` subclass (`END`, `ALWAYS`); condition logic moved into `get_content`
+- Rewritten as `SyntheticToolCallInjector` subclass (`ALWAYS`); `should_activate_context_tool` moved to `should_inject()`
 
 ### Tests
 - `test_extract_tool_calls_processor.py` — `setup()` calls become `await`; assertions move to

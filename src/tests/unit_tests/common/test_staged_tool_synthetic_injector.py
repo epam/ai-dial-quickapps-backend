@@ -6,8 +6,7 @@ from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common import ToolCallResult
 from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
+    InjectionFrequency
 )
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
@@ -39,9 +38,6 @@ class _ConcreteInjector(StagedToolSyntheticInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
 
 
 class TestStagedToolSyntheticInjector:

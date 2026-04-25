@@ -1,10 +1,7 @@
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
-from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
-)
+from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
@@ -14,21 +11,18 @@ from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
 # ---------------------------------------------------------------------------
 
 
-class _AlwaysEndInjector(SyntheticToolCallInjector):
+class _AlwaysInjector(SyntheticToolCallInjector):
     async def get_tool_name(self) -> str:
         return "test_tool"
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
 
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
-
     async def get_content(self, messages: list[Message]) -> str | None:
         return "test content"
 
 
-class _AppendIfChangedEndInjector(SyntheticToolCallInjector):
+class _AppendIfChangedInjector(SyntheticToolCallInjector):
     def __init__(self, content: str = "append content"):
         self._content = content
 
@@ -38,28 +32,11 @@ class _AppendIfChangedEndInjector(SyntheticToolCallInjector):
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.APPEND_IF_CHANGED
 
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
-
     async def get_content(self, messages: list[Message]) -> str | None:
         return self._content
 
 
-class _AppendIfChangedAfterFirstUserInjector(SyntheticToolCallInjector):
-    async def get_tool_name(self) -> str:
-        return "append_tool"
-
-    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.APPEND_IF_CHANGED
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.AFTER_FIRST_USER
-
-    async def get_content(self, messages: list[Message]) -> str | None:
-        return "append content"
-
-
-class _RefreshIfChangedEndInjector(SyntheticToolCallInjector):
+class _RefreshIfChangedInjector(SyntheticToolCallInjector):
     def __init__(self, content: str = "refresh content"):
         self._content = content
 
@@ -69,25 +46,8 @@ class _RefreshIfChangedEndInjector(SyntheticToolCallInjector):
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.REFRESH_IF_CHANGED
 
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
-
     async def get_content(self, messages: list[Message]) -> str | None:
         return self._content
-
-
-class _RefreshIfChangedBeforeLastUserInjector(SyntheticToolCallInjector):
-    async def get_tool_name(self) -> str:
-        return "refresh_tool"
-
-    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.REFRESH_IF_CHANGED
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.BEFORE_LAST_USER
-
-    async def get_content(self, messages: list[Message]) -> str | None:
-        return "refresh content"
 
 
 class _ParamDrivenInjector(SyntheticToolCallInjector):
@@ -107,9 +67,6 @@ class _ParamDrivenInjector(SyntheticToolCallInjector):
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return self._frequency
 
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
-
     async def get_arguments(self) -> dict:
         return self._arguments
 
@@ -117,9 +74,7 @@ class _ParamDrivenInjector(SyntheticToolCallInjector):
         return self._content or f"content for {self._arguments}"
 
 
-class _ConditionalEndInjector(SyntheticToolCallInjector):
-    """Condition logic lives in get_content(); get_frequency() always returns ALWAYS."""
-
+class _ConditionalInjector(SyntheticToolCallInjector):
     def __init__(self, condition_result: bool = True):
         self._condition_result = condition_result
 
@@ -128,9 +83,6 @@ class _ConditionalEndInjector(SyntheticToolCallInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return "cond content" if self._condition_result else None
@@ -142,9 +94,6 @@ class _NullContentInjector(SyntheticToolCallInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         return None
@@ -160,15 +109,12 @@ class _ShouldNotInjectInjector(SyntheticToolCallInjector):
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
 
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
-
     async def get_content(self, messages: list[Message]) -> str | None:
         return "should not appear"
 
 
 # ---------------------------------------------------------------------------
-# Pair structure helpers
+# Helpers
 # ---------------------------------------------------------------------------
 
 
@@ -179,13 +125,14 @@ def _user(content: str = "hi") -> Message:
 def _assert_synthetic_pair(
     messages: list[Message], assistant_idx: int, tool_name: str, content: str
 ) -> str:
-    """Assert that messages[assistant_idx:assistant_idx+2] is a valid synthetic pair.
+    """Assert messages[assistant_idx:assistant_idx+2] is a valid synthetic pair.
     Returns the call_id."""
     assistant = messages[assistant_idx]
     tool = messages[assistant_idx + 1]
 
     assert assistant.role == Role.ASSISTANT
-    assert assistant.tool_calls is not None and len(assistant.tool_calls) == 1
+    assert assistant.tool_calls is not None
+    assert len(assistant.tool_calls) == 1
     assert assistant.tool_calls[0].function.name == tool_name
     call_id = assistant.tool_calls[0].id
     assert call_id, f"call_id should be non-empty, got {call_id!r}"
@@ -198,14 +145,14 @@ def _assert_synthetic_pair(
 
 
 # ---------------------------------------------------------------------------
-# Tests: ALWAYS + END
+# Tests: ALWAYS → END
 # ---------------------------------------------------------------------------
 
 
-class TestAlwaysEnd:
+class TestAlways:
     @pytest.mark.asyncio
     async def test_appends_pair_at_end(self):
-        injector = _AlwaysEndInjector()
+        injector = _AlwaysInjector()
         messages = [_user("hello")]
 
         result = await injector.transform(messages)
@@ -216,34 +163,30 @@ class TestAlwaysEnd:
 
     @pytest.mark.asyncio
     async def test_accumulates_on_multiple_calls(self):
-        injector = _AlwaysEndInjector()
+        injector = _AlwaysInjector()
         messages = [_user("hello")]
 
-        result1 = await injector.transform(messages)
-        result2 = await injector.transform(result1)
+        result = await injector.transform(messages)
+        result = await injector.transform(result)
 
-        assert len(result2) == 5  # 1 user + 2 pairs
+        assert len(result) == 5  # 1 user + 2 pairs
 
     @pytest.mark.asyncio
     async def test_empty_messages_appends_pair(self):
-        injector = _AlwaysEndInjector()
+        injector = _AlwaysInjector()
         result = await injector.transform([])
         assert len(result) == 2
         _assert_synthetic_pair(result, 0, "test_tool", "test content")
 
     @pytest.mark.asyncio
     async def test_uses_random_call_id(self):
-        injector = _AlwaysEndInjector()
-        messages = [_user("hi")]
+        injector = _AlwaysInjector()
+        result1 = await injector.transform([_user("hi")])
+        result2 = await injector.transform([_user("hi")])
 
-        result1 = await injector.transform(messages)
-        result2 = await injector.transform(messages)
-
-        assert result1[1].tool_calls is not None
-        assert result2[1].tool_calls is not None
-        id1 = result1[1].tool_calls[0].id
-        id2 = result2[1].tool_calls[0].id
-        assert id1 != id2  # random each time
+        id1 = _assert_synthetic_pair(result1, 1, "test_tool", "test content")
+        id2 = _assert_synthetic_pair(result2, 1, "test_tool", "test content")
+        assert id1 != id2
 
 
 # ---------------------------------------------------------------------------
@@ -253,52 +196,60 @@ class TestAlwaysEnd:
 
 class TestAppendIfChanged:
     @pytest.mark.asyncio
-    async def test_injects_on_first_call(self):
-        injector = _AppendIfChangedEndInjector()
-        result = await injector.transform([_user("hello")])
+    async def test_injects_after_first_user_on_first_call(self):
+        injector = _AppendIfChangedInjector()
+        messages = [_user("first"), Message(role=Role.ASSISTANT, content="reply"), _user("second")]
 
-        assert len(result) == 3
+        result = await injector.transform(messages)
+
+        # Injected after first user message
+        assert len(result) == 5
+        assert result[0].role == Role.USER
         _assert_synthetic_pair(result, 1, "append_tool", "append content")
+        assert result[3].role == Role.ASSISTANT
+        assert result[4].role == Role.USER
 
     @pytest.mark.asyncio
     async def test_skips_when_content_unchanged(self):
-        injector = _AppendIfChangedEndInjector()
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
+        injector = _AppendIfChangedInjector()
+        result = await injector.transform([_user("hello")])
         assert len(result) == 3
 
         result2 = await injector.transform(result)
-        assert len(result2) == 3  # unchanged — same content hash
+        assert len(result2) == 3  # unchanged
 
     @pytest.mark.asyncio
-    async def test_appends_when_content_changed(self):
-        injector = _AppendIfChangedEndInjector(content="v1")
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
+    async def test_appends_at_end_when_content_changed(self):
+        injector = _AppendIfChangedInjector(content="v1")
+        result = await injector.transform([_user("hello")])
         assert len(result) == 3
 
-        # Content changes — old pair kept, new pair appended at end
         injector._content = "v2"
         result = await injector.transform(result)
 
+        # v1 preserved, v2 appended at end
         assert len(result) == 5
         _assert_synthetic_pair(result, 1, "append_tool", "v1")
         _assert_synthetic_pair(result, 3, "append_tool", "v2")
 
     @pytest.mark.asyncio
     async def test_uses_deterministic_call_id(self):
-        injector = _AppendIfChangedEndInjector()
-        result1 = await injector.transform([_user("hi")])
-        result2 = await injector.transform([_user("hi")])
-
-        assert result1[1].tool_calls is not None
-        assert result2[1].tool_calls is not None
-        id1 = result1[1].tool_calls[0].id
-        id2 = result2[1].tool_calls[0].id
+        injector = _AppendIfChangedInjector()
+        id1 = _assert_synthetic_pair(
+            await injector.transform([_user("hi")]), 1, "append_tool", "append content"
+        )
+        id2 = _assert_synthetic_pair(
+            await injector.transform([_user("hi")]), 1, "append_tool", "append content"
+        )
         assert id1 == id2
         assert id1.startswith("synth_append_tool_")
+
+    @pytest.mark.asyncio
+    async def test_no_user_message_appends_at_end(self):
+        injector = _AppendIfChangedInjector()
+        result = await injector.transform([Message(role=Role.SYSTEM, content="sys")])
+        assert result[0].role == Role.SYSTEM
+        _assert_synthetic_pair(result, 1, "append_tool", "append content")
 
 
 # ---------------------------------------------------------------------------
@@ -308,66 +259,41 @@ class TestAppendIfChanged:
 
 class TestRefreshIfChanged:
     @pytest.mark.asyncio
-    async def test_injects_on_first_call(self):
-        injector = _RefreshIfChangedEndInjector()
-        result = await injector.transform([_user("hello")])
+    async def test_injects_after_first_user_on_first_call(self):
+        injector = _RefreshIfChangedInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
 
         assert len(result) == 3
+        assert result[0].role == Role.USER
         _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
 
     @pytest.mark.asyncio
     async def test_skips_when_content_unchanged(self):
-        injector = _RefreshIfChangedEndInjector()
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
+        injector = _RefreshIfChangedInjector()
+        result = await injector.transform([_user("hello")])
         assert len(result) == 3
 
         result2 = await injector.transform(result)
-        assert len(result2) == 3  # unchanged — same content hash
+        assert len(result2) == 3  # unchanged
 
     @pytest.mark.asyncio
     async def test_replaces_when_content_changed(self):
-        injector = _RefreshIfChangedEndInjector(content="v1")
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
+        injector = _RefreshIfChangedInjector(content="v1")
+        result = await injector.transform([_user("hello")])
         assert len(result) == 3
 
-        # Content changes — old pair removed, new pair injected
         injector._content = "v2"
         result = await injector.transform(result)
 
-        assert len(result) == 3  # same size — replaced, not accumulated
+        assert len(result) == 3  # replaced, not accumulated
         _assert_synthetic_pair(result, 1, "refresh_tool", "v2")
-
-
-# ---------------------------------------------------------------------------
-# Tests: REFRESH_IF_CHANGED position
-# ---------------------------------------------------------------------------
-
-
-class TestRefreshIfChangedBeforeLastUser:
-    @pytest.mark.asyncio
-    async def test_injects_before_last_user(self):
-        injector = _RefreshIfChangedBeforeLastUserInjector()
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
-        _assert_synthetic_pair(result, 0, "refresh_tool", "refresh content")
-        assert result[2].role == Role.USER
-        assert result[2].content == "hello"
 
     @pytest.mark.asyncio
     async def test_no_user_message_appends_at_end(self):
-        injector = _RefreshIfChangedBeforeLastUserInjector()
-        messages = [Message(role=Role.SYSTEM, content="sys")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
+        injector = _RefreshIfChangedInjector()
+        result = await injector.transform([Message(role=Role.SYSTEM, content="sys")])
         assert result[0].role == Role.SYSTEM
         _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
 
@@ -399,9 +325,7 @@ class TestRefreshIfChangedArgScoping:
         injector_b = _ParamDrivenInjector(
             {"k": "b"}, InjectionFrequency.REFRESH_IF_CHANGED, content="b-v1"
         )
-        messages = [_user("hello")]
-
-        result = await injector_a_v1.transform(messages)
+        result = await injector_a_v1.transform([_user("hello")])
         result = await injector_b.transform(result)
         assert len(result) == 5
 
@@ -410,45 +334,11 @@ class TestRefreshIfChangedArgScoping:
         )
         result = await injector_a_v2.transform(result)
 
-        # args={k:a} pair replaced, args={k:b} pair preserved — still 5
-        assert len(result) == 5
+        assert len(result) == 5  # replaced, not accumulated
         tool_contents = [m.content for m in result if m.role == Role.TOOL]
         assert "b-v1" in tool_contents
         assert "a-v2" in tool_contents
         assert "a-v1" not in tool_contents
-
-
-# ---------------------------------------------------------------------------
-# Tests: APPEND_IF_CHANGED + AFTER_FIRST_USER position
-# ---------------------------------------------------------------------------
-
-
-class TestAppendIfChangedAfterFirstUser:
-    @pytest.mark.asyncio
-    async def test_injects_after_first_user(self):
-        injector = _AppendIfChangedAfterFirstUserInjector()
-        messages = [_user("first"), Message(role=Role.ASSISTANT, content="reply"), _user("second")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 5
-        assert result[0].role == Role.USER
-        assert result[0].content == "first"
-        _assert_synthetic_pair(result, 1, "append_tool", "append content")
-        assert result[3].role == Role.ASSISTANT
-        assert result[4].role == Role.USER
-        assert result[4].content == "second"
-
-    @pytest.mark.asyncio
-    async def test_no_user_message_appends_at_end(self):
-        injector = _AppendIfChangedAfterFirstUserInjector()
-        messages = [Message(role=Role.SYSTEM, content="sys")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
-        assert result[0].role == Role.SYSTEM
-        _assert_synthetic_pair(result, 1, "append_tool", "append content")
 
 
 # ---------------------------------------------------------------------------
@@ -461,29 +351,23 @@ class TestAppendIfChangedDifferentArgs:
     async def test_both_injected_when_args_differ(self):
         injector_a = _ParamDrivenInjector({"key": "a"}, InjectionFrequency.APPEND_IF_CHANGED)
         injector_b = _ParamDrivenInjector({"key": "b"}, InjectionFrequency.APPEND_IF_CHANGED)
-        messages = [_user("hello")]
-
-        result = await injector_a.transform(messages)
+        result = await injector_a.transform([_user("hello")])
         result = await injector_b.transform(result)
 
         assert len(result) == 5
-        assert result[1].tool_calls is not None
-        assert result[3].tool_calls is not None
-        call_id_a = result[1].tool_calls[0].id
-        call_id_b = result[3].tool_calls[0].id
-        assert call_id_a != call_id_b
+        # injector_b runs second and inserts at AFTER_FIRST_USER, pushing injector_a's pair to [3]
+        id_b = _assert_synthetic_pair(result, 1, "param_tool", "content for {'key': 'b'}")
+        id_a = _assert_synthetic_pair(result, 3, "param_tool", "content for {'key': 'a'}")
+        assert id_a != id_b
 
     @pytest.mark.asyncio
     async def test_deduplicated_when_args_and_content_same(self):
         injector_a = _ParamDrivenInjector({"key": "same"}, InjectionFrequency.APPEND_IF_CHANGED)
         injector_b = _ParamDrivenInjector({"key": "same"}, InjectionFrequency.APPEND_IF_CHANGED)
-        messages = [_user("hello")]
-
-        result = await injector_a.transform(messages)
+        result = await injector_a.transform([_user("hello")])
         result = await injector_b.transform(result)
 
-        # Second injector sees same args + same content → skips
-        assert len(result) == 3
+        assert len(result) == 3  # second injector skips
 
 
 # ---------------------------------------------------------------------------
@@ -499,42 +383,13 @@ class TestShouldInjectGate:
 
         result = await injector.transform(messages)
 
-        assert result is messages  # unchanged
+        assert result is messages
 
     @pytest.mark.asyncio
     async def test_injects_when_should_inject_true_by_default(self):
-        injector = _AlwaysEndInjector()
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
-
+        injector = _AlwaysInjector()
+        result = await injector.transform([_user("hello")])
         assert len(result) == 3
-
-
-# ---------------------------------------------------------------------------
-# Tests: conditional injection via get_content returning None
-# ---------------------------------------------------------------------------
-
-
-class TestConditionalEnd:
-    @pytest.mark.asyncio
-    async def test_injects_when_condition_true(self):
-        injector = _ConditionalEndInjector(condition_result=True)
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
-        _assert_synthetic_pair(result, 1, "cond_tool", "cond content")
-
-    @pytest.mark.asyncio
-    async def test_skips_when_condition_false(self):
-        injector = _ConditionalEndInjector(condition_result=False)
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
-
-        assert result is messages
 
 
 # ---------------------------------------------------------------------------
@@ -546,6 +401,15 @@ class TestNullContent:
     @pytest.mark.asyncio
     async def test_returns_messages_unchanged_when_content_is_none(self):
         injector = _NullContentInjector()
+        messages = [_user("hello")]
+
+        result = await injector.transform(messages)
+
+        assert result is messages
+
+    @pytest.mark.asyncio
+    async def test_skips_when_condition_false(self):
+        injector = _ConditionalInjector(condition_result=False)
         messages = [_user("hello")]
 
         result = await injector.transform(messages)
@@ -570,14 +434,10 @@ class TestCustomCallIdPrefix:
             async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
                 return InjectionFrequency.ALWAYS
 
-            async def get_position(self, messages: list[Message]) -> InjectionPosition:
-                return InjectionPosition.END
-
             async def get_content(self, messages: list[Message]) -> str | None:
                 return "content"
 
         injector = _PrefixedInjector()
         result = await injector.transform([_user("hi")])
-        assert result[1].tool_calls is not None
-        call_id = result[1].tool_calls[0].id
+        call_id = _assert_synthetic_pair(result, 1, "prefixed_tool", "content")
         assert call_id.startswith("my_prefix_")

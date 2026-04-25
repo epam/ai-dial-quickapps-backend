@@ -3,10 +3,7 @@ import logging
 from aidial_sdk.chat_completion import Message
 from injector import inject
 
-from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
-)
+from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
@@ -31,9 +28,6 @@ class _InjectFileTransferInstructionTransformer(SyntheticToolCallInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.APPEND_IF_CHANGED
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.AFTER_FIRST_USER
 
     async def get_arguments(self) -> dict:
         return {"skill_name": BUILTIN_FILE_TRANSFER_SKILL}

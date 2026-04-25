@@ -11,10 +11,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
-from quickapp.common.synthetic_injection.injection_enums import (
-    InjectionFrequency,
-    InjectionPosition,
-)
+from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
@@ -40,9 +37,6 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.ALWAYS
-
-    async def get_position(self, messages: list[Message]) -> InjectionPosition:
-        return InjectionPosition.END
 
     async def get_content(self, messages: list[Message]) -> str | None:
         contexts = list(self.__config_provider.get().contexts)
