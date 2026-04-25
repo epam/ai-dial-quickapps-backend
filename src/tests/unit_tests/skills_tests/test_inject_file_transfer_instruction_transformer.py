@@ -12,7 +12,7 @@ from quickapp.skills._inject_file_transfer_instruction_transformer import (
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
-EXPECTED_CALL_ID_NAME_START = f"synth_once_{SKILL_READER_TOOL_NAME}"
+EXPECTED_CALL_ID_NAME_START = f"synth_{SKILL_READER_TOOL_NAME}"
 
 
 def _make_transformer() -> _InjectFileTransferInstructionTransformer:
