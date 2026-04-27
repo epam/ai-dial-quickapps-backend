@@ -22,11 +22,11 @@ from quickapp.attachment_processing._context_entries import (
     normalize_context_url_argument,
 )
 from quickapp.attachment_processing._get_context_stage_wrapper import _GetContextStageWrapper
-from quickapp.common import CompletionResult, StagedBaseTool
-from quickapp.common.utils import posix_path_last_segment
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.internal import InternalTool
 
@@ -70,9 +70,9 @@ class _GetContextTool(StagedBaseTool):
             orchestrator_capabilities
         )
 
-    def _error_result(self, message: str) -> CompletionResult:
+    def _error_result(self, message: str) -> ToolCallResult:
         payload = json.dumps({"ok": False, "error": message}, ensure_ascii=False)
-        return CompletionResult(content=payload, content_type="application/json")
+        return ToolCallResult(content=payload, content_type="application/json")
 
     async def _run_in_stage_async(
         self,
@@ -80,7 +80,7 @@ class _GetContextTool(StagedBaseTool):
         context_url: str | None = None,
         *args: Any,
         **kwargs: Any,
-    ) -> CompletionResult:
+    ) -> ToolCallResult:
         if context_url is None or not str(context_url).strip():
             logger.info("get_content tool rejected: empty context_url")
             return self._error_result("Missing or empty context_url.")
@@ -116,7 +116,7 @@ class _GetContextTool(StagedBaseTool):
             {"ok": True, "url": matched.url, "title": title, "type": attachment.type},
             ensure_ascii=False,
         )
-        result = CompletionResult(
+        result = ToolCallResult(
             content=payload,
             content_type="application/json",
             attachments=[attachment],

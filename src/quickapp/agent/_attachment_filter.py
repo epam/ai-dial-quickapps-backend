@@ -26,9 +26,7 @@ class _AttachmentFilter(PreInvocationTransformer):
             orchestrator_capabilities
         )
         self.__configured_context_urls_stripped: frozenset[str] = frozenset(
-            ctx.url.strip()
-            for ctx in app_config.contexts
-            if isinstance(ctx, FileContextConfig)
+            ctx.url.strip() for ctx in app_config.contexts if isinstance(ctx, FileContextConfig)
         )
 
     @staticmethod
