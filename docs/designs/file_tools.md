@@ -264,7 +264,7 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 
 - Binds `_FileStageWrapper`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool` in `request_scope`.
 - Contributes all five tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated `_provide_file_tools` method (same pattern as `InternalToolModule._provide_internal_tools`). `app_factory.py` wires `Injector([..., FileToolingModule()])` and the injector merges all `@multiprovider` contributions automatically.
-- These tools are **not** gated by `InternalToolSet` or `app_config.tool_sets`. They are unconditionally active whenever preview is on — no operator opt-in via JSON config is required (contrast with `internal_code_execution_python_interpreter`, which lives in `config/predefined/toolset/`).
+- These tools are **not** gated by `InternalToolSet` or `app_config.tool_sets`. Per-app configuration lives on the `Features` container at `app_config.features.file_tools` (see Component 9), alongside the existing `timestamp` feature.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
 - Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships.
 
@@ -285,7 +285,67 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 **Owner:** `src/quickapp/file_tooling/_tool_configs.py`
 
 **Design notes:**
-- **Python vs. JSON config.** The existing `internal_code_execution_python_interpreter` tool is defined via `config/predefined/tool/py_interpreter.json` and a corresponding toolset JSON, enabling operator opt-in through `app_config.tool_sets`. File tools are unconditional internals (when preview is on) with no operator configurability required, so defining `OpenAiToolConfig` in Python avoids the JSON config + `InternalToolSet` dispatch machinery entirely and keeps the preview gate in one place.
+- **Python vs. JSON config.** The existing `internal_code_execution_python_interpreter` tool is defined via `config/predefined/tool/py_interpreter.json` and a corresponding toolset JSON, enabling operator opt-in through `app_config.tool_sets`. File tools use a different surface — a dedicated `features.file_tools` field on `ApplicationConfig` (see Component 9) — so defining `OpenAiToolConfig` in Python avoids the JSON config + `InternalToolSet` dispatch machinery entirely and keeps the preview gate alongside the per-app toggle.
+
+---
+
+### Component 9: Per-app config (`features.file_tools`)
+
+**What:** A new `FileToolsConfig` field on the existing `Features` container in `src/quickapp/config/application.py`. Mirrors the shape of the existing `timestamp` preview feature and lets app authors restrict which file tools are exposed.
+
+**Schema:**
+
+```python
+# src/quickapp/file_tooling/_config.py
+from typing import Literal
+from pydantic import BaseModel, Field
+
+FileToolName = Literal[
+    "read_file_lines", "search_in_file", "write_file", "edit_file", "delete_file"
+]
+
+class FileToolsConfig(BaseModel):
+    enabled_tools: Literal["all"] | list[FileToolName] = Field(
+        default="all",
+        description=(
+            "Which file tools to expose. Use 'all' for every tool, "
+            "or a list to restrict (e.g. ['read_file_lines', 'search_in_file'])."
+        ),
+    )
+```
+
+**Wiring on `Features`:**
+
+```python
+# src/quickapp/config/application.py
+class Features(BaseModel):
+    timestamp: TimestampConfig | None = PreviewField(
+        default_factory=ToolCallTimestampConfig, ...
+    )
+    file_tools: FileToolsConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Built-in file read/write/edit/delete tools.",
+    )
+```
+
+**Resolution in `FileToolingModule`:**
+
+```python
+cfg = app_config.features.file_tools
+if cfg is None:
+    return []  # feature not enabled for this app
+if cfg.enabled_tools == "all":
+    return ALL_FILE_TOOLS
+return [t for t in ALL_FILE_TOOLS if t.name in cfg.enabled_tools]
+```
+
+**Design notes:**
+- **Default semantics.** `features.file_tools` defaults to `None` on `Features` — file tools are off unless the app author explicitly opts in by adding `features.file_tools: {}` (or any object) to the manifest. Once enabled, `enabled_tools` defaults to `"all"`, which is visible in the schema (no hidden behavior).
+- **Why `"all"` as a literal.** Using a `Literal["all"] | list[FileToolName]` keeps the surface single-field while making the "every tool" case explicit and self-documenting. Alternatives — e.g. an unset field meaning "all", or a separate `preset` field — were rejected as either implicit or redundant.
+- **Preview gating.** `file_tools` is a `PreviewField`. When `ENABLE_PREVIEW_FEATURES=false`, `nullify_preview_fields` clears it back to `None` and `FileToolingModule` (also preview-gated) contributes nothing.
+- **Future knobs.** `FileToolsConfig` is the natural home for later additions like `max_file_size_bytes`, allow/deny path prefixes for reads, or a per-app `namespace` (subdir under `generated-files/`) — added as sibling fields without breaking the schema.
+
+**Owner:** `src/quickapp/file_tooling/_config.py` and a small edit to `src/quickapp/config/application.py`.
 
 ---
 
@@ -436,6 +496,31 @@ InvalidToolCallParameterException: file changed concurrently; re-read and retry
 Deleted: https://dial-storage/.../files/<bucket>/generated-files/notes.md
 ```
 
+### Per-app manifest
+
+```jsonc
+// All five tools enabled
+{
+  "features": {
+    "file_tools": {}            // defaults: enabled_tools = "all"
+  }
+}
+
+// Read-only research agent
+{
+  "features": {
+    "file_tools": {
+      "enabled_tools": ["read_file_lines", "search_in_file"]
+    }
+  }
+}
+
+// File tools off (default — omit the field entirely)
+{
+  "features": {}
+}
+```
+
 ---
 
 ## Migration
@@ -467,7 +552,8 @@ None. Net-new capability, preview-gated.
 | `file_tooling/_delete_file_tool.py` | `delete_file` implementation. |
 | `file_tooling/_stage_wrapper.py` | Stage wrapper for the DIAL UI display. |
 | `file_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all five tools. |
-| `file_tooling/file_tooling_module.py` | Preview-gated DI module; contributes tools to the internal-tool multiprovider. |
+| `file_tooling/file_tooling_module.py` | Preview-gated DI module; contributes tools to the internal-tool multiprovider; reads `app_config.features.file_tools` to filter which tools are exposed. |
+| `file_tooling/_config.py` | `FileToolsConfig` model — `enabled_tools: Literal["all"] \| list[FileToolName]` with default `"all"`. |
 
 ### Modified files
 
@@ -476,6 +562,7 @@ None. Net-new capability, preview-gated.
 | `dial_core_services/attachment_service.py` | No changes — `write_file` and `edit_file` use `DialFileService` directly. |
 | `dial_core_services/dial_file_service.py` | Add `upload_text(url, content, *, if_none_match=None, if_match=None) -> str` — creates or updates a UTF-8 text file at an explicit URL, propagates 412 directly. Add `download_file_with_etag(url) -> tuple[bytes, str]` — fetches ETag via `get_metadata` then downloads bytes (cache-backed). Add `invalidate_cache(url)` — evicts the request-scoped cache entry for a URL after a successful edit. |
 | `app_factory.py` | Register `FileToolingModule`. |
+| `config/application.py` | Add `file_tools: FileToolsConfig \| None` as a `PreviewField` on the existing `Features` container. |
 
 ### New tools exposed to the LLM
 
