@@ -91,11 +91,11 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 
 ## Proposed Design
 
-### Component 1: `_FileTool` base class
+### Component 1: `_TextFileTool` base class
 
 **What:** A thin internal base class that holds the common dependencies (`DialFileService`, stage-wrapper plumbing) and extends `StagedBaseTool`. Concrete tools implement `_run_in_stage_async`.
 
-**Owner:** `src/quickapp/file_tooling/_base_file_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_base_file_tool.py`
 
 **Semantics:** Provides `self._dial_file_service` to subclasses. Tools write their `ToolCallResult` to the stage via the injected stage wrapper so the raw text is always visible in the DIAL UI regardless of offload. `AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`; all other tools do not touch attachments.
 
@@ -120,7 +120,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 3. Decode UTF-8, split on `\n` (via `splitlines()`).
 4. Return `"\n".join(lines[start_line:end_line])` as `ToolCallResult(content=..., content_type="text/plain")`.
 
-**Owner:** `src/quickapp/file_tooling/_read_file_lines_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_read_file_lines_tool.py`
 
 ---
 
@@ -147,7 +147,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 6. Emit each included line as `"{i+1}:{line}"` (1-indexed for human readability). Insert a `--` separator between non-adjacent windows.
 7. Return joined lines as `ToolCallResult(content=..., content_type="text/plain")`.
 
-**Owner:** `src/quickapp/file_tooling/_search_in_file_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_search_in_file_tool.py`
 
 **Design notes:**
 - Substring only. Regex is out of scope (see below).
@@ -182,7 +182,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
    )
    ```
 
-**Owner:** `src/quickapp/file_tooling/_write_file_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_write_file_tool.py`
 
 **Design notes:**
 - **Create-only** (`If-None-Match: *`) was chosen over silent overwrite so the LLM never clobbers a prior write by accident. There is no overwrite tool in v1 — to modify an existing file, use `edit_file`. An explicit overwrite primitive (separate tool or `overwrite=true`) can be added later if the pattern becomes common.
@@ -218,7 +218,7 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 6. On `412 Precondition Failed` → raise `InvalidToolCallParameterException("file_url", "file changed concurrently; re-read and retry")`.
 7. On success → invalidate the request-scoped cache entry for `file_url` via `DialFileService.invalidate_cache(file_url)` so that subsequent `read_file_lines`/`search_in_file` calls in the same turn see the updated content. Return `ToolCallResult(content=f"Edited: {url}", content_type="text/plain")`. No attachment — the URL is unchanged; returning it as text is sufficient.
 
-**Owner:** `src/quickapp/file_tooling/_edit_file_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_edit_file_tool.py`
 
 **Design notes:**
 - **Unique-match requirement** matches Claude's own Edit tool semantics and is the most reliable primitive for LLMs: it forces the model to include enough surrounding context to disambiguate, which is also what a human reviewer would expect.
@@ -249,7 +249,7 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 4. On `404 Not Found` → raise `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — consistent with `write_file`/`edit_file` error shape.
 5. Other errors → propagate as tool-call errors (LLM-visible).
 
-**Owner:** `src/quickapp/file_tooling/_delete_file_tool.py`
+**Owner:** `src/quickapp/text_file_tooling/_delete_file_tool.py`
 
 **Design notes:**
 - **No ETag guard.** Delete is unconditional: if the LLM has the URL and permission, it can remove the file. Conditional delete (`If-Match`) is out of scope; the concurrency window for delete is rarely meaningful (you either want it gone or you don't).
@@ -258,17 +258,17 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 
 ---
 
-### Component 7: `FileToolingModule` (DI wiring)
+### Component 7: `TextFileToolingModule` (DI wiring)
 
 **What:** `injector.Module` that:
 
 - Binds `_FileStageWrapper`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool` in `request_scope`.
-- Contributes all five tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated `_provide_file_tools` method (same pattern as `InternalToolModule._provide_internal_tools`). `app_factory.py` wires `Injector([..., FileToolingModule()])` and the injector merges all `@multiprovider` contributions automatically.
-- These tools are **not** gated by `InternalToolSet` or `app_config.tool_sets`. Per-app configuration lives on the `Features` container at `app_config.features.file_tools` (see Component 9), alongside the existing `timestamp` feature.
+- Contributes all five tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated `_provide_text_file_tools` method (same pattern as `InternalToolModule._provide_internal_tools`). `app_factory.py` wires `Injector([..., TextFileToolingModule()])` and the injector merges all `@multiprovider` contributions automatically.
+- These tools are **not** gated by `InternalToolSet` or `app_config.tool_sets`. Per-app configuration lives on the `Features` container at `app_config.features.text_file_tools` (see Component 9), alongside the existing `timestamp` feature.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
 - Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships.
 
-**Owner:** `src/quickapp/file_tooling/file_tooling_module.py`
+**Owner:** `src/quickapp/text_file_tooling/file_tooling_module.py`
 
 **Registration:** Added to the module list in `src/quickapp/app_factory.py`.
 
@@ -282,30 +282,30 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 - Stage titles are human-readable: `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`.
 - The `file_url` parameter renders in the stage as `**File:** {basename}` (last path segment only) so the UI stays compact.
 
-**Owner:** `src/quickapp/file_tooling/_tool_configs.py`
+**Owner:** `src/quickapp/text_file_tooling/_tool_configs.py`
 
 **Design notes:**
-- **Python vs. JSON config.** The existing `internal_code_execution_python_interpreter` tool is defined via `config/predefined/tool/py_interpreter.json` and a corresponding toolset JSON, enabling operator opt-in through `app_config.tool_sets`. File tools use a different surface — a dedicated `features.file_tools` field on `ApplicationConfig` (see Component 9) — so defining `OpenAiToolConfig` in Python avoids the JSON config + `InternalToolSet` dispatch machinery entirely and keeps the preview gate alongside the per-app toggle.
+- **Python vs. JSON config.** The existing `internal_code_execution_python_interpreter` tool is defined via `config/predefined/tool/py_interpreter.json` and a corresponding toolset JSON, enabling operator opt-in through `app_config.tool_sets`. File tools use a different surface — a dedicated `features.text_file_tools` field on `ApplicationConfig` (see Component 9) — so defining `OpenAiToolConfig` in Python avoids the JSON config + `InternalToolSet` dispatch machinery entirely and keeps the preview gate alongside the per-app toggle.
 
 ---
 
-### Component 9: Per-app config (`features.file_tools`)
+### Component 9: Per-app config (`features.text_file_tools`)
 
-**What:** A new `FileToolsConfig` field on the existing `Features` container in `src/quickapp/config/application.py`. Mirrors the shape of the existing `timestamp` preview feature and lets app authors restrict which file tools are exposed.
+**What:** A new `TextFileToolsConfig` field on the existing `Features` container in `src/quickapp/config/application.py`. Mirrors the shape of the existing `timestamp` preview feature and lets app authors restrict which file tools are exposed.
 
 **Schema:**
 
 ```python
-# src/quickapp/file_tooling/_config.py
+# src/quickapp/text_file_tooling/_config.py
 from typing import Literal
 from pydantic import BaseModel, Field
 
-FileToolName = Literal[
+TextFileToolName = Literal[
     "read_file_lines", "search_in_file", "write_file", "edit_file", "delete_file"
 ]
 
-class FileToolsConfig(BaseModel):
-    enabled_tools: Literal["all"] | list[FileToolName] = Field(
+class TextFileToolsConfig(BaseModel):
+    enabled_tools: Literal["all"] | list[TextFileToolName] = Field(
         default="all",
         description=(
             "Which file tools to expose. Use 'all' for every tool, "
@@ -322,16 +322,16 @@ class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(
         default_factory=ToolCallTimestampConfig, ...
     )
-    file_tools: FileToolsConfig | None = PreviewField(  # type: ignore[assignment]
+    text_file_tools: TextFileToolsConfig | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description="Built-in file read/write/edit/delete tools.",
     )
 ```
 
-**Resolution in `FileToolingModule`:**
+**Resolution in `TextFileToolingModule`:**
 
 ```python
-cfg = app_config.features.file_tools
+cfg = app_config.features.text_file_tools
 if cfg is None:
     return []  # feature not enabled for this app
 if cfg.enabled_tools == "all":
@@ -342,12 +342,12 @@ return [t for t in ALL_FILE_TOOLS if t.name in cfg.enabled_tools]
 ```
 
 **Design notes:**
-- **Default semantics.** `features.file_tools` defaults to `None` on `Features` — file tools are off unless the app author explicitly opts in by adding `features.file_tools: {}` (or any object) to the manifest. Once enabled, `enabled_tools` defaults to `"all"`, which is visible in the schema (no hidden behavior).
-- **Why `"all"` as a literal.** Using a `Literal["all"] | list[FileToolName]` keeps the surface single-field while making the "every tool" case explicit and self-documenting. Alternatives — e.g. an unset field meaning "all", or a separate `preset` field — were rejected as either implicit or redundant.
-- **Preview gating.** `file_tools` is a `PreviewField`. When `ENABLE_PREVIEW_FEATURES=false`, `nullify_preview_fields` clears it back to `None` and `FileToolingModule` (also preview-gated) contributes nothing.
-- **Future knobs.** `FileToolsConfig` is the natural home for later additions like `max_file_size_bytes`, allow/deny path prefixes for reads, or a per-app `namespace` (subdir under `generated-files/`) — added as sibling fields without breaking the schema.
+- **Default semantics.** `features.text_file_tools` defaults to `None` on `Features` — file tools are off unless the app author explicitly opts in by adding `features.text_file_tools: {}` (or any object) to the manifest. Once enabled, `enabled_tools` defaults to `"all"`, which is visible in the schema (no hidden behavior).
+- **Why `"all"` as a literal.** Using a `Literal["all"] | list[TextFileToolName]` keeps the surface single-field while making the "every tool" case explicit and self-documenting. Alternatives — e.g. an unset field meaning "all", or a separate `preset` field — were rejected as either implicit or redundant.
+- **Preview gating.** `text_file_tools` is a `PreviewField`. When `ENABLE_PREVIEW_FEATURES=false`, `nullify_preview_fields` clears it back to `None` and `TextFileToolingModule` (also preview-gated) contributes nothing.
+- **Future knobs.** `TextFileToolsConfig` is the natural home for later additions like `max_file_size_bytes`, allow/deny path prefixes for reads, or a per-app `namespace` (subdir under `generated-files/`) — added as sibling fields without breaking the schema.
 
-**Owner:** `src/quickapp/file_tooling/_config.py` and a small edit to `src/quickapp/config/application.py`.
+**Owner:** `src/quickapp/text_file_tooling/_config.py` and a small edit to `src/quickapp/config/application.py`.
 
 ---
 
@@ -381,7 +381,7 @@ return [t for t in ALL_FILE_TOOLS if t.name in cfg.enabled_tools]
 - **Regex search.** `search_in_file` ships with substring + `case_insensitive` only. Regex requires DoS protection (timeout, catastrophic backtracking mitigation), bounds checks, and careful error surfaces — addressed in a follow-up when the use case becomes concrete.
 - **Character/byte offset reading.** Rejected: LLMs cannot reliably estimate character positions in an opaque file. Line numbers are surfaced naturally by search results.
 - **Combined `file_query(mode=...)` tool.** Considered and rejected — conditional parameters (either `pattern` or `start_line`/`end_line` depending on mode) confuse weaker models for marginal token savings. The same orthogonality argument applies to `read_file_lines` vs. `search_in_file` specifically: a merged `read_file(file_url, *, lines=None, search=None)` with two optional, mutually-exclusive parameter groups makes both calling conventions harder to describe in the tool schema and forces the LLM to reason about which group applies. Two tools with entirely disjoint required parameters are unambiguous.
-- **LLM-controlled subdirectories for `write_file`.** Files always land flat under `generated-files/{filename}`. Partitioning by module or purpose is a code-level concern: internal subsystems construct their own URL prefix and call `DialFileService.upload_text` directly. If per-application LLM-level namespacing ever becomes a concrete need, a `namespace` config field on `FileToolingModule` (not a free-form LLM parameter) is the right surface.
+- **LLM-controlled subdirectories for `write_file`.** Files always land flat under `generated-files/{filename}`. Partitioning by module or purpose is a code-level concern: internal subsystems construct their own URL prefix and call `DialFileService.upload_text` directly. If per-application LLM-level namespacing ever becomes a concrete need, a `namespace` config field on `TextFileToolingModule` (not a free-form LLM parameter) is the right surface.
 - **Overwrite semantics for `write_file`.** v1 is create-only. A deliberate overwrite path (separate tool, explicit `overwrite=true`, or an ETag-conditional `replace_file`) is deferred until a concrete need emerges.
 - **Directory operations.** No `list_files` tool in v1; deferred pending real demand and decisions around pagination and permission surfaces.
 - **Multi-file search.** Deferred — most use cases can loop over a known set of URLs.
@@ -504,14 +504,14 @@ Deleted: https://dial-storage/.../files/<bucket>/generated-files/notes.md
 // All five tools enabled
 {
   "features": {
-    "file_tools": {}            // defaults: enabled_tools = "all"
+    "text_file_tools": {}            // defaults: enabled_tools = "all"
   }
 }
 
 // Read-only research agent
 {
   "features": {
-    "file_tools": {
+    "text_file_tools": {
       "enabled_tools": ["read_file_lines", "search_in_file"]
     }
   }
@@ -520,7 +520,7 @@ Deleted: https://dial-storage/.../files/<bucket>/generated-files/notes.md
 // File tools off (default)
 // `features` is auto-populated by Features's default_factory even when omitted from
 // the manifest, so both omitting `features` entirely and writing `"features": {}` result
-// in file tools being off — `file_tools` is None in both cases.
+// in file tools being off — `text_file_tools` is None in both cases.
 {
   "features": {}
 }
@@ -549,16 +549,16 @@ None. Net-new capability, preview-gated.
 
 | File | Purpose |
 |------|---------|
-| `file_tooling/_base_file_tool.py` | `_FileTool` base class with `DialFileService` + `AttachmentService` wiring; defines `GENERATED_FILES_ROOT = "generated-files/"` constant used by `write_file` and `delete_file`. |
-| `file_tooling/_read_file_lines_tool.py` | `read_file_lines` implementation. |
-| `file_tooling/_search_in_file_tool.py` | `search_in_file` implementation. |
-| `file_tooling/_write_file_tool.py` | `write_file` implementation. |
-| `file_tooling/_edit_file_tool.py` | `edit_file` implementation (download + string-replace + conditional upload). |
-| `file_tooling/_delete_file_tool.py` | `delete_file` implementation. |
-| `file_tooling/_stage_wrapper.py` | Stage wrapper for the DIAL UI display. |
-| `file_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all five tools. |
-| `file_tooling/file_tooling_module.py` | Preview-gated DI module; contributes tools to the internal-tool multiprovider; reads `app_config.features.file_tools` to filter which tools are exposed. |
-| `file_tooling/_config.py` | `FileToolsConfig` model — `enabled_tools: Literal["all"] \| list[FileToolName]` with default `"all"`. |
+| `text_file_tooling/_base_file_tool.py` | `_TextFileTool` base class with `DialFileService` + `AttachmentService` wiring; defines `GENERATED_FILES_ROOT = "generated-files/"` constant used by `write_file` and `delete_file`. |
+| `text_file_tooling/_read_file_lines_tool.py` | `read_file_lines` implementation. |
+| `text_file_tooling/_search_in_file_tool.py` | `search_in_file` implementation. |
+| `text_file_tooling/_write_file_tool.py` | `write_file` implementation. |
+| `text_file_tooling/_edit_file_tool.py` | `edit_file` implementation (download + string-replace + conditional upload). |
+| `text_file_tooling/_delete_file_tool.py` | `delete_file` implementation. |
+| `text_file_tooling/_stage_wrapper.py` | Stage wrapper for the DIAL UI display. |
+| `text_file_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all five tools. |
+| `text_file_tooling/file_tooling_module.py` | Preview-gated DI module; contributes tools to the internal-tool multiprovider; reads `app_config.features.text_file_tools` to filter which tools are exposed. |
+| `text_file_tooling/_config.py` | `TextFileToolsConfig` model — `enabled_tools: Literal["all"] \| list[TextFileToolName]` with default `"all"`. |
 
 ### Modified files
 
@@ -566,8 +566,8 @@ None. Net-new capability, preview-gated.
 |------|--------|
 | `dial_core_services/attachment_service.py` | No changes — `write_file` and `edit_file` use `DialFileService` directly. |
 | `dial_core_services/dial_file_service.py` | Add `upload_text(url, content, *, if_none_match=None, if_match=None) -> str` — creates or updates a UTF-8 text file at an explicit URL, propagates 412 directly. Add `download_file_with_etag(url) -> tuple[bytes, str]` — fetches ETag via `get_metadata` then downloads bytes (cache-backed). Add `invalidate_cache(url)` — evicts the request-scoped cache entry for a URL after a successful edit. |
-| `app_factory.py` | Register `FileToolingModule`. |
-| `config/application.py` | Add `file_tools: FileToolsConfig \| None` as a `PreviewField` on the existing `Features` container. |
+| `app_factory.py` | Register `TextFileToolingModule`. |
+| `config/application.py` | Add `text_file_tools: TextFileToolsConfig \| None` as a `PreviewField` on the existing `Features` container. |
 
 ### New tools exposed to the LLM
 
@@ -579,7 +579,7 @@ None. Net-new capability, preview-gated.
 
 ### Tests
 
-- Unit: `src/tests/unit_tests/file_tooling/` — slice boundaries, invalid ranges, match/no-match, context expansion and window merging, case-insensitivity, `write_file` success / filename validation / collision (412) error path, UTF-8 encoding, `edit_file` unique-match success / not-found / non-unique / same-string / concurrent-modification (412) / cache invalidated after success, `delete_file` success / 404 → `InvalidToolCallParameterException` / URL outside `generated-files/` blocked, 10 MB download limit → `InvalidToolCallParameterException`.
+- Unit: `src/tests/unit_tests/text_file_tooling/` — slice boundaries, invalid ranges, match/no-match, context expansion and window merging, case-insensitivity, `write_file` success / filename validation / collision (412) error path, UTF-8 encoding, `edit_file` unique-match success / not-found / non-unique / same-string / concurrent-modification (412) / cache invalidated after success, `delete_file` success / 404 → `InvalidToolCallParameterException` / URL outside `generated-files/` blocked, 10 MB download limit → `InvalidToolCallParameterException`.
 - Integration: offload end-to-end coverage (UC-6 read-back path) is deferred pending the `large_tool_responses` design.
 
 ---
@@ -619,7 +619,7 @@ Addressing Round 2 suggestions and all Round 3 items (blocking issues, suggestio
 
 All blocking issues and suggestions have been addressed in Revision 1:
 
-- **Blocking #1 (Component 7 registration):** Component 7 now explicitly states that `FileToolingModule` uses `@multiprovider` to contribute `list[StagedBaseTool]` independently of `InternalToolSet`, with no operator opt-in required. Component 8 adds a design note justifying the Python vs. JSON config choice.
+- **Blocking #1 (Component 7 registration):** Component 7 now explicitly states that `TextFileToolingModule` uses `@multiprovider` to contribute `list[StagedBaseTool]` independently of `InternalToolSet`, with no operator opt-in required. Component 8 adds a design note justifying the Python vs. JSON config choice.
 - **Blocking #2 (edit_file etag):** Algorithm step 1 rewritten to use a new `DialFileService.download_file_with_etag` that calls `get_metadata` for the ETag and `download_file` for bytes. `AsyncFiles.download` header limitation noted inline.
 - **Blocking #3 (write_file upload path):** `AttachmentService` is no longer modified. `write_file` and `edit_file` both use a new `DialFileService.upload_text` method. The three issues with `upload_attachment_to_core` are documented in Component 4's design notes.
 - **Blocking #4 (large_tool_responses dependency):** Added to `Dependencies` header; offload references downgraded from "ships with this design" to "once that design ships". The Error Handling table and Tests section are updated accordingly.
@@ -647,8 +647,8 @@ The design's LLM-facing surface (five tools, inputs, error semantics, UC coverag
 
 ### Blocking issues
 
-1. **Component 7 (`FileToolingModule`) — internal-tool registration story does not match the existing wiring.** The design says the module "Contributes all five tools to the internal-tool `list[StagedBaseTool]` multiprovider alongside other internal tools", but `InternalToolModule._provide_internal_tools` (`src/quickapp/internal_tooling/internal_tooling_module.py:36-64`) iterates `app_config.tool_sets` and only emits a tool when an `InternalToolSet` declares one whose name starts with `internal_code_execution_python_interpreter`. There is no generic dispatch; new internal tools require either (a) an entry in a predefined toolset/tool JSON under `config/predefined/tool/` and `config/predefined/toolset/` plus matching dispatch logic, or (b) a different pattern entirely. The doc does not say which.
-   **Suggestion:** Specify the activation contract end-to-end. Either (i) introduce a new `config/predefined/tool/*.json` per tool plus a `config/predefined/toolset/file_tools.json` (mirroring `py_interpreter.json`/`location.json`) and explain how `FileToolingModule._provide_*` recognises these tools (likely a per-tool name match in the new module's own `@multiprovider`, since each `*Module` contributes its own `list[StagedBaseTool]` — `app_factory.py` lines 40–62 confirm injector merges the multiproviders), or (ii) state explicitly that these tools are unconditional internals not gated by `InternalToolSet` and explain how the orchestrator picks them up. As written, a reader cannot tell whether a user has to opt in via app config and, if so, what the schema looks like.
+1. **Component 7 (`TextFileToolingModule`) — internal-tool registration story does not match the existing wiring.** The design says the module "Contributes all five tools to the internal-tool `list[StagedBaseTool]` multiprovider alongside other internal tools", but `InternalToolModule._provide_internal_tools` (`src/quickapp/internal_tooling/internal_tooling_module.py:36-64`) iterates `app_config.tool_sets` and only emits a tool when an `InternalToolSet` declares one whose name starts with `internal_code_execution_python_interpreter`. There is no generic dispatch; new internal tools require either (a) an entry in a predefined toolset/tool JSON under `config/predefined/tool/` and `config/predefined/toolset/` plus matching dispatch logic, or (b) a different pattern entirely. The doc does not say which.
+   **Suggestion:** Specify the activation contract end-to-end. Either (i) introduce a new `config/predefined/tool/*.json` per tool plus a `config/predefined/toolset/file_tools.json` (mirroring `py_interpreter.json`/`location.json`) and explain how `TextFileToolingModule._provide_*` recognises these tools (likely a per-tool name match in the new module's own `@multiprovider`, since each `*Module` contributes its own `list[StagedBaseTool]` — `app_factory.py` lines 40–62 confirm injector merges the multiproviders), or (ii) state explicitly that these tools are unconditional internals not gated by `InternalToolSet` and explain how the orchestrator picks them up. As written, a reader cannot tell whether a user has to opt in via app config and, if so, what the schema looks like.
 
 2. **Component 5 (`edit_file`) Algorithm step 1 — `dial_client.files.download` does not return the etag the way the doc implies.** The doc says download "returns both the bytes and the response headers/metadata"; in the SDK (`aidial_client/resources/files.py:147-170` and `aidial_client/types/file.py`), `AsyncFiles.download` returns a `FileDownloadResponse` whose only public surface is `aget_content()`, `awrite_to(...)`, iteration, and a `filename` property. Headers are not exposed. The actual etag accessor is `await dial_client.files.get_metadata(file_url).etag` (see `FileMetadata.etag` in `aidial_client/types/metadata.py`).
    **Suggestion:** Rewrite step 1 to call `get_metadata` for the etag (or fetch metadata first to also enforce the existing 10 MB cap consistently, then `download`). Also reconcile this with the *Summary of Changes* row that says `dial_file_service.py` will "expose the file's ETag alongside its bytes on download" — the cleanest fix is for `DialFileService` to return `(bytes, etag)` from a new method that fetches metadata + bytes in one call, and to spell that out here.
@@ -679,7 +679,7 @@ The design's LLM-facing surface (five tools, inputs, error semantics, UC coverag
 
 1. **Header metadata.** Other approved designs in this directory carry an `Owner` field; this one omits it. `template.md` doesn't strictly require it, but matching existing approved docs (e.g., `dial_prompts_as_skills.md`, `configurable_timeouts.md`) helps reviewers route follow-up questions.
 
-2. **Component 8 (`_tool_configs.py`) vs. predefined-config convention.** The repo's other internal tool (`internal_code_execution_python_interpreter`) is configured via `config/predefined/tool/py_interpreter.json` and a toolset entry, not a Python module of `OpenAiToolConfig` instances. If `FileToolingModule` is going to construct `OpenAiToolConfig` in Python instead, that is a deviation from the existing pattern and worth a one-line justification — or change to JSON. Closely tied to blocking issue #1.
+2. **Component 8 (`_tool_configs.py`) vs. predefined-config convention.** The repo's other internal tool (`internal_code_execution_python_interpreter`) is configured via `config/predefined/tool/py_interpreter.json` and a toolset entry, not a Python module of `OpenAiToolConfig` instances. If `TextFileToolingModule` is going to construct `OpenAiToolConfig` in Python instead, that is a deviation from the existing pattern and worth a one-line justification — or change to JSON. Closely tied to blocking issue #1.
 
 3. **Out of Scope — duplicate "Conditional / soft delete" entry.** The bullet list mentions "Conditional / soft delete" once in its own bullet and again under "Directory operations, multi-file search, hard limits on read parameters". The latter line also reads as a catch-all dump rather than three distinct deferrals — split into individual bullets or remove.
 
@@ -696,14 +696,14 @@ The design's LLM-facing surface (five tools, inputs, error semantics, UC coverag
 
 `Blocking issues must be addressed`.
 
-Round 1's structural issues are well-resolved: `FileToolingModule`'s registration story is now explicit, `download_file_with_etag` matches the SDK, `upload_text` lives on `DialFileService` (and `AttachmentService` is left alone), the offload dependency is reframed as forward-looking, and the unique-match / cache-invalidation / 404-uniformity nits are folded in cleanly. What blocks approval is the three open items the author flagged in their own Round 2 self-review (none of them yet reflected in the design body), plus a couple of small regressions introduced during Revision 1.
+Round 1's structural issues are well-resolved: `TextFileToolingModule`'s registration story is now explicit, `download_file_with_etag` matches the SDK, `upload_text` lives on `DialFileService` (and `AttachmentService` is left alone), the offload dependency is reframed as forward-looking, and the unique-match / cache-invalidation / 404-uniformity nits are folded in cleanly. What blocks approval is the three open items the author flagged in their own Round 2 self-review (none of them yet reflected in the design body), plus a couple of small regressions introduced during Revision 1.
 
 ### Blocking issues
 
 1. **Author's Round 2 #1 — `write_file` cannot target subdirectories.** UC-3 and Component 4 hard-code the path to `files/{bucket}/generated-files/{filename}`. The author wants the ability to namespace agent output (e.g., `new-module-files/...` or a sub-folder under `generated-files/`), but the current parameter shape does not allow it (`filename` is explicitly "no path separators").
    **Suggestion:** Pick one of two shapes and write it down explicitly:
    - **Caller-supplied namespace** — add an optional `subdirectory: str | None` parameter (validated as a single safe segment, no `/`, no `..`), so the URL becomes `files/{bucket}/generated-files/{subdirectory}/{filename}`. Keeps the `generated-files/` umbrella; gives the LLM (or a calling module) one extra axis of organisation.
-   - **Per-module namespace** — instead of (or in addition to) an LLM-controlled segment, let the *registering module* declare its namespace (e.g., `FileToolingModule(namespace="agent-notes")`), so that future modules wiring file tools can land their files under their own subdirectory without touching the LLM-facing schema. This is the safer default if the goal is operator-level partitioning rather than LLM-level organisation.
+   - **Per-module namespace** — instead of (or in addition to) an LLM-controlled segment, let the *registering module* declare its namespace (e.g., `TextFileToolingModule(namespace="agent-notes")`), so that future modules wiring file tools can land their files under their own subdirectory without touching the LLM-facing schema. This is the safer default if the goal is operator-level partitioning rather than LLM-level organisation.
    Either way, the doc should state which one is in scope for v1, justify the choice, and update UC-3, Component 4 (parameter table + algorithm step 3), the JSON schema in *Configuration / Usage Examples*, and the *Out of Scope* / *Migration* sections accordingly. As written, UC-3 contradicts the author's stated requirement.
 
 2. **Author's Round 2 #3 — `delete_file` has no client-side guardrail against unintended deletions.** Component 6 explicitly defers protection to DIAL's permission model ("This tool does not artificially restrict deletion to `generated-files/`"). The author's Round 2 suggestion is to add a mechanism. Today, an LLM that has any `file_url` it has seen in the conversation can issue an unconditional hard delete — including user uploads, prior tool outputs, or anything visible in attachments. A single LLM hallucination wipes the file with no recovery (the doc itself notes "Hard delete; no undo").
@@ -719,7 +719,7 @@ Round 1's structural issues are well-resolved: `FileToolingModule`'s registratio
 
 2. **Header `Dependencies` field is malformed.** Line 5 reads `- **Dependencies:**: - ` — an extra colon and a bare dash with nothing after it. Author Response — Round 1 says "Added to `Dependencies` header" (in response to Round 1 Blocking #4), but the actual content was lost during the edit. Either replace with `- None` (and accept that the offload dependency is forward-looking, as the body now states), or list the offload design explicitly as `- [large_tool_responses](large_tool_responses.local.md) (forward dependency; file tools ship without offload integration; offload integration lands when that design is approved)`.
 
-3. **`generated-files/` is now a load-bearing prefix in two places.** Component 4 puts files there; Component 6's design notes name-check it. If blocking #2 is resolved with option (a) — path-scoped delete — the `generated-files/` prefix becomes a hard-coded constant referenced from at least three call sites (`_write_file_tool`, `_delete_file_tool`, possibly `_base_file_tool`). Worth pulling into a single constant in `_base_file_tool.py` (or in `FileToolingModule`) and naming it in the design so reviewers know where it lives.
+3. **`generated-files/` is now a load-bearing prefix in two places.** Component 4 puts files there; Component 6's design notes name-check it. If blocking #2 is resolved with option (a) — path-scoped delete — the `generated-files/` prefix becomes a hard-coded constant referenced from at least three call sites (`_write_file_tool`, `_delete_file_tool`, possibly `_base_file_tool`). Worth pulling into a single constant in `_base_file_tool.py` (or in `TextFileToolingModule`) and naming it in the design so reviewers know where it lives.
 
 4. **`edit_file` return value still does not include the attachment.** Component 5 step 7 says "No attachment — the URL is unchanged; returning it as text is sufficient." That is reasonable for the LLM, but it means the DIAL UI's *Attachments* panel will not refresh after an edit, even though the file content has changed. Worth either (i) noting this explicitly as an accepted UX trade-off, or (ii) re-emitting the attachment so the UI surfaces the same URL (which is harmless on the client side and matches `write_file`'s shape).
 
@@ -758,9 +758,9 @@ The Round-3 blocking issues are fully resolved: `write_file` now writes flat und
 
 ### Suggestions
 
-1. **Component 1 (`_FileTool`) — `_attachment_service` may be dead weight.** The base class is documented as providing `self._dial_file_service` and `self._attachment_service` to subclasses, but no concrete tool in Components 2–6 uses `AttachmentService`. `write_file`'s success path constructs an `Attachment` directly from the returned URL, and edit/read/search/delete don't touch attachments at all. Either drop `_attachment_service` from `_FileTool` (preferred — `_PyInterpreterTool` doesn't carry it either), or add a sentence explaining where it is used so the dependency isn't a mystery during implementation review.
+1. **Component 1 (`_TextFileTool`) — `_attachment_service` may be dead weight.** The base class is documented as providing `self._dial_file_service` and `self._attachment_service` to subclasses, but no concrete tool in Components 2–6 uses `AttachmentService`. `write_file`'s success path constructs an `Attachment` directly from the returned URL, and edit/read/search/delete don't touch attachments at all. Either drop `_attachment_service` from `_TextFileTool` (preferred — `_PyInterpreterTool` doesn't carry it either), or add a sentence explaining where it is used so the dependency isn't a mystery during implementation review.
 
-2. **Component 9 — `enabled_tools: []` (empty list) semantics are undefined.** `Literal["all"] | list[FileToolName]` permits an empty list, which the resolution snippet would silently treat as "no tools enabled" — observationally identical to omitting `features.file_tools` entirely, but reachable by a different config path. Worth either (a) rejecting `[]` via a `min_length=1` validator with a message pointing the user at omitting the field, or (b) adding a one-liner under *Design notes* stating that an empty list is a valid "feature on, no tools exposed" state (useful for debugging? probably not, but at least documented).
+2. **Component 9 — `enabled_tools: []` (empty list) semantics are undefined.** `Literal["all"] | list[TextFileToolName]` permits an empty list, which the resolution snippet would silently treat as "no tools enabled" — observationally identical to omitting `features.text_file_tools` entirely, but reachable by a different config path. Worth either (a) rejecting `[]` via a `min_length=1` validator with a message pointing the user at omitting the field, or (b) adding a one-liner under *Design notes* stating that an empty list is a valid "feature on, no tools exposed" state (useful for debugging? probably not, but at least documented).
 
 3. **Component 9 — resolution snippet `t.name` is shorthand.** Lines 337-339 use `t.name in cfg.enabled_tools`, but `StagedBaseTool` does not expose a public `.name` attribute today; the convention across the codebase (see `internal_tooling_module.py:52`, `timestamp_module.py:61`, `attachment_processing_module.py:44`) is `tool_config.open_ai_tool.function.name`. The snippet is fine as design pseudocode, but a one-line note ("name resolved via `tool.tool_config.open_ai_tool.function.name`, matching existing conventions") would prevent a reviewer from chasing this down at PR time.
 
@@ -785,7 +785,7 @@ The Round-3 blocking issues are fully resolved: `write_file` now writes flat und
 
 ## Author Response — Round 4
 
-- **Round 4 Suggestion #1 (`_attachment_service` in `_FileTool`):** Removed. Component 1 now injects only `DialFileService`; the description clarifies that `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text` and no other tool touches attachments.
+- **Round 4 Suggestion #1 (`_attachment_service` in `_TextFileTool`):** Removed. Component 1 now injects only `DialFileService`; the description clarifies that `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text` and no other tool touches attachments.
 - **Round 4 Suggestion #2 (`enabled_tools: []`):** Accepted as-is — an empty list is a valid "feature on, zero tools exposed" state; no validator added. The existing design note already states that `file_tools: None` is the off switch; an author writing `[]` has made a deliberate (if unusual) choice. Adding `min_length=1` would be a surprise for internal subsystems that conditionally build the list. Documented implicitly by the resolution logic.
 - **Round 4 Suggestion #3 (`t.name` shorthand):** Addressed with an inline comment in the resolution snippet explaining that `t.name` resolves to `t.tool_config.open_ai_tool.function.name`, matching the codebase convention.
 - **Round 4 Suggestion #4 (`features` default-factory context):** Added a comment to the third manifest example clarifying that both omitting `features` and writing `"features": {}` leave `file_tools` as `None` due to `Features`'s `default_factory`.
