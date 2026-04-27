@@ -7,7 +7,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "anthropic.claude-v4-5-sonnet-v1",
+            "name": "anthropic.claude-sonnet-4-5-20250929-v1:0",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288
