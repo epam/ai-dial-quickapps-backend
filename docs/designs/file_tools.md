@@ -20,7 +20,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 - Favor line-based addressing over byte/character offsets — LLMs can reason about lines, not bytes.
 - Keep the tool surface small and orthogonal: one tool per concern, no mode-switching parameters.
 - Fail loudly on invalid input so the LLM can self-correct.
-- Namespace agent-generated files away from user uploads and other machine-generated artifacts.
+- Namespace agent-generated files away from user uploads and other machine-generated artifacts — write/edit/delete are scoped to `generated-files/`; read tools accept any accessible file URL.
 - Be preview-gated until the write semantics settle, with no footprint when the feature flag is off.
 
 ---
@@ -41,8 +41,8 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 
 ### UC-3: Agent creates a new file
 
-**Trigger:** The LLM calls `write_file(filename="notes.md", content="...")` or `write_file(filename="notes.md", subdirectory="new-module-files", content="...")`.\
-**Behavior:** The tool uploads `content` as a UTF-8 text file to `files/{bucket}/generated-files/{subdirectory}/{filename}` (or `files/{bucket}/generated-files/{filename}` if no subdirectory) using DIAL's `files.upload` with `If-None-Match: *` (create-only). DIAL returns the file URL; the tool returns that URL in the `ToolCallResult`, with the file attached.\
+**Trigger:** The LLM calls `write_file(filename="notes.md", content="...")`.\
+**Behavior:** The tool uploads `content` as a UTF-8 text file to `files/{bucket}/generated-files/{filename}` using DIAL's `files.upload` with `If-None-Match: *` (create-only). DIAL returns the file URL; the tool returns that URL in the `ToolCallResult`, with the file attached.\
 **Outcome:** The agent can pass the returned `file_url` straight to `read_file_lines` / `search_in_file` later in the turn, or reference it in subsequent tool calls.
 
 ### UC-4: Agent attempts to overwrite an existing file
@@ -103,7 +103,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 
 ### Component 2: `read_file_lines`
 
-**What:** Internal tool that returns a line-range slice of a UTF-8 text file.
+**What:** Internal tool that returns a line-range slice of a UTF-8 text file. Accepts any accessible file URL — not restricted to `generated-files/`.
 
 **Parameters:**
 
@@ -126,7 +126,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 
 ### Component 3: `search_in_file`
 
-**What:** Internal tool that returns matching lines with surrounding context, grep-style.
+**What:** Internal tool that returns matching lines with surrounding context, grep-style. Accepts any accessible file URL — not restricted to `generated-files/`.
 
 **Parameters:**
 
@@ -164,18 +164,16 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `filename` | string | yes | File name. Must be a simple name — no `/`, no `..`, no leading/trailing whitespace. |
-| `content` | string | yes | File content. UTF-8 text. |
-| `subdirectory` | string | no | Optional single-level subdirectory under `generated-files/`. Must be a simple name — no `/`, no `..`, no leading/trailing whitespace. |
+| `content`  | string | yes | File content. UTF-8 text. |
 
 **Algorithm:**
 
 1. Validate `filename`: non-empty, no `/`, no `..`, no leading/trailing whitespace. Else raise `InvalidToolCallParameterException("filename", ...)`.
-2. If `subdirectory` is provided: validate same rules. Else raise `InvalidToolCallParameterException("subdirectory", ...)`.
-3. Resolve bucket (`dial_client.bucket.get_raw()`).
-4. Build target URL: `url = f"files/{bucket}/generated-files/{subdirectory}/{filename}"` if subdirectory provided, else `f"files/{bucket}/generated-files/{filename}"`. Both resolve to paths under the `GENERATED_FILES_ROOT` constant (see design notes).
-5. Call `DialFileService.upload_text(url=url, content=content, if_none_match="*")`.
-6. On `412 Precondition Failed` → raise `InvalidToolCallParameterException("filename", "file already exists: {url}")`.
-7. On success → build an `Attachment` pointing at the returned URL and return:
+2. Resolve bucket (`dial_client.bucket.get_raw()`).
+3. Build target URL: `url = f"files/{bucket}/{GENERATED_FILES_ROOT}{filename}"` (e.g., `files/{bucket}/generated-files/notes.md`).
+4. Call `DialFileService.upload_text(url=url, content=content, if_none_match="*")`.
+5. On `412 Precondition Failed` → raise `InvalidToolCallParameterException("filename", "file already exists: {url}")`.
+6. On success → build an `Attachment` pointing at the returned URL and return:
    ```
    ToolCallResult(
        content=f"File written: {url}",
@@ -189,7 +187,7 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 **Design notes:**
 - **Create-only** (`If-None-Match: *`) was chosen over silent overwrite so the LLM never clobbers a prior write by accident. There is no overwrite tool in v1 — to modify an existing file, use `edit_file`. An explicit overwrite primitive (separate tool or `overwrite=true`) can be added later if the pattern becomes common.
 - **`GENERATED_FILES_ROOT` constant.** The prefix `generated-files/` (and by extension the URL patterns in `write_file` and `delete_file`'s path guard) is a single string constant defined in `_base_file_tool.py`, referenced from `_write_file_tool.py` and `_delete_file_tool.py`. No hardcoded strings at call sites.
-- Files land under `generated-files/` (with an optional `subdirectory` one level deep) to keep agent output distinct from user-uploaded files at the bucket root.
+- Files land flat under `generated-files/{filename}` to keep agent output distinct from user-uploaded files at the bucket root. There is no LLM-controlled subdirectory — internal subsystems that need their own namespace (e.g., a future `large_tool_responses` offloader) construct URLs directly via `DialFileService.upload_text` with their own prefix, not through this tool.
 - Returns a **small confirmation string** (plus attachment)
 
 **DialFileService extension:** `write_file` and `edit_file` both use a new lower-level `DialFileService.upload_text` method rather than `AttachmentService.upload_attachment_to_core`. The existing `upload_attachment_to_core` has three problems that make it unsuitable: (1) it short-circuits when `attachment.url is not None`, but `edit_file` re-uploads to an existing URL; (2) it silently swallows upload exceptions, preventing 412 from being translated to `InvalidToolCallParameterException`; (3) it is Attachment-shaped, not URL + raw-bytes shaped. `AttachmentService` is **not modified**.
@@ -321,6 +319,7 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
 - **Regex search.** `search_in_file` ships with substring + `case_insensitive` only. Regex requires DoS protection (timeout, catastrophic backtracking mitigation), bounds checks, and careful error surfaces — addressed in a follow-up when the use case becomes concrete.
 - **Character/byte offset reading.** Rejected: LLMs cannot reliably estimate character positions in an opaque file. Line numbers are surfaced naturally by search results.
 - **Combined `file_query(mode=...)` tool.** Considered and rejected — conditional parameters (either `pattern` or `start_line`/`end_line` depending on mode) confuse weaker models for marginal token savings. The same orthogonality argument applies to `read_file_lines` vs. `search_in_file` specifically: a merged `read_file(file_url, *, lines=None, search=None)` with two optional, mutually-exclusive parameter groups makes both calling conventions harder to describe in the tool schema and forces the LLM to reason about which group applies. Two tools with entirely disjoint required parameters are unambiguous.
+- **LLM-controlled subdirectories for `write_file`.** Files always land flat under `generated-files/{filename}`. Partitioning by module or purpose is a code-level concern: internal subsystems construct their own URL prefix and call `DialFileService.upload_text` directly. If per-application LLM-level namespacing ever becomes a concrete need, a `namespace` config field on `FileToolingModule` (not a free-form LLM parameter) is the right surface.
 - **Overwrite semantics for `write_file`.** v1 is create-only. A deliberate overwrite path (separate tool, explicit `overwrite=true`, or an ETag-conditional `replace_file`) is deferred until a concrete need emerges.
 - **Directory operations.** No `list_files` tool in v1; deferred pending real demand and decisions around pagination and permission surfaces.
 - **Multi-file search.** Deferred — most use cases can loop over a known set of URLs.
@@ -363,9 +362,8 @@ New method: `DialFileService.upload_text(url: str, content: str, *, if_none_matc
   "name": "write_file",
   "description": "Create a new UTF-8 text file in DIAL storage under generated-files/. Fails if a file with the same name already exists. Returns the file URL.",
   "parameters": {
-    "filename":     {"type": "string", "description": "Simple file name (no path separators, no '..')."},
-    "content":      {"type": "string", "description": "UTF-8 text content of the file."},
-    "subdirectory": {"type": "string", "description": "Optional single-level subdirectory under generated-files/ (no path separators, no '..')."}
+    "filename": {"type": "string", "description": "Simple file name (no path separators, no '..')."},
+    "content":  {"type": "string", "description": "UTF-8 text content of the file."}
   },
   "required": ["filename", "content"]
 }
@@ -483,13 +481,13 @@ None. Net-new capability, preview-gated.
 
 - `read_file_lines(file_url, start_line, end_line)`
 - `search_in_file(file_url, pattern, context_lines=0, case_insensitive=False)`
-- `write_file(filename, content)`
+- `write_file(filename, content)` — writes to `generated-files/{filename}`; no LLM-controlled subdirectory
 - `edit_file(file_url, old_string, new_string)`
 - `delete_file(file_url)`
 
 ### Tests
 
-- Unit: `src/tests/unit_tests/file_tooling/` — slice boundaries, invalid ranges, match/no-match, context expansion and window merging, case-insensitivity, `write_file` success with and without `subdirectory` / filename validation / subdirectory validation / collision (412) error path, UTF-8 encoding, `edit_file` unique-match success / not-found / non-unique / same-string / concurrent-modification (412) / cache invalidated after success, `delete_file` success / 404 → `InvalidToolCallParameterException` / URL outside `generated-files/` blocked, 10 MB download limit → `InvalidToolCallParameterException`.
+- Unit: `src/tests/unit_tests/file_tooling/` — slice boundaries, invalid ranges, match/no-match, context expansion and window merging, case-insensitivity, `write_file` success / filename validation / collision (412) error path, UTF-8 encoding, `edit_file` unique-match success / not-found / non-unique / same-string / concurrent-modification (412) / cache invalidated after success, `delete_file` success / 404 → `InvalidToolCallParameterException` / URL outside `generated-files/` blocked, 10 MB download limit → `InvalidToolCallParameterException`.
 - Integration: offload end-to-end coverage (UC-6 read-back path) is deferred pending the `large_tool_responses` design.
 
 ---
@@ -514,7 +512,7 @@ Need to address three suggestions
 
 Addressing Round 2 suggestions and all Round 3 items (blocking issues, suggestions, nits):
 
-- **Round 2 #1 / Round 3 Blocking #1 (`write_file` subdirectory):** Added optional `subdirectory` parameter (single safe segment, same validation rules as `filename`). URL becomes `generated-files/{subdirectory}/{filename}` when provided. Updated UC-3, Component 4 parameter table + algorithm, and JSON schema in examples.
+- **Round 2 #1 / Round 3 Blocking #1 (`write_file` path):** Removed `subdirectory` parameter. LLM-controlled subdirectories are unreliable — the model can hallucinate names, drift across turns, or collide with other modules. Instead, `write_file` always writes to `generated-files/{filename}` (flat). Internal subsystems that need their own namespace (e.g., a future `large_tool_responses` offloader) construct URLs directly via `DialFileService.upload_text` with their own prefix — this is a code-level concern, not an LLM-facing parameter. Updated UC-3, Component 4 (parameters, algorithm, design notes), JSON schema, and tests.
 - **Round 2 #2 / Round 3 Suggestion #1 (UC-4 framing):** Removed "re-write in a follow-up turn" from UC-4 Outcome; now states the only options are a different filename or `edit_file`. Added "no overwrite tool" one-liner to Component 4 design notes.
 - **Round 2 #3 / Round 3 Blocking #2 (`delete_file` guardrail):** Chose option (a) — path-scoped allowlist. Algorithm step 1 rejects URLs outside `GENERATED_FILES_ROOT`. Design notes document the three alternatives considered (path-scoped, same-session guard, two-phase confirm) and why (a) was chosen. Out of Scope "Conditional / soft delete" bullet updated accordingly. Error Handling table has a new row.
 - **Round 3 Suggestion #2 (Dependencies malformed):** Fixed — now correctly references `large_tool_responses.local.md` with forward-dependency note.
