@@ -4,7 +4,13 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
-from quickapp.common import DEPLOYMENT_AZURE_CLIENT, DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
+from quickapp.common import (
+    DEPLOYMENT_AZURE_CLIENT,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
@@ -39,12 +45,18 @@ class DialDeploymentToolingModule(Module):
         api_key: DIAL_API_KEY,
         forwarded_headers: ForwardedHeaders,
         timeout_resolver: ToolTimeoutResolver,
+        bearer: DIAL_BEARER,
     ) -> DEPLOYMENT_AZURE_CLIENT:
+        headers = dict(forwarded_headers or {})
+
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
+
         return AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             api_version=dial_settings.api_version,
-            default_headers=forwarded_headers or None,
+            default_headers=headers,
             timeout=build_async_dial_timeout(timeout_resolver.resolve()),
         )
 
