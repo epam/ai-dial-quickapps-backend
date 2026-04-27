@@ -49,15 +49,15 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
         # 3. Frequency gate + implicit position
         frequency = await self.get_frequency(messages)
-        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
-        content_hash = _hash6(content)
-        call_id = f"{self.call_id_prefix}{tool_name}_{args_hash}_{content_hash}"
 
         match frequency:
             case InjectionFrequency.ALWAYS:
                 call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
                 idx = len(messages)
             case InjectionFrequency.APPEND_IF_CHANGED:
+                call_id, args_hash = _make_call_id(
+                    self.call_id_prefix, tool_name, arguments, content
+                )
                 if _has_tool_call_id(messages, call_id):
                     return messages
                 has_prior = _has_any_pair_for_tool_and_args(
@@ -65,6 +65,9 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
                 )
                 idx = len(messages) if has_prior else _after_first_user_idx(messages)
             case InjectionFrequency.REFRESH_IF_CHANGED:
+                call_id, args_hash = _make_call_id(
+                    self.call_id_prefix, tool_name, arguments, content
+                )
                 if _has_tool_call_id(messages, call_id):
                     return messages
                 messages = _remove_last_injected_pair_for_tool_and_args(
@@ -84,6 +87,15 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
 def _hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
+
+
+def _make_call_id(
+    call_id_prefix: str, tool_name: str, arguments: dict, content: str
+) -> tuple[str, str]:
+    """Return (call_id, args_hash) for content-addressed injection frequencies."""
+    args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+    call_id = f"{call_id_prefix}{tool_name}_{args_hash}_{_hash6(content)}"
+    return call_id, args_hash
 
 
 def _after_first_user_idx(messages: list[Message]) -> int:
