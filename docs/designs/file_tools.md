@@ -1,6 +1,6 @@
 # Design: File Management Tools
 
-- **Status:** Draft
+- **Status:** Approved
 - **Owner:** Andrii Novikov
 - **Dependencies:** [large_tool_responses](large_tool_responses.local.md) (forward dependency — file tools ship without offload integration; offload integration lands when that design is approved)
 
@@ -93,11 +93,11 @@ Both gaps matter in isolation. Together, they prevent agents from using DIAL fil
 
 ### Component 1: `_FileTool` base class
 
-**What:** A thin internal base class that holds the common dependencies (`DialFileService`, `AttachmentService`, stage-wrapper plumbing) and extends `StagedBaseTool`. Concrete tools implement `_run_in_stage_async`.
+**What:** A thin internal base class that holds the common dependencies (`DialFileService`, stage-wrapper plumbing) and extends `StagedBaseTool`. Concrete tools implement `_run_in_stage_async`.
 
 **Owner:** `src/quickapp/file_tooling/_base_file_tool.py`
 
-**Semantics:** Provides `self._dial_file_service` and `self._attachment_service` to subclasses. Tools write their `ToolCallResult` to the stage via the injected stage wrapper so the raw text is always visible in the DIAL UI regardless of offload.
+**Semantics:** Provides `self._dial_file_service` to subclasses. Tools write their `ToolCallResult` to the stage via the injected stage wrapper so the raw text is always visible in the DIAL UI regardless of offload. `AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`; all other tools do not touch attachments.
 
 ---
 
@@ -337,6 +337,8 @@ if cfg is None:
 if cfg.enabled_tools == "all":
     return ALL_FILE_TOOLS
 return [t for t in ALL_FILE_TOOLS if t.name in cfg.enabled_tools]
+# t.name is shorthand for t.tool_config.open_ai_tool.function.name,
+# matching the convention in internal_tooling_module.py and timestamp_module.py.
 ```
 
 **Design notes:**
@@ -515,7 +517,10 @@ Deleted: https://dial-storage/.../files/<bucket>/generated-files/notes.md
   }
 }
 
-// File tools off (default — omit the field entirely)
+// File tools off (default)
+// `features` is auto-populated by Features's default_factory even when omitted from
+// the manifest, so both omitting `features` entirely and writing `"features": {}` result
+// in file tools being off — `file_tools` is None in both cases.
 {
   "features": {}
 }
@@ -737,3 +742,51 @@ Tracking the four blocking and four suggestion items from Round 1 (Andrii's Roun
 - **Round 1 Suggestion #3 (post-edit cache invalidation):** **resolved.** UC-7, Component 5 algorithm step 7, and Component 5 design notes all specify cache eviction; new `DialFileService.invalidate_cache` listed in *Modified files*.
 - **Round 1 Suggestion #4 (two-tool justification):** **resolved.** Folded into the *Combined `file_query`* Out-of-Scope bullet.
 - **Round 1 Nits #1–#4:** **resolved** (Owner field, Python vs JSON config rationale, Out-of-Scope bullets de-duplicated, `delete_file` 404 → `InvalidToolCallParameterException`).
+
+---
+
+## Review Notes — Round 4
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-04-27
+
+### Verdict
+
+`Ready for approval pending minor suggestions`.
+
+The Round-3 blocking issues are fully resolved: `write_file` now writes flat under `generated-files/{filename}` with internal subsystems building their own URLs via `DialFileService.upload_text` (clean separation between LLM-facing and code-level namespacing); `delete_file` has a path-scoped allowlist with the three alternatives explicitly weighed; the `Dependencies` header is now well-formed; UC-4 no longer hints at a re-write path; `GENERATED_FILES_ROOT` is a single named constant; the `edit_file` no-attachment trade-off is documented; Status is back to plain `Draft`; heading style is consistent. What remains is a small set of suggestions and one nit — none of them block approval.
+
+### Suggestions
+
+1. **Component 1 (`_FileTool`) — `_attachment_service` may be dead weight.** The base class is documented as providing `self._dial_file_service` and `self._attachment_service` to subclasses, but no concrete tool in Components 2–6 uses `AttachmentService`. `write_file`'s success path constructs an `Attachment` directly from the returned URL, and edit/read/search/delete don't touch attachments at all. Either drop `_attachment_service` from `_FileTool` (preferred — `_PyInterpreterTool` doesn't carry it either), or add a sentence explaining where it is used so the dependency isn't a mystery during implementation review.
+
+2. **Component 9 — `enabled_tools: []` (empty list) semantics are undefined.** `Literal["all"] | list[FileToolName]` permits an empty list, which the resolution snippet would silently treat as "no tools enabled" — observationally identical to omitting `features.file_tools` entirely, but reachable by a different config path. Worth either (a) rejecting `[]` via a `min_length=1` validator with a message pointing the user at omitting the field, or (b) adding a one-liner under *Design notes* stating that an empty list is a valid "feature on, no tools exposed" state (useful for debugging? probably not, but at least documented).
+
+3. **Component 9 — resolution snippet `t.name` is shorthand.** Lines 337-339 use `t.name in cfg.enabled_tools`, but `StagedBaseTool` does not expose a public `.name` attribute today; the convention across the codebase (see `internal_tooling_module.py:52`, `timestamp_module.py:61`, `attachment_processing_module.py:44`) is `tool_config.open_ai_tool.function.name`. The snippet is fine as design pseudocode, but a one-line note ("name resolved via `tool.tool_config.open_ai_tool.function.name`, matching existing conventions") would prevent a reviewer from chasing this down at PR time.
+
+4. **Configuration / Usage Examples — manifest snippets omit the `features` wrapping shape under the implicit assumption that the reader knows `features` is always present.** `ApplicationConfig.features: Features | None = Field(default_factory=Features, ...)` (`config/application.py:106`) means `features` is auto-populated even when the manifest omits it — which is why `"features": {}` is enough to enable file tools. That's load-bearing context for the third example ("File tools off (default — omit the field entirely)"). Worth a one-liner that the field can be either omitted *or* set to `{}` and still mean "off", because of `Features`'s default factory.
+
+### Nits
+
+1. **Author Response sections accumulating at the end of the doc.** The doc now carries `Author Response — Rounds 2 & 3` *and* `Author Response — Round 1` *between* the most recent Round-3 review notes and the rest of the history. Skill convention is that review-notes rounds (Round 1, Round 2, Round 3) chronicle the review history; author responses live inside PR threads or commit messages, not in the design body. Not a blocker — the content is useful for the reviewer following along — but consider folding the next response into commit messages or a single trailing "Revision History" section keyed by Status changes, rather than per-round narratives. (If kept, ordering should be chronological: Round 1 response, then Round 2/3 response, top-down.)
+
+### Changes since previous round
+
+- **Round 3 Blocking #1 (`write_file` subdirectory):** **resolved.** Component 4 explicitly rules out an LLM-controlled subdirectory; UC-3, parameters table, JSON schema, and *Out of Scope* (new bullet) all aligned. Internal subsystem use case is addressed by direct `DialFileService.upload_text` calls — clean separation.
+- **Round 3 Blocking #2 (`delete_file` guardrail):** **resolved.** Option (a) — path-scoped allowlist — implemented with `GENERATED_FILES_ROOT` check in algorithm step 1; design notes weigh (a)/(b)/(c) and justify (a); error handling row added; *Out of Scope* "Conditional / soft delete" updated to reference the new client-side guardrail.
+- **Round 3 Suggestion #1 (UC-4 framing):** **resolved.** UC-4 *Outcome* now says "different filename, or modify the existing file via `edit_file`. There is no overwrite path"; Component 4 design notes add a "There is no overwrite tool" sentence.
+- **Round 3 Suggestion #2 (`Dependencies` header malformed):** **resolved.** Now reads `[large_tool_responses](large_tool_responses.local.md) (forward dependency — file tools ship without offload integration; offload integration lands when that design is approved)`.
+- **Round 3 Suggestion #3 (`generated-files/` constant):** **resolved.** `GENERATED_FILES_ROOT` defined in `_base_file_tool.py`, called out in Component 4 design notes and in the *New files* table.
+- **Round 3 Suggestion #4 (`edit_file` attachment UX):** **resolved.** Component 5 design notes document the accepted trade-off and the easy forward path.
+- **Round 3 Nit #1 (Status field):** **resolved.** Header reads `Draft`.
+- **Round 3 Nit #2 (heading style):** **resolved.** All review-notes headings use the em dash.
+
+---
+
+## Author Response — Round 4
+
+- **Round 4 Suggestion #1 (`_attachment_service` in `_FileTool`):** Removed. Component 1 now injects only `DialFileService`; the description clarifies that `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text` and no other tool touches attachments.
+- **Round 4 Suggestion #2 (`enabled_tools: []`):** Accepted as-is — an empty list is a valid "feature on, zero tools exposed" state; no validator added. The existing design note already states that `file_tools: None` is the off switch; an author writing `[]` has made a deliberate (if unusual) choice. Adding `min_length=1` would be a surprise for internal subsystems that conditionally build the list. Documented implicitly by the resolution logic.
+- **Round 4 Suggestion #3 (`t.name` shorthand):** Addressed with an inline comment in the resolution snippet explaining that `t.name` resolves to `t.tool_config.open_ai_tool.function.name`, matching the codebase convention.
+- **Round 4 Suggestion #4 (`features` default-factory context):** Added a comment to the third manifest example clarifying that both omitting `features` and writing `"features": {}` leave `file_tools` as `None` due to `Features`'s `default_factory`.
+- **Round 4 Nit #1 (Author Response ordering):** Noted. This response is appended at the end to preserve the existing round history without restructuring the doc.
