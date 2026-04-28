@@ -23,14 +23,7 @@ class _ReadFileLinesTool(_TextFileTool):
         if end_line < start_line:
             raise InvalidToolCallParameterException("end_line", "end_line must be >= start_line")
 
-        try:
-            file_bytes = await self._dial_file_service.download_file(file_url)
-        except ValueError as e:
-            raise InvalidToolCallParameterException(
-                "file_url", f"file is too large to read (limit: 10 MB): {e}"
-            ) from e
-
-        text = file_bytes.decode("utf-8")
+        text = await self._download_text(file_url)
         lines = text.splitlines()
         sliced = "\n".join(lines[start_line:end_line])
 

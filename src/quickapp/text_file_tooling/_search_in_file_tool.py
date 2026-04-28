@@ -1,7 +1,6 @@
 from typing import Any
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.text_file_tooling._base_file_tool import _TextFileTool
 
@@ -19,14 +18,7 @@ class _SearchInFileTool(_TextFileTool):
         context_lines: int = int(kwargs.get("context_lines") or 0)
         case_insensitive: bool = bool(kwargs.get("case_insensitive", False))
 
-        try:
-            file_bytes = await self._dial_file_service.download_file(file_url)
-        except ValueError as e:
-            raise InvalidToolCallParameterException(
-                "file_url", f"file is too large to read (limit: 10 MB): {e}"
-            ) from e
-
-        text = file_bytes.decode("utf-8")
+        text = await self._download_text(file_url)
         lines = text.splitlines()
 
         compare_pattern = pattern.lower() if case_insensitive else pattern

@@ -8,10 +8,12 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
+TOOL_NAME_PREFIX = "internal_text_file_"
+
 READ_FILE_LINES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="read_file_lines",
+            name=f"{TOOL_NAME_PREFIX}read_lines",
             description=(
                 "Read a range of lines from a file stored in DIAL. "
                 "Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice."
@@ -42,7 +44,7 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
 SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="search_in_file",
+            name=f"{TOOL_NAME_PREFIX}search",
             description=(
                 "Search for a substring in a file stored in DIAL. "
                 "Returns matching lines with optional surrounding context."
@@ -77,7 +79,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
 WRITE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="write_file",
+            name=f"{TOOL_NAME_PREFIX}write",
             description=(
                 "Create a new UTF-8 text file in DIAL storage under generated-files/. "
                 "Fails if a file with the same name already exists. Returns the file URL."
@@ -104,7 +106,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
 EDIT_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="edit_file",
+            name=f"{TOOL_NAME_PREFIX}edit",
             description=(
                 "Replace a unique substring in an existing UTF-8 text file. "
                 "old_string must occur exactly once. Fails if the file changed concurrently."
@@ -138,7 +140,7 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
 DELETE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="delete_file",
+            name=f"{TOOL_NAME_PREFIX}delete",
             description="Delete a file from DIAL storage. Hard delete; no undo.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,

@@ -127,3 +127,4 @@ class TestSearchInFile:
                 pattern="x",
             )
         assert exc.value.parameter_name == "file_url"
+        assert "File download failed:" in exc.value.message

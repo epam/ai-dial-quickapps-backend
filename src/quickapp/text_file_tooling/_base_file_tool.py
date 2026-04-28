@@ -4,6 +4,7 @@ from typing import Any
 from injector import AssistedBuilder, inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tools.internal import InternalTool
@@ -33,3 +34,17 @@ class _TextFileTool(StagedBaseTool, ABC):
             **kwargs,
         )
         self._dial_file_service = dial_file_service
+
+    async def _download_text(self, file_url: str) -> str:
+        try:
+            data = await self._dial_file_service.download_file(file_url)
+        except Exception as e:
+            raise InvalidToolCallParameterException("file_url", f"File download failed: {e}") from e
+        return data.decode("utf-8")
+
+    async def _download_text_with_etag(self, file_url: str) -> tuple[str, str]:
+        try:
+            data, etag = await self._dial_file_service.download_file_with_etag(file_url)
+        except Exception as e:
+            raise InvalidToolCallParameterException("file_url", f"File download failed: {e}") from e
+        return data.decode("utf-8"), etag

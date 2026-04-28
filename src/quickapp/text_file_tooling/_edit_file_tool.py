@@ -25,8 +25,7 @@ class _EditFileTool(_TextFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        file_bytes, etag = await self._dial_file_service.download_file_with_etag(file_url)
-        content = file_bytes.decode("utf-8")
+        content, etag = await self._download_text_with_etag(file_url)
 
         count = content.count(old_string)
         if count == 0:

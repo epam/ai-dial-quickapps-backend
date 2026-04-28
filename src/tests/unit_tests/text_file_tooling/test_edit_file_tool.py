@@ -135,3 +135,26 @@ class TestEditFile:
                 new_string="qux",
             )
         tool._dial_file_service.invalidate_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_download_failure_raises_invalid_parameter(self):
+        mock_service = MagicMock(spec=DialFileService)
+        mock_service.download_file_with_etag = AsyncMock(
+            side_effect=ValueError("File size 11534336 exceeds the limit")
+        )
+        tool = _EditFileTool(
+            stage_wrapper_builder=MagicMock(),
+            tool_config=EDIT_FILE_TOOL_CONFIG,
+            perf_timer=MagicMock(),
+            dial_file_service=mock_service,
+        )
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._run_in_stage_async(
+                stage_wrapper=None,
+                file_url=_FILE_URL,
+                old_string="bar",
+                new_string="qux",
+            )
+        assert exc.value.parameter_name == "file_url"
+        assert "File download failed:" in exc.value.message
+        assert "11534336" in exc.value.message

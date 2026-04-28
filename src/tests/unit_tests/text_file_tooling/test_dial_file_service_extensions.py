@@ -164,5 +164,7 @@ class TestTextFileToolsConfig:
     def test_list_of_tools_accepted(self):
         from quickapp.config.text_file_tools import TextFileToolsConfig
 
-        cfg = TextFileToolsConfig(enabled_tools=["read_file_lines", "search_in_file"])
-        assert cfg.enabled_tools == ["read_file_lines", "search_in_file"]
+        cfg = TextFileToolsConfig(
+            enabled_tools=["internal_text_file_read_lines", "internal_text_file_search"]
+        )
+        assert cfg.enabled_tools == ["internal_text_file_read_lines", "internal_text_file_search"]

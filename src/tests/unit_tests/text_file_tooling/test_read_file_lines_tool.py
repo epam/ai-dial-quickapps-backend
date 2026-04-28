@@ -98,4 +98,5 @@ class TestReadFileLines:
                 end_line=10,
             )
         assert exc.value.parameter_name == "file_url"
-        assert "10 MB" in exc.value.message
+        assert "File download failed:" in exc.value.message
+        assert "11534336" in exc.value.message
