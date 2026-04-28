@@ -64,16 +64,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
                     messages, tool_name, args_hash, self.call_id_prefix
                 )
                 idx = len(messages) if has_prior else _after_first_user_idx(messages)
-            case InjectionFrequency.REFRESH_IF_CHANGED:
-                call_id, args_hash = _make_call_id(
-                    self.call_id_prefix, tool_name, arguments, content
-                )
-                if _has_tool_call_id(messages, call_id):
-                    return messages
-                messages = _remove_last_injected_pair_for_tool_and_args(
-                    messages, tool_name, args_hash, self.call_id_prefix
-                )
-                idx = _after_first_user_idx(messages)
 
         # 4. Pair construction + splice
         pair = _build_pair(tool_name, call_id, arguments, content)
@@ -117,27 +107,6 @@ def _has_any_pair_for_tool_and_args(
         m.role == Role.TOOL and m.tool_call_id is not None and m.tool_call_id.startswith(id_prefix)
         for m in messages
     )
-
-
-def _remove_last_injected_pair_for_tool_and_args(
-    messages: list[Message], tool_name: str, args_hash: str, call_id_prefix: str
-) -> list[Message]:
-    """Remove the last synthetic ASSISTANT+TOOL pair for the given tool_name and args_hash."""
-    id_prefix = f"{call_id_prefix}{tool_name}_{args_hash}_"
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
-        if msg.role == Role.ASSISTANT and msg.tool_calls:
-            match = next(
-                (
-                    tc
-                    for tc in msg.tool_calls
-                    if tc.function.name == tool_name and tc.id.startswith(id_prefix)
-                ),
-                None,
-            )
-            if match is not None:
-                return messages[:i] + messages[i + 2 :]
-    return messages
 
 
 def _build_pair(

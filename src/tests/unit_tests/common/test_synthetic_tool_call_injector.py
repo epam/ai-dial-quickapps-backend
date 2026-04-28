@@ -36,20 +36,6 @@ class _AppendIfChangedInjector(SyntheticToolCallInjector):
         return self._content
 
 
-class _RefreshIfChangedInjector(SyntheticToolCallInjector):
-    def __init__(self, content: str = "refresh content"):
-        self._content = content
-
-    async def get_tool_name(self) -> str:
-        return "refresh_tool"
-
-    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.REFRESH_IF_CHANGED
-
-    async def get_content(self, messages: list[Message]) -> str | None:
-        return self._content
-
-
 class _ParamDrivenInjector(SyntheticToolCallInjector):
     def __init__(
         self,
@@ -250,95 +236,6 @@ class TestAppendIfChanged:
         result = await injector.transform([Message(role=Role.SYSTEM, content="sys")])
         assert result[0].role == Role.SYSTEM
         _assert_synthetic_pair(result, 1, "append_tool", "append content")
-
-
-# ---------------------------------------------------------------------------
-# Tests: REFRESH_IF_CHANGED
-# ---------------------------------------------------------------------------
-
-
-class TestRefreshIfChanged:
-    @pytest.mark.asyncio
-    async def test_injects_after_first_user_on_first_call(self):
-        injector = _RefreshIfChangedInjector()
-        messages = [_user("hello")]
-
-        result = await injector.transform(messages)
-
-        assert len(result) == 3
-        assert result[0].role == Role.USER
-        _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
-
-    @pytest.mark.asyncio
-    async def test_skips_when_content_unchanged(self):
-        injector = _RefreshIfChangedInjector()
-        result = await injector.transform([_user("hello")])
-        assert len(result) == 3
-
-        result2 = await injector.transform(result)
-        assert len(result2) == 3  # unchanged
-
-    @pytest.mark.asyncio
-    async def test_replaces_when_content_changed(self):
-        injector = _RefreshIfChangedInjector(content="v1")
-        result = await injector.transform([_user("hello")])
-        assert len(result) == 3
-
-        injector._content = "v2"
-        result = await injector.transform(result)
-
-        assert len(result) == 3  # replaced, not accumulated
-        _assert_synthetic_pair(result, 1, "refresh_tool", "v2")
-
-    @pytest.mark.asyncio
-    async def test_no_user_message_appends_at_end(self):
-        injector = _RefreshIfChangedInjector()
-        result = await injector.transform([Message(role=Role.SYSTEM, content="sys")])
-        assert result[0].role == Role.SYSTEM
-        _assert_synthetic_pair(result, 1, "refresh_tool", "refresh content")
-
-
-# ---------------------------------------------------------------------------
-# Tests: REFRESH_IF_CHANGED scoped to same tool+args
-# ---------------------------------------------------------------------------
-
-
-class TestRefreshIfChangedArgScoping:
-    @pytest.mark.asyncio
-    async def test_appends_when_args_differ(self):
-        """Different args = different scope; existing pair must not be removed."""
-        injector_a = _ParamDrivenInjector({"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED)
-        injector_b = _ParamDrivenInjector({"k": "b"}, InjectionFrequency.REFRESH_IF_CHANGED)
-        messages = [_user("hello")]
-
-        result = await injector_a.transform(messages)
-        result = await injector_b.transform(result)
-
-        assert len(result) == 5  # both pairs present
-
-    @pytest.mark.asyncio
-    async def test_replaces_only_matching_args_pair(self):
-        """Content change for args={k:a} must not remove the pair for args={k:b}."""
-        injector_a_v1 = _ParamDrivenInjector(
-            {"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED, content="a-v1"
-        )
-        injector_b = _ParamDrivenInjector(
-            {"k": "b"}, InjectionFrequency.REFRESH_IF_CHANGED, content="b-v1"
-        )
-        result = await injector_a_v1.transform([_user("hello")])
-        result = await injector_b.transform(result)
-        assert len(result) == 5
-
-        injector_a_v2 = _ParamDrivenInjector(
-            {"k": "a"}, InjectionFrequency.REFRESH_IF_CHANGED, content="a-v2"
-        )
-        result = await injector_a_v2.transform(result)
-
-        assert len(result) == 5  # replaced, not accumulated
-        tool_contents = [m.content for m in result if m.role == Role.TOOL]
-        assert "b-v1" in tool_contents
-        assert "a-v2" in tool_contents
-        assert "a-v1" not in tool_contents
 
 
 # ---------------------------------------------------------------------------

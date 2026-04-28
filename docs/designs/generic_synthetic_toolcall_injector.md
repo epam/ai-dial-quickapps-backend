@@ -27,7 +27,7 @@ calls.
 
 - Provide a single `SyntheticToolCallInjector` base class that encapsulates frequency,
   idempotency, position, and message-pair construction.
-- Support three injection frequencies with implicit position rules: `ALWAYS`, `APPEND_IF_CHANGED`, `REFRESH_IF_CHANGED`.
+- Support two injection frequencies with implicit position rules: `ALWAYS`, `APPEND_IF_CHANGED`.
 - Enable injection backed by any `StagedBaseTool` (MCP, REST, DIAL deployment) via live execution.
 - Make `MessagesTransformer.transform` async so tool calls can be awaited.
 - Run all message transformers **after** tool initialization so `StagedBaseTool` instances are
@@ -39,16 +39,7 @@ calls.
 
 ## Use Cases
 
-### UC-1: Agent memory retrieval on every turn
-
-**Trigger:** A chat request arrives for an agent wired with an MCP memory server.
-**Behavior:** Before the first LLM call, the agent calls the `get_memories` MCP tool with empty
-arguments using `REFRESH_IF_CHANGED`. If memories have not changed since the last turn, injection
-is skipped. If memories have changed, the previous pair is replaced with a fresh one.
-**Outcome:** The LLM sees current memory contents on every turn without accumulating stale copies,
-and skips unnecessary injection when memories are unchanged.
-
-### UC-2: File-transfer skill injection (existing, migrated)
+### UC-1: File-transfer skill injection (existing, migrated)
 
 **Trigger:** A chat request arrives for an agent with the skills feature enabled.
 **Behavior:** The skill content is injected after the first USER message using `APPEND_IF_CHANGED`.
@@ -58,14 +49,14 @@ conversation history consistency.
 **Outcome:** Functionally identical to the prior `ONCE` behavior when content is stable; appends
 on content change instead of silently keeping stale content.
 
-### UC-3: Timestamp injection (existing, migrated)
+### UC-2: Timestamp injection (existing, migrated)
 
 **Trigger:** Every chat request with `features.timestamp` configured.
 **Behavior:** A synthetic timestamp tool-call pair is appended at the end of the message list on
 every request.
 **Outcome:** Identical to the current `_TimestampInjectionTransformer` behavior.
 
-### UC-4: Conditional context notification (existing, migrated)
+### UC-3: Conditional context notification (existing, migrated)
 
 **Trigger:** A chat request arrives and the set of available context URLs has changed since the
 previous turn.
@@ -87,9 +78,8 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 
 ```python
 class InjectionFrequency(StrEnum):
-    ALWAYS             = "always"              # always append a new pair at END; accumulates across turns
-    APPEND_IF_CHANGED  = "append_if_changed"   # inject after first USER on first call; append at END if content changed
-    REFRESH_IF_CHANGED = "refresh_if_changed"  # inject after first USER; replace last pair for same tool+args if content changed
+    ALWAYS            = "always"             # always append a new pair at END; accumulates across turns
+    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; append at END if content changed
 ```
 
 Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
@@ -145,10 +135,6 @@ The base `transform` implementation:
      Skips if that exact `call_id` already exists in history. On first injection (no prior pair for
      this tool+args) inserts **after the first USER message**. On subsequent injections when content
      changed, appends at **END** so the updated content appears after all prior history.
-   - `REFRESH_IF_CHANGED`: same `call_id` scheme. Skips if already present. Otherwise removes the
-     **last** synthetic pair whose `call_id` starts with `synth_{tool_name}_{args_hash[:6]}_`
-     (same tool + same args, regardless of content), then inserts the new pair **after the first
-     USER message**. Pairs with different args are not touched.
    - All modes fall back to appending at END when no USER message exists.
 4. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair using the computed
    `call_id`.
@@ -294,32 +280,6 @@ custom position, idempotency, and pair-construction logic is deleted.
 ---
 
 ## Configuration / Usage Examples
-
-### Custom MCP-backed injector with `REFRESH_IF_CHANGED`
-
-```python
-# my_feature/agent_memory_injector.py
-class AgentMemoryInjector(StagedToolSyntheticInjector):
-    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.REFRESH_IF_CHANGED
-
-    async def get_tool_name(self) -> str:
-        return "memory_server_get_memories"  # sanitized name as registered in StagedBaseTool
-
-
-# my_feature/agent_memory_module.py
-class AgentMemoryModule(Module):
-    def configure(self, binder: Binder) -> None:
-        binder.bind(AgentMemoryInjector, to=AgentMemoryInjector, scope=request_scope)
-
-    @multiprovider
-    def _provide_transformers(
-        self, injector: AgentMemoryInjector
-    ) -> list[MessagesTransformer]:
-        return [injector]
-```
-
-Register `AgentMemoryModule` in `app_factory.py` alongside other feature modules.
 
 ### Conditional injector example
 
