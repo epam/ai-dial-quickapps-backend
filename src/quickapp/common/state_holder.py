@@ -37,6 +37,10 @@ class StateHolder(BaseModel):
         key = self._get_file_key_by_url(url)
         self._file_data_dict[key] = file_data
 
+    def invalidate_file_data(self, url: str) -> None:
+        key = self._get_file_key_by_url(url)
+        self._file_data_dict.pop(key, None)
+
     @staticmethod
     def _get_file_key_by_url(url: str) -> str:
         return sha256(url.encode('utf-8')).hexdigest()

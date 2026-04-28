@@ -23,6 +23,7 @@ from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.text_file_tooling.text_file_tooling_module import TextFileToolingModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 
 
@@ -51,6 +52,7 @@ class AppFactory:
             DialPromptSkillsModule(),
             TimestampModule(),
             AgentHooksModule(),
+            TextFileToolingModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(

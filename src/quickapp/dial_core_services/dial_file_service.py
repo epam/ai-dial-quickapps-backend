@@ -1,4 +1,5 @@
 import logging
+from typing import Literal
 
 from aidial_client import AsyncDial
 from injector import inject
@@ -40,6 +41,33 @@ class DialFileService:
                 logger.error("Failed to download: %s", file_url, exc_info=True)
                 raise e
         return file_data
+
+    async def upload_text(
+        self,
+        url: str,
+        content: str,
+        *,
+        if_none_match: Literal["*"] | None = None,
+        if_match: str | None = None,
+    ) -> str:
+        encoded = content.encode("utf-8")
+        filename = url.split("/")[-1]
+        metadata = await self.__dial_client.files.upload(
+            url=url,
+            file=(filename, encoded, "text/plain"),
+            etag_if_none_match=if_none_match,
+            etag_if_match=if_match,
+        )
+        return metadata.url
+
+    async def download_file_with_etag(self, file_url: str) -> tuple[bytes, str]:
+        metadata = await self.__dial_client.files.get_metadata(file_url)
+        etag = metadata.etag or ""
+        data = await self.download_file(file_url)
+        return data, etag
+
+    def invalidate_cache(self, file_url: str) -> None:
+        self.__state_holder.invalidate_file_data(file_url)
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str
