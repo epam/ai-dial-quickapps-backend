@@ -54,8 +54,8 @@ class _AttachmentFilter(PreInvocationTransformer):
                 ):
                     updated_attachments.append(attachment)
                 all_attachments.append(attachment)
-            # Surface attachment metadata via XML — inline data and URLs may be
-            # stripped from the adapter-facing content otherwise. Skip ASSISTANT:
+            # Surface attachment URL/title via XML — bytes are stripped by the
+            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
             # re-presenting the model's own prior attachments conditions it to
             # mimic the XML format in responses.
             if message.role != Role.ASSISTANT:
