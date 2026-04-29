@@ -385,10 +385,20 @@ The context loaded by URL:
 
 #### PredefinedToolSet Configuration
 
-| Field         | Required | Type   | Description                      | Default Value |
-|---------------|----------|--------|----------------------------------|---------------|
-| type          | Yes      | String | The type of the tool set.        | `predefined`  |
-| template_name | Yes      | String | Name of the predefined template. | -             |
+| Field         | Required | Type           | Description                                                                                                                                                                                                              | Default Value |
+|---------------|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| type          | Yes      | String         | The type of the tool set.                                                                                                                                                                                                | `predefined`  |
+| template_name | Yes      | String         | Name of the predefined template.                                                                                                                                                                                         | -             |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`        |
+
+#### PredefinedTool Configuration
+
+| Field         | Required | Type           | Description                                                                                                                                                                                                            | Default Value     |
+|---------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| type          | Yes      | String         | The type indicating this is a tool template reference.                                                                                                                                                                 | `predefined-tool` |
+| template_name | Yes      | String         | The name of the tool template file (without extension).                                                                                                                                                                | -                 |
+| enabled       | No       | Boolean        | Whether the tool is enabled.                                                                                                                                                                                           | `true`            |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`            |
 
 #### MCPToolSet Configuration
 

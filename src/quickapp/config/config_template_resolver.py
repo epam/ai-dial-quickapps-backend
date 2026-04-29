@@ -1,9 +1,10 @@
 from typing import Any
 
 from injector import inject
-from pydantic import BaseModel, Field, TypeAdapter, model_validator
+from pydantic import BaseModel, Field, TypeAdapter, ValidationError, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
 from quickapp.config.prompt import PredefinedSystemPromptConfig
@@ -11,6 +12,14 @@ from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.config.utils import JsonMergePatchError, json_merge_patch
+
+_TOOL_ADAPTER: TypeAdapter[AnyTool] = TypeAdapter(AnyTool)
+_TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
+
+
+def _loc_to_json_pointer(loc: tuple[Any, ...]) -> str:
+    return "/" + "/".join(str(p) for p in loc)
 
 
 class PromptConfigResponse(BaseModel):
@@ -177,7 +186,12 @@ class ConfigResolver:
 
     def resolve_predefined_toolset(self, tool_set: PredefinedToolSet) -> ToolSet:
         template_content = self.read_template_content(ContentType.TOOLSET, tool_set.template_name)
-        actual_tool_set: ToolSet = TypeAdapter(ToolSet).validate_python(template_content)
+        actual_tool_set: ToolSet = _merge_and_validate(
+            tool_set.template_name,
+            template_content,
+            tool_set.override,
+            _TOOLSET_ADAPTER,
+        )
         return self.resolve_toolset(actual_tool_set)
 
     def resolve_toolset(self, tool_set: ToolSet) -> ToolSet:
@@ -197,4 +211,39 @@ class ConfigResolver:
 
     def resolve_tool(self, tool: PredefinedTool) -> AnyTool:
         template_content = self.read_template_content(ContentType.TOOL, tool.template_name)
-        return TypeAdapter(AnyTool).validate_python(template_content)
+        return _merge_and_validate(
+            tool.template_name,
+            template_content,
+            tool.override,
+            _TOOL_ADAPTER,
+        )
+
+
+def _merge_and_validate(
+    template_name: str,
+    template_content: Any,
+    override: dict[str, Any] | None,
+    adapter: TypeAdapter[Any],
+) -> Any:
+    if override is not None:
+        try:
+            template_content = json_merge_patch(template_content, override)
+        except JsonMergePatchError as e:
+            raise ConfigResolutionException(
+                message=e.message,
+                template_name=template_name,
+                json_path=e.path,
+            ) from e
+    try:
+        return adapter.validate_python(template_content)
+    except ValidationError as e:
+        errors = e.errors()
+        pairs = [(_loc_to_json_pointer(err["loc"]), err["msg"]) for err in errors]
+        first_path, first_msg = pairs[0] if pairs else ("", str(e))
+        details = "\n".join(f"{path}: {msg}" for path, msg in pairs)
+        raise ConfigResolutionException(
+            message=first_msg,
+            template_name=template_name,
+            json_path=first_path,
+            details=details,
+        ) from e
