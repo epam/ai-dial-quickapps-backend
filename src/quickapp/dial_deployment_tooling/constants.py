@@ -2,7 +2,7 @@
 
 # Request parameter keys
 CONTENT_PARAM = "query"
-ATTACHMENT_PARAM = "attachment_urls"
+ATTACHMENTS_PARAM = "attachments"
 
 # Extra body / custom fields keys
 EXTRA_BODY = "extra_body"

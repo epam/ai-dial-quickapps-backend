@@ -33,7 +33,14 @@ class _AttachmentFilter(PreInvocationTransformer):
             xml_parts.append("  <attachment>")
             xml_parts.append(f"    <title>{escape(str(attachment.title or ''))}</title>")
             xml_parts.append(f"    <type>{escape(str(attachment.type or ''))}</type>")
-            xml_parts.append(f"    <url>{escape(str(attachment.url or ''))}</url>")
+            if attachment.url is not None:
+                xml_parts.append(f"    <url>{escape(str(attachment.url))}</url>")
+            if attachment.data is not None:
+                xml_parts.append(f"    <data>{escape(str(attachment.data))}</data>")
+            if attachment.reference_type is not None:
+                xml_parts.append(
+                    f"    <reference_type>{escape(str(attachment.reference_type))}</reference_type>"
+                )
             if attachment.reference_url is not None:
                 xml_parts.append(
                     f"    <reference_url>{escape(str(attachment.reference_url))}</reference_url>"
@@ -55,8 +62,8 @@ class _AttachmentFilter(PreInvocationTransformer):
                 ):
                     updated_attachments.append(attachment)
                 all_attachments.append(attachment)
-            # Surface attachment URL/title via XML — bytes are stripped by the
-            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
+            # Surface attachment metadata via XML — inline data and URLs may be
+            # stripped from the adapter-facing content otherwise. Skip ASSISTANT:
             # re-presenting the model's own prior attachments conditions it to
             # mimic the XML format in responses.
             if message.role != Role.ASSISTANT:

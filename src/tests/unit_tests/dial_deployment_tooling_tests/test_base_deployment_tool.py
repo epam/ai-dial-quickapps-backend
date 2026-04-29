@@ -22,6 +22,7 @@ from quickapp.config.tools.base import (
     OpenAiToolFunctionParameters,
 )
 from quickapp.config.tools.deployment import DialDeploymentTool
+from quickapp.dial_core_services import AttachmentInput
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 
 
@@ -35,11 +36,11 @@ def _make_tool_call(
     tool_call_id: str,
     name: str,
     query: str,
-    attachment_urls: list[str] | None = None,
+    attachments: list[dict[str, Any]] | None = None,
 ) -> ToolCall:
     args: dict[str, Any] = {"query": query}
-    if attachment_urls is not None:
-        args["attachment_urls"] = attachment_urls
+    if attachments is not None:
+        args["attachments"] = attachments
     return ToolCall(
         id=tool_call_id,
         type="function",
@@ -75,6 +76,8 @@ def _build_tool(
     """Build a BaseDeploymentTool with minimal mocks for testing _extract_tool_history."""
     if dial_completion_service is None:
         dial_completion_service = MagicMock()
+        dial_completion_service.resolve_attachment = AsyncMock(return_value=[])
+        dial_completion_service.normalize_attachment_contents = MagicMock(return_value=[])
     tool_config = MagicMock()
     tool_config.display = None
     tool_config.attachment = MagicMock()
@@ -304,12 +307,19 @@ async def test_extract_preserves_response_state():
 
 @pytest.mark.asyncio
 async def test_extract_resolves_request_attachments():
-    """Tool call args with attachment_urls → UserMessageParam has resolved attachments."""
+    """Tool call args with URL attachments are resolved into UserMessageParam attachments."""
     mock_service = MagicMock()
-    mock_service.resolve_attachment_urls = AsyncMock(
+    mock_service.resolve_attachment = AsyncMock(
         return_value=[
-            {"type": "application/pdf", "title": "doc.pdf", "url": "files/xyz/doc.pdf"},
+            AttachmentInput(
+                type="application/pdf",
+                title="doc.pdf",
+                url="files/xyz/doc.pdf",
+            ),
         ]
+    )
+    mock_service.normalize_attachment_contents = MagicMock(
+        side_effect=lambda items: [item.to_attachment_param() for item in items]
     )
 
     messages: list[Message] = [
@@ -317,7 +327,10 @@ async def test_extract_resolves_request_attachments():
         _make_assistant_with_tool_calls(
             [
                 _make_tool_call(
-                    "tc1", "my_tool", "summarize this", attachment_urls=["files/xyz/doc.pdf"]
+                    "tc1",
+                    "my_tool",
+                    "summarize this",
+                    attachments=[{"url": "files/xyz/doc.pdf"}],
                 ),
             ]
         ),
@@ -336,7 +349,83 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["type"] == "application/pdf"
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
-    mock_service.resolve_attachment_urls.assert_awaited_once_with(["files/xyz/doc.pdf"])
+    mock_service.resolve_attachment.assert_awaited_once_with(
+        [AttachmentInput(url="files/xyz/doc.pdf")]
+    )
+
+
+@pytest.mark.asyncio
+async def test_extract_uses_attachment_contents_without_url_resolution():
+    mock_service = MagicMock()
+    mock_service.resolve_attachment = AsyncMock(
+        return_value=[AttachmentInput(type="text/plain", title="note.txt", data="inline text")]
+    )
+    mock_service.normalize_attachment_contents = MagicMock(
+        return_value=[
+            AttachmentInput(
+                type="text/plain",
+                title="note.txt",
+                data="inline text",
+            ).to_attachment_param()
+        ]
+    )
+
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Hello")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call(
+                    "tc1",
+                    "my_tool",
+                    "summarize this",
+                    attachments=[
+                        {"type": "text/plain", "title": "note.txt", "data": "inline text"}
+                    ],
+                ),
+            ]
+        ),
+        _make_tool_result("tc1", "Summary of the doc"),
+    ]
+
+    tool = _build_tool(messages, dial_completion_service=mock_service)
+    history = await tool._extract_tool_history("my_tool")
+
+    assert len(history) == 2
+    user_msg = history[0]
+    cc = user_msg["custom_content"]
+    assert len(cc["attachments"]) == 1
+    assert cc["attachments"][0]["type"] == "text/plain"
+    assert cc["attachments"][0]["data"] == "inline text"
+
+    mock_service.resolve_attachment.assert_awaited_once_with(
+        [AttachmentInput(type="text/plain", title="note.txt", data="inline text")]
+    )
+    parsed_attachment_contents = mock_service.normalize_attachment_contents.call_args.args[0]
+    assert len(parsed_attachment_contents) == 1
+    assert parsed_attachment_contents[0] == AttachmentInput(
+        type="text/plain",
+        title="note.txt",
+        data="inline text",
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_parses_attachment_contents_to_typed_objects():
+    tool_config = _make_tool_config()
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(
+        query="draw",
+        attachments=[{"type": "image/png", "title": "chart.png", "data": "encoded-image"}],
+    )
+
+    assert result["attachments"] == [
+        AttachmentInput(
+            type="image/png",
+            title="chart.png",
+            data="encoded-image",
+        )
+    ]
 
 
 def _make_tool_config(

@@ -20,8 +20,9 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
+from quickapp.dial_core_services import AttachmentInput
 from quickapp.dial_deployment_tooling.constants import (
-    ATTACHMENT_PARAM,
+    ATTACHMENTS_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
 )
@@ -63,7 +64,7 @@ class BaseDeploymentTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
-        attachment_urls: list[str] | None = None,
+        attachments: list[AttachmentInput] | None = None,
         **kwargs,
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
@@ -75,7 +76,7 @@ class BaseDeploymentTool(StagedBaseTool):
             self.__application_id,
             self.__application_name,
             stage_wrapper,
-            attachment_urls,
+            attachments,
             history=history,
         )
 
@@ -116,7 +117,7 @@ class BaseDeploymentTool(StagedBaseTool):
 
                 result_entry = tool_result_by_id.get(tc.id)
                 if result_entry is None:
-                    # Current call — its TOOL result hasn't been appended yet
+                    # Current call - its TOOL result hasn't been appended yet
                     continue
 
                 tool_content, tool_custom_content = result_entry
@@ -137,18 +138,22 @@ class BaseDeploymentTool(StagedBaseTool):
         try:
             args = json.loads(raw_arguments)
             query: str = args.get(CONTENT_PARAM, "")
-            attachment_urls: list[str] | None = args.get(ATTACHMENT_PARAM)
+            attachments = AttachmentInput.parse_list(args.get(ATTACHMENTS_PARAM))
         except (json.JSONDecodeError, AttributeError):
             return None
 
-        if not query and not attachment_urls:
+        if not query and not attachments:
             return None
 
         user_msg = UserMessageParam(role="user", content=query or "")
-        if attachment_urls:
-            resolved = await self.__dial_completion_service.resolve_attachment_urls(attachment_urls)
-            if resolved:
-                user_msg["custom_content"] = CustomContentParam(attachments=resolved)
+        normalized_attachments = await self.__dial_completion_service.resolve_attachment(
+            attachments
+        )
+        attachment_params = self.__dial_completion_service.normalize_attachment_contents(
+            normalized_attachments
+        )
+        if attachment_params:
+            user_msg["custom_content"] = CustomContentParam(attachments=attachment_params)
         return user_msg
 
     @classmethod
@@ -177,6 +182,10 @@ class BaseDeploymentTool(StagedBaseTool):
 
         tool_config = cast(DialDeploymentTool, self.tool_config)
         config_param_names = tool_config.deployment._configuration_param_names
+
+        attachments = kwargs.get(ATTACHMENTS_PARAM)
+        if attachments is not None:
+            kwargs[ATTACHMENTS_PARAM] = AttachmentInput.parse_list(attachments)
 
         # If tool config defines defaults, normalize them first
         params = tool_config.deployment.parameters

@@ -8,11 +8,13 @@ from injector import ProviderOf, inject
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
+    ConfigurableSchemaObject,
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -26,6 +28,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
+from quickapp.dial_core_services.attachment_input import AttachmentInput
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
@@ -137,19 +140,23 @@ class ToolConfigCoreService:
 
         # Handle attachments if the tool supports them
         if deployment.input_attachment_types:
-            properties["attachment_urls"] = ConfigurableSchemaArray(
+            attachment_input_schema = AttachmentInput.model_json_schema()
+            properties["attachments"] = ConfigurableSchemaArray(
                 type=JsonTypeEnum.array,
-                items=ConfigurableSchemaSimpleType(
-                    type=JsonTypeEnum.string,
-                    description="Attachment url related to tool call. Use full url.",
-                    display=ParameterDisplayConfig(
-                        stage=FormattedParameterConfig(name="**Prompt:** ")
+                items=ConfigurableSchemaObject(
+                    type=JsonTypeEnum.object,
+                    description=attachment_input_schema.get("description", ""),
+                    properties=JsonSchemaConverter.convert_schema_to_properties(
+                        attachment_input_schema
                     ),
+                    required=attachment_input_schema.get("required", []),
                 ),
-                description="The list of attachment urls related to tool call. Use full url for each item in the list. If no attachments are related use empty list argument value.",
+                description=(
+                    "List of attachment objects related to tool call. "
+                    "Each item may contain URL-based and/or inline data fields."
+                ),
             )
-
-            required_params.append("attachment_urls")
+            required_params.append("attachments")
 
         configuration_param_names: set[str] = set()
         if config and config.get("properties"):

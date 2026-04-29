@@ -11,8 +11,8 @@ from pydantic import SecretStr
 
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
-from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
+from quickapp.dial_core_services import AttachmentInput
+from quickapp.dial_deployment_tooling import EXTRA_BODY, EXTRA_HEADERS, DialCompletionService
 from tests.unit_tests.common.common import noop_timeout_resolver
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper
 
@@ -174,11 +174,11 @@ async def test_stage_wrapper_content_streaming(
 async def test_extra_params_go_to_extra_body_not_top_level(
     completion_service, azure_client, mock_stage_wrapper
 ):
-    """Params other than query and attachment_urls must be in extra_body, not top-level."""
+    """Params other than query and attachment payloads must be in extra_body, not top-level."""
     await completion_service.complete_request_async(
         params={
             "query": "Test query",
-            "attachment_urls": ["file/123"],
+            "attachments": [AttachmentInput(type="image/png", title="chart")],
             "temperature": 0.7,
             "max_tokens": 100,
             "custom_key": "custom_value",
@@ -197,9 +197,34 @@ async def test_extra_params_go_to_extra_body_not_top_level(
     assert extra_body["temperature"] == 0.7
     assert extra_body["max_tokens"] == 100
     assert extra_body["custom_key"] == "custom_value"
-    # query and attachment_urls must not be in extra_body
+    # query and attachment payloads must not be in extra_body
     assert "query" not in extra_body
-    assert "attachment_urls" not in extra_body
+    assert "attachments" not in extra_body
+
+
+@pytest.mark.asyncio
+async def test_attachment_added_to_user_message(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    await completion_service.complete_request_async(
+        params={"query": "Use inline attachments"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        attachments=[
+            AttachmentInput(
+                type="text/plain",
+                title="note.txt",
+                data="inline text",
+            )
+        ],
+    )
+
+    call_args = azure_client.chat.completions.create.call_args[1]
+    custom_content = call_args["messages"][0]["custom_content"]
+    assert custom_content["attachments"][0]["type"] == "text/plain"
+    assert custom_content["attachments"][0]["title"] == "note.txt"
+    assert custom_content["attachments"][0]["data"] == "inline text"
 
 
 @pytest.mark.asyncio
@@ -314,7 +339,7 @@ async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url
     result = await service._resolve_attachment(file_relative_url)
 
     metadata.get.assert_called_once_with("files", strip_file_prefix(file_relative_url))
-    assert result == AttachmentParam(type="image/png", title="photo.png", url="files/resolved.png")
+    assert result == AttachmentInput(type="image/png", title="photo.png", url="files/resolved.png")
 
 
 @pytest.mark.asyncio

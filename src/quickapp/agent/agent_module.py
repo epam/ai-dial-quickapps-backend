@@ -28,6 +28,7 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,
+    ConfigurableSchemaObject,
     ConfigurableSchemaSimpleType,
     JsonSchemaConst,
     JsonSchemaSimpleType,
@@ -47,10 +48,24 @@ DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     ),
 )
 
-DEFAULT_ATTACHMENT_URLS_PARAM = ConfigurableSchemaArray(
+DEFAULT_ATTACHMENT_PARAM = ConfigurableSchemaArray(
     type=JsonTypeEnum.array,
-    description="A list of full URLs for each attachment related to the tool call. Each item must be a full URL string. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
-    items=JsonSchemaSimpleType(type=JsonTypeEnum.string),
+    description=(
+        "A list of attachment objects related to the tool call. "
+        "Each item can include url and/or inline data fields."
+    ),
+    items=ConfigurableSchemaObject(
+        type=JsonTypeEnum.object,
+        description="Attachment payload",
+        properties={
+            "type": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+            "title": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+            "url": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+            "data": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+            "reference_url": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+        },
+        required=[],
+    ),
     display=ParameterDisplayConfig(stage=FormattedParameterConfig(name="**Files:** ")),
 )
 
@@ -102,7 +117,7 @@ class AgentModule(Module):
                 open_ai_tool = self._remove_const_params(open_ai_tool)
                 if tool.tool_config.type in [
                     "deployment-tool"
-                ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
+                ]:  # Append Query and attachment for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
@@ -122,9 +137,9 @@ class AgentModule(Module):
     def _append_default_props(converted_open_ai_tool: OpenAiToolConfig):
         if "query" not in converted_open_ai_tool.function.parameters.properties:
             converted_open_ai_tool.function.parameters.properties["query"] = DEFAULT_QUERY_PARAM
-        if "attachment_urls" not in converted_open_ai_tool.function.parameters.properties:
-            converted_open_ai_tool.function.parameters.properties["attachment_urls"] = (
-                DEFAULT_ATTACHMENT_URLS_PARAM
+        if "attachments" not in converted_open_ai_tool.function.parameters.properties:
+            converted_open_ai_tool.function.parameters.properties["attachments"] = (
+                DEFAULT_ATTACHMENT_PARAM
             )
         return converted_open_ai_tool
 

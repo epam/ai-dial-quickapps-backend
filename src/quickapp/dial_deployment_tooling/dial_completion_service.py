@@ -26,8 +26,9 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
+from quickapp.dial_core_services import AttachmentInput
 from quickapp.dial_deployment_tooling.constants import (
-    ATTACHMENT_PARAM,
+    ATTACHMENTS_PARAM,
     CONTENT_PARAM,
     EXTRA_BODY,
     EXTRA_HEADERS,
@@ -63,7 +64,7 @@ class DialCompletionService:
         deployment_id: str,
         deployment_name: str,
         stage_wrapper: BaseStageWrapper | None,
-        relative_attachment_urls: list[str] | None = None,
+        attachments: list[AttachmentInput] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
@@ -77,7 +78,9 @@ class DialCompletionService:
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(deployment_name, timeout):
             messages = await self.__build_request_messages(
-                content, relative_attachment_urls, history
+                content,
+                attachments,
+                history,
             )
             chat_params = self._build_chat_completion_params(
                 params, deployment_id, messages, self.__forwarded_headers
@@ -107,10 +110,10 @@ class DialCompletionService:
             "messages": messages,
         }
 
-        # query and attachment_urls are used only for messages; all other params go in extra_body
+        # query and attachments are used only for messages; all other params go in extra_body
         extra_body: dict[str, Any] = dict(params.get(EXTRA_BODY) or {})
         for k, v in params.items():
-            if k in (CONTENT_PARAM, ATTACHMENT_PARAM, EXTRA_BODY):
+            if k in (CONTENT_PARAM, ATTACHMENTS_PARAM, EXTRA_BODY):
                 continue
             if v is None or v == {}:
                 continue
@@ -158,7 +161,7 @@ class DialCompletionService:
     async def __build_request_messages(
         self,
         content: str,
-        relative_attachment_urls: list[str] | None = None,
+        attachments: list[AttachmentInput] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         messages: list[UserMessageParam | AssistantMessageParam] = []
@@ -166,29 +169,55 @@ class DialCompletionService:
             messages.extend(history)
         messages.append(
             await self.__user_message_from_content_and_attachments(
-                content, relative_attachment_urls
+                content,
+                attachments,
             )
         )
         return messages
 
     async def __user_message_from_content_and_attachments(
-        self, content, relative_attachment_urls: list[str] | None = None
+        self,
+        content: str,
+        attachments: list[AttachmentInput] | None = None,
     ) -> UserMessageParam:
         message = UserMessageParam(role="user", content=content)
-        attachments = await self.resolve_attachment_urls(relative_attachment_urls)
-        if attachments and len(attachments) > 0:
-            message["custom_content"] = CustomContentParam(attachments=attachments)
+        resolved_attachment = await self.resolve_attachment(attachments)
+        attachment_params = self.normalize_attachment_contents(resolved_attachment)
+        if attachment_params and len(attachment_params) > 0:
+            message["custom_content"] = CustomContentParam(attachments=attachment_params)
         return message
 
-    async def resolve_attachment_urls(
-        self, relative_attachment_urls: list[str] | None
+    @staticmethod
+    def normalize_attachment_contents(
+        attachment_contents: list[AttachmentInput] | None,
     ) -> list[AttachmentParam]:
-        return [await self._resolve_attachment(url) for url in (relative_attachment_urls or [])]
+        return [attachment.to_attachment_param() for attachment in attachment_contents or []]
 
-    async def _resolve_attachment(self, file_relative_url: str) -> AttachmentParam:
+    async def resolve_attachment(
+        self, attachment: list[AttachmentInput] | None
+    ) -> list[AttachmentInput]:
+        result: list[AttachmentInput] = []
+        for item in attachment or []:
+            if item.url is None:
+                result.append(item)
+                continue
+
+            resolved = await self._resolve_attachment(item.url)
+            result.append(
+                AttachmentInput(
+                    type=item.type or resolved.type,
+                    title=item.title or resolved.title,
+                    url=resolved.url,
+                    data=item.data,
+                )
+            )
+
+        return result
+
+    async def _resolve_attachment(self, file_relative_url: str) -> AttachmentInput:
         metadata: AsyncMetadata = self.__dial_client.metadata
         fileinfo = await metadata.get("files", strip_file_prefix(file_relative_url))
-        return AttachmentParam(
+        return AttachmentInput(
             type=fileinfo.content_type or "",
             title=fileinfo.name or "",
             url=fileinfo.url or "",

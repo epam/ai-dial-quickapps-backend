@@ -18,14 +18,18 @@ def _user_msg(content: str = "", attachments: list[Attachment] | None = None) ->
 
 def _attachment(
     title: str,
-    url: str,
+    url: str | None,
     mime_type: str,
     reference_url: str | None = None,
+    data: str | None = None,
+    reference_type: str | None = None,
 ) -> Attachment:
     return Attachment(
         title=title,
         url=url,
         type=mime_type,
+        data=data,
+        reference_type=reference_type,
         reference_url=reference_url,
     )
 
@@ -241,3 +245,27 @@ class Test_AttachmentFilter:
         result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<reference_url>/refs/doc.pdf</reference_url>" in content
+
+    def test_inline_attachment_data_is_written_to_xml_without_empty_url(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "test",
+            [
+                _attachment(
+                    "note.txt",
+                    None,
+                    "text/plain",
+                    data="inline text",
+                    reference_type="inline",
+                )
+            ],
+        )
+
+        result = transformer.transform([msg])
+        content = str(result[0].content)
+
+        assert "<title>note.txt</title>" in content
+        assert "<type>text/plain</type>" in content
+        assert "<data>inline text</data>" in content
+        assert "<reference_type>inline</reference_type>" in content
+        assert "<url>" not in content

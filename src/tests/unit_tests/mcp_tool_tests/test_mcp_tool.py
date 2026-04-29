@@ -7,12 +7,7 @@ from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
-from mcp.types import (
-    BlobResourceContents,
-    EmbeddedResource,
-    ImageContent,
-    TextResourceContents,
-)
+from mcp.types import BlobResourceContents, EmbeddedResource, ImageContent, TextResourceContents
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
@@ -40,8 +35,8 @@ from tests.unit_tests.common.common import create_app_configuration, noop_timeou
 
 def test_attachment_handling_mode_accepts_direct_field_only():
     assert (
-            AttachmentConfig(handling_mode=AttachmentHandlingMode.inline).handling_mode
-            == AttachmentHandlingMode.inline
+        AttachmentConfig(handling_mode=AttachmentHandlingMode.inline).handling_mode
+        == AttachmentHandlingMode.inline
     )
 
 

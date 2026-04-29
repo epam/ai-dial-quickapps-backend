@@ -216,18 +216,21 @@ def test_propagate_types_to_choice_is_default_for_deployment_tools():
     assert "application/vnd.plotly.v1+json" in result.attachment.propagate_types_to_choice
 
 
-def test_input_attachment_types_adds_attachment_urls_param():
+def test_input_attachment_types_adds_attachment_params():
     deployment = _make_deployment(input_attachment_types=["image/*"])
     result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
 
-    assert "attachment_urls" in result.open_ai_tool.function.parameters.properties
+    assert "attachments" in result.open_ai_tool.function.parameters.properties
+    attachments = result.open_ai_tool.function.parameters.properties["attachments"]
+    assert attachments.items.required == []
+    assert "data" in attachments.items.properties
 
 
-def test_no_input_attachment_types_no_attachment_urls_param():
+def test_no_input_attachment_types_no_attachment_params():
     deployment = _make_deployment(input_attachment_types=None)
     result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
 
-    assert "attachment_urls" not in result.open_ai_tool.function.parameters.properties
+    assert "attachments" not in result.open_ai_tool.function.parameters.properties
 
 
 def test_config_schema_populates_configuration_param_names():
