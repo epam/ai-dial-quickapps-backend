@@ -47,6 +47,9 @@
                 },
                 "data": {
                   "type": "string"
+                },
+                "reference_url": {
+                  "type": "string"
                 }
               },
               "required": ["type", "title"]

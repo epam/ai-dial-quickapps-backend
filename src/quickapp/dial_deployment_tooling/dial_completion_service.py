@@ -209,6 +209,7 @@ class DialCompletionService:
                     title=item.title or resolved.title,
                     url=resolved.url,
                     data=item.data,
+                    reference_url=item.reference_url,
                 )
             )
 

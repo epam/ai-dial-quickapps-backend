@@ -37,6 +37,10 @@ class _AttachmentFilter(PreInvocationTransformer):
                 xml_parts.append(f"    <url>{escape(str(attachment.url))}</url>")
             if attachment.data is not None:
                 xml_parts.append(f"    <data>{escape(str(attachment.data))}</data>")
+            if attachment.reference_url is not None:
+                xml_parts.append(
+                    f"    <reference_url>{escape(str(attachment.reference_url))}</reference_url>"
+                )
             xml_parts.append("  </attachment>")
         xml_parts.append("</attachments>")
         return "\n".join(xml_parts)

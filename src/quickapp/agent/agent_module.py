@@ -62,6 +62,7 @@ DEFAULT_ATTACHMENT_PARAM = ConfigurableSchemaArray(
             "title": JsonSchemaSimpleType(type=JsonTypeEnum.string),
             "url": JsonSchemaSimpleType(type=JsonTypeEnum.string),
             "data": JsonSchemaSimpleType(type=JsonTypeEnum.string),
+            "reference_url": JsonSchemaSimpleType(type=JsonTypeEnum.string),
         },
         required=["type", "title"],
     ),

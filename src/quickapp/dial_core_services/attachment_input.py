@@ -13,6 +13,10 @@ class AttachmentInput(BaseModel):
     title: str | None = Field(default=None, description="Attachment title.")
     url: str | None = Field(default=None, description="Attachment URL when available.")
     data: str | None = Field(default=None, description="Inline attachment content as string.")
+    reference_url: str | None = Field(
+        default=None,
+        description="Reference URL metadata for the attachment.",
+    )
 
     def to_attachment_param(self) -> AttachmentParam:
         attachment = AttachmentParam(type=self.type or "")
@@ -22,6 +26,8 @@ class AttachmentInput(BaseModel):
             attachment["url"] = self.url
         if self.data is not None:
             attachment["data"] = self.data
+        if self.reference_url is not None:
+            attachment["reference_url"] = self.reference_url
         return attachment
 
     @classmethod

@@ -20,12 +20,14 @@ def _attachment(
     title: str,
     url: str | None,
     mime_type: str,
+    reference_url: str | None = None,
     data: str | None = None,
 ) -> Attachment:
     return Attachment(
         title=title,
         url=url,
         type=mime_type,
+        reference_url=reference_url,
         data=data,
     )
 
@@ -213,6 +215,33 @@ class Test_AttachmentFilter:
         content = str(result[0].content)
         assert "<attachments>" in content
         assert "<title>doc.pdf</title>" in content
+
+    def test_reference_url_conditional_absent(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "test",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        result = transformer.transform([msg])
+        content = str(result[0].content)
+        assert "<reference_url>" not in content
+
+    def test_reference_url_conditional_present(self):
+        transformer = _AttachmentFilter()
+        msg = _user_msg(
+            "test",
+            [
+                _attachment(
+                    "doc.pdf",
+                    "/files/doc.pdf",
+                    "application/pdf",
+                    reference_url="/refs/doc.pdf",
+                )
+            ],
+        )
+        result = transformer.transform([msg])
+        content = str(result[0].content)
+        assert "<reference_url>/refs/doc.pdf</reference_url>" in content
 
     def test_inline_attachment_data_is_written_to_xml_without_empty_url(self):
         transformer = _AttachmentFilter()

@@ -216,6 +216,7 @@ async def test_attachment_added_to_user_message(
                 type="text/plain",
                 title="note.txt",
                 data="inline text",
+                reference_url="files/references/note.txt",
             )
         ],
     )
@@ -225,6 +226,7 @@ async def test_attachment_added_to_user_message(
     assert custom_content["attachments"][0]["type"] == "text/plain"
     assert custom_content["attachments"][0]["title"] == "note.txt"
     assert custom_content["attachments"][0]["data"] == "inline text"
+    assert custom_content["attachments"][0]["reference_url"] == "files/references/note.txt"
 
 
 @pytest.mark.asyncio
@@ -340,6 +342,44 @@ async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url
 
     metadata.get.assert_called_once_with("files", strip_file_prefix(file_relative_url))
     assert result == AttachmentInput(type="image/png", title="photo.png", url="files/resolved.png")
+
+
+@pytest.mark.asyncio
+async def test_resolve_attachment_preserves_reference_url():
+    fileinfo = MagicMock()
+    fileinfo.content_type = "image/png"
+    fileinfo.name = "photo.png"
+    fileinfo.url = "files/resolved.png"
+
+    metadata = MagicMock()
+    metadata.get = AsyncMock(return_value=fileinfo)
+
+    dial_client = MagicMock()
+    dial_client.metadata = metadata
+
+    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
+    service = DialCompletionService(
+        MagicMock(),
+        dial_settings,
+        SecretStr("test-key"),
+        dial_client=dial_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
+    )
+
+    result = await service.resolve_attachment(
+        [
+            AttachmentInput(
+                url="files/images/chart.png",
+                reference_url="https://storage.example/ref/chart.png",
+            )
+        ]
+    )
+
+    assert len(result) == 1
+    assert result[0].url == "files/resolved.png"
+    assert result[0].reference_url == "https://storage.example/ref/chart.png"
 
 
 @pytest.mark.asyncio
