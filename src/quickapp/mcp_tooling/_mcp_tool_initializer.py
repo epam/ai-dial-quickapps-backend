@@ -70,7 +70,7 @@ def _format_leaf_for_user(label: str, exc: BaseException) -> str:
         # McpError("Session terminated") (mcp/client/streamable_http.py),
         # so the underlying httpx error never propagates. Surface this case
         # distinctly instead of leaking the raw "Session terminated" string.
-        message = getattr(exc.error, "message", str(exc))
+        message = exc.error.message
         if message == "Session terminated":
             return (
                 f"MCP endpoint for toolset '{label}' did not respond as an MCP server "
@@ -303,20 +303,17 @@ class _MCPToolInitializer(CompletionInitializer):
             logger.error(f"HTTP error: {e}", exc_info=True)
             self.__mcp_context.append_exception(
                 ToolInitializationException(
-                    message=str(e),
+                    message=_format_leaf_for_user(label, e),
                     toolset_name=label,
-                    details=f"HTTP error for {label}: {getattr(e.response, 'status_code', '')} {getattr(e.response, 'reason_phrase', '')}",
                 )
             )
         except Exception as e:
             label = _toolset_label_for_error(toolset_info)
             logger.error(e, exc_info=True)
-            leaves = _flatten_exceptions(e)
-            detail_lines = [_format_leaf_for_user(label, leaf) for leaf in leaves]
-            primary_message = detail_lines[0] if detail_lines else str(e)
+            detail_lines = [_format_leaf_for_user(label, leaf) for leaf in _flatten_exceptions(e)]
             self.__mcp_context.append_exception(
                 ToolInitializationException(
-                    message=primary_message,
+                    message=detail_lines[0],
                     toolset_name=label,
                     details="\n".join(detail_lines),
                 )
