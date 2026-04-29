@@ -11,6 +11,7 @@ from tests.integration_tests.test_runner.similarity_checker import (
     get_similarity,
     get_similarity_alternatives,
 )
+from tests.integration_tests.test_runner.utils.string_utils import truncate_string
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,12 @@ class ParsedToolCall(NamedTuple):
     name: str
     args: dict[str, Any]
     result: str
+
+    _LOG_RESULT_MAX_LEN = 50
+
+    def __str__(self) -> str:
+        result_preview = truncate_string(self.result, self._LOG_RESULT_MAX_LEN)
+        return f"ParsedToolCall(name={self.name!r}, args={self.args!r}, result={result_preview!r})"
 
 
 class ResponseValidator:
@@ -380,7 +387,7 @@ class ResponseValidator:
             if not found_match:
                 failures.append(
                     Failure(
-                        actual=[call._asdict() for call in tool_call_history],
+                        actual=[str(call) for call in tool_call_history],
                         expected=expected.arguments,
                         comment=f"No matching call for '{expected.name}' found with the required arguments.",
                     )

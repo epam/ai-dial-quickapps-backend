@@ -16,6 +16,7 @@ from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDep
 from quickapp.agent.orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
 from quickapp.common import (
     DIAL_API_KEY,
+    DIAL_BEARER,
     ORCHESTRATOR_AZURE_CLIENT,
     ForwardedHeaders,
     StagedBaseTool,
@@ -98,13 +99,19 @@ class AgentModule(Module):
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
         forwarded_headers: ForwardedHeaders,
+        bearer: DIAL_BEARER,
     ) -> ORCHESTRATOR_AZURE_CLIENT:
+        headers = dict(forwarded_headers or {})
+
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
+
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             azure_deployment=config.orchestrator.deployment.name,
             api_version=dial_settings.api_version,
-            default_headers=forwarded_headers or None,
+            default_headers=headers,
         )
         return azure_client
 
