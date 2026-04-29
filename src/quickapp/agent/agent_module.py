@@ -51,18 +51,20 @@ DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
 DEFAULT_ATTACHMENT_PARAM = ConfigurableSchemaArray(
     type=JsonTypeEnum.array,
     description=(
-        "A list of attachment objects related to the tool call. Each item can include url or inline data. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list."
+        "A list of attachment objects. MUST always be an array, even if it contains only one item. "
+        "Never provide a single string or object. If no attachments are available, provide an empty list []."
     ),
+
     items=ConfigurableSchemaObject(
         type=JsonTypeEnum.object,
-        description="Attachment payload",
+        description="Attachment object. 'type' and 'title' are mandatory. Must include either 'url' or 'data'.",
         properties={
             "type": JsonSchemaSimpleType(type=JsonTypeEnum.string),
             "title": JsonSchemaSimpleType(type=JsonTypeEnum.string),
             "url": JsonSchemaSimpleType(type=JsonTypeEnum.string),
             "data": JsonSchemaSimpleType(type=JsonTypeEnum.string),
         },
-        required=[],
+        required=["type", "title"],
     ),
     display=ParameterDisplayConfig(stage=FormattedParameterConfig(name="**Files:** ")),
 )

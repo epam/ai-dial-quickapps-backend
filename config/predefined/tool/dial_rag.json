@@ -34,6 +34,7 @@
             "type": "array",
             "items": {
               "type": "object",
+              "description": "Attachment object. 'type' and 'title' are MANDATORY. Must include either 'url' or 'data'.",
               "properties": {
                 "type": {
                   "type": "string"
@@ -48,9 +49,9 @@
                   "type": "string"
                 }
               },
-              "required": []
+              "required": ["type", "title"]
             },
-            "description": "A list of attachment objects related to the tool call. Each item can include url or inline data. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+            "description": "A list of attachment objects. MUST always be an array, even if it contains only one item. Never provide a single string or object. If no attachments are available, provide an empty list [].",
             "display": {
               "stage": {
                 "name": "**Files:** "
