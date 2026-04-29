@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from aidial_client.types.chat.response import Attachment
 
+from quickapp.config.tools.base import AttachmentHandlingMode
 from quickapp.dial_core_services.attachment_service import AttachmentService
 
 
@@ -103,3 +104,37 @@ async def test_upload_skipped_when_url_already_set():
     mock_client.bucket.get_raw.assert_not_called()
     mock_client.files.upload.assert_not_called()
     assert result.url == "https://already-set.com/file"
+
+
+@pytest.mark.asyncio
+async def test_handle_attachment_inline_keeps_original_attachment():
+    mock_client = _make_mock_dial_client()
+    attachment = Attachment(title="inline.txt", url=None, data="inline-data", type="text/plain")
+
+    svc = AttachmentService(dial_client=mock_client)
+    result = await svc.handle_attachment(
+        attachment,
+        AttachmentHandlingMode.inline,
+    )
+
+    mock_client.bucket.get_raw.assert_not_called()
+    mock_client.files.upload.assert_not_called()
+    assert result.data == "inline-data"
+    assert result.url is None
+
+
+@pytest.mark.asyncio
+async def test_handle_attachment_upload_to_core_uploads():
+    mock_client = _make_mock_dial_client(upload_url="https://example.com/generated.txt")
+    attachment = Attachment(title="generated.txt", url=None, data="hello", type="text/plain")
+
+    svc = AttachmentService(dial_client=mock_client)
+    result = await svc.handle_attachment(
+        attachment,
+        AttachmentHandlingMode.upload_to_core,
+    )
+
+    mock_client.bucket.get_raw.assert_awaited_once()
+    mock_client.files.upload.assert_awaited_once()
+    assert result.data is None
+    assert result.url == "https://example.com/generated.txt"

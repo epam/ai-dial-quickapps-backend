@@ -127,7 +127,9 @@ class _PyInterpreterTool(StagedBaseTool):
                 attachments = []
                 if execution_result.display:
                     attachments = await self.__display_content_processor.process_display_content(
-                        execution_result.display, display_title=display_title
+                        execution_result.display,
+                        display_title=display_title,
+                        handling_mode=self._tool_config.attachment.handling_mode,
                     )
                     execution_result = self.__display_content_processor.sanitize_display_content(
                         execution_result

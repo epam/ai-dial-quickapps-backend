@@ -99,8 +99,9 @@ class _RestApiTool(StagedBaseTool):
                     )
                     logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
                     attachment = Attachment(title=title, type=mime_type, data=response.text)
-                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
-                        attachment
+                    attachment = await self.__dial_attachment_service.handle_attachment(
+                        attachment,
+                        self._tool_config.attachment.handling_mode,
                     )
                     attachments.append(attachment)
 

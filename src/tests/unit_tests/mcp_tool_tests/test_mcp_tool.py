@@ -7,7 +7,12 @@ from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
-from mcp.types import BlobResourceContents, EmbeddedResource, ImageContent, TextResourceContents
+from mcp.types import (
+    BlobResourceContents,
+    EmbeddedResource,
+    ImageContent,
+    TextResourceContents,
+)
 from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
@@ -24,13 +29,20 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.tools.base import AttachmentConfig
+from quickapp.config.tools.base import AttachmentConfig, AttachmentHandlingMode
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration, noop_timeout_resolver
+
+
+def test_attachment_handling_mode_accepts_direct_field_only():
+    assert (
+            AttachmentConfig(handling_mode=AttachmentHandlingMode.inline).handling_mode
+            == AttachmentHandlingMode.inline
+    )
 
 
 @pytest.mark.asyncio
@@ -54,15 +66,14 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
     # Mock attachment service upload
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
 
-    async def mock_upload(attachment):
+    async def mock_prepare(attachment, handling_mode):
         attachment.url = "mocked_url"
         attachment.data = None
         attachment.title = "Attachment"
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core.side_effect = mock_upload
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
 
     # Provide call_mcp_tool results based on tool name (simulate CallToolResult-like objects)
     async def _call_side_effect(tool_name, **kwargs):
@@ -222,6 +233,9 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
             ],
         )
 
+        # test_tool2, test_tool3, test_tool4 are generated attachments
+        assert mock_dial_attachment_service.handle_attachment.call_count == 3
+
     client = TestClient(app)
     response = client.get("/")
     assert response.status_code == 200
@@ -245,15 +259,14 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
 
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
 
-    async def mock_upload(attachment):
+    async def mock_prepare(attachment, handling_mode):
         attachment.url = "mocked_url"
         attachment.data = None
         attachment.title = "Attachment"
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core.side_effect = mock_upload
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
 
     # Tool returns both image and text attachments
     async def _call_side_effect(tool_name, **kwargs):
@@ -322,8 +335,101 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         assert len(result.attachments) == 1
         assert result.attachments[0].type == "image/png"
 
-        # Upload should only be called once (for the image)
-        assert mock_dial_attachment_service.upload_attachment_to_core.call_count == 1
+        # Generated attachment handling should only be called once (for the image)
+        assert mock_dial_attachment_service.handle_attachment.call_count == 1
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+
+
+@pytest.mark.asyncio
+@patch(
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool",
+    new_callable=AsyncMock,
+)
+@patch(
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list",
+    new_callable=AsyncMock,
+)
+async def test_mcp_tool_inline_resource_mode_skips_upload_and_keeps_data(
+    mock_get_tools_list, mock_call_mcp_tool
+):
+    tool_1 = SimpleNamespace(name="inline_tool", description="Inline data tool", inputSchema={})
+    mock_get_tools_list.return_value = [tool_1]
+
+    mock_stage = MagicMock(spec=Stage)
+    mock_dial_attachment_service = MagicMock(spec=AttachmentService)
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock()
+
+    async def mock_prepare(attachment, handling_mode):
+        return attachment
+
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
+
+    async def _call_side_effect(tool_name, **kwargs):
+        tr = TextResourceContents(
+            mimeType="text/plain",
+            text="inline text",
+            uri=AnyUrl("https://example.com/doc.txt"),
+        )
+        return SimpleNamespace(
+            content=[EmbeddedResource(resource=tr, type="resource")],
+            isError=False,
+        )
+
+    mock_call_mcp_tool.side_effect = _call_side_effect
+
+    mcp_toolset = MCPToolSet(
+        type="mcp",
+        mcp_server_info=MCPServerInfo(
+            url="https://test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
+        ),
+        name="mcp-toolset",
+        description="Set with MCP tools",
+        attachment=AttachmentConfig(handling_mode=AttachmentHandlingMode.inline),
+    )
+
+    def configure(binder: Binder) -> None:
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(
+            AsyncDial,
+            to=InstanceProvider(AsyncDial(api_key="some_api_key", base_url="https://core")),
+        )
+        binder.bind(AttachmentService, mock_dial_attachment_service)
+        binder.bind(
+            ApplicationConfig,
+            to=create_app_configuration([mcp_toolset]),
+        )
+        binder.bind(PerformanceTimer, to=PerformanceTimer)
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
+        binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    app = create_test_app([MCPToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(injector: Injector = Injected(Injector)):
+        initializers = injector.get(list[CompletionInitializer])
+        await initializers[0].initialize()
+
+        tools = injector.get(list[StagedBaseTool])
+        assert len(tools) == 1
+
+        result = await tools[0].arun("call-1")
+
+        assert result.attachments is not None
+        assert len(result.attachments) == 1
+        assert result.attachments[0].type == "text/plain"
+        assert result.attachments[0].data == "inline text"
+        assert result.attachments[0].url is None
+
+        mock_dial_attachment_service.handle_attachment.assert_awaited_once()
+        mock_dial_attachment_service.upload_attachment_to_core.assert_not_called()
 
     client = TestClient(app)
     response = client.get("/")

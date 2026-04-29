@@ -188,13 +188,16 @@ class _MCPTool(StagedBaseTool):
             )
 
             attachments = []
+            mode = self._tool_config.attachment.handling_mode
+
             for content in non_text_contents:
                 attachment = self._content_to_attachment(content)
-                if attachment is not None and self._should_upload(attachment.type):
-                    attachment = await self.__dial_attachment_service.upload_attachment_to_core(
-                        attachment
-                    )
-                    attachments.append(attachment)
+                if attachment is None or not self._should_upload(attachment.type):
+                    continue
+                attachment = await self.__dial_attachment_service.handle_attachment(
+                    attachment, mode
+                )
+                attachments.append(attachment)
 
             result = ToolCallResult(
                 content=tool_content,

@@ -14,6 +14,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
+    AttachmentHandlingMode,
     BaseOpenAITool,
     OpenAiToolConfig,
     OpenAiToolFunction,
@@ -166,10 +167,10 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-    async def mock_upload(attachment):
+    async def mock_prepare(attachment, handling_mode):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -228,10 +229,10 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-    async def mock_upload(attachment):
+    async def mock_prepare(attachment, handling_mode):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -284,15 +285,77 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
 
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
+async def test_response_as_attachment_inline_mode_keeps_data(mock_async_client):
+    url = "https://example.com/api"
+    mock_stage = MagicMock(spec=Stage)
+    mock_dial_attachment_service = MagicMock(spec=AttachmentService)
+
+    async def mock_prepare(attachment, handling_mode):
+        assert handling_mode == AttachmentHandlingMode.inline
+        return attachment
+
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
+
+    response_data = {
+        "text": '{"data": "value"}',
+        "headers": {"Content-Type": "application/json"},
+    }
+    mock_response = AsyncMock(**response_data)
+    mock_response.raise_for_status = MagicMock()
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
+
+    rest_api_toolset = RestApiToolSet(
+        name="rest-api",
+        authorization=BearerAuthorization(token="test_token"),
+        tools=[
+            _make_rest_api_tool(
+                url,
+                ToolEndpointInfoMethodType.get,
+                response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
+                attachment={"handling_mode": AttachmentHandlingMode.inline},
+            )
+        ],
+    )
+
+    def configure(binder: Binder):
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AttachmentService, mock_dial_attachment_service)
+        binder.bind(Stage, to=mock_stage)
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
+
+        assert result.attachments is not None
+        assert len(result.attachments) == 1
+        assert result.attachments[0].url is None
+        assert result.attachments[0].data == '{"data": "value"}'
+        return {"message": "success"}
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
+    mock_dial_attachment_service.handle_attachment.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@patch("httpx.AsyncClient")
 async def test_toolset_level_response_as_attachment_propagation(mock_async_client):
     url = "https://example.com/api"
     mock_stage = MagicMock(spec=Stage)
     mock_dial_attachment_service = MagicMock(spec=AttachmentService)
 
-    async def mock_upload(attachment):
+    async def mock_prepare(attachment, handling_mode):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
+    mock_dial_attachment_service.handle_attachment = AsyncMock(side_effect=mock_prepare)
 
     response_data = {
         "text": '{"data": "value"}',

@@ -6,6 +6,7 @@ from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
 from quickapp.common.utils import generate_attachment_filename
+from quickapp.config.tools.base import AttachmentHandlingMode
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,15 @@ class AttachmentService:
 
     def __init__(self, dial_client: AsyncDial):
         self.__dial_client: AsyncDial = dial_client
+
+    async def handle_attachment(
+        self,
+        attachment: Attachment,
+        handling_mode: AttachmentHandlingMode,
+    ) -> Attachment:
+        if handling_mode == AttachmentHandlingMode.inline:
+            return attachment
+        return await self.upload_attachment_to_core(attachment)
 
     async def upload_attachment_to_core(self, attachment: Attachment) -> Attachment:
         logger.debug(

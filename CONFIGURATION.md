@@ -782,6 +782,7 @@ Do not show parameter with value in stage while tool call:
 | supported_types           | No       | Array[String] | List of supported attachment MIME types                                                                              | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[*/*]`       |
 | propagate_types_to_choice | No       | Array[String] | List of supported attachment MIME types that will be shown in main chat (propagated from tool call result to choice) | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[]`          |
 | media_type_substitution   | No       | dict[str, str] | Maps original MIME type to substitute. Key is a original mime_type, value is desired mime type. | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `{}` |
+| handling_mode | No | String | Controls how QuickApps-generated attachments are returned: upload them to DIAL Core and return URLs, or keep original content inline. Applies to MCP resources, REST `response_as_attachment`, and internal tool generated attachments. | `upload_to_core`, `inline` | `upload_to_core` |
 
 <details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
@@ -798,9 +799,13 @@ Do not show parameter with value in stage while tool call:
   ],
   "media_type_substitution": {
     "application/json": "application/vnd.plotly.v1+json"
-  }
+  },
+  "handling_mode": "upload_to_core"
 }
 ```
+
+Set `handling_mode: "inline"` when you want QuickApps-generated attachments to keep original
+payload data inline instead of uploading them to DIAL Core first.
 
 </details>
 
