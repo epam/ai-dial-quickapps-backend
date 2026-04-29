@@ -152,8 +152,8 @@ class ToolConfigCoreService:
                     required=attachment_input_schema.get("required", []),
                 ),
                 description=(
-                    "List of attachment objects related to tool call. "
-                    "Each item may contain URL-based and/or inline data fields."
+                        "A list of attachment objects. MUST always be an array, even if it contains only one item. "
+                        "Never provide a single string or object. If no attachments are available, provide an empty list []."
                 ),
             )
             required_params.append("attachments")
