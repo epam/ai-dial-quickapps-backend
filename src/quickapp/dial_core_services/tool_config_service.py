@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
+from quickapp.common.utils import sanitize_toolname
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -111,13 +112,15 @@ class ToolConfigCoreService:
         Returns:
             A DialDeploymentTool representing the final tool configuration.
         """
+
+        name = f"{sanitize_toolname(deployment.display_name or deployment.id.split('/')[-1])}_tool"
         output_tool = DialDeploymentTool(
-            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment.id}: ")),
+            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {name}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
-                    name=f"{deployment.id.replace('-', '_')}_tool",
+                    name=name,
                     description=deployment.description or "",
                     parameters=OpenAiToolFunctionParameters(
                         type=JsonTypeEnum.object, properties={}, required=[]

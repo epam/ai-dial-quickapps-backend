@@ -46,19 +46,11 @@ def sanitize_toolname(input_str: str) -> str:
     """
     Sanitizes a string to match the pattern ^[a-zA-Z0-9_-]{1,64}$
 
-    Args:
-        input_str: Input string to sanitize
-
-    Returns:
-        Sanitized string containing only allowed characters (a-z, A-Z, 0-9, _, -)
-        with length 1-64 characters. Returns empty string if no valid characters exist.
+    Invalid characters are replaced with '_' and the result is truncated
+    to 64 characters.
     """
-    # Step 1: Remove all invalid characters
-    sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('', input_str)
-
-    # Step 2: Truncate to max 64 characters
+    sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('_', input_str)
     sanitized = sanitized[:64]
-
     return sanitized
 
 
