@@ -1,58 +1,91 @@
 {
-    "type": "deployment-tool",
-    "display": {"stage": {"name": "RAG search: "}},
-    "deployment": {"name": "dial-rag"},
-    "content_propagation": {"propagate_history": true, "propagate_headers": []},
-    "open_ai_tool": {
-        "type": "function",
-        "function": {
-            "name": "rag_search_tool",
-            "description": "Performs RAG search in text files and returns llm answer based on the search.\nSupports the following attachment types:\n- .pdf - application/pdf\n- .txt - text/plain\n- .doc - application/msword\n- .docx - application/vnd.openxmlformats-officedocument.wordprocessingml.document\n- .odt - application/vnd.oasis.opendocument.text\n- .ppt - application/vnd.ms-powerpoint\n- .pptx - application/vnd.openxmlformats-officedocument.presentationml.presentation\n- .odp - application/vnd.oasis.opendocument.presentation\n- .png - image/png\n- .jpg/jpeg - image/jpeg\n- .bmp - image/bmp\n- .tiff/tif - image/tiff\nShould be used when user asks to search for information in files or to answer questions based on file content.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "query": {
-                        "type": "string",
-                        "description": "RAG search prompt",
-                        "display": {
-                            "stage": {"show_value_in_stage_title": true, "name": "**Prompt:** "}
-                        }
-                    },
-                    "attachments": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "type": {"type": "string"},
-                                "title": {"type": "string"},
-                                "url": {"type": "string"},
-                                "data": {"type": "string"}
-                            },
-                            "required": []
-                        },
-                        "description": "A list of attachment objects related to the tool call. Each item can include url and/or inline data fields.",
-                        "display": {"stage": {"name": "**Files:** "}}
-                    }
-                },
-                "required": ["query", "attachments"]
+  "type": "deployment-tool",
+  "display": {
+    "stage": {
+      "name": "RAG search: "
+    }
+  },
+  "deployment": {
+    "name": "dial-rag"
+  },
+  "content_propagation": {
+    "propagate_history": true,
+    "propagate_headers": []
+  },
+  "open_ai_tool": {
+    "type": "function",
+    "function": {
+      "name": "rag_search_tool",
+      "description": "Performs RAG search in text files and returns llm answer based on the search.\nSupports the following attachment types:\n- .pdf - application/pdf\n- .txt - text/plain\n- .doc - application/msword\n- .docx - application/vnd.openxmlformats-officedocument.wordprocessingml.document\n- .odt - application/vnd.oasis.opendocument.text\n- .ppt - application/vnd.ms-powerpoint\n- .pptx - application/vnd.openxmlformats-officedocument.presentationml.presentation\n- .odp - application/vnd.oasis.opendocument.presentation\n- .png - image/png\n- .jpg/jpeg - image/jpeg\n- .bmp - image/bmp\n- .tiff/tif - image/tiff\nShould be used when user asks to search for information in files or to answer questions based on file content.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "RAG search prompt",
+            "display": {
+              "stage": {
+                "show_value_in_stage_title": true,
+                "name": "**Prompt:** "
+              }
             }
-        }
-    },
-    "attachment": {
-        "supported_types": [
-            "application/pdf",
-            "text/plain",
-            "application/msword",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.oasis.opendocument.text",
-            "application/vnd.ms-powerpoint",
-            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "application/vnd.oasis.opendocument.presentation",
-            "image/png",
-            "image/jpeg",
-            "image/bmp",
-            "image/tiff"
+          },
+          "attachments": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "url": {
+                  "type": "string"
+                },
+                "data": {
+                  "type": "string"
+                }
+              },
+              "required": []
+            },
+            "description": "A list of attachment objects related to the tool call. Each item can include url and/or inline data fields.",
+            "display": {
+              "stage": {
+                "name": "**Files:** "
+              }
+            }
+          }
+        },
+        "required": [
+          "query",
+          "attachments"
         ]
-    },
-    "fallback_configuration": {"strategies": [{"type": "continue"}]}
+      }
+    }
+  },
+  "attachment": {
+    "supported_types": [
+      "application/pdf",
+      "text/plain",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.oasis.opendocument.text",
+      "application/vnd.ms-powerpoint",
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "application/vnd.oasis.opendocument.presentation",
+      "image/png",
+      "image/jpeg",
+      "image/bmp",
+      "image/tiff"
+    ]
+  },
+  "fallback_configuration": {
+    "strategies": [
+      {
+        "type": "continue"
+      }
+    ]
+  }
 }
