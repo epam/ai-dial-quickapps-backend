@@ -27,11 +27,13 @@ def _make_deployment_model(
     description: str = "desc",
     input_attachment_types: list[str] | None = None,
     has_configuration: bool = False,
+    display_name: str | None = None,
 ) -> MagicMock:
     features = MagicMock()
     features.configuration = has_configuration
     model = MagicMock()
     model.id = deployment_id
+    model.display_name = display_name
     model.description = description
     model.input_attachment_types = input_attachment_types
     model.features = features
@@ -182,10 +184,12 @@ def _make_deployment(
     deployment_id: str = "test-deployment",
     description: str = "A test deployment",
     input_attachment_types: list[str] | None = None,
+    display_name: str | None = None,
 ):
     """Create a minimal deployment-like object for ToolConfigCoreService."""
     return SimpleNamespace(
         id=deployment_id,
+        display_name=display_name,
         description=description,
         input_attachment_types=input_attachment_types,
         features=None,
@@ -257,3 +261,28 @@ def test_config_without_properties_leaves_configuration_param_names_empty():
     result = ToolConfigCoreService._convert_to_openai_tool_format(deployment, config)
 
     assert result.deployment._configuration_param_names == set()
+
+
+class TestConvertToOpenaiToolFormatName:
+
+    def test_display_name_used_as_tool_name_base(self):
+        deployment = SimpleNamespace(
+            id="applications/abc123/App%20with%20spaces__0.0.1",
+            display_name="App with spaces",
+            description="",
+            input_attachment_types=None,
+            features=None,
+        )
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.open_ai_tool.function.name == "App_with_spaces__0_0_1_tool"
+
+    def test_tool_name_has_no_deployment_id_prefix(self):
+        deployment = SimpleNamespace(
+            id="applications/abc/my-app",
+            display_name=None,
+            description="",
+            input_attachment_types=None,
+            features=None,
+        )
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.open_ai_tool.function.name == "my-app_tool"
