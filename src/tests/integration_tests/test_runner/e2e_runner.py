@@ -3,7 +3,6 @@ import inspect
 import json
 import logging
 import mimetypes
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -141,7 +140,7 @@ class TestRunner:
             file_mime = mimetypes.guess_type(attachment.name)[0]
             file_metadata = await dial_client.files.upload(
                 f"files/{bucket}/{attachment.name}",
-                (attachment.name, BytesIO(file_bytes), file_mime),
+                file=(attachment.name, file_bytes, file_mime),
             )
             url = file_metadata.url
 
