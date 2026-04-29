@@ -6,6 +6,7 @@ from urllib.parse import unquote
 import httpx
 from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
+from mcp.shared.exceptions import McpError
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
@@ -46,6 +47,37 @@ def _human_readable_dial_id(dial_id: str) -> str:
     """
     last_part = dial_id.split("/")[-1] if "/" in dial_id else dial_id
     return unquote(last_part)
+
+
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    """Walk nested BaseExceptionGroups and return their leaf exceptions in order."""
+    if isinstance(exc, BaseExceptionGroup):
+        leaves: list[BaseException] = []
+        for sub in exc.exceptions:
+            leaves.extend(_flatten_exceptions(sub))
+        return leaves
+    return [exc]
+
+
+def _format_leaf_for_user(label: str, exc: BaseException) -> str:
+    """Render a leaf exception into a single-line user-facing message."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = getattr(exc.response, "status_code", "")
+        reason = getattr(exc.response, "reason_phrase", "")
+        return f"HTTP error for {label}: {status} {reason}".rstrip()
+    if isinstance(exc, McpError):
+        # The MCP streamable_http client converts upstream HTTP 404 into
+        # McpError("Session terminated") (mcp/client/streamable_http.py),
+        # so the underlying httpx error never propagates. Surface this case
+        # distinctly instead of leaking the raw "Session terminated" string.
+        message = getattr(exc.error, "message", str(exc))
+        if message == "Session terminated":
+            return (
+                f"MCP endpoint for toolset '{label}' did not respond as an MCP server "
+                f"(session terminated — the upstream may have returned 404)"
+            )
+        return f"MCP error for {label}: {message}"
+    return f"{type(exc).__name__}: {exc}"
 
 
 _LOGIN_RESULT_MESSAGES: dict[LoginResult, str] = {
@@ -279,21 +311,13 @@ class _MCPToolInitializer(CompletionInitializer):
         except Exception as e:
             label = _toolset_label_for_error(toolset_info)
             logger.error(e, exc_info=True)
-            details = ""
-            if hasattr(e, "exceptions"):
-                details_list = []
-                for sub_e in e.exceptions:
-                    if isinstance(sub_e, httpx.HTTPStatusError):
-                        details_list.append(
-                            f"HTTP error for {label}: {getattr(sub_e.response, 'status_code', '')} {getattr(sub_e.response, 'reason_phrase', '')}"
-                        )
-                    else:
-                        details_list.append(str(sub_e))
-                details = "\n".join(details_list)
+            leaves = _flatten_exceptions(e)
+            detail_lines = [_format_leaf_for_user(label, leaf) for leaf in leaves]
+            primary_message = detail_lines[0] if detail_lines else str(e)
             self.__mcp_context.append_exception(
                 ToolInitializationException(
-                    message=str(e),
+                    message=primary_message,
                     toolset_name=label,
-                    details=details,
+                    details="\n".join(detail_lines),
                 )
             )
