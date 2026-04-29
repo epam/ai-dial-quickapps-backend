@@ -129,7 +129,7 @@ class _MCPTool(StagedBaseTool):
 
         return None
 
-    def _should_upload(self, mime_type: str | None) -> bool:
+    def _is_supported_attachment_type(self, mime_type: str | None) -> bool:
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
@@ -188,14 +188,14 @@ class _MCPTool(StagedBaseTool):
             )
 
             attachments = []
-            mode = self._tool_config.attachment.handling_mode
+            handling_mode = self._tool_config.attachment.handling_mode
 
             for content in non_text_contents:
                 attachment = self._content_to_attachment(content)
-                if attachment is None or not self._should_upload(attachment.type):
+                if attachment is None or not self._is_supported_attachment_type(attachment.type):
                     continue
                 attachment = await self.__dial_attachment_service.handle_attachment(
-                    attachment, mode
+                    attachment, handling_mode
                 )
                 attachments.append(attachment)
 
