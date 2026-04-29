@@ -190,17 +190,6 @@ class AttachmentConfig(BaseModel):
             return {}
         return v
 
-    @field_validator("handling_mode", mode="before")
-    @classmethod
-    def coerce_none_handling_mode(
-        cls, v: AttachmentHandlingMode | str | None
-    ) -> AttachmentHandlingMode:
-        if v is None:
-            return AttachmentHandlingMode.upload_to_core
-        if isinstance(v, AttachmentHandlingMode):
-            return v
-        return AttachmentHandlingMode(v)
-
 
 class OpenAiToolConfig(
     BaseModel,
