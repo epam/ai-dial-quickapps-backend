@@ -167,7 +167,7 @@ class Test_AttachmentFilter:
 
     # --- Role-based tests ---
 
-    def test_assistant_message_image_attachments_stripped(self):
+    def test_assistant_message_attachments_stripped_without_xml(self):
         transformer = _AttachmentFilter()
         msg = _msg(
             Role.ASSISTANT,
@@ -177,8 +177,11 @@ class Test_AttachmentFilter:
         result = transformer.transform([msg])
         # Non-USER roles: images are NOT kept inline
         assert len(result[0].custom_content.attachments) == 0
+        # ASSISTANT messages do not get XML metadata injected — those attachments
+        # came from the model's own prior output and would create few-shot bias.
         content = str(result[0].content)
-        assert "<title>photo.png</title>" in content
+        assert "<attachments>" not in content
+        assert content == "response"
 
     def test_tool_message_attachments_stripped(self):
         transformer = _AttachmentFilter()
