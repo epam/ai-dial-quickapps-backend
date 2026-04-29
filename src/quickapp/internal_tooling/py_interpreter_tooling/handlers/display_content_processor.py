@@ -61,7 +61,7 @@ class DisplayContentProcessor:
             if media_type in SUPPORTED_DISPLAY_MEDIA_TYPES:
                 attachment = Attachment(
                     type=media_type,
-                    data=self._prepare_content(media_type, data),
+                    data=self._serialize_display_data(media_type, data),
                 )
                 attachment = await self.__attachment_service.handle_attachment(
                     attachment,
@@ -72,15 +72,11 @@ class DisplayContentProcessor:
         return attachments
 
     @staticmethod
-    def _prepare_content(mime_type: str, data: str | dict[str, Any]) -> str:
-        """Prepares content for storage based on mime type"""
-        if mime_type in (MediaTypes.PNG, MediaTypes.JPEG, MediaTypes.GIF):
-            if isinstance(data, dict):
-                raise ValueError("Binary content (images) must be provided as string, not dict")
-            base64.b64decode(data)
-            return data
-
+    def _serialize_display_data(mime_type: str, data: str | dict[str, Any]) -> str:
+        """Serializes display payload into attachment string data"""
         if isinstance(data, dict):
+            if mime_type in (MediaTypes.PNG, MediaTypes.JPEG, MediaTypes.GIF):
+                raise ValueError("Binary content (images) must be provided as string, not dict")
             return json.dumps(data)
 
         return data
