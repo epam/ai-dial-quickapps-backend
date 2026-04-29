@@ -1,10 +1,6 @@
 # Design: Predefined Template Overrides for Per-App Configurations
 
-- **Status:** Approved
-- **Dependencies:**
-  - [Layered Predefined Configuration](layered_predefined_config.md) — Implemented; provides the
-    template store (`PredefinedContentProvider`) that this design extends with a per-reference
-    override surface.
+- **Status:** Implemented
 
 ## Problem Statement
 

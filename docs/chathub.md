@@ -1,25 +1,22 @@
 # ChatHub
 
 This document is the configuration guide for **ChatHub** — DIAL's general-purpose productivity
-agent built on top of Quick Apps 2.0. It covers what ChatHub is, how its variants are wired up,
-and the recipes DevOps and support teams use to customize them.
+agent. It covers what ChatHub is, what a ChatHub configuration looks like, and the recipes for
+customizing it.
 
-For the full Quick Apps 2.0 schema reference, see [`CONFIGURATION.md`](../CONFIGURATION.md). For
-the design rationale behind the override mechanism used in the recipes below, see
-[Predefined Template Overrides](designs/predefined_template_overrides.md). For the broader Quick
-Apps architecture, see [Agent Design](agent.md).
+For the full schema reference, see [`CONFIGURATION.md`](../CONFIGURATION.md).
 
 ---
 
 ## What is ChatHub?
 
-ChatHub is a family of Quick Apps 2.0 applications that combine a chat LLM with a curated bundle
-of tools — vision, document RAG, web search, image generation, and Python code interpretation —
-behind a single conversational interface.
+ChatHub is a family of applications that combine a chat LLM with a curated bundle of tools —
+vision, document RAG, web search, image generation, and Python code interpretation — behind a
+single conversational interface.
 
 Each ChatHub variant pairs a specific LLM with the same tool bundle, so users can ask questions,
 generate code, search the web, interpret images, and produce artwork without thinking about which
-tool to call. The Quick Apps 2.0 orchestrator routes each turn to the right tool automatically.
+tool to call. The orchestrator routes each turn to the right tool automatically.
 
 Sample ChatHub configurations ship in this repo under
 [`docker_compose_files/core/configuration/chathub/`](../docker_compose_files/core/configuration/chathub/)
@@ -38,45 +35,34 @@ on that JSON, not on how a particular deployment loads it.
 
 ---
 
-## Architecture
+## Variant structure
 
-A ChatHub variant configuration is a thin shell over three building blocks:
+A ChatHub variant is built from three pieces:
 
 1. **Orchestrator** — the chat LLM that drives the conversation, plus its sampling parameters.
 2. **System prompt** — a predefined prompt template chosen to match the model family's
    tool-calling conventions.
 3. **Tool sets** — references to predefined toolsets that bundle the actual capabilities.
 
-```mermaid
-graph LR
-    APP["ChatHub variant<br/>(applicationProperties)"]
-    ORCH["orchestrator<br/>LLM + system prompt"]
-    TS1["tool_set: chathub<br/>RAG + image gen + web search"]
-    TS2["tool_set: py_interpreter"]
-    APP --> ORCH
-    APP --> TS1
-    APP --> TS2
-```
+The predefined building blocks available by name:
 
-The predefined templates referenced from a ChatHub config live under
-[`config/predefined/`](../config/predefined/):
+**System prompts** (`system_prompt.template`)
+- `anthropic_prompt`
+- `gpt_prompt`
+- `gemini_prompt`
 
-| Path                                            | Purpose                                       |
-|-------------------------------------------------|-----------------------------------------------|
-| `config/predefined/prompt/anthropic_prompt.md`  | Claude system prompt                          |
-| `config/predefined/prompt/gpt_prompt.md`        | GPT system prompt                             |
-| `config/predefined/prompt/gemini_prompt.md`     | Gemini system prompt                          |
-| `config/predefined/toolset/chathub.json`        | Bundles RAG + image generation + web search   |
-| `config/predefined/toolset/py_interpreter.json` | Bundles the Python interpreter                |
-| `config/predefined/tool/dial_rag.json`          | RAG search tool (`dial-rag` deployment)       |
-| `config/predefined/tool/web_search.json`        | Web search tool (Gemini grounding by default) |
-| `config/predefined/tool/image_generation.json`  | Image generation tool (`gpt-image-1`)         |
-| `config/predefined/tool/py_interpreter.json`    | Internal Python interpreter tool              |
+**Tool sets** (`tool_sets[N].template_name`)
+- `chathub` — bundles RAG search, image generation, and web search
+- `py_interpreter` — Python code interpreter
 
-A predefined reference is a pointer — `{ "type": "predefined", "template_name": "chathub" }`. At
-request time, `ConfigResolver` reads the matching template, optionally applies per-app overrides
-(see [Recipes](#recipes)), and inlines the resulting content into the resolved configuration
-before the orchestrator runs.
+**Tools** (`predefined-tool` entries inside a `dial-deployment` toolset)
+- `dial_rag` — RAG search over uploaded files
+- `web_search` — web search
+- `image_generation` — image generation
+- `py_interpreter` — Python code interpreter
+
+A predefined reference is a pointer — `{ "type": "predefined", "template_name": "chathub" }` —
+that gets replaced with the actual definition when the variant is loaded.
 
 ---
 
@@ -120,9 +106,8 @@ Two pieces are worth highlighting:
 
 - The `tool_sets` array references **two** predefined toolsets: `chathub` (RAG + image generation
   + web search) and `py_interpreter`. Together they make up the full ChatHub capability surface.
-- The system prompt picks a template that matches the model family. The mapping between prompt
-  templates and supported deployments is enforced by `ConfigResolver.PromptMapping`; see
-  [Authoring a variant](#authoring-a-variant).
+- The system prompt picks a template that matches the model family. See
+  [Authoring a variant](#authoring-a-variant) for the model-to-prompt mapping.
 
 ---
 
@@ -138,9 +123,9 @@ A ChatHub variant is a JSON entry inside the `applications` map of a DIAL applic
 - Reference the same `tool_sets` (`chathub`, `py_interpreter`) — this is what makes it a
   ChatHub.
 
-If the new model is not in the prompt mapping, the variant validates but the orchestrator may
-not get the prompt that matches the model's tool-calling conventions. Extend the mapping via the
-`CONFIG_PROMPT_MAPPING` environment variable to add custom models.
+If the new model is not in the prompt-to-models mapping, the variant validates but the
+orchestrator may not get the prompt that matches the model's tool-calling conventions. Extend
+the mapping via the `CONFIG_PROMPT_MAPPING` environment variable to add custom models.
 
 ---
 
@@ -155,19 +140,13 @@ The recipes follow one principle:
 > When the override would dominate the original definition, switch to the full inline config
 > model.**
 
-The `override` field carries a JSON Merge Patch (RFC 7396) applied to the loaded template before
-pydantic validation:
+The `override` field carries a JSON Merge Patch:
 
 - Objects merge recursively.
 - Arrays replace wholesale (no element-wise merge, no append).
 - A patch value of `null` deletes the corresponding key.
-- The patch may not contain a `"type"` key at any depth — that is the schema discriminator on
-  `AnyTool` and `ToolSet`, and reshaping a tool through the override would invert the boundary
-  between the predefined-pointer-with-patch and inline-tool tiers. Use Recipe 5 (inline tool)
-  for shape changes.
-
-See [Predefined Template Overrides](designs/predefined_template_overrides.md) for the full design
-rationale.
+- The patch may not contain a `"type"` key at any depth — `type` selects which kind of tool or
+  toolset the result is. Use the inline form (Recipe 5) for shape changes.
 
 ### Recipes
 
@@ -206,9 +185,8 @@ the bundle into a `dial-deployment` toolset whose `tools` list contains individu
 `predefined-tool` references. The dissolve pattern is what enables per-tool overrides and per-tool
 `enabled` flags.
 
-> **Note:** Overrides do not apply to tools whose type is `dial-deployment-simple` — those fetch
-> their tool config from DIAL Core's tool-config endpoint at request time and bypass
-> `ConfigResolver` entirely.
+> **Note:** Overrides do not apply to `dial-deployment-simple` tools — their tool config comes
+> from DIAL Core directly, not from a predefined template.
 
 #### Recipe 2 — Tweak a tool's description per variant
 
@@ -229,8 +207,8 @@ does not pick it for external queries:
 }
 ```
 
-The override path uses JSON Merge Patch: nested objects merge, so only the `description` key is
-replaced — the function name, parameters, and everything else come unchanged from the template.
+Nested objects merge, so only the `description` key is replaced — the function name, parameters,
+and everything else come unchanged from the template.
 
 #### Recipe 3 — Disable a single tool from the bundle
 
@@ -258,9 +236,7 @@ To drop image generation but keep RAG and web search, use the dissolve pattern a
 }
 ```
 
-The disabled reference is short-circuited by `ConfigResolver.resolve_toolset` (which only
-resolves predefined-tool references when `enabled` is true) and then ignored by
-`_DeploymentToolInitializer` — the tool is never constructed. An `override` block on a disabled
+The disabled reference is skipped — the tool is never loaded. An `override` block on a disabled
 reference is preserved but never applied; flipping `enabled` back to `true` re-enables both the
 tool and the patch in one move.
 
@@ -279,9 +255,8 @@ Removing the line is the recipe.
 
 #### Recipe 5 — Use a completely different tool
 
-When a tool needs a different function name, parameter schema, or fundamentally different behavior,
-drop the `predefined-tool` reference and write an inline `deployment-tool` (or any concrete tool
-type from the schema):
+When a tool needs a different function name, parameter schema, or fundamentally different
+behavior, drop the `predefined-tool` reference and write an inline `deployment-tool`:
 
 ```json
 {
@@ -350,10 +325,10 @@ prompt, switch from `type: "predefined"` to `type: "custom"` and provide the ful
 }
 ```
 
-The canonical predefined prompts live in
-[`config/predefined/prompt/*.md`](../config/predefined/prompt/) — copy from there as the starting
-baseline for your custom content. Note that variants that switch to `type: "custom"` will not
-pick up upstream prompt improvements automatically; this is the deliberate cost of full revision.
+The predefined prompts ship as markdown files in this repo under
+[`config/predefined/prompt/`](../config/predefined/prompt/) — copy from there as the starting
+baseline. Variants that switch to `type: "custom"` will not pick up upstream prompt improvements
+automatically; this is the deliberate cost of full revision.
 
 ---
 
@@ -362,11 +337,11 @@ pick up upstream prompt improvements automatically; this is the deliberate cost 
 Two environment variables affect ChatHub configuration globally. They complement the per-variant
 `override` mechanism.
 
-| Variable                  | Effect                                                                                                                                                                                                                                                                            |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `PREDEFINED_EXTRA_PATHS`  | JSON list of directories layered on top of the built-in `config/predefined/`. Last wins. Replaces a template **globally** — every ChatHub variant that references the same template name picks up the override. Per-variant `override` patches are applied **after** layering. |
-| `CONFIG_PROMPT_MAPPING`   | JSON mapping of predefined system prompt names (`gpt_prompt`, `anthropic_prompt`, `gemini_prompt`) to the DIAL model deployments they support. Extend this when adding new models that should use an existing predefined prompt.                                                  |
-| `ENABLE_PREVIEW_FEATURES` | When `false` (default), preview features such as DIAL-prompt skills are deactivated even if configured. ChatHub variants that depend on preview features should be tested with this flag enabled before promotion.                                                                |
+| Variable                  | Effect                                                                                                                                                                                                                                                  |
+|---------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `PREDEFINED_EXTRA_PATHS`  | JSON list of directories layered on top of the built-in predefined templates. Last wins. Replaces a template **globally** — every ChatHub variant that references the same template name picks up the override. Per-variant `override` patches apply on top. |
+| `CONFIG_PROMPT_MAPPING`   | JSON mapping of predefined system prompt names (`gpt_prompt`, `anthropic_prompt`, `gemini_prompt`) to the DIAL model deployments they support. Extend this when adding new models that should use an existing predefined prompt.                          |
+| `ENABLE_PREVIEW_FEATURES` | When `false` (default), preview features are disabled even if configured. Variants that depend on preview features must be tested with this flag enabled before promotion.                                                                              |
 
 For the full list of environment variables that affect Quick Apps 2.0, see
 [`README.md`](../README.md#environment-variables).
@@ -375,14 +350,5 @@ For the full list of environment variables that affect Quick Apps 2.0, see
 
 ## Reference
 
-- **Application schema** — generated via `make dump_app_schema` to
-  [`docs/generated-app-schema.json`](generated-app-schema.json), also hosted at
-  `https://mydial.epam.com/custom_application_schemas/quickapps2`.
-- **Configuration reference** — [`CONFIGURATION.md`](../CONFIGURATION.md) for the full Quick
-  Apps 2.0 schema, including all field semantics for `PredefinedTool`, `PredefinedToolSet`, and
-  the `override` field.
-- **Override design** — [Predefined Template Overrides](designs/predefined_template_overrides.md)
-  for the design rationale, the merge semantics (RFC 7396), and the boundary between override
-  and inline.
-- **Quick Apps architecture** — [Agent Design](agent.md) for the request lifecycle, the
-  orchestrator loop, and the tool system.
+- **Schema reference** — [`CONFIGURATION.md`](../CONFIGURATION.md).
+- **Hosted schema** — `https://mydial.epam.com/custom_application_schemas/quickapps2`.
