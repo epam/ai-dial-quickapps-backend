@@ -1,0 +1,14 @@
+[
+  {
+    "name": "internal_attachments_available_context",
+    "description": "Returns metadata about admin-configured context files. **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, and will not return any information about them. If you see file in <attachments> section of user message, it means that the file was attached by the user, and is available for you to use."
+  },
+  {
+    "name": "internal_skills_read_skill",
+    "description": "Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you."
+  },
+  {
+    "name": "internal_timeawareness_current_timestamp",
+    "description": "Returns the current date and time. Optionally converts to a specific timezone."
+  }
+]
