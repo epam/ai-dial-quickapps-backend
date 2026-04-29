@@ -1,9 +1,8 @@
 # CLI script that dumps internal tool names/descriptors for lint drift detection.
 #
 # Collects every DI multiprovider named ``_provide_<feature>_tools`` (except
-# ``_provide_mcp_tools``), plus the python interpreter from the predefined tool JSON
-# (not configured via ``InternalToolSet`` here). Each entry includes name, description,
-# and ``signature`` (JSON Schema for ``function.parameters``).
+# ``_provide_mcp_tools``). Each entry includes ``name``, ``description``, and the
+# parameter object schema
 #
 # Usage:
 #   python dump_internal_tools.py docs/generated-internal-tools.json
@@ -39,10 +38,6 @@ from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
-
-
-def _repo_root() -> Path:
-    return Path(__file__).resolve().parent.parent.parent
 
 
 def build_dump_application_config() -> ApplicationConfig:
@@ -81,9 +76,15 @@ def _iter_staged_tool_providers(mod: object) -> Iterator[Callable[..., list[Stag
             yield attr
 
 
-def _parameters_signature(tool_fn: Any) -> dict[str, Any]:
-    """JSON Schema for ``function.parameters`` (OpenAI tools format)."""
-    return tool_fn.parameters.model_dump(mode="json", exclude_none=True)
+def _parameter_properties_and_required(parameters: Any) -> dict[str, Any]:
+    """From OpenAI ``function.parameters``, emit only ``properties`` and ``required``."""
+    raw = parameters.model_dump(mode="json", exclude_none=True)
+    out: dict[str, Any] = {}
+    if "properties" in raw:
+        out["properties"] = raw["properties"]
+    if raw.get("required"):
+        out["required"] = raw["required"]
+    return out
 
 
 def _manifest_entry(tool: StagedBaseTool) -> dict[str, Any]:
@@ -93,11 +94,12 @@ def _manifest_entry(tool: StagedBaseTool) -> dict[str, Any]:
     description = dumped.get("description")
     if description is None:
         description = fn.description or ""
-    return {
+    entry: dict[str, Any] = {
         "name": name,
         "description": description,
-        "signature": _parameters_signature(fn),
     }
+    entry.update(_parameter_properties_and_required(fn.parameters))
+    return entry
 
 
 def _stable_manifest(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -116,7 +118,7 @@ async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
     attach_injector(FastAPI(), injector, RequestScopeOptions())
 
     factory = injector.get(RequestScopeFactory)
-    manifest_entries: list[dict[str, str]] = []
+    manifest_entries: list[dict[str, Any]] = []
 
     async with factory.create_scope():
         ctx = injector.get(_RequestContext)
