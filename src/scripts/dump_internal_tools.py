@@ -2,7 +2,8 @@
 #
 # Collects every DI multiprovider named ``_provide_<feature>_tools`` (except
 # ``_provide_mcp_tools``), plus the python interpreter from the predefined tool JSON
-# (not configured via ``InternalToolSet`` here).
+# (not configured via ``InternalToolSet`` here). Each entry includes name, description,
+# and ``signature`` (JSON Schema for ``function.parameters``).
 #
 # Usage:
 #   python dump_internal_tools.py docs/generated-internal-tools.json
@@ -16,6 +17,7 @@ import os
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 if __name__ == "__main__":
     from utils import add_src_to_system_path, load_env
@@ -79,24 +81,33 @@ def _iter_staged_tool_providers(mod: object) -> Iterator[Callable[..., list[Stag
             yield attr
 
 
-def _manifest_entry(tool: StagedBaseTool) -> dict[str, str]:
+def _parameters_signature(tool_fn: Any) -> dict[str, Any]:
+    """JSON Schema for ``function.parameters`` (OpenAI tools format)."""
+    return tool_fn.parameters.model_dump(mode="json", exclude_none=True)
+
+
+def _manifest_entry(tool: StagedBaseTool) -> dict[str, Any]:
     dumped = tool.model_dump(mode="python")
     fn = tool.tool_config.open_ai_tool.function
     name = dumped.get("name") or fn.name
     description = dumped.get("description")
     if description is None:
         description = fn.description or ""
-    return {"name": name, "description": description}
+    return {
+        "name": name,
+        "description": description,
+        "signature": _parameters_signature(fn),
+    }
 
 
-def _stable_manifest(entries: list[dict[str, str]]) -> list[dict[str, str]]:
-    by_name: dict[str, dict[str, str]] = {}
+def _stable_manifest(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    by_name: dict[str, dict[str, Any]] = {}
     for entry in sorted(entries, key=lambda e: e["name"]):
         by_name[entry["name"]] = entry
     return list(by_name.values())
 
 
-async def _gather_internal_tools_manifest() -> list[dict[str, str]]:
+async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
     # Minimal DIAL URL so `DialSettings` and dependents validate without a real deployment.
     os.environ.setdefault("DIAL_URL", "http://dump-internal-tools.invalid")
 

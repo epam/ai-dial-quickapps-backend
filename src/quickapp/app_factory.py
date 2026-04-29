@@ -30,10 +30,6 @@ class AppFactory:
 
     @staticmethod
     def build_di_modules() -> list[Module]:
-        """
-        Returns the same injector module list used to assemble the live application,
-        including preview-module filtering when ``ENABLE_PREVIEW_FEATURES`` is false.
-        """
         modules: list[Module] = [
             AppModule(),
             AgentModule(),
@@ -61,12 +57,6 @@ class AppFactory:
 
     @staticmethod
     def create() -> FastAPI:
-        """
-        Creates and configures the FastAPI application with the necessary modules.
-
-        Returns:
-            FastAPI: The configured FastAPI application instance.
-        """
         LoggingConfig(settings=LoggingSettings())
         injector = Injector(AppFactory.build_di_modules())
         app = injector.get(FastAPI)
