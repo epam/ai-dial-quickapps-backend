@@ -1,7 +1,10 @@
 import base64
 from unittest.mock import AsyncMock, MagicMock, Mock
 
+import httpx
 import pytest
+from mcp.shared.exceptions import McpError
+from mcp.types import ErrorData
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
@@ -17,7 +20,11 @@ from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 
 # noinspection PyProtectedMember
-from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
+from quickapp.mcp_tooling._mcp_tool_initializer import (
+    _flatten_exceptions,
+    _format_leaf_for_user,
+    _MCPToolInitializer,
+)
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 
@@ -449,3 +456,106 @@ async def test_connection_manager_handles_missing_request_bearer_for_dial_intern
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
 
     assert "Authorization" not in headers
+
+
+# --- Error-handling helpers and integration ---
+
+
+def test_flatten_exceptions_returns_leaf_for_plain_exception():
+    exc = ValueError("boom")
+    assert _flatten_exceptions(exc) == [exc]
+
+
+def test_flatten_exceptions_unwraps_nested_groups():
+    inner = ValueError("inner")
+    middle = ExceptionGroup("middle", [inner])
+    outer = ExceptionGroup("outer", [middle])
+
+    assert _flatten_exceptions(outer) == [inner]
+
+
+def test_flatten_exceptions_collects_multiple_leaves_in_order():
+    a = ValueError("a")
+    b = RuntimeError("b")
+    eg = ExceptionGroup("g", [a, ExceptionGroup("g2", [b])])
+
+    assert _flatten_exceptions(eg) == [a, b]
+
+
+def test_format_leaf_renders_http_status_error():
+    request = httpx.Request("POST", "http://x")
+    response = httpx.Response(404, request=request)
+    err = httpx.HTTPStatusError("not found", request=request, response=response)
+
+    line = _format_leaf_for_user("My Toolset", err)
+
+    assert line == "HTTP error for My Toolset: 404 Not Found"
+
+
+def test_format_leaf_renders_session_terminated_with_404_hint():
+    err = McpError(ErrorData(code=32600, message="Session terminated"))
+
+    line = _format_leaf_for_user("My Toolset", err)
+
+    assert "My Toolset" in line
+    assert "session terminated" in line.lower()
+    assert "404" in line
+
+
+def test_format_leaf_renders_other_mcp_errors():
+    err = McpError(ErrorData(code=-32603, message="Internal error"))
+
+    line = _format_leaf_for_user("My Toolset", err)
+
+    assert line == "MCP error for My Toolset: Internal error"
+
+
+def test_format_leaf_renders_generic_exception():
+    line = _format_leaf_for_user("My Toolset", RuntimeError("kaboom"))
+
+    assert line == "RuntimeError: kaboom"
+
+
+@pytest.mark.asyncio
+async def test_initialize_surfaces_session_terminated_through_nested_exception_groups():
+    """The MCP streamable_http client converts upstream HTTP 404 into nested
+    ExceptionGroups containing McpError('Session terminated'). Verify we surface
+    a useful message instead of leaking the raw 'unhandled errors in a TaskGroup'."""
+    inner = McpError(ErrorData(code=32600, message="Session terminated"))
+    nested = ExceptionGroup("inner task group", [inner])
+    outer = ExceptionGroup("outer task group", [nested])
+
+    conn = MagicMock()
+    conn.get_tools_list = AsyncMock(side_effect=outer)
+    conn_builder = MagicMock()
+    conn_builder.build.return_value = conn
+
+    toolset_info = MCPToolSet(
+        mcp_server_info=MCPServerInfo(
+            url="https://test", authorization=None, protocol=MCPProtocol.streamable_http
+        ),
+        allowed_tools=None,
+        name="My Toolset",
+    )
+    mcp_context = MagicMock()
+    initializer = _MCPToolInitializer(
+        [toolset_info],
+        mcp_context,
+        MagicMock(),  # dial_setting
+        MagicMock(),  # api_key_provider
+        MagicMock(),  # tool_builder
+        conn_builder,
+        MagicMock(),  # dial_mcp_cache
+        MagicMock(),  # tool_config_service
+        MagicMock(),  # login_service
+    )
+
+    await initializer.initialize()
+
+    assert mcp_context.append_exception.call_count == 1
+    appended = mcp_context.append_exception.call_args[0][0]
+    assert appended.toolset_name == "My Toolset"
+    assert "session terminated" in appended.message.lower()
+    assert "404" in appended.message
+    assert "unhandled errors in a TaskGroup" not in appended.message
+    assert "unhandled errors in a TaskGroup" not in appended.details

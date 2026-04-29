@@ -55,9 +55,12 @@ class _AttachmentFilter(PreInvocationTransformer):
                 ):
                     updated_attachments.append(attachment)
                 all_attachments.append(attachment)
-            # Inform agent that message had contained some attachment.
-            # As adapter would resolve the actual bytes and URL would be lost.
-            content += "\n" + self._build_attachment_xml(all_attachments)
+            # Surface attachment URL/title via XML — bytes are stripped by the
+            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
+            # re-presenting the model's own prior attachments conditions it to
+            # mimic the XML format in responses.
+            if message.role != Role.ASSISTANT:
+                content += "\n" + self._build_attachment_xml(all_attachments)
             message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
         message.content = content
 
