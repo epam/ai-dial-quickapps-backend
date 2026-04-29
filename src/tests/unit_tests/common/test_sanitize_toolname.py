@@ -6,6 +6,9 @@ class TestSanitizeToolname:
     def test_spaces_replaced_with_underscore(self):
         assert sanitize_toolname("my tool name") == "my_tool_name"
 
+    def test_multiple_slash_replaced_with_underscore(self):
+        assert sanitize_toolname("my//tool//name") == "my_tool_name"
+
     def test_slashes_replaced_with_underscore(self):
         assert sanitize_toolname("applications/public/my-app") == "applications_public_my-app"
 

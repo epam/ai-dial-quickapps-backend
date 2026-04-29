@@ -9,7 +9,7 @@ from quickapp.config.tools.const import ALL_MIME_TYPES
 logger = logging.getLogger(__name__)
 
 
-_INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]")
+_INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]+")
 
 
 # Normalize propagation types (split wildcards like 'image/*' for matching)

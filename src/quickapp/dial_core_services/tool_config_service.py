@@ -113,14 +113,22 @@ class ToolConfigCoreService:
             A DialDeploymentTool representing the final tool configuration.
         """
 
-        name = f"{sanitize_toolname(deployment.display_name or deployment.id.split('/')[-1])}_tool"
+        # Deployment display_name could contain anything including Cyrillic symbols
+        # deployment.id is already quoted url string like applications/{hash}/deployment%20name.
+        # To make it more readable:
+        # - replace %20(space) with _
+        # - remove bucket prefix
+        deployment_name = sanitize_toolname(
+            f"{deployment.id.split('/')[-1].replace('%20', '_')}_tool"
+        )
+
         output_tool = DialDeploymentTool(
-            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {name}: ")),
+            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
-                    name=name,
+                    name=deployment_name,
                     description=deployment.description or "",
                     parameters=OpenAiToolFunctionParameters(
                         type=JsonTypeEnum.object, properties={}, required=[]

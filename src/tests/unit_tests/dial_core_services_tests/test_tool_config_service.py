@@ -267,36 +267,14 @@ class TestConvertToOpenaiToolFormatName:
 
     def test_display_name_used_as_tool_name_base(self):
         deployment = SimpleNamespace(
-            id="applications/abc123/App with spaces__0.0.1",
+            id="applications/abc123/App%20with%20spaces__0.0.1",
             display_name="App with spaces",
             description="",
             input_attachment_types=None,
             features=None,
         )
         result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
-        assert result.open_ai_tool.function.name == "App_with_spaces_tool"
-
-    def test_id_used_as_fallback_when_no_display_name(self):
-        deployment = SimpleNamespace(
-            id="my-simple-app",
-            display_name=None,
-            description="",
-            input_attachment_types=None,
-            features=None,
-        )
-        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
-        assert result.open_ai_tool.function.name == "my-simple-app_tool"
-
-    def test_tool_name_has_no_spaces(self):
-        deployment = SimpleNamespace(
-            id="x",
-            display_name="My Quick App 1.0",
-            description="",
-            input_attachment_types=None,
-            features=None,
-        )
-        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
-        assert " " not in result.open_ai_tool.function.name
+        assert result.open_ai_tool.function.name == "App_with_spaces__0_0_1_tool"
 
     def test_tool_name_has_no_deployment_id_prefix(self):
         deployment = SimpleNamespace(
