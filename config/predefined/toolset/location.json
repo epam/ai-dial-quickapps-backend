@@ -45,6 +45,12 @@
             ]
           }
         }
+      },
+      "attachment": {
+        "supported_types": [
+        ],
+        "propagate_types_to_choice": [
+        ]
       }
     }
   ]
