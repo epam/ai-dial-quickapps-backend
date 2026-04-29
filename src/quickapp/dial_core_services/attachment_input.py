@@ -31,5 +31,3 @@ class AttachmentInput(BaseModel):
         if not isinstance(values, list):
             raise TypeError("attachments must be a list")
         return [cls.model_validate(value) for value in values or []]
-
-

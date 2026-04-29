@@ -54,7 +54,6 @@ DEFAULT_ATTACHMENT_PARAM = ConfigurableSchemaArray(
         "A list of attachment objects. MUST always be an array, even if it contains only one item. "
         "Never provide a single string or object. If no attachments are available, provide an empty list []."
     ),
-
     items=ConfigurableSchemaObject(
         type=JsonTypeEnum.object,
         description="Attachment object. 'type' and 'title' are mandatory. Must include either 'url' or 'data'.",

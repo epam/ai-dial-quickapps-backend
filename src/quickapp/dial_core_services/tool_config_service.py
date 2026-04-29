@@ -152,8 +152,8 @@ class ToolConfigCoreService:
                     required=attachment_input_schema.get("required", []),
                 ),
                 description=(
-                        "A list of attachment objects. MUST always be an array, even if it contains only one item. "
-                        "Never provide a single string or object. If no attachments are available, provide an empty list []."
+                    "A list of attachment objects. MUST always be an array, even if it contains only one item. "
+                    "Never provide a single string or object. If no attachments are available, provide an empty list []."
                 ),
             )
             required_params.append("attachments")

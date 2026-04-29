@@ -46,4 +46,3 @@ def test_provide_openai_client_handles_missing_bearer_without_authorization_head
         )
 
     assert openai_client.call_args.kwargs["default_headers"] == {"X-Request-Id": "req-1"}
-
