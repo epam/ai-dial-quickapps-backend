@@ -21,17 +21,20 @@ Each ChatHub variant pairs a specific LLM with the same tool bundle, so users ca
 generate code, search the web, interpret images, and produce artwork without thinking about which
 tool to call. The Quick Apps 2.0 orchestrator routes each turn to the right tool automatically.
 
-The ChatHub variant configurations live under
-[`docker_compose_files/core/configuration/chathub/`](../docker_compose_files/core/configuration/chathub/):
+Sample ChatHub configurations ship in this repo under
+[`docker_compose_files/core/configuration/chathub/`](../docker_compose_files/core/configuration/chathub/)
+for the local-dev compose stack:
 
-| File             | Variants shipped today                                                |
+| File             | Variants in the sample set                                            |
 |------------------|-----------------------------------------------------------------------|
 | `anthropic.json` | ChatHub - Claude 4.5 Sonnet, ChatHub - Claude 4, ChatHub - Claude 3.7 |
 | `openai.json`    | ChatHub - GPT-4o, ChatHub - GPT-5, ChatHub - GPT-5.2                  |
 | `gemini.json`    | ChatHub - Gemini                                                      |
 
-Each entry inside one of these files is a complete DIAL application registration that points at
-the Quick Apps 2.0 schema (`applicationTypeSchemaId: https://mydial.epam.com/custom_application_schemas/quickapps2`).
+Each entry is a complete DIAL application config pointing at the Quick Apps 2.0 schema
+(`applicationTypeSchemaId: https://mydial.epam.com/custom_application_schemas/quickapps2`).
+The JSON shape is the same wherever DIAL Core consumes application configs — this guide focuses
+on that JSON, not on how a particular deployment loads it.
 
 ---
 
@@ -119,27 +122,23 @@ Two pieces are worth highlighting:
   + web search) and `py_interpreter`. Together they make up the full ChatHub capability surface.
 - The system prompt picks a template that matches the model family. The mapping between prompt
   templates and supported deployments is enforced by `ConfigResolver.PromptMapping`; see
-  [Adding a new variant](#adding-a-new-variant).
+  [Authoring a variant](#authoring-a-variant).
 
 ---
 
-## Adding a new variant
+## Authoring a variant
 
-To register a new ChatHub variant for a different model:
+A ChatHub variant is a JSON entry inside the `applications` map of a DIAL application config:
 
-1. Pick the right file under `docker_compose_files/core/configuration/chathub/` based on model
-   family (Anthropic, OpenAI, Gemini), or create a new file if you are introducing a new family.
-2. Add a new entry to `applications`:
-    - Choose an application key (e.g. `chat_hub_my_variant_quickapp`).
-    - Set `displayName` and `description` for end users.
-    - Set `orchestrator.deployment.name` to the DIAL model deployment name.
-    - Set `orchestrator.system_prompt.template` to the matching predefined prompt: `gpt_prompt`,
-      `anthropic_prompt`, or `gemini_prompt`.
-    - Reference the same `tool_sets` (`chathub`, `py_interpreter`) — this is what makes it a
-      ChatHub.
-3. Restart DIAL Core (or the configuration service) so the new application is picked up.
+- Choose an application key (e.g. `chat_hub_my_variant_quickapp`).
+- Set `displayName` and `description` for end users.
+- Set `orchestrator.deployment.name` to the DIAL model deployment name.
+- Set `orchestrator.system_prompt.template` to the matching predefined prompt: `gpt_prompt`,
+  `anthropic_prompt`, or `gemini_prompt`.
+- Reference the same `tool_sets` (`chathub`, `py_interpreter`) — this is what makes it a
+  ChatHub.
 
-If the new model is not in the prompt mapping, the application validates but the orchestrator may
+If the new model is not in the prompt mapping, the variant validates but the orchestrator may
 not get the prompt that matches the model's tool-calling conventions. Extend the mapping via the
 `CONFIG_PROMPT_MAPPING` environment variable to add custom models.
 
