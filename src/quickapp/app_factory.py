@@ -1,7 +1,7 @@
 import logging
 
 from fastapi import FastAPI
-from injector import Injector
+from injector import Injector, Module
 
 from quickapp.agent.agent_module import AgentModule
 from quickapp.application import AppModule
@@ -29,15 +29,8 @@ class AppFactory:
     """
 
     @staticmethod
-    def create() -> FastAPI:
-        """
-        Creates and configures the FastAPI application with the necessary modules.
-
-        Returns:
-            FastAPI: The configured FastAPI application instance.
-        """
-        LoggingConfig(settings=LoggingSettings())
-        modules = [
+    def build_di_modules() -> list[Module]:
+        modules: list[Module] = [
             AppModule(),
             AgentModule(),
             RestApiToolingModule(),
@@ -60,6 +53,11 @@ class AppFactory:
             )
         else:
             modules = [m for m in modules if not is_preview_module(m)]
-        injector = Injector(modules)
+        return modules
+
+    @staticmethod
+    def create() -> FastAPI:
+        LoggingConfig(settings=LoggingSettings())
+        injector = Injector(AppFactory.build_di_modules())
         app = injector.get(FastAPI)
         return app
