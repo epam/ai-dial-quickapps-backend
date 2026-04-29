@@ -50,7 +50,7 @@
               },
               "required": []
             },
-            "description": "A list of attachment objects related to the tool call. Each item can include url and/or inline data fields. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+            "description": "A list of attachment objects related to the tool call. Each item can include url or inline data. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
             "display": {
               "stage": {
                 "name": "**Files:** "

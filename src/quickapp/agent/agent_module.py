@@ -51,8 +51,7 @@ DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
 DEFAULT_ATTACHMENT_PARAM = ConfigurableSchemaArray(
     type=JsonTypeEnum.array,
     description=(
-        "A list of attachment objects related to the tool call. "
-        "Each item can include url and/or inline data fields."
+        "A list of attachment objects related to the tool call. Each item can include url or inline data. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list."
     ),
     items=ConfigurableSchemaObject(
         type=JsonTypeEnum.object,
