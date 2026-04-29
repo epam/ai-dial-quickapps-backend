@@ -298,8 +298,10 @@ The processor builds an aggregated result containing all accumulated data for th
 The system uses two separate mechanisms to inform the agent about available files:
 
 - **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
-  (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
-  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
+  (`<attachments>`) to USER and TOOL message content. Each attachment is represented as an `<attachment>`
+  element with `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements. ASSISTANT
+  messages are exempt: those attachments originated from the model's own prior output, and re-presenting
+  them as XML conditions the model to mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
@@ -356,8 +358,9 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to user messages for all attachments and keeps only supported types
-  inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: Appends text metadata to USER and TOOL messages for all attachments and keeps only
+  supported types inline in `custom_content` for vision model support. ASSISTANT messages are skipped to
+  avoid conditioning the model to emit the metadata format. Used in `AssistantInvoker`, not a pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
