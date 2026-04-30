@@ -79,6 +79,18 @@ class TestReadFileLines:
         assert exc.value.parameter_name == "end_line"
 
     @pytest.mark.asyncio
+    async def test_stage_wrapper_add_result_called(self):
+        tool = _make_tool(b"line0\nline1\nline2")
+        stage_wrapper = MagicMock()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=stage_wrapper,
+            file_url="files/b/f.txt",
+            start_line=0,
+            end_line=2,
+        )
+        stage_wrapper.add_result.assert_called_once_with(result)
+
+    @pytest.mark.asyncio
     async def test_large_file_raises_invalid_parameter(self):
         mock_service = MagicMock(spec=DialFileService)
         mock_service.download_file = AsyncMock(

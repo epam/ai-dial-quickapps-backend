@@ -50,10 +50,13 @@ class TestWriteFile:
             filename="notes.md",
             content="# Notes",
         )
-        assert url in result.content
+        assert result.content == f"File written: {url}"
+        assert result.content_type == "text/plain"
         assert result.attachments is not None
         assert len(result.attachments) == 1
         assert result.attachments[0].url == url
+        assert result.attachments[0].title == "notes.md"
+        assert result.attachments[0].type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_uploads_with_if_none_match(self):
@@ -63,9 +66,11 @@ class TestWriteFile:
             filename="notes.md",
             content="hello",
         )
-        tool._dial_file_service.upload_text.assert_awaited_once()
-        call_kwargs = tool._dial_file_service.upload_text.call_args.kwargs
-        assert call_kwargs.get("if_none_match") == "*"
+        tool._dial_file_service.upload_text.assert_awaited_once_with(
+            url="files/mybucket/generated-files/notes.md",
+            content="hello",
+            if_none_match="*",
+        )
 
     @pytest.mark.asyncio
     async def test_412_raises_invalid_parameter_filename(self):
@@ -99,9 +104,7 @@ class TestWriteFile:
     async def test_filename_with_dotdot_raises(self):
         tool = _make_tool()
         with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(
-                stage_wrapper=None, filename="../escape.txt", content="hello"
-            )
+            await tool._run_in_stage_async(stage_wrapper=None, filename="..", content="hello")
         assert exc.value.parameter_name == "filename"
 
     @pytest.mark.asyncio
@@ -112,3 +115,35 @@ class TestWriteFile:
                 stage_wrapper=None, filename=" notes.md", content="hello"
             )
         assert exc.value.parameter_name == "filename"
+
+    @pytest.mark.asyncio
+    async def test_appdata_used_when_set(self):
+        mock_bucket_resp = MagicMock()
+        mock_bucket_resp.appdata = "appbucket"
+        mock_bucket_resp.bucket = "fallback"
+        mock_dial_client = MagicMock()
+        mock_dial_client.bucket.get_raw = AsyncMock(return_value=mock_bucket_resp)
+        mock_service = MagicMock(spec=DialFileService)
+        mock_service.upload_text = AsyncMock(
+            return_value="files/appbucket/generated-files/notes.md"
+        )
+        tool = _WriteFileTool(
+            stage_wrapper_builder=MagicMock(),
+            tool_config=WRITE_FILE_TOOL_CONFIG,
+            perf_timer=MagicMock(),
+            dial_file_service=mock_service,
+            dial_client=mock_dial_client,
+        )
+        await tool._run_in_stage_async(stage_wrapper=None, filename="notes.md", content="hello")
+        call_kwargs = mock_service.upload_text.call_args.kwargs
+        assert call_kwargs["url"].startswith("files/appbucket/")
+
+    @pytest.mark.asyncio
+    async def test_stage_wrapper_add_result_called(self):
+        url = "files/mybucket/generated-files/notes.md"
+        tool = _make_tool(upload_result_url=url)
+        stage_wrapper = MagicMock()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=stage_wrapper, filename="notes.md", content="hello"
+        )
+        stage_wrapper.add_result.assert_called_once_with(result)

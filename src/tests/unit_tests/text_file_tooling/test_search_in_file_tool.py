@@ -109,6 +109,55 @@ class TestSearchInFile:
         assert result.content == "No matches found."
 
     @pytest.mark.asyncio
+    async def test_overlapping_windows_merged_into_single_block(self):
+        # Two adjacent matches with context_lines=1 — windows overlap so no "--" separator.
+        content = "alpha\nmatch1\nmatch2\nbeta"
+        tool = _make_tool(content)
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None,
+            file_url="files/b/f.txt",
+            pattern="match",
+            context_lines=1,
+        )
+        assert "--" not in result.content
+        assert "1:alpha" in result.content
+        assert "2:match1" in result.content
+        assert "3:match2" in result.content
+        assert "4:beta" in result.content
+
+    @pytest.mark.asyncio
+    async def test_empty_file_returns_no_matches(self):
+        tool = _make_tool(content="")
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None,
+            file_url="files/b/f.txt",
+            pattern="anything",
+        )
+        assert result.content == "No matches found."
+
+    @pytest.mark.asyncio
+    async def test_stage_wrapper_add_result_called_on_match(self):
+        tool = _make_tool()
+        stage_wrapper = MagicMock()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=stage_wrapper,
+            file_url="files/b/f.txt",
+            pattern="cherry",
+        )
+        stage_wrapper.add_result.assert_called_once_with(result)
+
+    @pytest.mark.asyncio
+    async def test_stage_wrapper_add_result_called_on_no_match(self):
+        tool = _make_tool()
+        stage_wrapper = MagicMock()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=stage_wrapper,
+            file_url="files/b/f.txt",
+            pattern="zzznomatch",
+        )
+        stage_wrapper.add_result.assert_called_once_with(result)
+
+    @pytest.mark.asyncio
     async def test_large_file_raises_invalid_parameter(self):
         mock_service = MagicMock(spec=DialFileService)
         mock_service.download_file = AsyncMock(

@@ -43,7 +43,8 @@ class TestEditFile:
             old_string="bar",
             new_string="qux",
         )
-        assert "Edited:" in result.content
+        assert result.content == f"Edited: {_FILE_URL}"
+        assert result.content_type == "text/plain"
         call_args = tool._dial_file_service.upload_text.call_args
         assert call_args.kwargs.get("content") == "foo qux baz"
 
@@ -135,6 +136,18 @@ class TestEditFile:
                 new_string="qux",
             )
         tool._dial_file_service.invalidate_cache.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_stage_wrapper_add_result_called(self):
+        tool = _make_tool("foo bar baz")
+        stage_wrapper = MagicMock()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=stage_wrapper,
+            file_url=_FILE_URL,
+            old_string="bar",
+            new_string="qux",
+        )
+        stage_wrapper.add_result.assert_called_once_with(result)
 
     @pytest.mark.asyncio
     async def test_download_failure_raises_invalid_parameter(self):
