@@ -4,12 +4,14 @@ from unittest.mock import MagicMock
 import pytest
 
 from quickapp.common.exceptions import ConfigResolutionException
-from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
+from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
+from quickapp.predefined_tooling import PredefinedConfigResolver
+from quickapp.predefined_tooling._predefined_tooling_context import _PredefinedToolingContext
 
 
 def _minimal_deployment_tool_template() -> dict:
@@ -47,8 +49,20 @@ def mock_provider() -> MagicMock:
 
 
 @pytest.fixture
-def resolver(mock_provider: MagicMock) -> ConfigResolver:
-    return ConfigResolver(mock_provider)
+def context() -> _PredefinedToolingContext:
+    return _PredefinedToolingContext()
+
+
+@pytest.fixture
+def context_provider(context: _PredefinedToolingContext) -> MagicMock:
+    provider = MagicMock()
+    provider.get.return_value = context
+    return provider
+
+
+@pytest.fixture
+def resolver(mock_provider: MagicMock, context_provider: MagicMock) -> PredefinedConfigResolver:
+    return PredefinedConfigResolver(mock_provider, context_provider)
 
 
 class TestSchemaAcceptsOverride:
@@ -78,10 +92,10 @@ class TestSchemaAcceptsOverride:
 
 
 class TestResolverAppliesMerge:
-    """Group B — `ConfigResolver` applies the override patch before validation."""
+    """Group B — `PredefinedConfigResolver` applies the override patch before validation."""
 
     def test_resolve_tool_with_no_override_passes_template_through(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         result = resolver.resolve_tool(PredefinedTool(template_name="dial_rag"))
@@ -90,7 +104,7 @@ class TestResolverAppliesMerge:
         mock_provider.read_json.assert_called_once_with(ContentType.TOOL, "dial_rag")
 
     def test_resolve_tool_applies_deployment_name_swap(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         result = resolver.resolve_tool(
@@ -103,7 +117,7 @@ class TestResolverAppliesMerge:
         assert result.deployment.name == "hr-rag-prod"
 
     def test_resolve_tool_applies_function_description_revision(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         result = resolver.resolve_tool(
@@ -121,7 +135,7 @@ class TestResolverAppliesMerge:
         assert result.deployment.name == "dial-rag"
 
     def test_resolve_tool_does_not_mutate_template(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         template = _minimal_deployment_tool_template()
         baseline = deepcopy(template)
@@ -135,7 +149,7 @@ class TestResolverAppliesMerge:
         assert template == baseline
 
     def test_resolve_predefined_toolset_applies_name_override(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_toolset_template()
         result = resolver.resolve_predefined_toolset(
@@ -152,7 +166,7 @@ class TestDiscriminatorRejection:
     """Group C — patches that target `type` are rejected at merge time."""
 
     def test_resolve_tool_override_rejects_top_level_type(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
@@ -166,7 +180,7 @@ class TestDiscriminatorRejection:
         assert excinfo.value.json_path == "/type"
 
     def test_resolve_tool_override_rejects_nested_type_in_object(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
@@ -179,7 +193,7 @@ class TestDiscriminatorRejection:
         assert excinfo.value.json_path == "/deployment/type"
 
     def test_resolve_predefined_toolset_override_rejects_nested_type_in_tools(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_toolset_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
@@ -197,7 +211,7 @@ class TestErrorWrapping:
     """Group D — invalid patches surface as `ConfigResolutionException`."""
 
     def test_invalid_patch_field_wrapped_with_template_name_and_path(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
@@ -216,7 +230,7 @@ class TestErrorWrapping:
         assert excinfo.value.details
 
     def test_resolve_predefined_toolset_validation_error_wrapped(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         mock_provider.read_json.return_value = _minimal_deployment_toolset_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
@@ -233,7 +247,7 @@ class TestOverrideOnDisabledTool:
     """Group E — `enabled: false` short-circuits before the override is evaluated."""
 
     def test_resolve_toolset_skips_disabled_predefined_tool_with_override(
-        self, resolver: ConfigResolver, mock_provider: MagicMock
+        self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
     ):
         disabled_ref = PredefinedTool(
             template_name="dial_rag",
@@ -247,3 +261,125 @@ class TestOverrideOnDisabledTool:
         mock_provider.read_json.assert_not_called()
         assert result.tools == [disabled_ref]
         assert result.tools[0].override == {"deployment": {"name": "never-applied"}}
+
+
+class TestResolveConfigSystemPromptFailFast:
+    """Group F — system-prompt resolution still aborts the request: the exception
+    is recorded on `_PredefinedToolingContext` and re-raised so the caller can
+    short-circuit. (Tool/toolset failures are skip-and-record; see Group G.)"""
+
+    def test_system_prompt_failure_appends_exception_to_context_and_reraises(
+        self,
+        resolver: PredefinedConfigResolver,
+        context: _PredefinedToolingContext,
+    ):
+        raised = ConfigResolutionException(
+            message="prompt missing",
+            template_name="anthropic_prompt",
+        )
+
+        raw_config = MagicMock()
+        raw_config.orchestrator.system_prompt = PredefinedSystemPromptConfig(
+            template="anthropic_prompt"
+        )
+        raw_config.tool_sets = []
+
+        def _raise(_template_type, _name):
+            raise raised
+
+        resolver.read_template_content = _raise  # type: ignore[method-assign]
+
+        with pytest.raises(ConfigResolutionException) as excinfo:
+            resolver.resolve_config(raw_config)
+
+        assert excinfo.value is raised
+        assert context.exceptions == [raised]
+
+
+class TestResolveConfigPartialTolerance:
+    """Group G — per-tool and per-toolset failures are skip-and-record: the
+    failing item is dropped from the resolved config, the exception is appended
+    to `_PredefinedToolingContext`, and peers still resolve."""
+
+    def test_bad_tool_override_drops_tool_records_exception_peers_resolve(
+        self,
+        resolver: PredefinedConfigResolver,
+        mock_provider: MagicMock,
+        context: _PredefinedToolingContext,
+    ):
+        good_template = _minimal_deployment_tool_template()
+
+        def _read_json(_content_type, name):
+            if name == "bad_tool":
+                # Force a validation failure post-merge (override is fine; the
+                # template returned here breaks pydantic validation).
+                return {"type": "deployment-tool", "deployment": {}}  # missing 'name'
+            return good_template
+
+        mock_provider.read_json.side_effect = _read_json
+
+        toolset = DeploymentToolSet(
+            name="chat-hub",
+            tools=[
+                PredefinedTool(template_name="dial_rag"),
+                PredefinedTool(template_name="bad_tool"),
+                PredefinedTool(template_name="web_search"),
+            ],
+        )
+        result = resolver.resolve_toolset(toolset)
+
+        assert isinstance(result, DeploymentToolSet)
+        resolved_names = [
+            t.deployment.name for t in result.tools if isinstance(t, DialDeploymentTool)
+        ]
+        assert resolved_names == ["dial-rag", "dial-rag"]
+        assert len(result.tools) == 2
+        assert len(context.exceptions) == 1
+        assert context.exceptions[0].template_name == "bad_tool"
+
+    def test_bad_toolset_override_drops_toolset_peers_resolve(
+        self,
+        resolver: PredefinedConfigResolver,
+        mock_provider: MagicMock,
+        context: _PredefinedToolingContext,
+    ):
+        good_toolset = _minimal_deployment_toolset_template()
+
+        def _read_json(_content_type, name):
+            if name == "broken":
+                return {"type": "dial-deployment"}  # missing required 'name'
+            return good_toolset
+
+        mock_provider.read_json.side_effect = _read_json
+
+        raw_config = MagicMock()
+        raw_config.orchestrator.system_prompt = MagicMock(spec=object)
+        raw_config.tool_sets = [
+            PredefinedToolSet(template_name="chathub"),
+            PredefinedToolSet(template_name="broken"),
+        ]
+
+        result = resolver.resolve_config(raw_config)
+
+        assert len(result.tool_sets) == 1
+        assert isinstance(result.tool_sets[0], DeploymentToolSet)
+        assert result.tool_sets[0].name == "chat-hub"
+        assert len(context.exceptions) == 1
+        assert context.exceptions[0].template_name == "broken"
+
+    def test_resolve_config_succeeds_with_no_failures(
+        self,
+        resolver: PredefinedConfigResolver,
+        mock_provider: MagicMock,
+        context: _PredefinedToolingContext,
+    ):
+        mock_provider.read_json.return_value = _minimal_deployment_toolset_template()
+
+        raw_config = MagicMock()
+        raw_config.orchestrator.system_prompt = MagicMock(spec=object)
+        raw_config.tool_sets = [PredefinedToolSet(template_name="chathub")]
+
+        result = resolver.resolve_config(raw_config)
+
+        assert len(result.tool_sets) == 1
+        assert context.exceptions == []

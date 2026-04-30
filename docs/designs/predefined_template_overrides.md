@@ -245,11 +245,25 @@ graph LR
 each of the two methods, conditional on the override being set.
 
 **Validation error UX.** Merge failures (e.g. a `type`-discriminator violation, see §3) and
-post-merge pydantic validation failures are wrapped into an `InitializationException`
-(`quickapp.common.exceptions.initialization`) carrying the `template_name`, the JSON path inside
-the patch that diverged, and the underlying pydantic error. This routes operator authoring
-mistakes to a precise location, distinct from the malformed-template path that surfaces as a
-build/deploy bug.
+post-merge pydantic validation failures are wrapped into a `ConfigResolutionException`
+(`quickapp.common.exceptions.config_resolution`) carrying the `template_name`, the JSON path
+inside the patch that diverged, and the underlying pydantic error. The exception is recorded
+on the request-scoped `_PredefinedToolingContext` and surfaced through the existing
+`list[InitializationException]` multiprovider; `_InitializationErrorHandler` renders one entry
+per recorded failure under the *Initialization issues* stage with status FAILED.
+
+**Failure granularity.** Per-tool and per-toolset resolution failures are *skip-and-record*: the
+failing item is dropped from the resolved config, the exception is appended to the context, and
+peer tools / peer toolsets continue to resolve. The orchestrator runs with whatever survived.
+This matches the convention already established by `_MCPToolInitializer`,
+`_DeploymentToolInitializer`, and `_DialPromptSkillInitializer` for per-item initializer
+failures. A single bad `override` on `web_search` does not strand `dial_rag`,
+`image_generation`, or `py_interpreter` in the same ChatHub variant.
+
+System-prompt resolution stays *fail-fast*: the request aborts (the exception re-raises out of
+`resolve_config` and `_QuickAppCompletion.chat_completion` short-circuits before initializers
+run). A predefined prompt with no readable body leaves no LLM to call, so partial recovery is
+not meaningful at that boundary.
 
 ### 5. System prompt revisions — explicitly **not** introduced
 
