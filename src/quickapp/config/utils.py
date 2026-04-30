@@ -57,6 +57,8 @@ def _do_merge(target: Any, patch: Any) -> Any:
             out.pop(key, None)
         elif isinstance(value, dict):
             out[key] = _do_merge(out.get(key), value)
-        else:
+        elif isinstance(value, list):
             out[key] = copy.deepcopy(value)
+        else:
+            out[key] = value
     return out

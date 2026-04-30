@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Any
 
 from injector import ProviderOf, inject
@@ -11,11 +12,15 @@ from quickapp.config.predefined_content_provider import ContentType, PredefinedC
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
+from quickapp.config.toolsets.deployment import DeploymentToolSet
+from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
+from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.utils import JsonMergePatchError, json_merge_patch
 from quickapp.predefined_tooling._predefined_tooling_context import _PredefinedToolingContext
 
+_TOOL_HOSTING_TOOLSETS = (RestApiToolSet, DeploymentToolSet, InternalToolSet)
 _TOOL_ADAPTER: TypeAdapter[AnyTool] = TypeAdapter(AnyTool)
 _TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
 
@@ -145,9 +150,10 @@ class PredefinedConfigResolver(ConfigResolver):
         self._exceptions_provider = exceptions_provider
         self.prompt_mapping = PromptMapping()
 
-    @property
+    @cached_property
     def template_map(self) -> dict[str, list[str]]:
-        """Read-only property delegating to the provider, excluding SKILL."""
+        """Read-only map of template type → names, excluding SKILL. Cached: the
+        provider loads templates once at startup, so the result is stable."""
         return {
             ct.value: self._provider.list_names(ct) for ct in ContentType if ct != ContentType.SKILL
         }
@@ -218,7 +224,7 @@ class PredefinedConfigResolver(ConfigResolver):
         return self.resolve_toolset(actual_tool_set)
 
     def resolve_toolset(self, tool_set: ToolSet) -> ToolSet:
-        if not hasattr(tool_set, 'tools'):
+        if not isinstance(tool_set, _TOOL_HOSTING_TOOLSETS):
             return tool_set
         resolved_tools: list[AnyTool] = []
         # Skip-and-record per tool: a single bad tool override must not drop its
