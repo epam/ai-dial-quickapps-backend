@@ -719,6 +719,17 @@
           "title": "Deployment Id",
           "type": "string"
         },
+        "transport": {
+          "default": "auto",
+          "description": "Routing override. 'auto' (default): use MCP if the deployment advertises features.mcp, otherwise chat completion. 'mcp': force MCP — initialization fails with a ToolInitializationException if features.mcp is not advertised. 'chat-completion': force chat completion — the resolver skips the metadata fetch and goes directly to get_basic_tool_config.",
+          "enum": [
+            "auto",
+            "mcp",
+            "chat-completion"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
         "allowed_tools": {
           "anyOf": [
             {

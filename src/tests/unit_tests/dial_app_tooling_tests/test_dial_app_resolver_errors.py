@@ -43,7 +43,7 @@ async def test_fallback_loader_returning_none_raises_initialization_exception():
     resolver, context, _, _ = make_resolver(
         toolsets=[toolset],
         metadata=make_metadata(mcp=False),
-        tool_config=None,  # loader returns None — cache surfaces None
+        tool_config=None,
     )
 
     await resolver.resolve()

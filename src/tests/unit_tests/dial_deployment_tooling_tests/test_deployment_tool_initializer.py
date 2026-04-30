@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -12,7 +12,7 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
-from tests.unit_tests.common.common import create_app_configuration
+from tests.unit_tests.common.common import create_app_configuration, noop_dial_app_resolver_pair
 
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
@@ -32,10 +32,7 @@ def _make_deployment_tool(name: str) -> DialDeploymentTool:
 
 
 def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
-    dial_app_resolver = MagicMock()
-    dial_app_resolver.resolve = AsyncMock()
-    dial_app_resolver_context = MagicMock()
-    dial_app_resolver_context.resolved_deployment_tools = []
+    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
     return _DeploymentToolInitializer(
         context=MagicMock(),
         tool_config_service=MagicMock(),

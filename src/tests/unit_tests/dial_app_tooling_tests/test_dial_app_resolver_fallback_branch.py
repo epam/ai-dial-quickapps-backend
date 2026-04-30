@@ -41,7 +41,6 @@ async def test_fallback_loader_skipped_on_cache_hit():
     await resolver.resolve()
 
     assert len(context.resolved_deployment_tools) == 2
-    # Loader (get_basic_tool_config) runs once on cache miss; second toolset hits cache.
     assert tool_config_service.get_basic_tool_config.await_count == 1
 
 
@@ -66,24 +65,9 @@ async def test_fallback_model_copy_overrides_attachment_and_fallback_configurati
 
     await resolver.resolve()
 
-    _, customised = context.resolved_deployment_tools[0]
+    customised = context.resolved_deployment_tools[0]
     assert customised.attachment == custom_attachment
     assert customised.fallback_configuration == custom_fallback
-
-
-@pytest.mark.asyncio
-async def test_fallback_appended_pair_uses_toolset_name():
-    toolset = DialAppToolSet(name="my-toolset", deployment_id="dep")
-    resolver, context, _, _ = make_resolver(
-        toolsets=[toolset],
-        metadata=make_metadata(mcp=False),
-        tool_config=make_tool_config(),
-    )
-
-    await resolver.resolve()
-
-    name, _ = context.resolved_deployment_tools[0]
-    assert name == "my-toolset"
 
 
 @pytest.mark.asyncio

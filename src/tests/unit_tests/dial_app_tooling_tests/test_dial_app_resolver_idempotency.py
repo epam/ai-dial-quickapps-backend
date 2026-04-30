@@ -18,13 +18,9 @@ async def test_resolve_is_idempotent_within_one_instance():
     await resolver.resolve()
     await resolver.resolve()
 
-    # Metadata fetch runs exactly once across repeated awaits.
     assert tool_config_service.get_deployment_metadata.await_count == 1
-    # Cache loader also ran exactly once.
     assert tool_config_service.get_basic_tool_config.await_count == 1
-    # Cache itself was consulted exactly once (second+ calls short-circuit via _resolved).
     assert deployment_cache.get.await_count == 1
-    # Context is not double-populated.
     assert len(context.resolved_deployment_tools) == 1
 
 

@@ -14,6 +14,16 @@ class DialAppToolSet(BaseToolSet):
         str,
         DialResourceConfigField(description="The DIAL deployment or application id."),
     ]
+    transport: Literal["auto", "mcp", "chat-completion"] = Field(
+        default="auto",
+        description=(
+            "Routing override. 'auto' (default): use MCP if the deployment advertises "
+            "features.mcp, otherwise chat completion. 'mcp': force MCP — initialization "
+            "fails with a ToolInitializationException if features.mcp is not advertised. "
+            "'chat-completion': force chat completion — the resolver skips the metadata "
+            "fetch and goes directly to get_basic_tool_config."
+        ),
+    )
     allowed_tools: list[str] | None = Field(
         default=None,
         description=(

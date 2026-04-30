@@ -4,8 +4,8 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import (
-    BASIC_CONFIG_CACHE_KEY_PREFIX,
     DialDeploymentToolCacheService,
+    fetch_basic_tool_config,
 )
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.application import ApplicationConfig
@@ -50,7 +50,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                         self.__init_deployment_tool(tool)
                     if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled:
                         await self.__init_simple_deployment_tool(tool)
-        for _, tool_config in self.__dial_app_resolver_context.resolved_deployment_tools:
+        for tool_config in self.__dial_app_resolver_context.resolved_deployment_tools:
             self.__init_deployment_tool(tool_config)
 
     def __init_deployment_tool(self, tool: DialDeploymentTool):
@@ -65,13 +65,11 @@ class _DeploymentToolInitializer(CompletionInitializer):
 
     async def __init_simple_deployment_tool(self, tool_info: DialDeploymentSimpleTool):
         try:
-            tool_config = await self.__deployment_cache.get(
-                f"{BASIC_CONFIG_CACHE_KEY_PREFIX}{tool_info.deployment_id}",
+            tool_config = await fetch_basic_tool_config(
+                self.__deployment_cache,
                 self.__tool_config_service.get_basic_tool_config,
                 tool_info.deployment_id,
             )
-            if tool_config is None:
-                raise ToolInitializationException(f"No tool config for {tool_info.deployment_id}")
             self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:

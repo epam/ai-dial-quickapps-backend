@@ -98,3 +98,8 @@ async def test_non_dial_app_toolsets_are_ignored():
     # Only one metadata fetch — for the DialAppToolSet entry.
     assert tool_config_service.get_deployment_metadata.await_count == 1
     assert len(context.resolved_mcp_toolsets) == 1
+
+
+def test_transport_defaults_to_auto():
+    toolset = DialAppToolSet(name="app", deployment_id="dep")
+    assert toolset.transport == "auto"

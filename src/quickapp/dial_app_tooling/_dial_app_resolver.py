@@ -6,8 +6,8 @@ from injector import ProviderOf, inject
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import (
-    BASIC_CONFIG_CACHE_KEY_PREFIX,
     DialDeploymentToolCacheService,
+    fetch_basic_tool_config,
 )
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
@@ -44,15 +44,15 @@ class _DialAppResolver(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
         self.__context: _DialAppResolverContext = context
-        self._resolved: bool = False
+        self.__resolved: bool = False
 
     async def initialize(self) -> None:
         await self.resolve()
 
     async def resolve(self) -> None:
-        if self._resolved:
+        if self.__resolved:
             return
-        self._resolved = True
+        self.__resolved = True
         dial_app_toolsets = [
             ts
             for ts in self.__app_config.tool_sets or []
@@ -66,13 +66,25 @@ class _DialAppResolver(CompletionInitializer):
 
     async def _resolve_one(self, toolset: DialAppToolSet) -> None:
         try:
+            if toolset.transport == "chat-completion":
+                await self._handle_chat_completion_branch(toolset)
+                return
             metadata = await self.__tool_config_service.get_deployment_metadata(
                 toolset.deployment_id
             )
-            if metadata.features and metadata.features.mcp:
+            mcp_advertised = bool(metadata.features and metadata.features.mcp)
+            if mcp_advertised:
                 self._handle_mcp_branch(toolset)
+            elif toolset.transport == "mcp":
+                raise ToolInitializationException(
+                    message=(
+                        f"transport=mcp requested but features.mcp is not advertised "
+                        f"on {toolset.deployment_id}"
+                    ),
+                    toolset_name=toolset.name,
+                )
             else:
-                await self._handle_fallback_branch(toolset)
+                await self._handle_chat_completion_branch(toolset)
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)
             self.__context.append_exception(e)
@@ -109,27 +121,23 @@ class _DialAppResolver(CompletionInitializer):
         )
         self.__context.append_mcp_toolset(mcp_toolset)
 
-    async def _handle_fallback_branch(self, toolset: DialAppToolSet) -> None:
+    async def _handle_chat_completion_branch(self, toolset: DialAppToolSet) -> None:
         if toolset.allowed_tools:
             logger.warning(
                 "allowed_tools set on DialAppToolSet '%s' is ignored on the chat-completion "
                 "fallback branch (single synthetic tool).",
                 toolset.name,
             )
-        tool_config = await self.__deployment_cache.get(
-            f"{BASIC_CONFIG_CACHE_KEY_PREFIX}{toolset.deployment_id}",
+        tool_config = await fetch_basic_tool_config(
+            self.__deployment_cache,
             self.__tool_config_service.get_basic_tool_config,
             toolset.deployment_id,
+            toolset_name=toolset.name,
         )
-        if tool_config is None:
-            raise ToolInitializationException(
-                message=f"No tool config for {toolset.deployment_id}",
-                toolset_name=toolset.name,
-            )
         customised = tool_config.model_copy(
             update={
                 "attachment": toolset.attachment,
                 "fallback_configuration": toolset.fallback_configuration,
             }
         )
-        self.__context.append_deployment_tool(toolset.name, customised)
+        self.__context.append_deployment_tool(customised)
