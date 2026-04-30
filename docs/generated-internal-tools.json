@@ -6,7 +6,7 @@
   },
   {
     "name": "internal_attachments_get_content",
-    "description": "Loads one allowed attachment by URL for use in this turn. Pass the exact `url` string from the `internal_attachments_available_context` tool result (`entries[].url`) or from user `<attachments>` metadata in messages. Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. If the orchestrator model does not support attachment type, this tool may be unavailable even when files are present.",
+    "description": "Loads one allowed attachment by URL for use in this turn. Pass the exact `url` string from the `internal_attachments_available_context` tool result (`entries[].url`) or from user `<attachments>` metadata in messages. Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. ",
     "properties": {
       "attachment_url": {
         "type": "string",

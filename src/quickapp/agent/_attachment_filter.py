@@ -11,7 +11,6 @@ from quickapp.common.attachment_processing_utils import (
     normalize_attachment_url_argument,
 )
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-from quickapp.common.utils import matches_type
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
     OrchestratorCapabilities,
@@ -22,8 +21,6 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _AttachmentFilter(PreInvocationTransformer):
-    SUPPORTED_ATTACHMENTS = ["image/*"]
-
     def __init__(
         self,
         app_config: ApplicationConfig,
@@ -104,7 +101,12 @@ class _AttachmentFilter(PreInvocationTransformer):
                 else set()
             )
             for attachment in message.custom_content.attachments:  # type: ignore[union-attr]
-                if message.role == Role.USER and self.__orchestrator_capabilities.orchestrator_accepts_mime_type(attachment.type):
+                if (
+                    message.role == Role.USER
+                    and self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
+                        attachment.type
+                    )
+                ):
                     updated_attachments.append(attachment)
                 elif is_get_content_tool and self._keep_get_content_tool_attachment(
                     attachment, allowed_get_content_urls

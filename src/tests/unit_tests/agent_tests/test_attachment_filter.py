@@ -20,10 +20,8 @@ def _attachment_filter(
     app = MagicMock(spec=ApplicationConfig)
     app.contexts = contexts if contexts is not None else []
     caps = OrchestratorCapabilities()
-    if input_attachment_types is not None:
-        caps.populate_from_dial_model(
-            MagicMock(id="orch", input_attachment_types=input_attachment_types)
-        )
+    patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
+    caps.populate_from_dial_model(MagicMock(id="orch", input_attachment_types=patterns))
     return _AttachmentFilter(app_config=app, orchestrator_capabilities=caps)
 
 
