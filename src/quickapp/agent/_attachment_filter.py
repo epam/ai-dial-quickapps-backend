@@ -1,4 +1,5 @@
 import copy
+import logging
 from xml.sax.saxutils import escape
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
@@ -12,6 +13,7 @@ from quickapp.common.utils import matches_type
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 
+logger = logging.getLogger(__name__)
 
 @inject
 class _AttachmentFilter(PreInvocationTransformer):
@@ -97,7 +99,12 @@ class _AttachmentFilter(PreInvocationTransformer):
                 elif is_get_content_tool and self._keep_get_content_tool_attachment(attachment):
                     updated_attachments.append(attachment)
                 all_attachments.append(attachment)
-            content += "\n" + self._build_attachment_xml(all_attachments)
+            # Surface attachment URL/title via XML — bytes are stripped by the
+            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
+            # re-presenting the model's own prior attachments conditions it to
+            # mimic the XML format in responses.
+            if message.role != Role.ASSISTANT:
+                content += "\n" + self._build_attachment_xml(all_attachments)
             message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
         message.content = content
 
