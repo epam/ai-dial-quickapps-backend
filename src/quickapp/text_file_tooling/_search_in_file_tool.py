@@ -21,40 +21,29 @@ class _SearchInFileTool(_TextFileTool):
         text = await self._download_text(file_url)
         lines = text.splitlines()
 
-        compare_pattern = pattern.lower() if case_insensitive else pattern
+        needle = pattern.lower() if case_insensitive else pattern
+        haystacks = [line.lower() for line in lines] if case_insensitive else lines
 
-        match_indices = [
-            i
-            for i, line in enumerate(lines)
-            if compare_pattern in (line.lower() if case_insensitive else line)
-        ]
-
-        if not match_indices:
-            result = ToolCallResult(content="No matches found.", content_type="text/plain")
-            if stage_wrapper:
-                stage_wrapper.add_result(result)
-            return result
-
-        windows: list[tuple[int, int]] = []
-        for idx in match_indices:
-            start = max(0, idx - context_lines)
-            end = min(len(lines), idx + context_lines + 1)
-            windows.append((start, end))
-
-        merged: list[tuple[int, int]] = [windows[0]]
-        for start, end in windows[1:]:
-            prev_start, prev_end = merged[-1]
-            if start <= prev_end:
-                merged[-1] = (prev_start, max(prev_end, end))
+        merged: list[tuple[int, int]] = []
+        for i, haystack in enumerate(haystacks):
+            if needle not in haystack:
+                continue
+            start = max(0, i - context_lines)
+            end = min(len(lines), i + context_lines + 1)
+            if merged and start <= merged[-1][1]:
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
             else:
                 merged.append((start, end))
 
-        output_parts: list[str] = []
-        for start, end in merged:
-            part_lines = [f"{start + i + 1}:{lines[start + i]}" for i in range(end - start)]
-            output_parts.append("\n".join(part_lines))
+        if not merged:
+            content = "No matches found."
+        else:
+            parts = [
+                "\n".join(f"{n}:{line}" for n, line in enumerate(lines[start:end], start=start + 1))
+                for start, end in merged
+            ]
+            content = "\n--\n".join(parts)
 
-        content = "\n--\n".join(output_parts)
         result = ToolCallResult(content=content, content_type="text/plain")
         if stage_wrapper:
             stage_wrapper.add_result(result)
