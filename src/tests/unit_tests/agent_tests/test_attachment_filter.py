@@ -4,10 +4,12 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent.orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
-from quickapp.attachment_processing._tool_configs import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
+from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
+    OrchestratorCapabilities,
+)
 
 
 def _attachment_filter(
@@ -17,7 +19,7 @@ def _attachment_filter(
 ) -> _AttachmentFilter:
     app = MagicMock(spec=ApplicationConfig)
     app.contexts = contexts if contexts is not None else []
-    caps = OrchestratorDeploymentCapabilities()
+    caps = OrchestratorCapabilities()
     if input_attachment_types is not None:
         caps.populate_from_dial_model(
             MagicMock(id="orch", input_attachment_types=input_attachment_types)
@@ -351,3 +353,36 @@ class Test_AttachmentFilter:
         )
         result = transformer.transform([assistant, tool_msg])
         assert len(result[1].custom_content.attachments) == 0
+
+    def test_fetch_tool_pdf_kept_when_url_matches_user_attachment(self):
+        url = "files/bucket/user-report.pdf"
+        transformer = _attachment_filter(contexts=[], input_attachment_types=["application/pdf"])
+        user_msg = _user_msg(
+            "please use my report",
+            [_attachment("user-report.pdf", url, "application/pdf")],
+        )
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_3",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/user-report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_3",
+            custom_content=CustomContent(
+                attachments=[_attachment("user-report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([user_msg, assistant, tool_msg])
+        assert len(result[2].custom_content.attachments) == 1
+        assert result[2].custom_content.attachments[0].url == url

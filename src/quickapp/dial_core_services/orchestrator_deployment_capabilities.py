@@ -6,11 +6,11 @@ from aidial_client.types.deployment import Deployment
 from quickapp.common.utils import matches_type
 
 
-class OrchestratorDeploymentCapabilities:
+class OrchestratorCapabilities:
     """
     Request-scoped DialCore metadata for the orchestrator deployment.
 
-    Populated once per chat completion by :class:`._OrchestratorDeploymentInitializer`
+    Populated once per chat completion by :class:`quickapp.agent._OrchestratorDeploymentInitializer`
     before tools and :class:`AssistantInvoker` run. If uninitialized (e.g. non-completion
     scopes), :meth:`orchestrator_accepts_mime_type` is conservative (deny).
     """

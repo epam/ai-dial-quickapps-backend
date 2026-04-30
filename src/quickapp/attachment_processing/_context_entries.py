@@ -5,8 +5,13 @@ from enum import Enum
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, Field, ValidationError
 
-from quickapp.attachment_processing._tool_configs import (
-    AVAILABLE_CONTEXT_TOOL_NAME,
+from quickapp.common.attachment_processing_utils import (
+    attachment_mime_type,
+    inferred_mime_type_for_file_context_url,
+    user_attachments_from_messages,
+)
+from quickapp.common.tool_names import (
+    INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
     INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
 )
 from quickapp.common.utils import matches_type
@@ -32,7 +37,8 @@ class AvailableContextToolResponse(BaseModel):
     disclaimer: str = Field(
         default=(
             "This information is related only to the files configured by admin. It does not contain any information "
-            "on attachments from user or from tool results."
+            "on attachments from user or from tool results. "
+            "To load a user attachment, use internal_attachments_get_content with exact url from <attachments>."
         )
     )
 
@@ -92,22 +98,12 @@ def build_context_entries(
     return current_urls, entries
 
 
-def inferred_mime_type_for_file_context_url(url: str) -> str:
-    """Infer MIME from the filename segment of ``url`` (same rule as :func:`build_context_entries`)."""
-    title = url.rsplit("/", 1)[-1]
-    return mimetypes.guess_type(title)[0] or ""
-
-
-def normalize_context_url_argument(raw: str) -> str:
-    """Normalize a model-supplied context URL for whitelist comparison: strip outer whitespace only."""
-    return raw.strip()
-
-
-def should_enable_lazy_context_fetch_tool(
+def should_enable_get_content_tool(
     contexts: Sequence[Context],
+    messages: Sequence[Message],
     input_attachment_types: list[str] | None,
 ) -> bool:
-    """True when some admin file context's inferred MIME is allowed on the orchestrator path.
+    """True when some admin file context's or attachment in user message inferred MIME is allowed on the orchestrator path.
 
     Uses the same filename-based inference as :func:`build_context_entries` and DialCore
     ``input_attachment_types`` via :func:`quickapp.common.utils.matches_type`. Empty inferred
@@ -117,6 +113,10 @@ def should_enable_lazy_context_fetch_tool(
         if not isinstance(ctx, FileContextConfig):
             continue
         mime = inferred_mime_type_for_file_context_url(ctx.url)
+        if matches_type(mime, input_attachment_types):
+            return True
+    for attachment in user_attachments_from_messages(messages):
+        mime = attachment_mime_type(attachment)
         if matches_type(mime, input_attachment_types):
             return True
     return False
@@ -151,7 +151,7 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
             for tc in msg.tool_calls:
                 if (
                     tc.function
-                    and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME
+                    and tc.function.name == INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME
                     and tc.id in tool_contents
                 ):
                     result = _parse_tool_response(tool_contents[tc.id])
@@ -162,7 +162,12 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
 
 def has_context_tool_history(messages: Sequence[Message]) -> bool:
     """Check whether message history contains any tool calls for the context list or fetch tools."""
-    names = frozenset({AVAILABLE_CONTEXT_TOOL_NAME, INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME})
+    names = frozenset(
+        {
+            INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+            INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+        }
+    )
     for msg in messages:
         if msg.role == Role.ASSISTANT and msg.tool_calls:
             for tc in msg.tool_calls:

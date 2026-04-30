@@ -11,10 +11,12 @@ from injector import inject
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.config.application import ApplicationConfig
+from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
+    OrchestratorCapabilities,
+)
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 from .orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
-from .orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
 
 logger = logging.getLogger(__name__)
 
@@ -24,13 +26,13 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
     def __init__(
         self,
         app_config: ApplicationConfig,
-        capabilities: OrchestratorDeploymentCapabilities,
+        capabilities: OrchestratorCapabilities,
         tool_config_service: ToolConfigCoreService,
         orchestrator_deployment_cache: OrchestratorDeploymentCacheService,
         api_key: DIAL_API_KEY,
     ) -> None:
         self.__app_config: ApplicationConfig = app_config
-        self.__capabilities: OrchestratorDeploymentCapabilities = capabilities
+        self.__capabilities: OrchestratorCapabilities = capabilities
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__orchestrator_deployment_cache: OrchestratorDeploymentCacheService = (
             orchestrator_deployment_cache

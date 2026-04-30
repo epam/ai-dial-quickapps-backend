@@ -1,6 +1,7 @@
 from quickapp.common.exceptions import ToolTimeoutError
-
-_PY_INTERPRETER_TOOL_NAME = "internal_code_execution_python_interpreter"
+from quickapp.common.tool_names import (
+    INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME as _PY_INTERPRETER_TOOL_NAME,
+)
 
 
 class _PyInterpreterError(Exception):

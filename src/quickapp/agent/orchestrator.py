@@ -24,6 +24,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.state_holder import StateHolder
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
@@ -74,6 +75,10 @@ class Orchestrator:
             # Store history in state.tool_execution_history for restoring on next request
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:
+                if exc_to_reraise is None and self._is_terminal_completion():
+                    tool_execution_history = self._strip_get_content_tool_attachments_from_history(
+                        tool_execution_history
+                    )
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
 
             self.__choice.set_state(self.__state_holder.get_state())
@@ -193,3 +198,53 @@ class Orchestrator:
                 history.append(msg.model_dump(mode="json", exclude_none=True))
 
         return history[::-1]
+
+    def _is_terminal_completion(self) -> bool:
+        """True when the latest message is a final assistant response (no tool calls)."""
+        messages = self.__messages_context.messages
+        if not messages:
+            return False
+        last = messages[-1]
+        return bool(last.role == Role.ASSISTANT and not last.tool_calls)
+
+    @staticmethod
+    def _strip_get_content_tool_attachments_from_history(
+        history: list[dict[str, object]],
+    ) -> list[dict[str, object]]:
+        """Remove TOOL custom_content.attachments for internal_attachments_get_content calls."""
+        tool_name_by_call_id: dict[str, str] = {}
+        for msg in history:
+            if msg.get("role") != "assistant":
+                continue
+            tool_calls = msg.get("tool_calls")
+            if not isinstance(tool_calls, list):
+                continue
+            for tool_call in tool_calls:
+                if not isinstance(tool_call, dict):
+                    continue
+                tool_call_id = tool_call.get("id")
+                function = tool_call.get("function")
+                if not isinstance(tool_call_id, str) or not isinstance(function, dict):
+                    continue
+                name = function.get("name")
+                if isinstance(name, str):
+                    tool_name_by_call_id[tool_call_id] = name
+
+        for msg in history:
+            if msg.get("role") != "tool":
+                continue
+            tool_call_id = msg.get("tool_call_id")
+            if not isinstance(tool_call_id, str):
+                continue
+            if tool_name_by_call_id.get(tool_call_id) != INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME:
+                continue
+
+            custom_content = msg.get("custom_content")
+            if not isinstance(custom_content, dict):
+                continue
+
+            custom_content.pop("attachments", None)
+            if not custom_content:
+                msg.pop("custom_content", None)
+
+        return history

@@ -38,6 +38,10 @@ from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
+from quickapp.config.tools.const import ALL_MIME_TYPES
+from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
+    OrchestratorCapabilities,
+)
 
 
 def build_dump_application_config() -> ApplicationConfig:
@@ -127,6 +131,11 @@ async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
         ctx.application_config = build_dump_application_config()
         # Non-empty: ``MessagesMixin.messages`` treats ``[]`` as unset (falsy guard).
         ctx.messages = [Message(role=Role.USER, content="dump-internal-tools")]
+
+        # Without DialCore deployment metadata, ``input_attachment_types`` is unset and
+        # ``should_enable_get_content_tool`` never matches inferred context MIME types.
+        capabilities = injector.get(OrchestratorCapabilities)
+        capabilities._input_attachment_types = [ALL_MIME_TYPES]
 
         for mod in modules:
             for provider in _iter_staged_tool_providers(mod):

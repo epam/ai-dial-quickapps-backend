@@ -7,6 +7,9 @@ from quickapp.dial_core_services._interactive_login_service import InteractiveLo
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
+    OrchestratorCapabilities,
+)
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 logger = logging.getLogger(__name__)
@@ -19,3 +22,8 @@ class DialCoreServicesModule(Module):
         binder.bind(DialFileService, DialFileService, scope=request_scope)
         binder.bind(InteractiveLoginSettings, InteractiveLoginSettings, scope=singleton)
         binder.bind(InteractiveLoginService, InteractiveLoginService, scope=request_scope)
+        binder.bind(
+            OrchestratorCapabilities,
+            to=OrchestratorCapabilities,
+            scope=request_scope,
+        )

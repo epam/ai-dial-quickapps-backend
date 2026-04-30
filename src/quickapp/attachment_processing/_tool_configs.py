@@ -1,3 +1,7 @@
+from quickapp.common.tool_names import (
+    INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+    INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+)
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -8,8 +12,7 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
-INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME = "internal_attachments_get_content"
-AVAILABLE_CONTEXT_TOOL_NAME = "internal_attachments_available_context"
+AVAILABLE_CONTEXT_TOOL_NAME = INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME
 
 AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
@@ -19,9 +22,9 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
                 "Returns metadata about admin-configured context files (title, url, type). "
                 f"If you are able to work with such attachments on your own, call `{INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME}` with the "
                 "exact `url` string from an entry. "
-                "**IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
-                "and will not return any information about them. If you see file in <attachments> section of user "
-                "message, it means that the file was attached by the user, and is available for you to use."
+                "This tool returns only admin contexts. "
+                "User-attached files are not listed here, but their `url` values can also be used with "
+                f"`{INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME}` when MIME is supported by orchestrator."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -37,25 +40,24 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
             description=(
-                "Loads one admin-configured context file by URL for use in this turn. "
+                "Loads one allowed attachment by URL for use in this turn. "
                 f"Pass the exact `url` string from the `{AVAILABLE_CONTEXT_TOOL_NAME}` tool "
-                "result (`entries[].url`). "
-                "Only URLs listed there are accepted; arbitrary paths or URLs are rejected. "
-                "If the orchestrator model does not support attachment type, this tool may be unavailable even "
-                "when files are configured."
+                "result (`entries[].url`) or from user `<attachments>` metadata in messages. "
+                "Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. "
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
                 properties={
-                    "context_url": ConfigurableSchemaSimpleType(
+                    "attachment_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description=(
-                            "Exact `url` value from an entry returned by "
-                            "`internal_attachments_available_context` (same string, including path)."
+                            "Exact file `url` from `internal_attachments_available_context.entries[].url` "
+                            "or from user `<attachments>` section (same string, including path). "
+                            "Legacy alias `context_url` is still accepted."
                         ),
                     )
                 },
-                required=["context_url"],
+                required=["attachment_url"],
             ),
         )
     ),

@@ -1,9 +1,12 @@
+from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+
 from quickapp.attachment_processing._context_entries import (
     ContextEntry,
     ContextEntryStatus,
     build_context_entries,
-    should_enable_lazy_context_fetch_tool,
+    should_enable_get_content_tool,
 )
+from quickapp.common.attachment_processing_utils import collect_get_content_allowed_urls
 from quickapp.config.context import Context, FileContextConfig, UserDefinedContextConfig
 
 
@@ -157,27 +160,86 @@ class TestBuildContextEntries:
         assert by_url["files/bucket/gone.txt"].status == ContextEntryStatus.removed
 
 
-class TestShouldEnableLazyContextFetchTool:
+class TestShouldGetContentTool:
     def test_true_when_pdf_context_and_deployment_accepts_pdf(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_lazy_context_fetch_tool(contexts, ["application/pdf"]) is True
+        assert should_enable_get_content_tool(contexts, [], ["application/pdf"]) is True
 
     def test_true_when_non_pdf_inferred_and_deployment_accepts_that_mime(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
-        assert should_enable_lazy_context_fetch_tool(contexts, ["text/plain"]) is True
+        assert should_enable_get_content_tool(contexts, [], ["text/plain"]) is True
 
     def test_false_when_inferred_mime_not_accepted_by_deployment(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
-        assert should_enable_lazy_context_fetch_tool(contexts, ["application/pdf"]) is False
+        assert should_enable_get_content_tool(contexts, [], ["application/pdf"]) is False
 
     def test_false_when_deployment_excludes_file_mime(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_lazy_context_fetch_tool(contexts, ["image/*"]) is False
+        assert should_enable_get_content_tool(contexts, [], ["image/*"]) is False
 
     def test_false_when_input_attachment_types_none(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_lazy_context_fetch_tool(contexts, None) is False
+        assert should_enable_get_content_tool(contexts, [], None) is False
 
     def test_false_when_input_attachment_types_empty(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_lazy_context_fetch_tool(contexts, []) is False
+        assert should_enable_get_content_tool(contexts, [], []) is False
+
+
+class TestGetContentEligibility:
+    def test_enable_get_content_when_user_attachment_supported(self):
+        contexts: list[Context] = []
+        messages = [
+            Message(
+                role=Role.USER,
+                content="use this",
+                custom_content=CustomContent(
+                    attachments=[
+                        Attachment(
+                            title="report.pdf",
+                            url="files/bucket/user-report.pdf",
+                            type="application/pdf",
+                        )
+                    ]
+                ),
+            )
+        ]
+        assert (
+            should_enable_get_content_tool(
+                contexts=contexts,
+                messages=messages,
+                input_attachment_types=["application/pdf"],
+            )
+            is True
+        )
+
+    def test_collect_allowed_urls_includes_supported_user_attachment(self):
+        contexts: list[Context] = [FileContextConfig(url="files/bucket/admin.pdf")]
+        messages = [
+            Message(
+                role=Role.USER,
+                content="attached",
+                custom_content=CustomContent(
+                    attachments=[
+                        Attachment(
+                            title="notes.txt",
+                            url="files/bucket/notes.txt",
+                            type="text/plain",
+                        ),
+                        Attachment(
+                            title="report.pdf",
+                            url="files/bucket/user-report.pdf",
+                            type="application/pdf",
+                        ),
+                    ]
+                ),
+            )
+        ]
+        allowed = collect_get_content_allowed_urls(
+            contexts=contexts,
+            messages=messages,
+            input_attachment_types=["application/pdf"],
+        )
+        assert "files/bucket/admin.pdf" in allowed
+        assert "files/bucket/user-report.pdf" in allowed
+        assert "files/bucket/notes.txt" not in allowed

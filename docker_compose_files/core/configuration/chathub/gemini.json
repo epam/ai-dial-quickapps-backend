@@ -33,40 +33,6 @@
       "inputAttachmentTypes": [
         "*/*"
       ]
-    },
-    "chat_hub_gemini3.1_quickapp": {
-      "displayName": "ChatHub - Gemini 3.1 (QuickApp)",
-      "description": "Agent with vision, image generation, documents RAG, web search and python code interpretation capabilities.",
-      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
-      "applicationProperties": {
-        "orchestrator": {
-          "deployment": {
-            "name": "gemini-3.1-pro-preview",
-            "parameters": {
-              "temperature": 1.0,
-              "seed": 820288
-            }
-          },
-          "system_prompt": {
-            "type": "predefined",
-            "template": "gemini_prompt"
-          }
-        },
-        "contexts": [],
-        "tool_sets": [
-          {
-            "type": "predefined",
-            "template_name": "chathub"
-          },
-          {
-            "type": "predefined",
-            "template_name": "py_interpreter"
-          }
-        ]
-      },
-      "inputAttachmentTypes": [
-        "*/*"
-      ]
     }
   }
 }

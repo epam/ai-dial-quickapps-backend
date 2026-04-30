@@ -13,7 +13,6 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
-from quickapp.agent.orchestrator_deployment_capabilities import OrchestratorDeploymentCapabilities
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -73,11 +72,6 @@ class AgentModule(Module):
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
-        binder.bind(
-            OrchestratorDeploymentCapabilities,
-            to=OrchestratorDeploymentCapabilities,
-            scope=request_scope,
-        )
         binder.bind(
             OrchestratorDeploymentCacheService,
             to=OrchestratorDeploymentCacheService,
