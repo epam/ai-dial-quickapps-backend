@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.config.json_merge_patch import JsonMergePatchError, json_merge_patch
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.predefined import PredefinedTool
@@ -17,7 +18,6 @@ from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.config.toolsets.toolset import ToolSet
-from quickapp.config.utils import JsonMergePatchError, json_merge_patch
 from quickapp.predefined_tooling._predefined_tooling_context import _PredefinedToolingContext
 
 _TOOL_HOSTING_TOOLSETS = (RestApiToolSet, DeploymentToolSet, InternalToolSet)

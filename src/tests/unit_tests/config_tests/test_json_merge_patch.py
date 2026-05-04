@@ -1,6 +1,6 @@
 import pytest
 
-from quickapp.config.utils import JsonMergePatchError, json_merge_patch
+from quickapp.config.json_merge_patch import JsonMergePatchError, json_merge_patch
 
 
 class TestJsonMergePatch:
