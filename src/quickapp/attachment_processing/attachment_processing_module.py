@@ -36,6 +36,7 @@ class AttachmentProcessingModule(Module):
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
+
         if should_activate_context_tool(app_config.contexts, messages):
             tools.append(
                 ac_builder.build(
@@ -45,6 +46,7 @@ class AttachmentProcessingModule(Module):
                     contexts=list(app_config.contexts),
                 )
             )
+
         return tools
 
     @multiprovider
