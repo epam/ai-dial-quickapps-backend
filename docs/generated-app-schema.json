@@ -1957,6 +1957,20 @@
           "description": "Whether the tool is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [
@@ -1978,6 +1992,20 @@
           "description": "Name of the predefined template",
           "title": "Template Name",
           "type": "string"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [

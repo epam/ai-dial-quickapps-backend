@@ -64,7 +64,9 @@ A request-scoped context is created to hold:
 ### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
-definitions from the predefined configuration files.
+definitions from the predefined configuration files. Predefined references with an `override` field have the
+operator-supplied JSON Merge Patch (RFC 7396) applied to the loaded template body before pydantic validation; merge
+or validation failures surface as `ConfigResolutionException` and render in the *Initialization issues* stage.
 
 ### 5. Completion Initialization
 
