@@ -2,6 +2,7 @@ import logging
 from hashlib import sha256
 from typing import Any
 
+from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment, ToolCall
 from pydantic import BaseModel, Field, PrivateAttr
 
@@ -34,13 +35,12 @@ class StateHolder(BaseModel):
                 return file_data
         return None
 
-    def store_file_data(self, url: str, file_data: bytes, metadata: Any = None) -> None:
+    def store_file_data(self, url: str, file_data: bytes, metadata: FileMetadata) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict[key] = file_data
-        if metadata is not None:
-            self._file_metadata_dict[key] = metadata
+        self._file_metadata_dict[key] = metadata
 
-    def get_file_metadata(self, url: str) -> Any | None:
+    def get_file_metadata(self, url: str) -> FileMetadata | None:
         key = self._get_file_key_by_url(url)
         return self._file_metadata_dict.get(key)
 
