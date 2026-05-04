@@ -4,7 +4,7 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, ProviderOf, multiprovider
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.exceptions import ToolInitializationException
+from quickapp.common.exceptions import InitializationException
 
 from ._dial_app_resolver import _DialAppResolver
 from ._dial_app_resolver_context import _DialAppResolverContext
@@ -27,5 +27,5 @@ class DialAppToolingModule(Module):
     @multiprovider
     def __provide_initialization_exceptions(
         self, context: _DialAppResolverContext
-    ) -> list[ToolInitializationException]:
+    ) -> list[InitializationException]:
         return context.exceptions
