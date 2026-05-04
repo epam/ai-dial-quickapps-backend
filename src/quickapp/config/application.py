@@ -56,10 +56,26 @@ def nullify_preview_fields(model: BaseModel) -> None:
             nullify_preview_fields(value)
 
 
+class FileLoaderConfig(BaseModel):
+    size_limit: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum size (in bytes) of a single file the agent will download. "
+            "When unset, the env default `DEFAULT_FILE_LOADER_SIZE_LIMIT` is used "
+            "(default 10 MiB)."
+        ),
+    )
+
+
 class Features(BaseModel):
     timestamp: TimestampConfig | None = PreviewField(  # type: ignore[assignment]
         default_factory=ToolCallTimestampConfig,
         description="Time awareness configuration.",
+    )
+    file_loader: FileLoaderConfig = Field(
+        default_factory=FileLoaderConfig,
+        description="File loader configuration (download size limits, etc.).",
     )
 
 
@@ -79,15 +95,6 @@ class ToolDefaults(BaseModel):
             "Timeout (in seconds) applied to all tool calls in this app. "
             "When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, "
             "or each client's library default if neither is set."
-        ),
-    )
-    max_file_download_bytes: int | None = Field(
-        default=None,
-        gt=0,
-        description=(
-            "Maximum size (in bytes) of a single file the agent will download "
-            "from DIAL Core when resolving file arguments for a tool call. "
-            "When unset, the env default `DIAL_FILE_MAX_DOWNLOAD_BYTES` is used "
         ),
     )
 

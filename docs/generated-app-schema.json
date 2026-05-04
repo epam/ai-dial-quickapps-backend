@@ -1108,6 +1108,10 @@
           ],
           "description": "Time awareness configuration.",
           "x-preview": true
+        },
+        "file_loader": {
+          "$ref": "#/$defs/FileLoaderConfig",
+          "description": "File loader configuration (download size limits, etc.)."
         }
       },
       "title": "Features",
@@ -1147,6 +1151,26 @@
         "url"
       ],
       "title": "FileContextConfig",
+      "type": "object"
+    },
+    "FileLoaderConfig": {
+      "properties": {
+        "size_limit": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum size (in bytes) of a single file the agent will download. When unset, the env default `DEFAULT_FILE_LOADER_SIZE_LIMIT` is used (default 10 MiB).",
+          "title": "Size Limit"
+        }
+      },
+      "title": "FileLoaderConfig",
       "type": "object"
     },
     "FormattedParameterConfig": {
@@ -2987,20 +3011,6 @@
           "default": null,
           "description": "Timeout (in seconds) applied to all tool calls in this app. When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, or each client's library default if neither is set.",
           "title": "Timeout Seconds"
-        },
-        "max_file_download_bytes": {
-          "anyOf": [
-            {
-              "exclusiveMinimum": 0,
-              "type": "integer"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "default": null,
-          "description": "Maximum size (in bytes) of a single file the agent will download from DIAL Core when resolving file arguments for a tool call. When unset, the env default `DIAL_FILE_MAX_DOWNLOAD_BYTES` is used ",
-          "title": "Max File Download Bytes"
         }
       },
       "title": "ToolDefaults",

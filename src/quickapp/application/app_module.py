@@ -12,6 +12,8 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.file_loader_settings import FileLoaderSettings
+from quickapp.common.file_loader_size_limit_resolver import FileLoaderSizeLimitResolver
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
@@ -58,6 +60,10 @@ class AppModule(Module):
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(ToolSettings, to=ToolSettings, scope=singleton)
         binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
+        binder.bind(FileLoaderSettings, to=FileLoaderSettings, scope=singleton)
+        binder.bind(
+            FileLoaderSizeLimitResolver, to=FileLoaderSizeLimitResolver, scope=request_scope
+        )
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
