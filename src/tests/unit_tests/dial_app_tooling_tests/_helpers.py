@@ -1,4 +1,6 @@
+import asyncio
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from pydantic import SecretStr
@@ -22,6 +24,20 @@ def make_metadata(*, mcp: bool | None = None, with_features: bool = True) -> Sim
     """Build a minimal Deployment-like object with a features namespace."""
     features = SimpleNamespace(mcp=mcp) if with_features else None
     return SimpleNamespace(id="deployment-id", features=features)
+
+
+def make_async_loader(returns: Any) -> AsyncMock:
+    """An AsyncMock whose side_effect yields control via ``asyncio.sleep(0)`` before
+    returning ``returns``. Use this for tests that need to expose concurrency in
+    ``asyncio.gather`` — a plain ``AsyncMock(return_value=...)`` resolves without
+    yielding, which can mask races. ``await_count`` still tracks invocations.
+    """
+
+    async def _side_effect(*_args: Any, **_kwargs: Any) -> Any:
+        await asyncio.sleep(0)
+        return returns
+
+    return AsyncMock(side_effect=_side_effect)
 
 
 def make_tool_config(name: str = "deployment_id_tool") -> DialDeploymentTool:

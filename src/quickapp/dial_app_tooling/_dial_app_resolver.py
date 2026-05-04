@@ -1,6 +1,8 @@
 import asyncio
 import logging
 
+from aidial_client.types.application import Application
+from aidial_client.types.deployment import Deployment
 from injector import ProviderOf, inject
 
 from quickapp.common import DIAL_API_KEY
@@ -45,6 +47,8 @@ class _DialAppResolver(CompletionInitializer):
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
         self.__context: _DialAppResolverContext = context
         self.__resolved: bool = False
+        # Errors are intentionally un-cached so a sibling toolset in the same group can retry.
+        self.__metadata_memo: dict[str, Deployment | Application] = {}
 
     async def initialize(self) -> None:
         await self.resolve()
@@ -53,25 +57,39 @@ class _DialAppResolver(CompletionInitializer):
         if self.__resolved:
             return
         self.__resolved = True
-        dial_app_toolsets = [
+        dial_app_toolsets: list[DialAppToolSet] = [
             ts
             for ts in self.__app_config.tool_sets or []
             if isinstance(ts, DialAppToolSet) and ts.enabled
         ]
         if not dial_app_toolsets:
             return
+        # CacheService.get is not concurrency-safe, so members sharing a deployment_id
+        # resolve serially within a group; distinct deployments still parallelize.
+        groups: dict[str, list[DialAppToolSet]] = {}
+        for ts in dial_app_toolsets:
+            groups.setdefault(ts.deployment_id, []).append(ts)
         await asyncio.gather(
-            *(self._resolve_one(ts) for ts in dial_app_toolsets), return_exceptions=True
+            *(self._resolve_group(items) for items in groups.values()),
+            return_exceptions=True,
         )
+
+    async def _resolve_group(self, toolsets: list[DialAppToolSet]) -> None:
+        for ts in toolsets:
+            await self._resolve_one(ts)
 
     async def _resolve_one(self, toolset: DialAppToolSet) -> None:
         try:
             if toolset.transport == "chat-completion":
                 await self._handle_chat_completion_branch(toolset)
                 return
-            metadata = await self.__tool_config_service.get_deployment_metadata(
-                toolset.deployment_id
-            )
+            if toolset.deployment_id in self.__metadata_memo:
+                metadata = self.__metadata_memo[toolset.deployment_id]
+            else:
+                metadata = await self.__tool_config_service.get_deployment_metadata(
+                    toolset.deployment_id
+                )
+                self.__metadata_memo[toolset.deployment_id] = metadata
             mcp_advertised = bool(metadata.features and metadata.features.mcp)
             if mcp_advertised:
                 self._handle_mcp_branch(toolset)

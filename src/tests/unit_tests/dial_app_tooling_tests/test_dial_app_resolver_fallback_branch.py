@@ -6,7 +6,7 @@ from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import StopStrategyModel, ToolFallbackConfig
 from quickapp.config.toolsets.dial_app import DialAppToolSet
 
-from ._helpers import make_metadata, make_resolver, make_tool_config
+from ._helpers import make_async_loader, make_metadata, make_resolver, make_tool_config
 
 
 @pytest.mark.asyncio
@@ -112,3 +112,50 @@ async def test_fallback_no_warning_when_allowed_tools_unset(caplog):
         r for r in caplog.records if r.levelno == logging.WARNING and r.name == resolver_logger
     ]
     assert resolver_warnings == []
+
+
+@pytest.mark.asyncio
+async def test_fallback_loader_dedupes_under_concurrent_resolution():
+    """Two DialAppToolSets with the same deployment_id must trigger only one
+    get_basic_tool_config call within a single resolve(). The resolver groups
+    by deployment_id and serializes within a group; CacheService is not
+    concurrency-safe, so without grouping concurrent get-misses would each
+    invoke the loader."""
+    toolsets = [
+        DialAppToolSet(name="app-a", deployment_id="shared"),
+        DialAppToolSet(name="app-b", deployment_id="shared"),
+    ]
+    resolver, context, tool_config_service, _ = make_resolver(
+        toolsets=toolsets,
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+    )
+    # Replace the AsyncMock with one that yields control via asyncio.sleep(0),
+    # making the cache race observable if grouping is missing.
+    tool_config_service.get_basic_tool_config = make_async_loader(make_tool_config())
+
+    await resolver.resolve()
+
+    assert len(context.resolved_deployment_tools) == 2
+    assert tool_config_service.get_basic_tool_config.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_metadata_fetch_dedupes_within_group():
+    """Bonus win from grouping: two auto-transport toolsets pointing at the
+    same deployment share one metadata fetch."""
+    toolsets = [
+        DialAppToolSet(name="app-a", deployment_id="shared"),
+        DialAppToolSet(name="app-b", deployment_id="shared"),
+    ]
+    resolver, context, tool_config_service, _ = make_resolver(
+        toolsets=toolsets,
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+    )
+    tool_config_service.get_deployment_metadata = make_async_loader(make_metadata(mcp=False))
+
+    await resolver.resolve()
+
+    assert len(context.resolved_deployment_tools) == 2
+    assert tool_config_service.get_deployment_metadata.await_count == 1
