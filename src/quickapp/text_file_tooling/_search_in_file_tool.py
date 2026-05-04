@@ -18,7 +18,7 @@ class _SearchInFileTool(_TextFileTool):
         context_lines: int = int(kwargs.get("context_lines") or 0)
         case_insensitive: bool = bool(kwargs.get("case_insensitive", False))
 
-        text = await self._download_text(file_url)
+        text, _ = await self._download_text(file_url)
         lines = text.splitlines()
 
         needle = pattern.lower() if case_insensitive else pattern

@@ -1,6 +1,7 @@
 from abc import ABC
 from typing import Any
 
+from aidial_client.types.metadata import FileMetadata
 from injector import AssistedBuilder, inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
@@ -35,16 +36,9 @@ class _TextFileTool(StagedBaseTool, ABC):
         )
         self._dial_file_service = dial_file_service
 
-    async def _download_text(self, file_url: str) -> str:
+    async def _download_text(self, file_url: str) -> tuple[str, FileMetadata | None]:
         try:
-            data = await self._dial_file_service.download_file(file_url)
+            data, metadata = await self._dial_file_service.download_file(file_url)
         except Exception as e:
             raise InvalidToolCallParameterException("file_url", f"File download failed: {e}") from e
-        return data.decode("utf-8")
-
-    async def _download_text_with_etag(self, file_url: str) -> tuple[str, str]:
-        try:
-            data, etag = await self._dial_file_service.download_file_with_etag(file_url)
-        except Exception as e:
-            raise InvalidToolCallParameterException("file_url", f"File download failed: {e}") from e
-        return data.decode("utf-8"), etag
+        return data.decode("utf-8"), metadata

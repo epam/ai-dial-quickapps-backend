@@ -2,6 +2,7 @@ import logging
 from typing import Literal
 
 from aidial_client import AsyncDial
+from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
@@ -23,24 +24,25 @@ class DialFileService:
         self.__state_holder: StateHolder = state_holder
         self.__content_size_limit: int = size_limit_resolver.resolve()
 
-    async def download_file(self, file_url: str) -> bytes:
+    async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
         logger.debug(f"File url to download url:{file_url}")
         file_data = self.__state_holder.get_file_data(url=file_url)
-        if file_data is None:
-            try:
-                logger.debug(f"Downloading file:{file_url}")
-                metadata = await self.__dial_client.files.get_metadata(file_url)
-                size = metadata.content_length or 0
-                if size > self.__content_size_limit:
-                    raise ValueError(
-                        f"File size {size} exceeds the limit of {self.__content_size_limit} bytes."
-                    )
-                file_data = await (await self.__dial_client.files.download(file_url)).aget_content()
-                self.__state_holder.store_file_data(file_url, file_data)
-            except Exception as e:
-                logger.error("Failed to download: %s", file_url, exc_info=True)
-                raise e
-        return file_data
+        if file_data is not None:
+            return file_data, self.__state_holder.get_file_metadata(file_url)
+        try:
+            logger.debug(f"Downloading file:{file_url}")
+            metadata = await self.__dial_client.files.get_metadata(file_url)
+            size = metadata.content_length or 0
+            if size > self.__content_size_limit:
+                raise ValueError(
+                    f"File size {size} exceeds the limit of {self.__content_size_limit} bytes."
+                )
+            file_data = await (await self.__dial_client.files.download(file_url)).aget_content()
+            self.__state_holder.store_file_data(file_url, file_data, metadata)
+        except Exception as e:
+            logger.error("Failed to download: %s", file_url, exc_info=True)
+            raise e
+        return file_data, metadata
 
     async def upload_text(
         self,
@@ -59,12 +61,6 @@ class DialFileService:
             etag_if_match=if_match,
         )
         return metadata.url
-
-    async def download_file_with_etag(self, file_url: str) -> tuple[bytes, str]:
-        metadata = await self.__dial_client.files.get_metadata(file_url)
-        etag = metadata.etag or ""
-        data = await self.download_file(file_url)
-        return data, etag
 
     def invalidate_cache(self, file_url: str) -> None:
         self.__state_holder.invalidate_file_data(file_url)

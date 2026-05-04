@@ -20,7 +20,7 @@ class FilePrefixHandlers:
 
     @staticmethod
     async def handle_base64(file_url: str, file_service: DialFileService) -> str:
-        content = await file_service.download_file(file_url)
+        content, _ = await file_service.download_file(file_url)
         if not isinstance(content, (bytes, bytearray)):
             try:
                 content = bytes(content)
@@ -36,7 +36,7 @@ class FilePrefixHandlers:
     async def handle_text(
         file_url: str, file_service: DialFileService, parameter_name: str = "<unknown>"
     ) -> str:
-        content_bytes = await file_service.download_file(file_url)
+        content_bytes, _ = await file_service.download_file(file_url)
 
         if not isinstance(content_bytes, (bytes, bytearray)):
             try:

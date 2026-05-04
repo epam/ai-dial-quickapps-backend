@@ -13,6 +13,7 @@ class StateHolder(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
     _state: dict[str, Any] = PrivateAttr(default_factory=dict)
     _file_data_dict: dict[str, bytes] = PrivateAttr(default_factory=dict)
+    _file_metadata_dict: dict[str, Any] = PrivateAttr(default_factory=dict)
 
     def add_state(self, key: str, value: Any) -> None:
         logger.debug(f"Added state [{key}]={value}")
@@ -33,13 +34,20 @@ class StateHolder(BaseModel):
                 return file_data
         return None
 
-    def store_file_data(self, url: str, file_data: bytes) -> None:
+    def store_file_data(self, url: str, file_data: bytes, metadata: Any = None) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict[key] = file_data
+        if metadata is not None:
+            self._file_metadata_dict[key] = metadata
+
+    def get_file_metadata(self, url: str) -> Any | None:
+        key = self._get_file_key_by_url(url)
+        return self._file_metadata_dict.get(key)
 
     def invalidate_file_data(self, url: str) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict.pop(key, None)
+        self._file_metadata_dict.pop(key, None)
 
     @staticmethod
     def _get_file_key_by_url(url: str) -> str:

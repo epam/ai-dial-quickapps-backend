@@ -20,7 +20,7 @@ _FILE = "\n".join(
 
 def _make_tool(content: str = _FILE) -> _SearchInFileTool:
     mock_service = MagicMock(spec=DialFileService)
-    mock_service.download_file = AsyncMock(return_value=content.encode("utf-8"))
+    mock_service.download_file = AsyncMock(return_value=(content.encode("utf-8"), None))
     return _SearchInFileTool(
         stage_wrapper_builder=MagicMock(),
         tool_config=SEARCH_IN_FILE_TOOL_CONFIG,

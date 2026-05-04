@@ -46,7 +46,7 @@ class _DeleteFileTool(_TextFileTool):
     ) -> ToolCallResult:
         file_url: str = kwargs["file_url"]
 
-        if GENERATED_FILES_ROOT not in file_url:
+        if f"/{GENERATED_FILES_ROOT}" not in file_url:
             raise InvalidToolCallParameterException(
                 "file_url",
                 f"delete is restricted to agent-generated files under {GENERATED_FILES_ROOT}",

@@ -100,40 +100,6 @@ class TestUploadText:
         assert result == "files/b/generated-files/notes.md"
 
 
-class TestDownloadFileWithEtag:
-    @pytest.mark.asyncio
-    async def test_returns_bytes_and_etag(self):
-        file_bytes = b"content here"
-        mock_client = _make_mock_dial_client(file_content=file_bytes, etag="rev1")
-        svc = _make_service(dial_client=mock_client)
-
-        data, etag = await svc.download_file_with_etag("files/b/f.txt")
-
-        assert data == file_bytes
-        assert etag == "rev1"
-
-    @pytest.mark.asyncio
-    async def test_uses_cache_for_bytes(self):
-        holder = StateHolder()
-        holder.store_file_data("files/b/cached.txt", b"cached")
-        mock_client = _make_mock_dial_client(etag="e1")
-        svc = _make_service(dial_client=mock_client, state_holder=holder)
-
-        data, etag = await svc.download_file_with_etag("files/b/cached.txt")
-
-        assert data == b"cached"
-        assert etag == "e1"
-        mock_client.files.download.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_etag_none_returns_empty_string(self):
-        mock_client = _make_mock_dial_client(etag=None)
-        svc = _make_service(dial_client=mock_client)
-
-        _, etag = await svc.download_file_with_etag("files/b/f.txt")
-        assert etag == ""
-
-
 class TestInvalidateCache:
     @pytest.mark.asyncio
     async def test_subsequent_download_hits_network_after_invalidation(self):
@@ -142,7 +108,7 @@ class TestInvalidateCache:
         mock_client = _make_mock_dial_client(file_content=file_bytes_v1)
         svc = _make_service(dial_client=mock_client)
 
-        first = await svc.download_file("files/b/f.txt")
+        first, _ = await svc.download_file("files/b/f.txt")
         assert first == file_bytes_v1
 
         # Now invalidate and change what the mock returns
@@ -150,7 +116,7 @@ class TestInvalidateCache:
         mock_client.files.download.return_value.aget_content = AsyncMock(return_value=file_bytes_v2)
         mock_client.files.get_metadata.return_value.content_length = 100
 
-        second = await svc.download_file("files/b/f.txt")
+        second, _ = await svc.download_file("files/b/f.txt")
         assert second == file_bytes_v2
 
 

@@ -57,9 +57,10 @@ class TestDownloadFile:
         mock_dial_client = _make_mock_dial_client(content_length=100, file_content=file_bytes)
         svc = _make_service(dial_client=mock_dial_client)
 
-        result = await svc.download_file("files/test.txt")
+        data, metadata = await svc.download_file("files/test.txt")
 
-        assert result == file_bytes
+        assert data == file_bytes
+        assert metadata is not None
         mock_dial_client.files.get_metadata.assert_awaited_once_with("files/test.txt")
         mock_dial_client.files.download.assert_awaited_once_with("files/test.txt")
 
@@ -70,9 +71,10 @@ class TestDownloadFile:
         mock_dial_client = _make_mock_dial_client()
         svc = _make_service(dial_client=mock_dial_client, state_holder=holder)
 
-        result = await svc.download_file("files/cached.txt")
+        data, metadata = await svc.download_file("files/cached.txt")
 
-        assert result == b"cached content"
+        assert data == b"cached content"
+        assert metadata is None
         mock_dial_client.files.get_metadata.assert_not_called()
         mock_dial_client.files.download.assert_not_called()
 

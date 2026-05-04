@@ -23,7 +23,7 @@ class _ReadFileLinesTool(_TextFileTool):
         if end_line < start_line:
             raise InvalidToolCallParameterException("end_line", "end_line must be >= start_line")
 
-        text = await self._download_text(file_url)
+        text, _ = await self._download_text(file_url)
         lines = text.splitlines()
         sliced = "\n".join(lines[start_line:end_line])
 

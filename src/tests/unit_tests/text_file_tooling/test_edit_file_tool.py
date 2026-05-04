@@ -17,8 +17,8 @@ def _make_tool(
     upload_side_effect: Exception | None = None,
 ) -> _EditFileTool:
     mock_service = MagicMock(spec=DialFileService)
-    mock_service.download_file_with_etag = AsyncMock(
-        return_value=(file_content.encode("utf-8"), etag)
+    mock_service.download_file = AsyncMock(
+        return_value=(file_content.encode("utf-8"), MagicMock(etag=etag))
     )
     if upload_side_effect:
         mock_service.upload_text = AsyncMock(side_effect=upload_side_effect)
@@ -152,7 +152,7 @@ class TestEditFile:
     @pytest.mark.asyncio
     async def test_download_failure_raises_invalid_parameter(self):
         mock_service = MagicMock(spec=DialFileService)
-        mock_service.download_file_with_etag = AsyncMock(
+        mock_service.download_file = AsyncMock(
             side_effect=ValueError("File size 11534336 exceeds the limit")
         )
         tool = _EditFileTool(

@@ -25,7 +25,8 @@ class _EditFileTool(_TextFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        content, etag = await self._download_text_with_etag(file_url)
+        content, metadata = await self._download_text(file_url)
+        etag = metadata.etag if metadata else None
 
         count = content.count(old_string)
         if count == 0:
@@ -40,7 +41,7 @@ class _EditFileTool(_TextFileTool):
 
         try:
             await self._dial_file_service.upload_text(
-                url=file_url, content=new_content, if_match=etag or None
+                url=file_url, content=new_content, if_match=etag
             )
         except EtagMismatchError:
             raise InvalidToolCallParameterException(

@@ -10,7 +10,7 @@ from quickapp.text_file_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
 
 def _make_tool(file_content: bytes = b"line0\nline1\nline2\nline3\nline4") -> _ReadFileLinesTool:
     mock_service = MagicMock(spec=DialFileService)
-    mock_service.download_file = AsyncMock(return_value=file_content)
+    mock_service.download_file = AsyncMock(return_value=(file_content, None))
     return _ReadFileLinesTool(
         stage_wrapper_builder=MagicMock(),
         tool_config=READ_FILE_LINES_TOOL_CONFIG,
