@@ -2,9 +2,9 @@ from enum import Enum
 
 
 class ToolNames(Enum):
-    IMAGE_GENERATION_TOOL = "chat-hub_image_generation_tool"
-    WEB_SEARCH_TOOL = "chat-hub_web_search_tool"
-    RAG_SEARCH_TOOL = "chat-hub_rag_search_tool"
+    IMAGE_GENERATION_TOOL = "image_generation_tool"
+    WEB_SEARCH_TOOL = "web_search_tool"
+    RAG_SEARCH_TOOL = "rag_search_tool"
     PYTHON_CODE_INTERPRETER = "internal_code_execution_python_interpreter"
     CREATE_SHAPE_BOX = "shapes_box_toolset_create_shape_box"
     ADD_SHAPE_TO_BOX = "shapes_box_toolset_add_shape_to_box"

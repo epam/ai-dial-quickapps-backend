@@ -17,6 +17,7 @@ from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
 from tests.integration_tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
 from tests.integration_tests.test_runner.config import TestConfig
+from tests.integration_tests.test_runner.utils.string_utils import sanitize_for_directory
 
 llm_cache = None
 
@@ -37,6 +38,7 @@ AGENT_MODELS = [
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
     "us.anthropic.claude-3-7-sonnet-20250219-v1",
+    "anthropic.claude-sonnet-4-5-20250929-v1:0",
     "anthropic.claude-v4-5-sonnet-v1",
 ]
 
@@ -74,7 +76,10 @@ class CacheMiddlewareApp(FastAPI):
         self.base_path = Path(app_config.base_path)
         self.content_base_path = app_config.content_base_path
         self.llm_cache = LlmCache(
-            cache_path=self.base_path / 'cache' / app_config.model / app_config.test_name,
+            cache_path=self.base_path
+            / 'cache'
+            / sanitize_for_directory(app_config.model)
+            / app_config.test_name,
             enable_cache=True,
         )
         self.used_cache_responses = set()

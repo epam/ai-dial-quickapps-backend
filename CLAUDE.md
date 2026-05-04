@@ -14,11 +14,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Commands
 
-Always activate the virtualenv first:
-```bash
-source .venv/bin/activate
-```
-
 | Task | Command | Notes |
 |------|---------|-------|
 | Install dev deps | `make install_dev` | |
