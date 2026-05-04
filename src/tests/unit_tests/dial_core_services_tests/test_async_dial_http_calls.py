@@ -15,6 +15,7 @@ Coverage:
 """
 
 import json
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +26,7 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
+from quickapp.dial_core_services._file_service_settings import FileServiceSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_core_services.exceptions import (
@@ -114,6 +116,10 @@ def _provider(client: AsyncDial) -> MagicMock:
     provider = MagicMock(spec=ProviderOf)
     provider.get.return_value = client
     return provider
+
+
+def _file_service_app_config() -> SimpleNamespace:
+    return SimpleNamespace(tool_defaults=SimpleNamespace(max_file_download_bytes=None))
 
 
 def _dial_settings() -> DialSettings:
@@ -286,6 +292,8 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            app_config=_file_service_app_config(),  # type: ignore[arg-type]
+            settings=FileServiceSettings(),
         )
         result = await svc.download_file("files/my-bucket/test.txt")
 
@@ -306,6 +314,8 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            app_config=_file_service_app_config(),  # type: ignore[arg-type]
+            settings=FileServiceSettings(),
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
             await svc.download_file("files/my-bucket/large.bin")
@@ -325,6 +335,8 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            app_config=_file_service_app_config(),  # type: ignore[arg-type]
+            settings=FileServiceSettings(),
         )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],

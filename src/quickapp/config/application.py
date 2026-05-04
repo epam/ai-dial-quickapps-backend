@@ -81,6 +81,15 @@ class ToolDefaults(BaseModel):
             "or each client's library default if neither is set."
         ),
     )
+    max_file_download_bytes: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum size (in bytes) of a single file the agent will download "
+            "from DIAL Core when resolving file arguments for a tool call. "
+            "When unset, the env default `DIAL_FILE_MAX_DOWNLOAD_BYTES` is used "
+        ),
+    )
 
 
 class ApplicationConfig(BaseApplicationTypeConfig):
