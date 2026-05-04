@@ -14,30 +14,30 @@ class MessagesMixin(BaseModel):
     _messages: list[Message] | None = None
 
     def append_message(self, message: Message) -> None:
-        if not self._messages:
+        if self._messages is None:
             raise RuntimeError("messages are not set")
         self._messages.append(message)
         logger.debug("Appending messages")
 
     def extend_messages(self, messages: list[Message]) -> None:
-        if not self._messages:
+        if self._messages is None:
             raise RuntimeError("messages are not set")
         self._messages.extend(messages)
         logger.debug("Extending messages")
 
     @property
     def messages(self) -> list[Message]:
-        if not self._messages:
+        if self._messages is None:
             raise RuntimeError("Messages are not set")
         return self._messages
 
     @messages.setter
     def messages(self, messages: list[Message]) -> None:
-        if self._messages:
+        if self._messages is not None:
             raise RuntimeError("Messages are already set")
         self._messages = messages
 
-    def _replace_messages(self, messages: list[Message]) -> None:
+    def replace_messages(self, messages: list[Message]) -> None:
         """Overwrite the message list. Name-protected escape hatch used by
         ``_RequestContextSetup.setup_messages`` to write the transformer-chain
         output after the raw (post-``extract_tool_calls``) list has already
