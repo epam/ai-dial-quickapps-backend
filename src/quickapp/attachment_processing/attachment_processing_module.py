@@ -1,5 +1,6 @@
 import logging
 
+from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
@@ -7,6 +8,7 @@ from quickapp.attachment_processing._attachment_notification_injector import (
     _AttachmentNotificationInjector,
 )
 from quickapp.attachment_processing._available_context_tool import _AvailableContextTool
+from quickapp.attachment_processing._context_entries import should_activate_context_tool
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -30,17 +32,19 @@ class AttachmentProcessingModule(Module):
     def _provide_internal_tools(
         self,
         app_config: ApplicationConfig,
+        messages: list[Message],
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
-        tools: list[StagedBaseTool] = [
-            ac_builder.build(
-                tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
-                name=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name,
-                description=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.description,
-                contexts=list(app_config.contexts),
+        tools: list[StagedBaseTool] = []
+        if should_activate_context_tool(app_config.contexts, messages):
+            tools.append(
+                ac_builder.build(
+                    tool_config=AVAILABLE_CONTEXT_TOOL_CONFIG,
+                    name=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name,
+                    description=AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.description,
+                    contexts=list(app_config.contexts),
+                )
             )
-        ]
-
         return tools
 
     @multiprovider
