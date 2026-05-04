@@ -139,6 +139,7 @@ def make_request_completion():
             quick_app_completion._InitializationErrorHandler: init_handler,
             _RequestContext: request_context,
             _RequestContextSetup: request_context_setup,
+            _MessagesSetup: messages_setup,
             ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
         }
