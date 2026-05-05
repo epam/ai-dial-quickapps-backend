@@ -7,10 +7,7 @@ from injector import ProviderOf, inject
 
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.deployment_tool_cache import (
-    DialDeploymentToolCacheService,
-    fetch_basic_tool_config,
-)
+from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.application import ApplicationConfig
@@ -56,18 +53,14 @@ class _DialAppResolver(CompletionInitializer):
         await self.resolve()
 
     async def resolve(self) -> None:
-        dial_app_toolsets: list[DialAppToolSet] = [
-            ts
-            for ts in self.__app_config.tool_sets or []
-            if isinstance(ts, DialAppToolSet) and ts.enabled
-        ]
-        if not dial_app_toolsets:
-            return
         # CacheService.get is not concurrency-safe, so members sharing a deployment_id
         # resolve serially within a group; distinct deployments still parallelize.
         groups: dict[str, list[DialAppToolSet]] = {}
-        for ts in dial_app_toolsets:
-            groups.setdefault(ts.deployment_id, []).append(ts)
+        for ts in self.__app_config.tool_sets or []:
+            if isinstance(ts, DialAppToolSet) and ts.enabled:
+                groups.setdefault(ts.deployment_id, []).append(ts)
+        if not groups:
+            return
         await asyncio.gather(
             *(self._resolve_group(items) for items in groups.values()),
             return_exceptions=True,
@@ -82,15 +75,7 @@ class _DialAppResolver(CompletionInitializer):
             if toolset.transport == "chat-completion":
                 await self._handle_chat_completion_branch(toolset)
                 return
-            if toolset.deployment_id in self.__metadata_memo:
-                metadata = self.__metadata_memo[toolset.deployment_id]
-            else:
-                metadata = await self.__tool_config_service.get_deployment_metadata(
-                    toolset.deployment_id
-                )
-                self.__metadata_memo[toolset.deployment_id] = metadata
-            mcp_advertised = bool(metadata.features and metadata.features.mcp)
-            if mcp_advertised:
+            if await self._is_mcp_advertised(toolset.deployment_id):
                 self._handle_mcp_branch(toolset)
             elif toolset.transport == "mcp":
                 raise ToolInitializationException(
@@ -117,6 +102,14 @@ class _DialAppResolver(CompletionInitializer):
                     details=details,
                 )
             )
+
+    async def _is_mcp_advertised(self, deployment_id: str) -> bool:
+        if deployment_id not in self.__metadata_memo:
+            self.__metadata_memo[deployment_id] = (
+                await self.__tool_config_service.get_deployment_metadata(deployment_id)
+            )
+        metadata = self.__metadata_memo[deployment_id]
+        return bool(metadata.features and metadata.features.mcp)
 
     def _handle_mcp_branch(self, toolset: DialAppToolSet) -> None:
         url = f"{self.__dial_settings.url}/v1/toolset/{toolset.deployment_id}/mcp"
@@ -145,8 +138,7 @@ class _DialAppResolver(CompletionInitializer):
                 "fallback branch (single synthetic tool).",
                 toolset.name,
             )
-        tool_config = await fetch_basic_tool_config(
-            self.__deployment_cache,
+        tool_config = await self.__deployment_cache.fetch_basic_tool_config(
             self.__tool_config_service.get_basic_tool_config,
             toolset.deployment_id,
             toolset_name=toolset.name,

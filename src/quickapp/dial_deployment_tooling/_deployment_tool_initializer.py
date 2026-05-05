@@ -3,10 +3,7 @@ import logging
 from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.deployment_tool_cache import (
-    DialDeploymentToolCacheService,
-    fetch_basic_tool_config,
-)
+from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
@@ -57,8 +54,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
 
     async def __init_simple_deployment_tool(self, tool_info: DialDeploymentSimpleTool):
         try:
-            tool_config = await fetch_basic_tool_config(
-                self.__deployment_cache,
+            tool_config = await self.__deployment_cache.fetch_basic_tool_config(
                 self.__tool_config_service.get_basic_tool_config,
                 tool_info.deployment_id,
             )
