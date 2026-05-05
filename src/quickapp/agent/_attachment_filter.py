@@ -67,6 +67,14 @@ class _AttachmentFilter(PreInvocationTransformer):
                         return tc.function.name
         return None
 
+    def _is_get_content_tool_message(self, messages: list[Message], message_index: int) -> bool:
+        msg = messages[message_index]
+        return (
+            msg.role == Role.TOOL
+            and self._tool_function_name_for_tool_message(messages, message_index)
+            == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+        )
+
     def _keep_get_content_tool_attachment(
         self, attachment: Attachment, allowed_urls: set[str]
     ) -> bool:
@@ -79,55 +87,65 @@ class _AttachmentFilter(PreInvocationTransformer):
             return False
         return True
 
-    def _filter(self, messages: list[Message], message_index: int, message: Message) -> Message:
+    def _filter(
+        self,
+        message: Message,
+        is_get_content_tool: bool,
+        allowed_get_content_urls: set[str],
+    ) -> Message:
         updated_attachments: list[Attachment] = []
         if message.content is None:
             message.content = ""
         content = message.content if isinstance(message.content, str) else str(message.content)
-        if self._has_attachments(message):
-            all_attachments: list[Attachment] = []
-            is_get_content_tool = (
-                message.role == Role.TOOL
-                and self._tool_function_name_for_tool_message(messages, message_index)
-                == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-            )
-            allowed_get_content_urls: set[str] = (
-                collect_get_content_allowed_urls(
-                    contexts=self.__app_config.contexts,
-                    messages=messages,
-                    input_attachment_types=self.__orchestrator_capabilities.input_attachment_types,
-                )
-                if is_get_content_tool
-                else set()
-            )
-            for attachment in message.custom_content.attachments:  # type: ignore[union-attr]
-                if (
-                    message.role == Role.USER
-                    and self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
-                        attachment.type
-                    )
-                ):
-                    updated_attachments.append(attachment)
-                elif is_get_content_tool and self._keep_get_content_tool_attachment(
-                    attachment, allowed_get_content_urls
-                ):
-                    updated_attachments.append(attachment)
-                all_attachments.append(attachment)
-            # Surface attachment URL/title via XML — bytes are stripped by the
-            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
-            # re-presenting the model's own prior attachments conditions it to
-            # mimic the XML format in responses.
-            if message.role != Role.ASSISTANT:
-                content += "\n" + self._build_attachment_xml(all_attachments)
-            message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
+        all_attachments: list[Attachment] = []
+        for attachment in message.custom_content.attachments:  # type: ignore[union-attr]
+            if (
+                message.role == Role.USER
+                and self.__orchestrator_capabilities.orchestrator_accepts_mime_type(attachment.type)
+            ):
+                updated_attachments.append(attachment)
+            elif is_get_content_tool and self._keep_get_content_tool_attachment(
+                attachment, allowed_get_content_urls
+            ):
+                updated_attachments.append(attachment)
+            all_attachments.append(attachment)
+        # Surface attachment URL/title via XML — bytes are stripped by the
+        # adapter and the URL would otherwise be lost. Skip ASSISTANT:
+        # re-presenting the model's own prior attachments conditions it to
+        # mimic the XML format in responses.
+        if message.role != Role.ASSISTANT:
+            content += "\n" + self._build_attachment_xml(all_attachments)
+        message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
         message.content = content
 
         return message
 
     def transform(self, messages: list[Message]) -> list[Message]:
+        """
+        Filters attachments in messages based on role, tool type, and capabilities.
+        Pre-computes flags for efficiency and collects allowed URLs only when needed.
+        """
+        # Pre-fill flags for whether each message is a get_content tool message to avoid redundant checks in the attachment loop
+        messages_is_get_content_tool_flag = [
+            self._is_get_content_tool_message(messages, i) for i in range(len(messages))
+        ]
+        # Collect allowed URLs for get_content tool attachments if any get_content tool messages are present
+        allowed_get_content_urls: set[str] = (
+            collect_get_content_allowed_urls(
+                contexts=self.__app_config.contexts,
+                messages=messages,
+                input_attachment_types=self.__orchestrator_capabilities.input_attachment_types,
+            )
+            if any(messages_is_get_content_tool_flag)
+            else set()
+        )
         return [
             (
-                self._filter(messages, i, copy.deepcopy(item))
+                self._filter(
+                    copy.deepcopy(item),
+                    is_get_content_tool=messages_is_get_content_tool_flag[i],
+                    allowed_get_content_urls=allowed_get_content_urls,
+                )
                 if self._has_attachments(item)
                 else item
             )
