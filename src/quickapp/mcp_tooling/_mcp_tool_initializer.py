@@ -24,8 +24,6 @@ from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
-from quickapp.dial_app_tooling._dial_app_resolver import _DialAppResolver
-from quickapp.dial_app_tooling._dial_app_resolver_context import _DialAppResolverContext
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
@@ -108,7 +106,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
 class _MCPToolInitializer(CompletionInitializer):
     def __init__(
         self,
-        toolset_list: list[MCPToolSet | DialMCPToolSet],
+        toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]],
         mcp_context: _MCPToolingContext,
         dial_setting: DialSettings,
         api_key_provider: ProviderOf[DIAL_API_KEY],
@@ -117,10 +115,12 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
-        dial_app_resolver: _DialAppResolver,
-        dial_app_resolver_context: _DialAppResolverContext,
     ):
-        self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
+        # Resolved lazily in initialize() because dial_app_tooling contributes
+        # to this multibinder only after _DialAppResolver runs.
+        self.__toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]] = (
+            toolset_list_provider
+        )
         self.__mcp_context: _MCPToolingContext = mcp_context
         self.__dial_setting: DialSettings = dial_setting
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
@@ -131,8 +131,6 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
-        self.__dial_app_resolver: _DialAppResolver = dial_app_resolver
-        self.__dial_app_resolver_context: _DialAppResolverContext = dial_app_resolver_context
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -152,11 +150,7 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        await self.__dial_app_resolver.resolve()
-        toolsets: list[MCPToolSet | DialMCPToolSet] = [
-            *self.__toolset_list,
-            *self.__dial_app_resolver_context.resolved_mcp_toolsets,
-        ]
+        toolsets = self.__toolset_list_provider.get()
         if not toolsets:
             return
 

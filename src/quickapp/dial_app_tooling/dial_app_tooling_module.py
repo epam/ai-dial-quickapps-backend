@@ -5,6 +5,9 @@ from injector import Binder, Module, ProviderOf, multiprovider
 
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import InitializationException
+from quickapp.config.tools.deployment import DialDeploymentTool
+from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
+from quickapp.config.toolsets.mcp import MCPToolSet
 
 from ._dial_app_resolver import _DialAppResolver
 from ._dial_app_resolver_context import _DialAppResolverContext
@@ -29,3 +32,15 @@ class DialAppToolingModule(Module):
         self, context: _DialAppResolverContext
     ) -> list[InitializationException]:
         return context.exceptions
+
+    @multiprovider
+    def __provide_resolved_mcp_toolsets(
+        self, context: _DialAppResolverContext
+    ) -> list[MCPToolSet | DialMCPToolSet]:
+        return list(context.resolved_mcp_toolsets)
+
+    @multiprovider
+    def __provide_resolved_deployment_tools(
+        self, context: _DialAppResolverContext
+    ) -> list[DialDeploymentTool]:
+        return list(context.resolved_deployment_tools)

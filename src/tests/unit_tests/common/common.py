@@ -1,7 +1,7 @@
 import json
 from collections.abc import Callable, Iterable
 from typing import TypeAlias
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
@@ -100,24 +100,16 @@ def noop_timeout_resolver(value: float = 300.0) -> MagicMock:
     return MagicMock(resolve=MagicMock(return_value=value))
 
 
-def noop_timeout_resolver_provider(value: float = 300.0) -> MagicMock:
-    """MagicMock for `ProviderOf[ToolTimeoutResolver]` whose `.get()` returns ``noop_timeout_resolver(value)``."""
+def make_provider(value: object) -> MagicMock:
+    """MagicMock for `ProviderOf[T]` whose `.get()` returns ``value``."""
     provider = MagicMock(spec=ProviderOf)
-    provider.get.return_value = noop_timeout_resolver(value=value)
+    provider.get.return_value = value
     return provider
 
 
-def noop_dial_app_resolver_pair() -> tuple[MagicMock, MagicMock]:
-    """MagicMock pair for `_DialAppResolver` and `_DialAppResolverContext` whose
-    `resolve()` is a no-op AsyncMock and whose resolved-* lists are empty.
-    Tests that need to inject toolsets/tools can mutate the returned context.
-    """
-    resolver = MagicMock()
-    resolver.resolve = AsyncMock()
-    context = MagicMock()
-    context.resolved_mcp_toolsets = []
-    context.resolved_deployment_tools = []
-    return resolver, context
+def noop_timeout_resolver_provider(value: float = 300.0) -> MagicMock:
+    """MagicMock for `ProviderOf[ToolTimeoutResolver]` whose `.get()` returns ``noop_timeout_resolver(value)``."""
+    return make_provider(noop_timeout_resolver(value=value))
 
 
 def make_resolved_dial_prompt_skill(

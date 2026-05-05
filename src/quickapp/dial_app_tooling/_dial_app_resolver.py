@@ -27,9 +27,12 @@ logger = logging.getLogger(__name__)
 @inject
 class _DialAppResolver(CompletionInitializer):
     """Expands each DialAppToolSet into transport-specific inputs consumed by
-    _MCPToolInitializer and _DeploymentToolInitializer. Request-scoped and
-    idempotent: multiple downstream initializers can await resolve() safely.
+    _MCPToolInitializer and _DeploymentToolInitializer. Declares a negative
+    ``order`` so it runs before its consumers, which then read the populated
+    ``_DialAppResolverContext`` directly. Request-scoped.
     """
+
+    order = -100
 
     def __init__(
         self,
@@ -46,7 +49,6 @@ class _DialAppResolver(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
         self.__context: _DialAppResolverContext = context
-        self.__resolved: bool = False
         # Errors are intentionally un-cached so a sibling toolset in the same group can retry.
         self.__metadata_memo: dict[str, Deployment | Application] = {}
 
@@ -54,9 +56,6 @@ class _DialAppResolver(CompletionInitializer):
         await self.resolve()
 
     async def resolve(self) -> None:
-        if self.__resolved:
-            return
-        self.__resolved = True
         dial_app_toolsets: list[DialAppToolSet] = [
             ts
             for ts in self.__app_config.tool_sets or []

@@ -25,7 +25,7 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _format_leaf_for_user,
     _MCPToolInitializer,
 )
-from tests.unit_tests.common.common import noop_dial_app_resolver_pair, noop_timeout_resolver
+from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
 def build_side_effect(tool, tool_config):
@@ -187,9 +187,8 @@ def initializer_factory(builder_mock, connection_manager_builder):
             name=name,
         )
         mcp_context = MagicMock()
-        dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
         initializer = _MCPToolInitializer(
-            [toolset_info],
+            make_provider([toolset_info]),
             mcp_context,
             MagicMock(),  # dial_setting
             MagicMock(),  # api_key_provider
@@ -198,8 +197,6 @@ def initializer_factory(builder_mock, connection_manager_builder):
             MagicMock(),  # dial_mcp_cache
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
-            dial_app_resolver,
-            dial_app_resolver_context,
         )
         return initializer, mcp_context
 
@@ -274,9 +271,8 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         name="test_toolset2",
     )
 
-    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
     initializer = _MCPToolInitializer(
-        [toolset_info1, toolset_info2],
+        make_provider([toolset_info1, toolset_info2]),
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
@@ -285,8 +281,6 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
-        dial_app_resolver,
-        dial_app_resolver_context,
     )
 
     await initializer.initialize()
@@ -361,9 +355,8 @@ async def test_connection_manager_build_headers_client_id_secret():
 @pytest.mark.asyncio
 async def test_no_exception_if_toolset_list_is_empty():
     mcp_context = MagicMock()
-    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
     initializer = _MCPToolInitializer(
-        [],  # empty toolset list
+        make_provider([]),  # empty toolset list
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
@@ -372,8 +365,6 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
-        dial_app_resolver,
-        dial_app_resolver_context,
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -547,9 +538,8 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         name="My Toolset",
     )
     mcp_context = MagicMock()
-    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
     initializer = _MCPToolInitializer(
-        [toolset_info],
+        make_provider([toolset_info]),
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
@@ -558,8 +548,6 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
-        dial_app_resolver,
-        dial_app_resolver_context,
     )
 
     await initializer.initialize()

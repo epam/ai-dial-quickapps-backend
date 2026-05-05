@@ -12,7 +12,7 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
-from tests.unit_tests.common.common import create_app_configuration, noop_dial_app_resolver_pair
+from tests.unit_tests.common.common import make_provider
 
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
@@ -32,15 +32,14 @@ def _make_deployment_tool(name: str) -> DialDeploymentTool:
 
 
 def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
-    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
+    dial_tools = [t for t in toolset.tools if isinstance(t, DialDeploymentTool)]
     return _DeploymentToolInitializer(
         context=MagicMock(),
         tool_config_service=MagicMock(),
         builder=builder,
-        app_config=create_app_configuration([toolset]),
         deployment_cache=MagicMock(),
-        dial_app_resolver=dial_app_resolver,
-        dial_app_resolver_context=dial_app_resolver_context,
+        dial_tools_provider=make_provider(dial_tools),
+        simple_tools_provider=make_provider([]),
     )
 
 

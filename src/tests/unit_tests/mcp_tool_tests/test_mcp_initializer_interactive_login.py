@@ -14,7 +14,7 @@ from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
-from tests.unit_tests.common.common import noop_dial_app_resolver_pair, noop_timeout_resolver
+from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
 def _make_dial_toolset(dial_id: str = "toolsets/public/ts1", name: str = "ts1") -> DialMCPToolSet:
@@ -93,10 +93,8 @@ def _make_initializer(
     dial_setting = MagicMock()
     dial_setting.url = "http://dial-core"
 
-    dial_app_resolver, dial_app_resolver_context = noop_dial_app_resolver_pair()
-
     initializer = _MCPToolInitializer(
-        toolset_list=toolset_list,
+        toolset_list_provider=make_provider(toolset_list),
         mcp_context=mcp_context,
         dial_setting=dial_setting,
         api_key_provider=api_key_provider,
@@ -105,8 +103,6 @@ def _make_initializer(
         dial_mcp_cache=dial_mcp_cache,
         tool_config_service=MagicMock(),
         login_service=login_service,
-        dial_app_resolver=dial_app_resolver,
-        dial_app_resolver_context=dial_app_resolver_context,
     )
     return initializer, mcp_context, login_service
 
