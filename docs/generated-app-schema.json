@@ -1287,6 +1287,12 @@
           "default": "internal-tool",
           "title": "Type",
           "type": "string"
+        },
+        "defer_stage_close": {
+          "default": false,
+          "description": "When True, the tool stage closes after parallel tool execution completes instead of when this tool returns.",
+          "title": "Defer Stage Close",
+          "type": "boolean"
         }
       },
       "required": [

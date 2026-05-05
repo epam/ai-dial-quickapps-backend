@@ -12,6 +12,9 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
     should_enable_get_content_tool,
 )
+from quickapp.attachment_processing._get_content_bad_request_recovery_policy import (
+    _GetContentBadRequestRecoveryPolicy,
+)
 from quickapp.attachment_processing._get_content_tool import _GetContentTool
 from quickapp.attachment_processing._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_CONFIG,
@@ -19,6 +22,7 @@ from quickapp.attachment_processing._tool_configs import (
 )
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
     OrchestratorCapabilities,
@@ -81,3 +85,7 @@ class AttachmentProcessingModule(Module):
         attachment_notification_injector: _AttachmentNotificationInjector,
     ) -> list[MessagesTransformer]:
         return [attachment_notification_injector]
+
+    @multiprovider
+    def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:
+        return [_GetContentBadRequestRecoveryPolicy()]

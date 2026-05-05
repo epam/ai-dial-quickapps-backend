@@ -63,9 +63,12 @@ class BaseDeploymentTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
+        *args: Any,
+        tool_call_id: str | None = None,
         attachment_urls: list[str] | None = None,
-        **kwargs,
+        **kwargs: Any,
     ) -> ToolCallResult:
+        del tool_call_id
         tool_config = cast(DialDeploymentTool, self.tool_config)
         history = None
         if self.__content_propagation and self.__content_propagation.propagate_history:

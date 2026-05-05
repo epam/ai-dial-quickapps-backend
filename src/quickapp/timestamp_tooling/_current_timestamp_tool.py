@@ -45,8 +45,10 @@ class _CurrentTimestampTool(StagedBaseTool):
         self,
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
+        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
+        del tool_call_id
         timezone_str: str | None = kwargs.get("timezone")
 
         if timezone_str is not None:

@@ -22,10 +22,12 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -64,6 +66,11 @@ class AgentModule(Module):
         # FIXME: mypy warning:
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(
+            DeferredStageCloseRegistry,
+            to=DeferredStageCloseRegistry,
+            scope=request_scope,
+        )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -159,6 +166,10 @@ class AgentModule(Module):
         attachment_filter: _AttachmentFilter,
     ) -> list[PreInvocationTransformer]:
         return [attachment_filter]
+
+    @multiprovider
+    def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:
+        return []
 
     @multiprovider
     def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:

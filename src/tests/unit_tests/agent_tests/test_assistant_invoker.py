@@ -1,9 +1,11 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
+import openai
 import pytest
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 
 
 # Minimal test helpers
@@ -72,6 +74,8 @@ async def test_invoke_without_show_usage(monkeypatch):
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        chat_completion_recovery_policies=[],
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
     )
 
     result = await invoker.invoke()
@@ -111,6 +115,8 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        chat_completion_recovery_policies=[],
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
     )
 
     result = await invoker.invoke()
@@ -146,9 +152,89 @@ async def test_invoke_propagates_exceptions():
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
+        chat_completion_recovery_policies=[],
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
     )
 
     with pytest.raises(RuntimeError, match="upstream failure"):
+        await invoker.invoke()
+
+    assert create_mock.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_invoke_bad_request_retries_after_recovery():
+    """BadRequest triggers recovery policies once; successful retry returns stream."""
+    policy = Mock()
+    policy.try_recover.return_value = True
+
+    stream_ok = "stream-after-recovery"
+    create_mock = AsyncMock(
+        side_effect=[
+            openai.BadRequestError(message="bad", response=MagicMock(status_code=400), body=None),
+            stream_ok,
+        ]
+    )
+    azure_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+    )
+
+    deferred_registry = Mock(spec=DeferredStageCloseRegistry)
+    messages = [FakeMessage("hello")]
+    invoker = AssistantInvoker(
+        tools=[{"name": "t"}],
+        config=DummyConfig(),
+        messages=messages,
+        choice=SimpleNamespace(),
+        azure_client=azure_client,
+        response_format=None,
+        pre_invocation_transformers=[mock_filter],
+        presentation_settings=_presentation_settings(False),
+        agent_settings=_agent_settings(),
+        forwarded_headers=None,
+        chat_completion_recovery_policies=[policy],
+        deferred_stage_close_registry=deferred_registry,
+    )
+
+    result = await invoker.invoke()
+    assert result == stream_ok
+    assert create_mock.await_count == 2
+    policy.try_recover.assert_called_once()
+    deferred_registry.sync_deferred_stage_with_recovered_get_content_messages.assert_called_once_with(
+        messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_invoke_bad_request_raises_when_recovery_no_op():
+    policy = Mock()
+    policy.try_recover.return_value = False
+
+    create_mock = AsyncMock(
+        side_effect=openai.BadRequestError(
+            message="bad", response=MagicMock(status_code=400), body=None
+        )
+    )
+    azure_client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
+    )
+
+    invoker = AssistantInvoker(
+        tools=[{"name": "t"}],
+        config=DummyConfig(),
+        messages=[FakeMessage("hello")],
+        choice=SimpleNamespace(),
+        azure_client=azure_client,
+        response_format=None,
+        pre_invocation_transformers=[mock_filter],
+        presentation_settings=_presentation_settings(False),
+        agent_settings=_agent_settings(),
+        forwarded_headers=None,
+        chat_completion_recovery_policies=[policy],
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+    )
+
+    with pytest.raises(openai.BadRequestError):
         await invoker.invoke()
 
     assert create_mock.await_count == 1

@@ -41,9 +41,11 @@ class _SkillReaderTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         skill_name: str | None = None,
         *args: Any,
+        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
         """Execute the skill reader tool."""
+        del tool_call_id
         if not skill_name:
             error_msg = "Missing required parameter: skill_name"
             logger.error(error_msg)

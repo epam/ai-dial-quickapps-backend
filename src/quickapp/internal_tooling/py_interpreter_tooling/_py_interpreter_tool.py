@@ -90,8 +90,10 @@ class _PyInterpreterTool(StagedBaseTool):
         self,
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
+        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
+        del tool_call_id
         try:
             code: str = kwargs["code"]
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")

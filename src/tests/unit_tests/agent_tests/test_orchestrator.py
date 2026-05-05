@@ -1,6 +1,7 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
+import openai
 import pytest
 from aidial_sdk.chat_completion.request import (
     Attachment,
@@ -15,6 +16,7 @@ from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -84,6 +86,8 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     await orchestrator.invoke()
@@ -101,6 +105,123 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     assert len(called_arg) == 1
     assert isinstance(called_arg[0], DeploymentUsage)
     assert called_arg[0].model_name == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_stream_phase_api_error_retries_after_recovery():
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    assistant_result = SimpleNamespace(
+        content="response",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+    )
+
+    api_err = openai.APIError(message="Unsupported media type", request=MagicMock(), body=None)
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(side_effect=[api_err, assistant_result])
+
+    recovery_policy = Mock()
+    recovery_policy.try_recover.return_value = True
+
+    deferred_registry = Mock(spec=DeferredStageCloseRegistry)
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(name="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=deferred_registry,
+        chat_completion_recovery_policies=[recovery_policy],
+    )
+
+    await orchestrator.invoke()
+
+    assert assistant_invoker.invoke.await_count == 2
+    assert stream_handler.process_stream.await_count == 2
+    recovery_policy.try_recover.assert_called_once()
+    assert recovery_policy.try_recover.call_args[0][0] is messages_list
+    assert recovery_policy.try_recover.call_args[0][1] is api_err
+    deferred_registry.sync_deferred_stage_with_recovered_get_content_messages.assert_called_once_with(
+        messages_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_phase_api_error_raises_when_recovery_no_op():
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    api_err = openai.APIError(message="upstream", request=MagicMock(), body=None)
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(side_effect=api_err)
+
+    recovery_policy = Mock()
+    recovery_policy.try_recover.return_value = False
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(name="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[recovery_policy],
+    )
+
+    with pytest.raises(openai.APIError):
+        await orchestrator.invoke()
+
+    assert assistant_invoker.invoke.await_count == 1
+    assert stream_handler.process_stream.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -185,6 +306,8 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     await orchestrator.invoke()
@@ -261,6 +384,8 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
             )
         ),
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     await orchestrator.invoke()
@@ -342,6 +467,8 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -381,6 +508,8 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
             )
         ),
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
 
@@ -662,6 +791,8 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
             )
         ),
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     await orchestrator.invoke()
@@ -751,6 +882,8 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
             )
         ),
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery_policies=[],
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):

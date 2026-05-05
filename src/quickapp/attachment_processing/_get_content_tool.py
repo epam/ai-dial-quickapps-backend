@@ -30,6 +30,7 @@ from quickapp.common.attachment_processing_utils import (
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.internal import InternalTool
@@ -63,6 +64,7 @@ class _GetContentTool(StagedBaseTool):
         perf_timer: PerformanceTimer,
         orchestrator_capabilities: OrchestratorCapabilities,
         messages_mixin: MessagesMixin,
+        deferred_stage_close_registry: DeferredStageCloseRegistry,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -70,12 +72,14 @@ class _GetContentTool(StagedBaseTool):
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            deferred_stage_close_registry=deferred_stage_close_registry,
             argument_transformers=argument_transformers,
             **kwargs,
         )
         self.__contexts: list[Context] = contexts
         self.__messages_mixin: MessagesMixin = messages_mixin
         self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
 
     def _error_result(self, message: str) -> ToolCallResult:
         payload = json.dumps({"ok": False, "error": message}, ensure_ascii=False)
@@ -87,6 +91,7 @@ class _GetContentTool(StagedBaseTool):
         attachment_url: str | None = None,
         context_url: str | None = None,
         *args: Any,
+        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
         raw_url = attachment_url if attachment_url is not None else context_url
@@ -164,5 +169,19 @@ class _GetContentTool(StagedBaseTool):
             attachment.type,
         )
         if stage_wrapper:
-            stage_wrapper.add_result(result)
+            if isinstance(self._tool_config, InternalTool) and self._tool_config.defer_stage_close:
+                assert tool_call_id is not None
+                sw = stage_wrapper
+                res = result
+
+                def apply_success_to_stage() -> None:
+                    sw.add_result(res)
+
+                self.__stage_close_registry.register_stage_ui_before_close(
+                    stage_wrapper,
+                    apply_success_to_stage,
+                    tool_call_id=tool_call_id,
+                )
+            else:
+                stage_wrapper.add_result(result)
         return result

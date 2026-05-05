@@ -53,8 +53,10 @@ class _AvailableContextTool(StagedBaseTool):
         self,
         stage_wrapper: BaseStageWrapper | None = None,
         *args: Any,
+        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
+        del tool_call_id
         response = self._get_response()
         content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
         result = ToolCallResult(content=content, content_type="application/json")

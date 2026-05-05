@@ -5,13 +5,14 @@ from contextlib import asynccontextmanager
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
-from openai import AsyncStream
+from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
@@ -23,6 +24,7 @@ from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
@@ -46,6 +48,8 @@ class Orchestrator:
         stream_handler: ChatCompletionStreamHandler,
         app_config: ApplicationConfig,
         perf_timer: PerformanceTimer,
+        deferred_stage_close_registry: DeferredStageCloseRegistry,
+        chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy],
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -62,6 +66,12 @@ class Orchestrator:
         self.__usage_statistics_list: list[DeploymentUsage] = []
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "orchestrator_invocation"
+        self.__deferred_stage_close_registry: DeferredStageCloseRegistry = (
+            deferred_stage_close_registry
+        )
+        self.__chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy] = (
+            chat_completion_recovery_policies
+        )
 
     @asynccontextmanager
     async def _persisting_state(self) -> AsyncIterator[None]:
@@ -72,6 +82,7 @@ class Orchestrator:
             exc_to_reraise = exc
             logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
         finally:
+            self.__deferred_stage_close_registry.flush()
             # Store history in state.tool_execution_history for restoring on next request
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:
@@ -105,9 +116,7 @@ class Orchestrator:
         period = f"{self.__period_name}_{self.__iterations_counter}"
         self.__perf_timer.start_period(period, level=2)
 
-        assistant_invoker = self.__assistant_invoker_provider.get()
-        chat_completion_stream = await assistant_invoker.invoke()
-        stream_result = await self.accumulate_stream(chat_completion_stream)
+        stream_result = await self.__invoke_and_accumulate_stream_with_recovery()
 
         tool_calls = stream_result.tool_calls
 
@@ -147,6 +156,7 @@ class Orchestrator:
         logger.debug(f"Message from agent: {self.__messages_context.messages}")
 
         if not tool_calls:
+            self.__deferred_stage_close_registry.flush()
             return False
 
         logger.debug(f"Agent requests tool calls: {tool_calls}")
@@ -166,6 +176,36 @@ class Orchestrator:
         self.__perf_timer.stop_period(period)
         logger.debug(f"Message from context: {self.__messages_context.messages}")
         return True
+
+    async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
+        """Invoke assistant and consume stream; on APIError/BadRequest during stream, run recovery once."""
+        recovery_retry_used = False
+        while True:
+            assistant_invoker = self.__assistant_invoker_provider.get()
+            chat_completion_stream = await assistant_invoker.invoke()
+            try:
+                return await self.accumulate_stream(chat_completion_stream)
+            except (APIError, BadRequestError) as e:
+                recovered = False
+                for policy in self.__chat_completion_recovery_policies:
+                    if policy.try_recover(self.__messages_context.messages, e):
+                        recovered = True
+                if not recovered:
+                    raise
+                self.__deferred_stage_close_registry.sync_deferred_stage_with_recovered_get_content_messages(
+                    self.__messages_context.messages
+                )
+                if recovery_retry_used:
+                    logger.exception(
+                        "Chat completion stream failed again after message recovery retry"
+                    )
+                    raise
+                recovery_retry_used = True
+                logger.warning(
+                    "Chat completion stream failed with %s; message recovery applied, "
+                    "retrying assistant invoke once",
+                    type(e).__name__,
+                )
 
     async def accumulate_stream(
         self, chat_completion_stream: AsyncStream[ChatCompletionChunk]

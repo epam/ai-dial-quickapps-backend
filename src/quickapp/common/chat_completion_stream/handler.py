@@ -4,6 +4,7 @@ import logging
 from collections.abc import AsyncIterable
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
+from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 from pydantic import BaseModel, ConfigDict
 
@@ -78,7 +79,7 @@ class ChatCompletionStreamHandler:
                 parse_chat_completion_chunk,
             ):
                 self._apply_stream_event(accumulator, config, stages_by_index, event)
-        except ChatStreamHandlerError:
+        except (BadRequestError, APIError, ChatStreamHandlerError):
             raise
         except Exception as exc:
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc

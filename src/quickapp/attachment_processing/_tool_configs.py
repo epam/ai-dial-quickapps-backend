@@ -19,12 +19,10 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=AVAILABLE_CONTEXT_TOOL_NAME,
             description=(
-                "Returns metadata about admin-configured context files (title, url, type). "
-                f"If you are able to work with such attachments on your own, call `{INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME}` with the "
-                "exact `url` string from an entry. "
-                "This tool returns only admin contexts. "
-                "User-attached files are not listed here, but their `url` values can also be used with "
-                f"`{INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME}` when MIME is supported by orchestrator."
+                "Returns metadata about admin-configured context files."
+                " **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
+                "and will not return any information about them. If you see file in <attachments> section of user "
+                "message, it means that the file was attached by the user, and is available for you to use."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -36,6 +34,7 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
 )
 
 GET_CONTENT_TOOL_CONFIG = InternalTool(
+    defer_stage_close=True,
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
             name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
