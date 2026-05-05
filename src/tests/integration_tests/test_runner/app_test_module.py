@@ -26,6 +26,7 @@ from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.text_file_tooling.text_file_tooling_module import TextFileToolingModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -85,6 +86,7 @@ class TestApp(FastAPI):
                 AttachmentProcessingModule(),
                 SkillsModule(),
                 DialPromptSkillsModule(),
+                TextFileToolingModule(),
             ]
         )
         dial_settings = DialSettings(url=TestConfig.get_mock_dial_core_url(port))

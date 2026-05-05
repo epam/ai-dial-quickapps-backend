@@ -7,9 +7,10 @@ from pathlib import Path
 from pydantic import SecretStr
 from pydantic.type_adapter import TypeAdapter
 
-from quickapp.config.application import ApplicationConfig, OrchestratorConfig
+from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import PredefinedSystemPromptConfig
+from quickapp.config.text_file_tools import TextFileToolsConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
@@ -75,6 +76,7 @@ class TestConfig:
             ),
             contexts=[],
             tool_sets=toolsets,
+            features=Features(text_file_tools=TextFileToolsConfig()),
         )
 
     @classmethod
