@@ -1,15 +1,13 @@
 import copy
 
+from aidial_sdk.chat_completion.request import StaticTool
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_default_tools import (
-    OrchestratorDefaultToolsCacheService,
-    OrchestratorDefaultToolsService,
-)
+from quickapp.agent._orchestrator_initializer import _OrchestratorInitializer, _OrchestratorDefaultToolsContext
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
@@ -71,18 +69,10 @@ class AgentModule(Module):
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
+        binder.bind(_OrchestratorInitializer, to=_OrchestratorInitializer, scope=request_scope)
+        binder.bind(_OrchestratorDefaultToolsContext, to=_OrchestratorDefaultToolsContext, scope=request_scope)
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
-        binder.bind(
-            OrchestratorDefaultToolsCacheService,
-            to=OrchestratorDefaultToolsCacheService,
-            scope=singleton,
-        )
-        binder.bind(
-            OrchestratorDefaultToolsService,
-            to=OrchestratorDefaultToolsService,
-            scope=singleton,
-        )
 
     @provider
     def provide_openai_client(
@@ -120,6 +110,10 @@ class AgentModule(Module):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
+
+    @multiprovider
+    def provide_default_tools(self, orchestrator_default_tools_context: _OrchestratorDefaultToolsContext) -> list[StaticTool]:
+        return orchestrator_default_tools_context.default_tools
 
     @staticmethod
     def _remove_const_params(open_ai_tool):

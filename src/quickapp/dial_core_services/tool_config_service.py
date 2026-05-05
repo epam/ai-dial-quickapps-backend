@@ -4,6 +4,7 @@ from typing import Any
 from aidial_client import AsyncDial, DialException, ToolsetInfo
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
+from aidial_sdk.chat_completion.request import StaticTool
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
@@ -27,12 +28,17 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
+from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
 
 logger = logging.getLogger(__name__)
+
+STATIC_FUNCTION_TYPE = "static_function"
+TOOLS_KEY = "tools"
+TYPE_KEY = "type"
 
 
 @inject
@@ -43,12 +49,14 @@ class ToolConfigCoreService:
         dial_settings: DialSettings,
         dial_client_provider: ProviderOf[AsyncDial],
         timeout_resolver_provider: ProviderOf[ToolTimeoutResolver],
+        cache: OrchestratorDefaultToolsCacheService,
     ):
         self.__dial_settings: DialSettings = dial_settings
         self.__dial_client_provider: ProviderOf[AsyncDial] = dial_client_provider
         self.__timeout_resolver_provider: ProviderOf[ToolTimeoutResolver] = (
             timeout_resolver_provider
         )
+        self.__cache = cache
 
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
@@ -60,6 +68,54 @@ class ToolConfigCoreService:
                 timeout=build_async_dial_timeout(self.__timeout_resolver_provider.get().resolve()),
             )
         return self.__dial_client_provider.get()
+
+    @staticmethod
+    def _parse_default_tools_from_info(deployment: Deployment) -> list[StaticTool]:
+        """Extract and parse defaults.tools from deployment info into request-shape dicts.
+
+        Supports type == "static_function"; other types are skipped with a debug log.
+        Returns empty list if defaults or defaults.tools are missing.
+        """
+        defaults = deployment.defaults
+        if not isinstance(defaults, dict):
+            return []
+        raw_tools = defaults.get(TOOLS_KEY)
+        if not isinstance(raw_tools, list):
+            return []
+        result: list[StaticTool] = []
+        for entry in raw_tools:
+            if not isinstance(entry, dict):
+                continue
+            tool_type = entry.get(TYPE_KEY)
+            if tool_type == STATIC_FUNCTION_TYPE:
+                try:
+                    static_tool = StaticTool.model_validate(entry)
+                    result.append(static_tool)
+                except Exception:
+                    logger.debug(
+                        "Skipping invalid static_function entry in defaults.tools: %s",
+                        entry,
+                        exc_info=True,
+                    )
+            else:
+                logger.debug(
+                    "Skipping unsupported default tool type: %s (deployment defaults.tools)",
+                    tool_type,
+                )
+        return result
+
+    async def get_default_tools_for_deployment(self, deployment: str) -> list[StaticTool]:
+        """Return default tools for the deployment (cached). Empty list on failure or missing."""
+        dial_client = self._resolve_dial_client(None)
+
+        async def loader(deployment_id: str) -> list[StaticTool] | None:
+            deployment_info = await dial_client.deployments.get(deployment_id)
+            default_tools = ToolConfigCoreService._parse_default_tools_from_info(deployment_info)
+            return default_tools
+
+
+        value = await self.__cache.get(deployment, loader, deployment)
+        return value if value is not None else []
 
     async def get_basic_tool_config(
         self, deployment: str, api_key: SecretStr | None = None
