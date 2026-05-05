@@ -9,6 +9,7 @@
 .dial
 .env
 .idea
+.mcp_rest_server.pid
 .mypy_cache
 .poetry
 .python-version
@@ -23,3 +24,5 @@ venv
 /docker_compose_files/core/data/
 /docker_compose_files/core/logs/
 /docker_compose_files/core/configuration/generated/
+/.editorconfig
+/docs/superpowers

@@ -3,8 +3,9 @@ import gzip
 import json
 import logging
 import warnings
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import List
+from typing import AsyncGenerator, List
 from urllib.parse import urlparse
 
 import httpx
@@ -16,6 +17,7 @@ from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
 from tests.integration_tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
 from tests.integration_tests.test_runner.config import TestConfig
+from tests.integration_tests.test_runner.utils.string_utils import sanitize_for_directory
 
 llm_cache = None
 
@@ -36,6 +38,7 @@ AGENT_MODELS = [
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
     "us.anthropic.claude-3-7-sonnet-20250219-v1",
+    "anthropic.claude-sonnet-4-5-20250929-v1:0",
     "anthropic.claude-v4-5-sonnet-v1",
 ]
 
@@ -73,21 +76,30 @@ class CacheMiddlewareApp(FastAPI):
         self.base_path = Path(app_config.base_path)
         self.content_base_path = app_config.content_base_path
         self.llm_cache = LlmCache(
-            cache_path=self.base_path / 'cache' / app_config.model / app_config.test_name,
+            cache_path=self.base_path
+            / 'cache'
+            / sanitize_for_directory(app_config.model)
+            / app_config.test_name,
             enable_cache=True,
         )
         self.used_cache_responses = set()
         self._background_tasks: List[asyncio.Task] = []
 
-        super().__init__()
+        super().__init__(lifespan=self._lifespan)
         self.router = APIRouter()
         self.register_routes()
-
-        self.add_event_handler("shutdown", self.close_resources)
 
         self.http_client = httpx.AsyncClient(
             limits=httpx.Limits(max_keepalive_connections=20, max_connections=50), timeout=600.0
         )
+
+    @asynccontextmanager
+    async def _lifespan(self, app: FastAPI) -> AsyncGenerator[None, None]:
+        """Manage application lifespan with startup and shutdown logic."""
+        # Startup
+        yield
+        # Shutdown
+        await self.close_resources()
 
     def track_task(self, task: asyncio.Task):
         """Track a background task for cleanup"""

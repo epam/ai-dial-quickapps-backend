@@ -334,4 +334,3 @@ var (the built-in layer is auto-detected) or, if extra paths are needed, switch 
 | **`AppModule`**                       | Adds `PredefinedContentProvider` singleton binding                                                                                                                   |
 | **`Dockerfile`**                      | `PREDEFINED_BASE_PATH` env var removed (built-in layer auto-detected)                                                                                                |
 | **Integration test `Dockerfile`**     | `PREDEFINED_BASE_PATH` env var removed                                                                                                                               |
-

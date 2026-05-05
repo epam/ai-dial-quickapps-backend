@@ -1,21 +1,29 @@
 name: Release Workflow
 
-env:
-  POETRY: ${{ vars.POETRY }}
-  PYTHON: ${{ vars.PYTHON }}
-
 on:
   push:
     branches: [development, release-*]
+  workflow_dispatch:
+    inputs:
+      promote:
+        type: boolean
+        default: false
+        description: Promote release to stable (for release-* branches only)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: write
+  packages: write
+  security-events: write
+
 jobs:
   release:
-    uses: epam/ai-dial-ci/.github/workflows/python_docker_release.yml@3.0.1
-    secrets: inherit
+    uses: epam/ai-dial-ci/.github/workflows/python_docker_release.yml@4.0.0
     with:
+      promote: ${{ github.event_name == 'workflow_dispatch' && inputs.promote }}
       python-version: "3.13"
-      poetry-version: "2.2.1"
+      poetry-version: "2.3.2"
+    secrets: inherit

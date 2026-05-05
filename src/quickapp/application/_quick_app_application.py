@@ -44,4 +44,4 @@ class _QuickAppApplication(DIALApp):
         # noinspection PyTypeChecker
         self.add_middleware(InjectorMiddleware, injector=injector)
         attach_injector(self, injector, RequestScopeOptions())
-        self.add_chat_completion("quick_apps2", completion)
+        self.add_chat_completion("quick_apps2", completion, heartbeat_interval=1.0)

@@ -18,10 +18,6 @@ class LoggingSettings(BaseSettings):
     log_format: str = Field(default=_DEFAULT_LOG_FORMAT, alias="LOG_FORMAT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     quickapp_log_level: str = Field(default="INFO", alias="QUICKAPP_LOG_LEVEL")
-    plotly_image_conversion_log_level: str = Field(
-        default="WARN",
-        alias="PLOTLY_IMAGE_CONVERSION_LOG_LEVEL",
-    )
     log_multiline_mode_enabled: bool = Field(
         default=False,
         alias="LOG_MULTILINE_LOG_ENABLED",

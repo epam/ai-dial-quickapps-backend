@@ -42,7 +42,17 @@ When a chat completion request arrives, it flows through several stages before t
 
 The chat completion endpoint receives the incoming request with messages, configuration, and authentication credentials.
 
-### 2. Context Setup
+### 2. Messages Shape Validation
+
+The raw `messages` array is validated against the QuickApps contract `(System)? (User Assistant)* User`
+before any other request processing. The check runs outside the `create_single_choice` block so an
+`InvalidRequestError` (raised from `validate_messages_shape` in `_messages_validator.py`) propagates to
+the aidial_sdk exception handler and produces an HTTP 400 response. All rule violations are collected in
+a single pass and returned together in `display_message`, so clients see every problem at once rather
+than one at a time. Tool messages and misplaced system messages are rejected here because they are
+orchestrator-internal and must never arrive from the client.
+
+### 3. Context Setup
 
 A request-scoped context is created to hold:
 
@@ -51,27 +61,45 @@ A request-scoped context is created to hold:
 - Conversation messages
 - Response choice object for streaming output
 
-### 3. Configuration Resolution
+### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
 definitions from the predefined configuration files.
 
-### 4. Completion Initialization
+### 5. Completion Initialization
 
-Completion initializers are invoked to prepare the request for orchestration. This includes:
+Completion initializers are invoked to prepare the request for orchestration. Initializers run
+*before* message preprocessing so that feature contexts they populate (e.g. resolved DIAL-prompt
+skills) are visible to transformers:
 
-- **Message preprocessing**: `_MessagesSetup` (called from `_RequestContextSetup.setup()`) expands packed tool call
-  state and runs all `MessagesTransformer` instances (adding system prompts, injecting context notifications).
-  After this step, messages are fully expanded and ready for the orchestrator.
-- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
-  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+- **Tool and skill construction**: Each tool module's initializer constructs tool instances based
+  on the application configuration (REST API, DIAL deployment, MCP, internal). The
+  `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
+  available to the system-prompt transformer.
+- **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
+  `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
+  `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
+  this step, messages are fully expanded and ready for the orchestrator.
+- **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
+  `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
+  to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
+  as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
+  401 from `_MCPConnectionManager`, requests sign-in, and retries the call once. The
+  `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
+  the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
-### 5. Error Handling
+### 6. Error Handling
 
-Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
-functionality even when some tools fail to initialize.
+Tool-initialization failures and skill-loading failures (invalid DIAL prompt frontmatter, fetch errors,
+duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
+common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
+multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
+sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
+itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
+failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
+UI cue.
 
-### 6. Orchestrator Invocation
+### 7. Orchestrator Invocation
 
 The orchestrator is retrieved from the DI container and its invoke method is called, starting the agent loop.
 
@@ -157,7 +185,9 @@ When the LLM requests multiple tools, the Tool Executor runs them concurrently u
 2. Invoked with parsed arguments
 3. Timed for performance tracking
 
-Results are collected and returned in order matching the original tool calls.
+Results are collected and returned in order matching the original tool calls. After execution,
+`ToolCallResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
+result with its production time).
 
 ### Stage Wrapper Pattern
 
@@ -190,7 +220,15 @@ Tools support configurable fallback strategies for error handling:
 
 Errors can optionally be displayed in the stage for debugging purposes.
 
-<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
+### Timeouts
+
+Tool-call timeouts are unified via `ToolTimeoutResolver` (request-scoped). Resolution order: `ApplicationConfig.tool_defaults.timeout_seconds` → `DEFAULT_TOOL_TIMEOUT_SECONDS` env var → each client's library default. A `None` result means "do not override" — every client keeps its historical behaviour.
+
+When a tool call exceeds the resolved budget, `translate_timeout` (async context manager in `common/tool_timeout_utils.py`) converts the library exception (`httpx.TimeoutException`, `asyncio.TimeoutError`, `openai.APITimeoutError`, or a timeout-coded `mcp.McpError`) into a typed `ToolTimeoutError`. `BaseExceptionGroup`s from anyio task groups are split; any timeout leaf classifies the whole group as a timeout.
+
+`FallbackProcessor` has a dedicated branch for `ToolTimeoutError`: user strategies with an explicit `trigger_on` can pre-empt, otherwise a built-in template message naming the tool and timeout is returned. **Implicit catch-all strategies (`trigger_on=None`) are skipped for timeouts** — this is the key semantic shift versus prior behaviour. `_request_context_setup` logs an INFO line per customised catch-all so operators can spot impacted toolsets at a glance.
+
+<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
 ---
@@ -201,12 +239,18 @@ Messages undergo processing both before being sent to the LLM and when receiving
 
 ### Pre-Transformer Pipeline
 
-All message transformers extend the typed `MessagesTransformer` base class and are registered via the `AgentModule`
-and `AttachmentProcessingModule` DI providers. They run once at request setup via `_MessagesSetup`, called from
-`_RequestContextSetup.setup()`. `_MessagesSetup` returns a new transformed list of messages. The `AssistantInvoker`
-then uses the transformed messages directly without any copying or additional preprocessing.
+Message transformers are organized into two tiers:
 
-The pipeline runs the following steps in order:
+| Tier                       | When it runs                           | Mutation safety                                     |
+|----------------------------|----------------------------------------|-----------------------------------------------------|
+| `MessagesTransformer`      | Once, in `_MessagesSetup.setup()`      | Mutates the canonical message list                  |
+| `PreInvocationTransformer` | Every iteration, in `AssistantInvoker` | Each transformer selectively copies what it mutates |
+
+`MessagesTransformer` implementations run once at request setup via `_MessagesSetup`, called from
+`_RequestContextSetup.setup()`. `PreInvocationTransformer` implementations run before every LLM call in
+`AssistantInvoker.__prepare_messages()` — their changes are transient and never persisted to history.
+
+The setup pipeline runs the following steps in order:
 
 1. **Tool Call Extraction**: Not a transformer — runs first in `_MessagesSetup.setup()`. Expands prior-turn tool calls
    packed in `custom_content.state[TOOL_EXECUTION_HISTORY]` into proper ASSISTANT + TOOL message pairs. This must run
@@ -220,6 +264,18 @@ The pipeline runs the following steps in order:
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `available_context` tool. Returns messages unchanged when inactive.
+
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`, preview): Appends a synthetic
+   `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
+   interaction is happening. Historical timestamps are restored from state with their original times.
+
+### Pre-Invocation Transformers
+
+Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
+
+1. **Attachment Filter** (`_AttachmentFilter`): Filters unsupported attachment types and injects attachment XML metadata.
+2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`, preview): Appends human-readable
+   `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
 ### Streaming Response Processing
 
@@ -242,8 +298,10 @@ The processor builds an aggregated result containing all accumulated data for th
 The system uses two separate mechanisms to inform the agent about available files:
 
 - **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
-  (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
-  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
+  (`<attachments>`) to USER and TOOL message content. Each attachment is represented as an `<attachment>`
+  element with `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements. ASSISTANT
+  messages are exempt: those attachments originated from the model's own prior output, and re-presenting
+  them as XML conditions the model to mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
@@ -300,8 +358,9 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to user messages for all attachments and keeps only supported types
-  inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: Appends text metadata to USER and TOOL messages for all attachments and keeps only
+  supported types inline in `custom_content` for vision model support. ASSISTANT messages are skipped to
+  avoid conditioning the model to emit the metadata format. Used in `AssistantInvoker`, not a pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
@@ -314,7 +373,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 12 specialized DI modules:
+The application is composed of 13 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -324,10 +383,12 @@ The application is composed of 12 specialized DI modules:
 6. **Internal Tool Module**: Python interpreter, content downloader
 7. **Starters Module**: UI starter button configuration
 8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration
+9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
 10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
 11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
-12. **Skills Module**: Skill reader tool, agent skills provider
+12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
+13. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+14. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -389,7 +450,9 @@ Tools are organized into toolsets that share common configuration:
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
+`SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
+(see [Skills documentation](skills.md#dial-prompt-skills-preview) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 

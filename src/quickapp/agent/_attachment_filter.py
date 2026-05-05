@@ -4,19 +4,20 @@ from xml.sax.saxutils import escape
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
 
+from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.utils import matches_type
 
 logger = logging.getLogger(__name__)
 
 
-class _AttachmentFilter:
+class _AttachmentFilter(PreInvocationTransformer):
     SUPPORTED_ATTACHMENTS = ["image/*"]
 
     @staticmethod
     def _has_attachments(message: Message) -> bool:
         return message.custom_content is not None and bool(message.custom_content.attachments)
 
-    def filter_attachments(self, messages: list[Message]) -> list[Message]:
+    def transform(self, messages: list[Message]) -> list[Message]:
         for item in messages:
             if not isinstance(item, Message):
                 raise TypeError("All items must be Message instances")
@@ -54,9 +55,12 @@ class _AttachmentFilter:
                 ):
                     updated_attachments.append(attachment)
                 all_attachments.append(attachment)
-            # Inform agent that message had contained some attachment.
-            # As adapter would resolve the actual bytes and URL would be lost.
-            content += "\n" + self._build_attachment_xml(all_attachments)
+            # Surface attachment URL/title via XML — bytes are stripped by the
+            # adapter and the URL would otherwise be lost. Skip ASSISTANT:
+            # re-presenting the model's own prior attachments conditions it to
+            # mimic the XML format in responses.
+            if message.role != Role.ASSISTANT:
+                content += "\n" + self._build_attachment_xml(all_attachments)
             message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
         message.content = content
 

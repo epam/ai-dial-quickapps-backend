@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import fastapi
 import pytest
 from aidial_sdk.chat_completion import Message, Request, Role
+from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
 import quickapp.application._quick_app_completion as quick_app_completion
@@ -98,20 +99,29 @@ async def valid_app_props(*args, **kwargs):
 
 @pytest.fixture
 def make_request_completion():
-    def _make(orchestrator=None, api_key="k", has_binding=True, extra_mapping=None):
+    def _make(
+        orchestrator=None,
+        api_key="k",
+        has_binding=True,
+        extra_mapping=None,
+        messages=None,
+    ):
+        if messages is None:
+            messages = [
+                Message(content="123", role=Role.USER),
+                Message(content="456", role=Role.ASSISTANT),
+                Message(content="789", role=Role.USER),
+            ]
         request = Request(
             api_key_secret=api_key,
-            messages=[
-                Message(content="123", role=Role.USER),
-                Message(content="456", role=Role.USER),
-            ],
+            messages=messages,
             deployment_id="default-deployment",
             headers={"1": "2"},
             original_request=fastapi.Request(scope={"type": "http"}),
         )
         request.request_dial_application_properties = valid_app_props
 
-        init_handler = SimpleNamespace(handle_initialization_errors=lambda: None)
+        init_handler = SimpleNamespace(handle_initialization_issues=lambda: None)
 
         request_context = _RequestContext()
         provider = SimpleNamespace(get=lambda: request_context)
@@ -129,6 +139,7 @@ def make_request_completion():
             quick_app_completion._InitializationErrorHandler: init_handler,
             _RequestContext: request_context,
             _RequestContextSetup: request_context_setup,
+            _MessagesSetup: messages_setup,
             ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
         }
@@ -322,6 +333,34 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
     # Assert: inspect the request context from the injector
     msgs = list(injector.get(_RequestContext).messages)
 
-    assert len(msgs) == 2
+    assert len(msgs) == 3
     assert msgs[0].content == "123"
     assert msgs[1].content == "456"
+    assert msgs[2].content == "789"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_invalid_messages_raises_invalid_request_error(
+    make_request_completion,
+):
+    # Arrange: two consecutive user messages violate (System)? (User Assistant)* User
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    bad_messages = [
+        Message(content="a", role=Role.USER),
+        Message(content="b", role=Role.USER),
+    ]
+    request, completion, _ = make_request_completion(None, messages=bad_messages)
+
+    # Act + Assert: InvalidRequestError propagates past the create_single_choice
+    # block so the aidial_sdk exception handler can produce HTTP 400
+    with pytest.raises(InvalidRequestError) as exc:
+        await completion.chat_completion(request, response)
+
+    display = exc.value.display_message
+    assert display is not None
+    assert "Invalid messages array" in display
+    assert "expected role 'assistant'" in display
+    # The error must NOT be swallowed into the streamed choice content
+    assert choice.contents == []

@@ -1,11 +1,21 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, ProviderOf, multiprovider, singleton
+from injector import Binder, Module, ProviderOf, multiprovider, provider, singleton
+from openai.lib.azure import AsyncAzureOpenAI
 
-from quickapp.common import StagedBaseTool
+from quickapp.common import (
+    DEPLOYMENT_AZURE_CLIENT,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import InitializationException
+from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
@@ -28,6 +38,28 @@ class DialDeploymentToolingModule(Module):
         )
         logger.debug("DialDeploymentTooling module configuration completed")
 
+    @provider
+    def provide_deployment_openai_client(
+        self,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        forwarded_headers: ForwardedHeaders,
+        timeout_resolver: ToolTimeoutResolver,
+        bearer: DIAL_BEARER,
+    ) -> DEPLOYMENT_AZURE_CLIENT:
+        headers = dict(forwarded_headers or {})
+
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
+
+        return AsyncAzureOpenAI(
+            azure_endpoint=dial_settings.url,
+            api_key=api_key.get_secret_value(),
+            api_version=dial_settings.api_version,
+            default_headers=headers,
+            timeout=build_async_dial_timeout(timeout_resolver.resolve()),
+        )
+
     @multiprovider
     def __provide_tools(
         self,
@@ -44,5 +76,5 @@ class DialDeploymentToolingModule(Module):
     @multiprovider
     def __provide_initialization_exceptions(
         self, context: _DeploymentToolingContext
-    ) -> list[ToolInitializationException]:
+    ) -> list[InitializationException]:
         return context.exceptions

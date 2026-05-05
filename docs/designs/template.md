@@ -1,6 +1,8 @@
 # Design: [Title]
 
-**Status:** Draft | Approved | Implemented | Superseded
+- **Status:** Draft | Approved | Implemented | Superseded
+- **Dependencies:**
+  - None | [Link to dependent design doc(s)]
 
 ## Problem Statement
 
@@ -13,6 +15,19 @@ Bulleted list of concrete outcomes this design must achieve. Each goal should be
 
 - Goal 1
 - Goal 2
+
+---
+
+## Use Cases
+
+Concrete scenarios that illustrate how the feature is used from the user's or agent's perspective.
+Each use case should describe the trigger, the expected behavior, and the observable outcome.
+
+### UC-1: [Title]
+
+**Trigger:** What initiates this scenario.
+**Behavior:** What happens as a result.
+**Outcome:** What the user or agent observes.
 
 ---
 

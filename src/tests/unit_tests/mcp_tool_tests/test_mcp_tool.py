@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from injector import Binder, Injector, InstanceProvider
@@ -11,11 +12,12 @@ from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import (
+    CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
-    CompletionResult,
     ForwardedHeaders,
     StagedBaseTool,
+    ToolCallResult,
 )
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_initializer import CompletionInitializer
@@ -24,10 +26,11 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
-from tests.unit_tests.common.common import create_app_configuration
+from tests.unit_tests.common.common import create_app_configuration, noop_timeout_resolver
 
 
 @pytest.mark.asyncio
@@ -116,6 +119,10 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(
+            AsyncDial,
+            to=InstanceProvider(AsyncDial(api_key="some_api_key", base_url="https://core")),
+        )
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(
             ApplicationConfig,
@@ -123,6 +130,8 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         )
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
+        binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
@@ -142,7 +151,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         # Use the public async entrypoint `arun(tool_call_id, ...)`
         tool_1_instance = next((t for t in tools if t.name == "test_tool1"), None)
         tool_1_result = await tool_1_instance.arun("call-1")
-        assert tool_1_result == CompletionResult(
+        assert tool_1_result == ToolCallResult(
             tool_call_id="call-1",
             content='test_result_1',
             content_type='text/markdown',
@@ -151,7 +160,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
 
         tool_2_instance = next((t for t in tools if t.name == "test_tool2"), None)
         tool_2_result = await tool_2_instance.arun("call-2")
-        assert tool_2_result == CompletionResult(
+        assert tool_2_result == ToolCallResult(
             tool_call_id="call-2",
             content="",
             content_type='text/markdown',
@@ -179,7 +188,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
 
         tool_3_instance = next((t for t in tools if t.name == "test_tool3"), None)
         tool_3_result = await tool_3_instance.arun("call-3")
-        assert tool_3_result == CompletionResult(
+        assert tool_3_result == ToolCallResult(
             tool_call_id="call-3",
             content="",
             content_type='text/markdown',
@@ -197,7 +206,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
 
         tool_4_instance = next((t for t in tools if t.name == "test_tool4"), None)
         tool_4_result = await tool_4_instance.arun("call-4")
-        assert tool_4_result == CompletionResult(
+        assert tool_4_result == ToolCallResult(
             tool_call_id="call-4",
             content="",
             content_type='text/markdown',
@@ -281,6 +290,10 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(
+            AsyncDial,
+            to=InstanceProvider(AsyncDial(api_key="some_api_key", base_url="https://core")),
+        )
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(
             ApplicationConfig,
@@ -288,6 +301,8 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         )
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
+        binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
@@ -339,6 +354,7 @@ async def test_forwarded_x_headers_passed_to_mcp_request():
         ),
         oauth_token_fetcher=mock_oauth,
         dial_settings=dial_settings,
+        timeout_resolver=noop_timeout_resolver(),
         bearer=None,
         forwarded_headers=forwarded,
     )

@@ -3,12 +3,13 @@
 import pytest
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 
-from quickapp.agent._models import AccumulatedToolCall, AssistantCallResult
+from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
 
 def test_tool_call_accumulation():
     """Test that tool calls are accumulated correctly from deltas."""
-    result = AssistantCallResult()
+    result = ChatStreamAccumulator()
 
     # Simulate the streaming deltas shown in the logs
     delta1 = ChoiceDeltaToolCall(
@@ -52,7 +53,7 @@ def test_tool_call_accumulation():
 
 def test_multiple_tool_calls_accumulation():
     """Test accumulation of multiple parallel tool calls."""
-    result = AssistantCallResult()
+    result = ChatStreamAccumulator()
 
     # First tool call - delta with id
     result.append_tool_call_delta(
@@ -106,7 +107,7 @@ def test_multiple_tool_calls_accumulation():
 
 def test_no_tool_calls_returns_none():
     """Test that tool_calls returns None when no deltas have been appended."""
-    result = AssistantCallResult()
+    result = ChatStreamAccumulator()
     assert result.tool_calls is None
 
 
@@ -132,7 +133,7 @@ def test_accessing_arguments_before_set_returns_empty_object():
 
 def test_tool_call_without_arguments_is_accumulated_from_deltas():
     """Simulate streaming deltas where id/name arrive but arguments never do."""
-    result = AssistantCallResult()
+    result = ChatStreamAccumulator()
 
     # First (and only) delta for the tool call: id + name present, arguments absent.
     result.append_tool_call_delta(

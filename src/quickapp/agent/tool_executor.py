@@ -4,10 +4,10 @@ import logging
 
 from injector import inject
 
-from quickapp.agent._models import AccumulatedToolCall
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.utils import sanitize_toolname
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +15,18 @@ logger = logging.getLogger(__name__)
 class ToolExecutor:
 
     @inject
-    def __init__(self, tools: list[StagedBaseTool], perf_timer: PerformanceTimer):
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        enrichers: list[ToolCallResultEnricher],
+        perf_timer: PerformanceTimer,
+    ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
+        self.__enrichers = enrichers
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
-    async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[CompletionResult]:
+    async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[ToolCallResult]:
         tasks = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)
@@ -32,6 +38,10 @@ class ToolExecutor:
                 tasks.append(tool.arun(tool_call_id=tc.id, **args))
 
         results = await asyncio.gather(*tasks, return_exceptions=False)
+
+        for enricher in self.__enrichers:
+            for result in results:
+                enricher.enrich(result)
 
         return results
 
@@ -47,7 +57,5 @@ class ToolExecutor:
                 continue
             function = getattr(open_ai_tool, 'function', None)
             if function and hasattr(function, 'name'):
-                # Sanitize tool name to ensure consistency. Orchestrator make a call to function with sanitized name. So we need to build dict also using sanitized names
-                tool_name = sanitize_toolname(function.name)
-                tool_dict[tool_name] = tool
+                tool_dict[function.name] = tool
         return tool_dict

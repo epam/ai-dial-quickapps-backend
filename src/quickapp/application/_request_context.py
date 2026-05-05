@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Choice, ResponseFormat
 from aidial_sdk.exceptions import InvalidRequestError
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
+from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 
@@ -9,6 +9,9 @@ from quickapp.config.application import ApplicationConfig
 # It is filled by _QuickAppCompletion with values such as api_key, application_config, messages, and choice.
 # The AppModule DI module then uses _RequestContext to provide dependencies (api_key, choice, application_config, choice)
 # to other parts of the application during the request lifecycle.
+
+
+_FORBIDDEN_FORWARDED_HEADERS = frozenset({"api-key", "authorization"})
 
 
 def _validate_response_format(response_format: ResponseFormat | None) -> None:
@@ -24,6 +27,16 @@ def _validate_response_format(response_format: ResponseFormat | None) -> None:
             )
 
 
+def _validate_forwarded_headers(value: ForwardedHeaders) -> None:
+    if not value:
+        return
+    forbidden = sorted({key.lower() for key in value} & _FORBIDDEN_FORWARDED_HEADERS)
+    if forbidden:
+        raise RuntimeError(
+            f"Forwarded headers must not contain auth headers: {', '.join(forbidden)}"
+        )
+
+
 class _RequestContext(MessagesMixin):
     _choice: Choice | None = None
     _api_key: DIAL_API_KEY | None = None
@@ -32,6 +45,7 @@ class _RequestContext(MessagesMixin):
     _bearer: DIAL_BEARER = None
     _response_format: ResponseFormat | None = None
     _forwarded_headers: ForwardedHeaders | None = None
+    _client_channel_id: CLIENT_CHANNEL_ID = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -101,4 +115,15 @@ class _RequestContext(MessagesMixin):
     def forwarded_headers(self, value: ForwardedHeaders) -> None:
         if self._forwarded_headers is not None:
             raise RuntimeError("Forwarded headers are already set")
+        _validate_forwarded_headers(value)
         self._forwarded_headers = value
+
+    @property
+    def client_channel_id(self) -> CLIENT_CHANNEL_ID:
+        return self._client_channel_id
+
+    @client_channel_id.setter
+    def client_channel_id(self, value: CLIENT_CHANNEL_ID) -> None:
+        if self._client_channel_id is not None:
+            raise RuntimeError("Client channel ID is already set")
+        self._client_channel_id = value

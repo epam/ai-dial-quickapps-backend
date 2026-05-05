@@ -12,6 +12,9 @@ excludes:
       comment: "Packages for experimentation only."
 resolutions:
   rule_violations:
+    - message: ".*PyPI::aidial-client:0\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Apache License 2.0: https://github.com/epam/ai-dial-client-python/blob/main/LICENSE"
     - message: ".*PyPI::fastapi:0\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/fastapi/fastapi/blob/master/LICENSE"
@@ -78,9 +81,6 @@ resolutions:
     - message: ".*PyPI::opentelemetry-proto:1\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "Apache License 2.0: https://github.com/open-telemetry/opentelemetry-python/blob/main/LICENSE"
-    - message: ".*PyPI::kaleido:1\\..*"
-      reason: "CANT_FIX_EXCEPTION"
-      comment: "MIT License: https://github.com/plotly/Kaleido/blob/master/LICENSE"
     - message: ".*PyPI::rich-rst:1\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/wasi-master/rich-rst/blob/main/LICENSE"
@@ -96,9 +96,6 @@ resolutions:
     - message: ".*PyPI::keyring:25\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://pypi.org/project/keyring/"
-    - message: ".*PyPI::choreographer:1\\..*"
-      reason: "CANT_FIX_EXCEPTION"
-      comment: "MIT License: https://github.com/plotly/choreographer/blob/main/LICENSE.md"
     - message: ".*PyPI::referencing:0\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/python-jsonschema/referencing?tab=MIT-1-ov-file"
@@ -108,6 +105,12 @@ resolutions:
     - message: ".*PyPI::sse-starlette:3\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/sysid/sse-starlette/blob/main/LICENSE"
+    - message: ".*PyPI::pytest:9\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "MIT License: https://github.com/pytest-dev/pytest/blob/main/LICENSE"
+    - message: ".*PyPI::pytest-asyncio:1\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Apache License 2.0: https://github.com/pytest-dev/pytest-asyncio/blob/main/LICENSE"
     - message: ".*PyPI::pytest-xdist:3\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/pytest-dev/pytest-xdist/blob/master/LICENSE"
@@ -189,6 +192,12 @@ resolutions:
     - message: ".*PyPI::pycparser:3\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "BSD 3-Clause License: https://github.com/eliben/pycparser/blob/main/LICENSE"
+    - message: ".*PyPI::caio:0\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "Apache License 2.0: https://github.com/mosquito/caio/blob/master/COPYING"
+    - message: ".*PyPI::pygments:2\\..*"
+      reason: "CANT_FIX_EXCEPTION"
+      comment: "BSD-2-Clause License: https://github.com/pygments/pygments/blob/master/LICENSE"
 
 # WARNINGS
     - message: ".*PyPI::packaging:25\\..*"
@@ -197,6 +206,3 @@ resolutions:
     - message: ".*PyPI::python-dateutil:2\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "Dual (APL-2.0 and BSD-2): https://github.com/dateutil/dateutil/blob/master/LICENSE"
-
-
-

@@ -61,6 +61,14 @@
           },
           "title": "Propagate Types To Choice",
           "type": "array"
+        },
+        "media_type_substitution": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Maps original attachment types to substitution types for custom visualizers.",
+          "title": "Media Type Substitution",
+          "type": "object"
         }
       },
       "title": "AttachmentConfig",
@@ -541,6 +549,12 @@
           "title": "Chat Message Input Disabled",
           "type": "boolean"
         },
+        "auto_submit": {
+          "default": true,
+          "description": "Whether to automatically submit the conversation starter text when a button is clicked. If false, the text will be populated in the chat input but not submitted, allowing users to edit it before sending.",
+          "title": "Auto Submit",
+          "type": "boolean"
+        },
         "starters": {
           "description": "The list of conversation starters.",
           "items": {
@@ -1009,6 +1023,28 @@
       "title": "DialMCPToolSet",
       "type": "object"
     },
+    "DialPromptSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-prompt",
+          "default": "dial-prompt",
+          "description": "Skill sourced from a DIAL prompt.",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialPromptSkillConfig",
+      "type": "object"
+    },
     "DialSystemPromptConfig": {
       "properties": {
         "type": {
@@ -1057,6 +1093,24 @@
         "path"
       ],
       "title": "DialSystemPromptConfig",
+      "type": "object"
+    },
+    "Features": {
+      "properties": {
+        "timestamp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallTimestampConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time awareness configuration.",
+          "x-preview": true
+        }
+      },
+      "title": "Features",
       "type": "object"
     },
     "FileContextConfig": {
@@ -2503,6 +2557,18 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "ToolCallTimestampConfig": {
+      "properties": {
+        "injection_strategy": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Injection Strategy",
+          "type": "string"
+        }
+      },
+      "title": "ToolCallTimestampConfig",
+      "type": "object"
+    },
     "ToolDisplayConfig": {
       "properties": {
         "stage": {
@@ -2705,6 +2771,12 @@
           "description": "The max count of orchestrator(agent) operations. Default: 15",
           "title": "Max Iterations",
           "type": "integer"
+        },
+        "propagate_stages": {
+          "default": true,
+          "description": "When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
+          "title": "Propagate Stages",
+          "type": "boolean"
         }
       },
       "required": [
@@ -2822,6 +2894,78 @@
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 5
+      }
+    },
+    "skills": {
+      "anyOf": [
+        {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DialPromptSkillConfig"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of user-configured agent skills.",
+      "title": "Skills",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 6
+      }
+    },
+    "features": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Features"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "QuickApps Agent features configuration.",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
+      }
+    },
+    "tool_defaults": {
+      "description": "Defaults applied to every tool call (e.g. timeout).",
+      "properties": {
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeout (in seconds) applied to all tool calls in this app. When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, or each client's library default if neither is set.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "ToolDefaults",
+      "type": "object",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 8
       }
     }
   },

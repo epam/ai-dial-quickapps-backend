@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from starlette.testclient import TestClient
 
+from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.state_holder import StateHolder
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -13,7 +15,7 @@ from tests.integration_tests.test_runner.config import SimilarityThreshold, Test
 from tests.integration_tests.test_runner.custom_function import CustomFunction
 from tests.integration_tests.test_runner.e2e_runner import e2e_test
 from tests.integration_tests.test_runner.models import ToolCall, TstCase
-from tests.integration_tests.test_runner.utils.tool_names_with_hash import ToolNames
+from tests.integration_tests.test_runner.utils.tool_names import ToolNames
 
 logger = logging.getLogger(__name__)
 
@@ -93,7 +95,7 @@ def test_text_to_image2(client):
     test_case=TstCase("Web search", "NBA winner 2025", similarity_threshold=0.7)
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations'",
+        user_message="Which NBA club won in 2024-2025 season? Use web search to find the answer, don't use your own knowledge. In answer, please provide only the name of the club without any other text or explanations. Don't add source citation.'",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
@@ -119,7 +121,7 @@ def test_web_search(client):
     )
     .add_mock_date(date(2024, 12, 31))
     .add_user_message(
-        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024",
+        user_message="ONE NUMBER ONLY, NO EXPAINATIONS!!! Use web search and say how many Tesla cars were sold in 2024. Don't add citations.",
         tool_calls=[
             ToolCall(ToolNames.WEB_SEARCH_TOOL.value, max_calls=6).add_soft_argument_check(
                 "query",
@@ -130,6 +132,7 @@ def test_web_search(client):
             "1,789,226",
             "I'll search for the latest information on Tesla sales in 2024 and provide just the number.1,789,226",
             "1789226",
+            "1,789,226 (Source: Tesla 2024 deliveries press release)",
         ],
     ),
 )
@@ -375,11 +378,16 @@ async def test_pyinterpreter_close_session():
     async with _PyInterpreterClient(
         api_key=TestConfig.PY_INTERPRETER_API_KEY, base_url=TestConfig.PY_INTERPRETER_URL
     ) as client:
-        session_manager = SessionManager(client=client, messages=[])
-        session_id = await session_manager.ensure_valid_session(None, True)
+        messages_mixin = MessagesMixin()
+        messages_mixin.messages = []
+        state_holder = StateHolder()
+        session_manager = SessionManager(
+            client=client, messages_mixin=messages_mixin, state_holder=state_holder
+        )
+        session_id = await session_manager.ensure_valid_session(None)
         logger.info("Closing session, and try call py_interpreter again")
         await session_manager.close_session(session_id)
-        new_session_id = await session_manager.ensure_valid_session(session_id, True)
+        new_session_id = await session_manager.ensure_valid_session(session_id)
         assert new_session_id != session_id
 
 

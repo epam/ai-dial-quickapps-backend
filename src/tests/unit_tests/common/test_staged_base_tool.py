@@ -5,7 +5,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder
 
-from quickapp.common import CompletionResult, StagedBaseTool
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.tools.base import AttachmentConfig
@@ -20,7 +20,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
-        result_to_return: CompletionResult | None = None,
+        result_to_return: ToolCallResult | None = None,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,
@@ -31,12 +31,10 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         )
         self._result_to_return = result_to_return
 
-    async def _run_in_stage_async(
-        self, stage_wrapper, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+    async def _run_in_stage_async(self, stage_wrapper, *args: Any, **kwargs: Any) -> ToolCallResult:
         if self._result_to_return is not None:
             return self._result_to_return
-        return CompletionResult(content="response content", content_type="application/json")
+        return ToolCallResult(content="response content", content_type="application/json")
 
 
 @pytest.fixture
@@ -103,7 +101,7 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     image_attachment = Attachment(type="image/png", title="image.png", data="img_data")
     text_attachment = Attachment(type="text/plain", title="readme.txt", data="text_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[image_attachment, text_attachment],
@@ -126,3 +124,108 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     # so it should NOT appear in propagate_to_choice
     assert len(result.propagate_to_choice) == 1
     assert result.propagate_to_choice[0].type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_applied(mock_stage_wrapper_factory):
+    """Attachments that pass supported_types should have their type substituted
+    according to media_type_substitution mapping."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/png", title="photo.png", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/webp"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_not_applied_when_no_match(mock_stage_wrapper_factory):
+    """Attachments whose type is not in the substitution mapping keep their original type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/jpeg", title="photo.jpg", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/jpeg"
+
+
+@pytest.mark.asyncio
+async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
+    """After substitution, propagate_types_to_choice should match against the NEW type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["application/custom"],
+        media_type_substitution={"image/png": "application/custom"},
+    )
+
+    attachment = Attachment(type="image/png", title="chart.png", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    # The attachment survives (image/png passes supported_types=["image/*"])
+    assert len(result.attachments) == 1
+    # Its type was substituted
+    assert result.attachments[0].type == "application/custom"
+    # Propagation check uses the substituted type, which matches propagate_types_to_choice
+    assert len(result.propagate_to_choice) == 1
+    assert result.propagate_to_choice[0].type == "application/custom"

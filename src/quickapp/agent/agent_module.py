@@ -13,15 +13,21 @@ from quickapp.agent._orchestrator_default_tools import (
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.chunk_processor import ChunkProcessor
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.common import DIAL_API_KEY, ForwardedHeaders, StagedBaseTool
+from quickapp.common import (
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    ORCHESTRATOR_AZURE_CLIENT,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
-from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -60,7 +66,7 @@ class AgentModule(Module):
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
-        binder.bind(ChunkProcessor, to=ChunkProcessor, scope=NoScope)
+        binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
@@ -85,13 +91,19 @@ class AgentModule(Module):
         api_key: DIAL_API_KEY,
         config: ApplicationConfig,
         forwarded_headers: ForwardedHeaders,
-    ) -> AsyncAzureOpenAI:
+        bearer: DIAL_BEARER,
+    ) -> ORCHESTRATOR_AZURE_CLIENT:
+        headers = dict(forwarded_headers or {})
+
+        if bearer:
+            headers["Authorization"] = f"Bearer {bearer.get_secret_value()}"
+
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
             azure_deployment=config.orchestrator.deployment.name,
             api_version=dial_settings.api_version,
-            default_headers=forwarded_headers or None,
+            default_headers=headers,
         )
         return azure_client
 
@@ -101,7 +113,6 @@ class AgentModule(Module):
         for tool in tools:
             if issubclass(type(tool.tool_config), BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
-                open_ai_tool.function.name = sanitize_toolname(open_ai_tool.function.name)
                 open_ai_tool = self._remove_const_params(open_ai_tool)
                 if tool.tool_config.type in [
                     "deployment-tool"
@@ -139,6 +150,17 @@ class AgentModule(Module):
         return [
             add_system_prompt,
         ]
+
+    @multiprovider
+    def provide_pre_invocation_transformers(
+        self,
+        attachment_filter: _AttachmentFilter,
+    ) -> list[PreInvocationTransformer]:
+        return [attachment_filter]
+
+    @multiprovider
+    def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:
+        return []
 
     @multiprovider
     def provide_prompt_parts(

@@ -6,15 +6,19 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider, SkillMetadata
+from quickapp.skills._exceptions import SkillValidationError
+from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills._xml import generate_skills_xml
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
 # ---------------------------------------------------------------------------
-# _parse_frontmatter unit tests
+# parse_frontmatter unit tests
 # ---------------------------------------------------------------------------
 
 
 class TestParseFrontmatter:
-    """Tests for AgentSkillsProvider._parse_frontmatter()."""
+    """Tests for parse_frontmatter()."""
 
     def test_valid_skill_all_fields(self):
         content = (
@@ -31,8 +35,7 @@ class TestParseFrontmatter:
             "---\n"
             "Body content\n"
         )
-        result = AgentSkillsProvider._parse_frontmatter(content, "my-skill")
-        assert result is not None
+        result = parse_frontmatter(content, "my-skill")
         assert isinstance(result, SkillMetadata)
         assert result.name == "my-skill"
         assert result.description == "A test skill"
@@ -41,43 +44,50 @@ class TestParseFrontmatter:
         assert result.metadata == {"version": "1.0"}
         assert result.allowed_tools == ["tool_a", "tool_b"]
 
-    def test_missing_name_returns_none(self):
+    def test_missing_name_raises(self):
         content = "---\ndescription: A skill without name\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_missing_description_returns_none(self):
+    def test_missing_description_raises(self):
         content = "---\nname: my-skill\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_name_exceeds_64_chars_returns_none(self):
+    def test_name_exceeds_64_chars_raises(self):
         long_name = "a" * 65
         content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_consecutive_hyphens_returns_none(self):
+    def test_consecutive_hyphens_raises(self):
         content = "---\nname: my--skill\ndescription: desc\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_leading_hyphen_returns_none(self):
+    def test_leading_hyphen_raises(self):
         content = "---\nname: -my-skill\ndescription: desc\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_trailing_hyphen_returns_none(self):
+    def test_trailing_hyphen_raises(self):
         content = "---\nname: my-skill-\ndescription: desc\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_invalid_yaml_returns_none(self):
+    def test_invalid_yaml_raises(self):
         content = "---\n: [invalid yaml\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_non_dict_yaml_returns_none(self):
+    def test_non_dict_yaml_raises(self):
         content = "---\n- item1\n- item2\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
     def test_allowed_tools_as_string_normalized_to_list(self):
         content = "---\nname: my-skill\ndescription: desc\nallowed-tools: tool1 tool2\n---\nBody\n"
-        result = AgentSkillsProvider._parse_frontmatter(content, "test")
-        assert result is not None
+        result = parse_frontmatter(content, "test")
         assert result.allowed_tools == ["tool1", "tool2"]
 
     def test_allowed_tools_as_list_kept(self):
@@ -85,48 +95,56 @@ class TestParseFrontmatter:
             "---\nname: my-skill\ndescription: desc\n"
             "allowed-tools:\n  - tool1\n  - tool2\n---\nBody\n"
         )
-        result = AgentSkillsProvider._parse_frontmatter(content, "test")
-        assert result is not None
+        result = parse_frontmatter(content, "test")
         assert result.allowed_tools == ["tool1", "tool2"]
 
-    def test_description_exceeds_1024_chars_returns_none(self):
+    def test_description_exceeds_1024_chars_raises(self):
         long_desc = "x" * 1025
         content = f"---\nname: my-skill\ndescription: {long_desc}\n---\nBody\n"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
 
-    def test_no_frontmatter_returns_none(self):
+    def test_compatibility_exceeds_500_chars_raises(self):
+        long_compat = "x" * 501
+        content = (
+            f"---\nname: my-skill\ndescription: desc\n" f"compatibility: {long_compat}\n---\nBody\n"
+        )
+        with pytest.raises(SkillValidationError, match="Compatibility exceeds 500"):
+            parse_frontmatter(content, "test")
+
+    def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
-        assert AgentSkillsProvider._parse_frontmatter(content, "test") is None
+        with pytest.raises(SkillValidationError):
+            parse_frontmatter(content, "test")
+
+    def test_error_carries_source_id_and_reason(self):
+        content = "No frontmatter"
+        with pytest.raises(SkillValidationError) as exc_info:
+            parse_frontmatter(content, "my-source")
+        assert exc_info.value.source_id == "my-source"
+        assert "No YAML frontmatter found" in exc_info.value.reason
 
 
 # ---------------------------------------------------------------------------
-# _generate_xml unit tests
+# generate_skills_xml unit tests
 # ---------------------------------------------------------------------------
 
 
-class TestGenerateXml:
-    """Tests for AgentSkillsProvider._generate_xml()."""
-
-    def _make_provider_for_xml(self) -> AgentSkillsProvider:
-        """Create a minimal provider with builtin content for calling _generate_xml."""
-        provider = PredefinedContentProvider(PredefinedSettings())
-        return AgentSkillsProvider(provider)
+class TestGenerateSkillsXml:
+    """Tests for generate_skills_xml()."""
 
     def test_empty_list_returns_empty_string(self):
-        asp = self._make_provider_for_xml()
-        assert asp._generate_xml([]) == ""
+        assert generate_skills_xml([]) == ""
 
     def test_single_skill_required_fields_only(self):
-        asp = self._make_provider_for_xml()
         skill = SkillMetadata(name="test-skill", description="A test skill")
-        xml = asp._generate_xml([skill])
+        xml = generate_skills_xml([skill])
         assert "<available_skills>" in xml
         assert "<name>test-skill</name>" in xml
         assert "<description>A test skill</description>" in xml
         assert "</available_skills>" in xml
 
     def test_skill_with_all_optional_fields(self):
-        asp = self._make_provider_for_xml()
         skill = SkillMetadata(
             name="full-skill",
             description="Full skill",
@@ -135,16 +153,15 @@ class TestGenerateXml:
             metadata={"version": "2.0"},
             allowed_tools=["tool_a", "tool_b"],
         )
-        xml = asp._generate_xml([skill])
+        xml = generate_skills_xml([skill])
         assert "<license>MIT</license>" in xml
         assert "<compatibility>&gt;=1.0</compatibility>" in xml
         assert "<allowed_tools>tool_a tool_b</allowed_tools>" in xml
         assert '<entry key="version">2.0</entry>' in xml
 
     def test_xml_escaping_of_special_characters(self):
-        asp = self._make_provider_for_xml()
         skill = SkillMetadata(name="esc-skill", description="Use <b>&amp;</b> 'quotes'")
-        xml = asp._generate_xml([skill])
+        xml = generate_skills_xml([skill])
         assert "&lt;b&gt;&amp;amp;&lt;/b&gt;" in xml
         assert "&apos;quotes&apos;" in xml
 
@@ -168,8 +185,8 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "my-valid-skill" in xml
+        skills = asp.get_all_skills()
+        assert any(s.name == "my-valid-skill" for s in skills)
 
     def test_name_mismatch_skips_skill(self, tmp_path: Path):
         skill_dir = tmp_path / "skills" / "dir-name"
@@ -182,9 +199,9 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "different-name" not in xml
-        assert "dir-name" not in xml
+        skill_names = [s.name for s in asp.get_all_skills()]
+        assert "different-name" not in skill_names
+        assert "dir-name" not in skill_names
 
     def test_mixed_valid_invalid_skills(self, tmp_path: Path):
         # Valid skill
@@ -203,9 +220,9 @@ class TestAgentSkillsProviderIntegration:
         provider = PredefinedContentProvider(settings)
         asp = AgentSkillsProvider(provider)
 
-        xml = asp.get_skills_xml()
-        assert "good-skill" in xml
-        assert "bad-skill" not in xml
+        skill_names = [s.name for s in asp.get_all_skills()]
+        assert "good-skill" in skill_names
+        assert "bad-skill" not in skill_names
 
 
 # ---------------------------------------------------------------------------

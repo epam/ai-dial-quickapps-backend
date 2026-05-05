@@ -216,6 +216,42 @@
           }
         ]
       }
+    },
+    "quickapp_with_code_interpreter": {
+      "displayName": "QuickApp with code interpreter",
+      "description": "Sample QuickApp that has access to PyInterpreter tool",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "anthropic.claude-sonnet-4-6"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are an AI assistant that helps people find information and execute python code using PyInterpreter tool. Always format your responses in markdown."
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          }
+        ],
+        "conversation_starters": {
+          "intro_text": "What would you like to talk about?",
+          "starters": [
+            {
+              "title": "Calculate Fibonacci sequence",
+              "text": "Calculate Fibonacci sequence up to 10 using PyInterpreter tool."
+            }
+          ]
+        }
+      }
     }
   }
 }

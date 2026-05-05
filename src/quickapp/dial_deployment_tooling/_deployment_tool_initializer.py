@@ -3,7 +3,7 @@ import logging
 from injector import AssistedBuilder, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
@@ -41,7 +41,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
                     if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled:
                         await self.__init_simple_deployment_tool(tool)
 
-    def __init_deployment_tool(self, tool):
+    def __init_deployment_tool(self, tool: DialDeploymentTool):
         built_tool = self.__builder.build(
             application_id=tool.deployment.name,
             application_name=tool.open_ai_tool.function.name,
@@ -60,7 +60,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
             )
             if tool_config is None:
                 raise ToolInitializationException(f"No tool config for {tool_info.deployment_id}")
-            return self.__init_deployment_tool(tool_config)
+            self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)

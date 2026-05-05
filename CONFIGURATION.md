@@ -15,7 +15,7 @@ Schema reference:
 
 ## Agent Configuration:
 
-<details> 
+<details>
 <summary><b>Configuration JSON Sample</b></summary>
 
 The project contains predefined configs of application and predefined tools
@@ -259,7 +259,7 @@ The project contains predefined configs of application and predefined tools
 | name       | Yes      | String | The DIAL deployment name to be used for the agent                                                                                | Any valid deployment name | -             |
 | parameters | No       | Object | The parameters to configure Agent model, [See Request parameters](https://dialx.ai/dial_api#operation/sendChatCompletionRequest) | -                         | `null`        |
 
-<details> 
+<details>
 <summary><b>Deployment configuration JSON sample</b></summary>
 
 Sample:
@@ -306,7 +306,7 @@ With custom fields sample:
 | variables | Yes                         | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                | -             |
 | content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                | -             |
 
-<details> 
+<details>
 <summary><b>System prompt configuration JSON sample</b></summary>
 
 Custom system prompt:
@@ -334,7 +334,7 @@ Custom system prompt:
 | content     | Yes (if `type` is `user-defined`) | String | The context content                                                     | -                      | -             |
 | url         | Yes (if `type` is `file`)         | String | The URL to the file (in dial bucket) where file with content is located | -                      | -             |
 
-<details> 
+<details>
 <summary><b>Contexts configuration JSON sample</b></summary>
 
 User-defined context:
@@ -456,21 +456,21 @@ The context loaded by URL:
 
 | Field         | Required | Type                      | Description      |
 |---------------|----------|---------------------------|------------------|
-| type          | Yes      | String `client_id_secret` | Type of the auth | 
-| client_id     | Yes      | String                    | client id        | 
-| client_secret | Yes      | String                    | client secret    | 
-| token_url     | Yes      | String                    | token url        | 
-| scope         | No       | Array of String           | scope list       | 
-| aud           | No       | Array of String           | aud list         | 
+| type          | Yes      | String `client_id_secret` | Type of the auth |
+| client_id     | Yes      | String                    | client id        |
+| client_secret | Yes      | String                    | client secret    |
+| token_url     | Yes      | String                    | token url        |
+| scope         | No       | Array of String           | scope list       |
+| aud           | No       | Array of String           | aud list         |
 
 ##### ApiKeyAuthorization
 
 | Field    | Required | Type                           | Description                        |
 |----------|----------|--------------------------------|------------------------------------|
-| type     | Yes      | String `api_key`               | Type of the auth                   | 
-| key      | Yes      | String                         | client id                          | 
-| name     | Yes      | String                         | name of the api key param          | 
-| location | Yes      | Enum `header`, `query`, `body` | location of the api key in request | 
+| type     | Yes      | String `api_key`               | Type of the auth                   |
+| key      | Yes      | String                         | client id                          |
+| name     | Yes      | String                         | name of the api key param          |
+| location | Yes      | Enum `header`, `query`, `body` | location of the api key in request |
 
 ##### MCPApiKeyAuthorization
 
@@ -478,8 +478,8 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 
 | Field | Required | Type             | Description               |
 |-------|----------|------------------|---------------------------|
-| type  | Yes      | String `api_key` | Type of the auth          | 
-| key   | Yes      | String           | client id                 | 
+| type  | Yes      | String `api_key` | Type of the auth          |
+| key   | Yes      | String           | client id                 |
 | name  | Yes      | String           | name of the api key param |
 
 ### Tool configuration
@@ -497,8 +497,8 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 
 | Field       | Required | Type                                       | Description |
 |-------------|----------|--------------------------------------------|-------------|
-| method_url  | Yes      | String                                     | url         | 
-| method_type | Yes      | String Enum `get`, `post`, `put`, `delete` | method      | 
+| method_url  | Yes      | String                                     | url         |
+| method_type | Yes      | String Enum `get`, `post`, `put`, `delete` | method      |
 
 #### Open AI tool configuration
 
@@ -507,7 +507,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | type     | No       | String | Will be set as `function` by default. Required, according to DIAL spec                                             | -                | `function`    |
 | function | Yes      | Object | Extended version of function from DIAL spec. See [Open AI function configuration](#open-ai-function-configuration) | -                | -             |
 
-<details> 
+<details>
 <summary><b>Open AI tool configuration JSON sample</b></summary>
 
 ```json
@@ -560,7 +560,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | properties | No       | Object        | Mixin of tool properties and additional configurations. See [Properties configuration](#properties-configuration) | -                | `{}`          |
 | required   | Yes      | Array[Object] | Here can be listed the properties names that are required when Agent will call a tool                             | -                | -             |
 
-<details> 
+<details>
 <summary><b>Parameters configuration JSON sample</b></summary>
 
 Original Open AI parameters configuration
@@ -667,7 +667,7 @@ More detailed for default parameters [JSON Schema spec](#https://json-schema.org
 | name  | No       | String  | The tool name that will be used as title for stage                             | -                | `null`        |
 | show  | No       | Boolean | Whether to show stage (and tools execution results) when tool is called or not | `true`, `false`  | `true`        |
 
-<details> 
+<details>
 <summary><b>Display tool stage configuration JSON sample</b></summary>
 
 Show stage with name `RAG search: `
@@ -708,7 +708,7 @@ Do not show tool execution in stage
 | replaced_value_info       | No       | String  | The replaced parameter value that will shown in the stage content. If `null` then will be used original value. If replacement is used the `prefix` and `suffix` will be ignored | -                                    | `null`        |
 | format                    | No       | String  | The format of the parameter value. If present then the value will be wrapped in ```{format} {parameter value}```                                                                | `markdown`, `python`, `json`, etc... | `null`        |
 
-<details> 
+<details>
 <summary><b>Display parameter stage configuration JSON sample</b></summary>
 
 Configuration sample:
@@ -761,7 +761,7 @@ Do not show parameter with value in stage while tool call:
 | type  | Yes      | String | The element type of REST request                                  | `query`, `url`, `body`, `header` | -             |
 | key   | Yes      | String | Name of the element in request [`query`, `url`, `body`, `header`] | -                                | -             |
 
-<details> 
+<details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
 
 ```json
@@ -781,8 +781,9 @@ Do not show parameter with value in stage while tool call:
 |---------------------------|----------|---------------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------|---------------|
 | supported_types           | No       | Array[String] | List of supported attachment MIME types                                                                              | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[*/*]`       |
 | propagate_types_to_choice | No       | Array[String] | List of supported attachment MIME types that will be shown in main chat (propagated from tool call result to choice) | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[]`          |
+| media_type_substitution   | No       | dict[str, str] | Maps original MIME type to substitute. Key is a original mime_type, value is desired mime type. | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `{}` |
 
-<details> 
+<details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
 
 ```json
@@ -794,7 +795,10 @@ Do not show parameter with value in stage while tool call:
     "image/png",
     "image/jpeg",
     "application/vnd.plotly.v1+json"
-  ]
+  ],
+  "media_type_substitution": {
+    "application/json": "application/vnd.plotly.v1+json"
+  }
 }
 ```
 
@@ -835,7 +839,7 @@ There are two types of strategy models that can be used:
 | value          | Yes      | String                     | The error message text to match against   | -             |
 | case_sensitive | No       | Boolean                    | Whether matching should be case-sensitive | `false`       |
 
-<details> 
+<details>
 <summary><b>Example Of Strategies Configuration</b></summary>
 
 ```json
@@ -872,4 +876,3 @@ There are two types of strategy models that can be used:
 - If no Fallback strategy for tool provided, the default behaviour is to continue with predefined instructions
 - Strategies are evaluated in the order they appear in the array
 - The first strategy with a matching trigger condition is used
-

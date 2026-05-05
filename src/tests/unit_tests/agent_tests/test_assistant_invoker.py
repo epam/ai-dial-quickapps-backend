@@ -56,7 +56,7 @@ class DummyConfig:
 
 
 mock_filter = Mock()
-mock_filter.filter_attachments.side_effect = lambda messages: messages
+mock_filter.transform.side_effect = lambda messages: messages
 
 
 @pytest.mark.asyncio
@@ -75,7 +75,7 @@ async def test_invoke_without_show_usage(monkeypatch):
         choice=SimpleNamespace(),  # not used in code under test
         azure_client=azure_client,
         response_format=None,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
         forwarded_headers=None,
@@ -114,7 +114,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
         messages=[FakeMessage("hello2")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         response_format=None,
         presentation_settings=_presentation_settings(True),
         agent_settings=_agent_settings(),
@@ -150,7 +150,7 @@ async def test_invoke_propagates_exceptions():
         messages=[FakeMessage("oops")],
         choice=SimpleNamespace(),
         azure_client=azure_client,
-        attachment_filter=mock_filter,
+        pre_invocation_transformers=[mock_filter],
         response_format=None,
         presentation_settings=_presentation_settings(False),
         agent_settings=_agent_settings(),
@@ -162,3 +162,76 @@ async def test_invoke_propagates_exceptions():
         await invoker.invoke()
 
     assert create_mock.await_count == 1
+
+
+def test_promote_orchestrator_state_to_top_level():
+    """Before the next orchestrator call, state.orchestrator (response state only) is promoted to top-level."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    msg = {
+        "role": "assistant",
+        "content": "ok",
+        "custom_content": {
+            "state": {
+                "tool_execution_history": [{"role": "assistant"}],
+                ORCH: {"claude_message_content": "some content"},
+            },
+        },
+    }
+    AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level(msg)
+    state = msg["custom_content"]["state"]
+    assert ORCH not in state
+    assert state["tool_execution_history"] == [{"role": "assistant"}]
+    assert state["claude_message_content"] == "some content"
+
+
+def test_promote_orchestrator_state_no_op_no_custom_content():
+    """Message without custom_content is unchanged."""
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {"role": "user", "content": "hi"}
+    promote(msg)
+    assert "custom_content" not in msg
+
+
+def test_promote_orchestrator_state_no_op_custom_content_not_dict():
+    """custom_content that is not a dict is left unchanged (no crash)."""
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {"role": "assistant", "custom_content": None}
+    promote(msg)
+    assert msg["custom_content"] is None
+
+    msg2 = {"role": "assistant", "custom_content": "invalid"}
+    promote(msg2)
+    assert msg2["custom_content"] == "invalid"
+
+
+def test_promote_orchestrator_state_no_op_no_orchestrator_key():
+    """State without 'orchestrator' key is unchanged."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {
+        "custom_content": {
+            "state": {"tool_execution_history": [], "other": "x"},
+        },
+    }
+    promote(msg)
+    assert msg["custom_content"]["state"] == {"tool_execution_history": [], "other": "x"}
+    assert ORCH not in msg["custom_content"]["state"]
+
+
+def test_promote_orchestrator_state_orchestrator_non_dict_removes_key_only():
+    """If state.orchestrator is not a dict, key is removed but state is not updated (no crash)."""
+    from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+
+    promote = AssistantInvoker._AssistantInvoker__promote_orchestrator_state_to_top_level
+    msg = {
+        "custom_content": {
+            "state": {"other": "keep", ORCH: [{"stages": "invalid"}]},
+        },
+    }
+    promote(msg)
+    state = msg["custom_content"]["state"]
+    assert ORCH not in state
+    assert state["other"] == "keep"
+    assert "stages" not in state

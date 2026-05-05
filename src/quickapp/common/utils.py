@@ -9,7 +9,7 @@ from quickapp.config.tools.const import ALL_MIME_TYPES
 logger = logging.getLogger(__name__)
 
 
-_INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]")
+_INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]+")
 
 
 # Normalize propagation types (split wildcards like 'image/*' for matching)
@@ -32,23 +32,25 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
     return False
 
 
+def substitute_media_type(
+    mime_type: str | None,
+    mapping: dict[str, str],
+) -> str | None:
+    """Apply media type substitution"""
+    if mime_type is None:
+        return None
+    return mapping.get(mime_type, mime_type)
+
+
 def sanitize_toolname(input_str: str) -> str:
     """
     Sanitizes a string to match the pattern ^[a-zA-Z0-9_-]{1,64}$
 
-    Args:
-        input_str: Input string to sanitize
-
-    Returns:
-        Sanitized string containing only allowed characters (a-z, A-Z, 0-9, _, -)
-        with length 1-64 characters. Returns empty string if no valid characters exist.
+    Invalid characters are replaced with '_' and the result is truncated
+    to 64 characters.
     """
-    # Step 1: Remove all invalid characters
-    sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('', input_str)
-
-    # Step 2: Truncate to max 64 characters
+    sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('_', input_str)
     sanitized = sanitized[:64]
-
     return sanitized
 
 
