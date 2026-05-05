@@ -1,7 +1,6 @@
 from typing import Any
 
-from aidial_client import AsyncDial
-from aidial_client._exception import EtagMismatchError
+from aidial_client import AsyncDial, EtagMismatchError
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 

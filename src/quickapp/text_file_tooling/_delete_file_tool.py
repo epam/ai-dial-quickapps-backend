@@ -1,7 +1,6 @@
 from typing import Any
 
-from aidial_client import AsyncDial
-from aidial_client._exception import ResourceNotFoundError
+from aidial_client import AsyncDial, ResourceNotFoundError
 from injector import AssistedBuilder, inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
