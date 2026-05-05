@@ -25,6 +25,109 @@
     ]
   },
   {
+    "name": "internal_text_file_delete",
+    "description": "Delete a file from DIAL storage. Hard delete; no undo.",
+    "properties": {
+      "file_url": {
+        "type": "string",
+        "description": "URL of the file to delete."
+      }
+    },
+    "required": [
+      "file_url"
+    ]
+  },
+  {
+    "name": "internal_text_file_edit",
+    "description": "Replace a unique substring in an existing UTF-8 text file. old_string must occur exactly once. Fails if the file changed concurrently.",
+    "properties": {
+      "file_url": {
+        "type": "string",
+        "description": "URL of the file to edit."
+      },
+      "old_string": {
+        "type": "string",
+        "description": "Exact substring to replace. Must occur exactly once. Include surrounding context to disambiguate."
+      },
+      "new_string": {
+        "type": "string",
+        "description": "Replacement text. May be empty to delete the match."
+      }
+    },
+    "required": [
+      "file_url",
+      "old_string",
+      "new_string"
+    ]
+  },
+  {
+    "name": "internal_text_file_read_lines",
+    "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice.",
+    "properties": {
+      "file_url": {
+        "type": "string",
+        "description": "URL of the file to read."
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "First line to include (0-indexed)."
+      },
+      "end_line": {
+        "type": "integer",
+        "description": "First line to exclude (0-indexed). Like Python slice end."
+      }
+    },
+    "required": [
+      "file_url",
+      "start_line",
+      "end_line"
+    ]
+  },
+  {
+    "name": "internal_text_file_search",
+    "description": "Search for a substring in a file stored in DIAL. Returns matching lines with optional surrounding context.",
+    "properties": {
+      "file_url": {
+        "type": "string",
+        "description": "URL of the file to search."
+      },
+      "pattern": {
+        "type": "string",
+        "description": "Substring to search for."
+      },
+      "context_lines": {
+        "type": "integer",
+        "description": "Lines of context around each match. Default: 0."
+      },
+      "case_insensitive": {
+        "type": "boolean",
+        "description": "If true, search is case-insensitive. Default: false."
+      }
+    },
+    "required": [
+      "file_url",
+      "pattern"
+    ]
+  },
+  {
+    "name": "internal_text_file_write",
+    "description": "Create a new UTF-8 text file in DIAL storage under generated-files/. Fails if a file with the same name already exists. Returns the file URL.",
+    "properties": {
+      "filename": {
+        "type": "string",
+        "description": "Simple file name (no path separators, no '..')."
+      },
+      "content": {
+        "type": "string",
+        "description": "UTF-8 text content of the file."
+      }
+    },
+    "required": [
+      "filename",
+      "content"
+    ]
+  },
+  {
     "name": "internal_timeawareness_current_timestamp",
     "description": "Returns the current date and time. Optionally converts to a specific timezone.",
     "properties": {

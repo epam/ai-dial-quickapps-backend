@@ -18,6 +18,8 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
+from quickapp.config.text_file_tools import TextFileToolsConfig
+
 if __name__ == "__main__":
     from utils import add_src_to_system_path, load_env
 
@@ -60,7 +62,9 @@ def build_dump_application_config() -> ApplicationConfig:
             ),
         ],
         tool_sets=[],
-        features=Features(timestamp=ToolCallTimestampConfig()),
+        features=Features(
+            timestamp=ToolCallTimestampConfig(), text_file_tools=TextFileToolsConfig()
+        ),
     )
 
 
