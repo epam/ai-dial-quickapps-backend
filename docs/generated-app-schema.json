@@ -1224,6 +1224,19 @@
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",
           "description": "File loader configuration (download size limits, etc.)."
+        },
+        "text_file_tools": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TextFileToolsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in file read/write/edit/delete tools.",
+          "x-preview": true
         }
       },
       "title": "Features",
@@ -2734,6 +2747,36 @@
         }
       },
       "title": "StopStrategyModel",
+      "type": "object"
+    },
+    "TextFileToolsConfig": {
+      "properties": {
+        "enabled_tools": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "internal_text_file_read_lines",
+                  "internal_text_file_search",
+                  "internal_text_file_write",
+                  "internal_text_file_edit",
+                  "internal_text_file_delete"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "all",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['internal_text_file_read_lines', 'internal_text_file_search']).",
+          "title": "Enabled Tools"
+        }
+      },
+      "title": "TextFileToolsConfig",
       "type": "object"
     },
     "ToolCallHookConfig": {
