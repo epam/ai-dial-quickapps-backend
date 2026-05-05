@@ -18,8 +18,6 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 
-from quickapp.config.text_file_tools import TextFileToolsConfig
-
 if __name__ == "__main__":
     from utils import add_src_to_system_path, load_env
 
@@ -39,6 +37,7 @@ from quickapp.config.application import ApplicationConfig, Features, Orchestrato
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig
+from quickapp.config.text_file_tools import TextFileToolsConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 
 
