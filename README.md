@@ -94,6 +94,7 @@ your gateways or downstream services expect.
 | `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
 | **Tool Timeouts**                          |                            |          |                                                                                                              |
 | `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
+| `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
 | **Feature Gating**                         |                            |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                    | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                            |          |                                                                                                              |

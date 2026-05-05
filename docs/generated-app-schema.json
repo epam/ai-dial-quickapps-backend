@@ -1190,6 +1190,10 @@
           ],
           "description": "Time awareness configuration.",
           "x-preview": true
+        },
+        "file_loading": {
+          "$ref": "#/$defs/FileLoadingConfig",
+          "description": "File loader configuration (download size limits, etc.)."
         }
       },
       "title": "Features",
@@ -1229,6 +1233,26 @@
         "url"
       ],
       "title": "FileContextConfig",
+      "type": "object"
+    },
+    "FileLoadingConfig": {
+      "properties": {
+        "size_limit": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum size (in bytes) of a single file the agent will download. When unset, the env default `DEFAULT_FILE_LOADING_SIZE_LIMIT` is used (default 10 MiB).",
+          "title": "Size Limit"
+        }
+      },
+      "title": "FileLoadingConfig",
       "type": "object"
     },
     "FormattedParameterConfig": {
