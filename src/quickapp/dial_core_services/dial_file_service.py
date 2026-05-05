@@ -3,7 +3,7 @@ import logging
 from aidial_client import AsyncDial
 from injector import inject
 
-from quickapp.common.file_loader_size_limit_resolver import FileLoaderSizeLimitResolver
+from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ class DialFileService:
         self,
         dial_client: AsyncDial,
         state_holder: StateHolder,
-        size_limit_resolver: FileLoaderSizeLimitResolver,
+        size_limit_resolver: FileLoadingSizeLimitResolver,
     ):
         self.__dial_client: AsyncDial = dial_client
         self.__state_holder: StateHolder = state_holder

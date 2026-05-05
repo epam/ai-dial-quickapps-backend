@@ -56,13 +56,13 @@ def nullify_preview_fields(model: BaseModel) -> None:
             nullify_preview_fields(value)
 
 
-class FileLoaderConfig(BaseModel):
+class FileLoadingConfig(BaseModel):
     size_limit: int | None = Field(
         default=None,
         gt=0,
         description=(
             "Maximum size (in bytes) of a single file the agent will download. "
-            "When unset, the env default `DEFAULT_FILE_LOADER_SIZE_LIMIT` is used "
+            "When unset, the env default `DEFAULT_FILE_LOADING_SIZE_LIMIT` is used "
             "(default 10 MiB)."
         ),
     )
@@ -73,8 +73,8 @@ class Features(BaseModel):
         default_factory=ToolCallTimestampConfig,
         description="Time awareness configuration.",
     )
-    file_loader: FileLoaderConfig = Field(
-        default_factory=FileLoaderConfig,
+    file_loading: FileLoadingConfig = Field(
+        default_factory=FileLoadingConfig,
         description="File loader configuration (download size limits, etc.).",
     )
 

@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.common.file_loader_size_limit_resolver import FileLoaderSizeLimitResolver
+from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -33,7 +33,7 @@ def _make_mock_dial_client(
 
 
 def _make_resolver(size_limit: int = DEFAULT_LIMIT) -> MagicMock:
-    resolver = MagicMock(spec=FileLoaderSizeLimitResolver)
+    resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
     resolver.resolve.return_value = size_limit
     return resolver
 
