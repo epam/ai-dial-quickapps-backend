@@ -3,6 +3,7 @@ import logging
 from aidial_client import AsyncDial
 from injector import inject
 
+from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 
 logger = logging.getLogger(__name__)
@@ -15,10 +16,11 @@ class DialFileService:
         self,
         dial_client: AsyncDial,
         state_holder: StateHolder,
+        size_limit_resolver: FileLoadingSizeLimitResolver,
     ):
         self.__dial_client: AsyncDial = dial_client
         self.__state_holder: StateHolder = state_holder
-        self.__content_size_limit = 10 * 1024 * 1024
+        self.__content_size_limit: int = size_limit_resolver.resolve()
 
     async def download_file(self, file_url: str) -> bytes:
         logger.debug(f"File url to download url:{file_url}")
