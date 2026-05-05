@@ -7,9 +7,11 @@ from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
+from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
@@ -20,8 +22,10 @@ from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings i
     _PyInterpreterSettings,
 )
 from quickapp.mcp_tooling import MCPToolingModule
+from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
+from quickapp.starters.starters_module import StartersModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -68,15 +72,19 @@ class TestApp(FastAPI):
             [
                 AppModule(),
                 AgentModule(),
+                PredefinedToolingModule(),
                 RestApiToolingModule(),
                 DialDeploymentToolingModule(),
                 DialAppToolingModule(),
                 MCPToolingModule(),
                 PyInterpreterTestModule(),
-                AttachmentProcessingModule(),
+                StartersModule(),
+                ConfigurationSupportApiModule(),
                 DialCoreServicesModule(),
                 FileTransferModule(),
+                AttachmentProcessingModule(),
                 SkillsModule(),
+                DialPromptSkillsModule(),
             ]
         )
         dial_settings = DialSettings(url=TestConfig.get_mock_dial_core_url(port))
