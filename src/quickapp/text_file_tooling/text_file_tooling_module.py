@@ -5,13 +5,11 @@ from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
 from quickapp.common import StagedBaseTool
-from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.text_file_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.text_file_tooling._edit_file_tool import _EditFileTool
-from quickapp.text_file_tooling._file_tool_prompt_provider import _TextFileToolPromptProvider
 from quickapp.text_file_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.text_file_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.text_file_tooling._stage_wrapper import _FileStageWrapper
@@ -37,9 +35,6 @@ class TextFileToolingModule(Module):
         binder.bind(_WriteFileTool, to=_WriteFileTool, scope=request_scope)
         binder.bind(_EditFileTool, to=_EditFileTool, scope=request_scope)
         binder.bind(_DeleteFileTool, to=_DeleteFileTool, scope=request_scope)
-        binder.bind(
-            _TextFileToolPromptProvider, to=_TextFileToolPromptProvider, scope=request_scope
-        )
         logger.debug("TextFileToolingModule configuration completed")
 
     @multiprovider
@@ -73,9 +68,3 @@ class TextFileToolingModule(Module):
             for builder, config in tools
             if cfg.enabled_tools == "all" or config.open_ai_tool.function.name in cfg.enabled_tools
         ]
-
-    @multiprovider
-    def _provide_text_file_tool_prompt(
-        self, provider: _TextFileToolPromptProvider
-    ) -> list[PromptPartProvider]:
-        return [provider]

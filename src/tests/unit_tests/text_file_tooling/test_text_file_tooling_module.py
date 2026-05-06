@@ -1,7 +1,6 @@
 from unittest.mock import MagicMock
 
 from quickapp.config.text_file_tools import TextFileToolsConfig
-from quickapp.text_file_tooling._file_tool_prompt_provider import _TextFileToolPromptProvider
 from quickapp.text_file_tooling.text_file_tooling_module import TextFileToolingModule
 
 
@@ -45,9 +44,3 @@ class TestTextFileToolingModule:
         write.build.assert_not_called()
         edit.build.assert_not_called()
         delete.build.assert_not_called()
-
-    def test_provide_text_file_tool_prompt_wraps_provider_in_list(self):
-        module = TextFileToolingModule()
-        provider = MagicMock(spec=_TextFileToolPromptProvider)
-        result = module._provide_text_file_tool_prompt(provider)
-        assert result == [provider]
