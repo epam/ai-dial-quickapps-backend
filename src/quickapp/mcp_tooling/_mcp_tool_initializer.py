@@ -106,7 +106,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
 class _MCPToolInitializer(CompletionInitializer):
     def __init__(
         self,
-        toolset_list: list[MCPToolSet | DialMCPToolSet],
+        toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]],
         mcp_context: _MCPToolingContext,
         dial_setting: DialSettings,
         api_key_provider: ProviderOf[DIAL_API_KEY],
@@ -116,7 +116,11 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
     ):
-        self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
+        # Resolved lazily in initialize() because dial_app_tooling contributes
+        # to this multibinder only after _DialAppResolver runs.
+        self.__toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]] = (
+            toolset_list_provider
+        )
         self.__mcp_context: _MCPToolingContext = mcp_context
         self.__dial_setting: DialSettings = dial_setting
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
@@ -146,24 +150,27 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        if not self.__toolset_list:
+        toolsets = self.__toolset_list_provider.get()
+        if not toolsets:
             return
 
-        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
+        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in toolsets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        unauthorized = self._classify_initialization_results(results)
+        unauthorized = self._classify_initialization_results(toolsets, results)
         if not unauthorized:
             return
 
         await self._interactive_login_and_retry(unauthorized)
 
     def _classify_initialization_results(
-        self, results: list[BaseException | None]
+        self,
+        toolsets: list[MCPToolSet | DialMCPToolSet],
+        results: list[BaseException | None],
     ) -> list[DialMCPToolSet]:
         """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
         unauthorized: list[DialMCPToolSet] = []
-        for ts, result in zip(self.__toolset_list, results):
+        for ts, result in zip(toolsets, results):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):

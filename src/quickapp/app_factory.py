@@ -11,12 +11,14 @@ from quickapp.common.preview import is_preview_module
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
+from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
+from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
@@ -33,8 +35,10 @@ class AppFactory:
         modules: list[Module] = [
             AppModule(),
             AgentModule(),
+            PredefinedToolingModule(),
             RestApiToolingModule(),
             DialDeploymentToolingModule(),
+            DialAppToolingModule(),
             MCPToolingModule(),
             InternalToolModule(),
             StartersModule(),

@@ -4,6 +4,7 @@ from aidial_sdk.chat_completion import Stage, Status
 from injector import ProviderOf, inject
 
 from quickapp.common.exceptions import (
+    ConfigResolutionException,
     InitializationException,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
@@ -49,6 +50,10 @@ class _InitializationErrorHandler:
         for exc in exceptions:
             if isinstance(exc, ToolInitializationException):
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
+                if exc.details:
+                    tool_lines.append(f"```\n{exc.details}\n```")
+            elif isinstance(exc, ConfigResolutionException):
+                tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
                 if exc.details:
                     tool_lines.append(f"```\n{exc.details}\n```")
             elif isinstance(exc, SkillCatastrophicInitializationException):

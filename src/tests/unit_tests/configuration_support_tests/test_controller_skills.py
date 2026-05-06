@@ -4,9 +4,9 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.configuration_support._controller import _Controller
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.predefined_tooling import PredefinedConfigResolver
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -30,7 +30,7 @@ def _make_controller(
     dial_settings.api_version = "2025-01-01-preview"
 
     return _Controller(
-        config_resolver=MagicMock(spec=ConfigResolver),
+        config_resolver=MagicMock(spec=PredefinedConfigResolver),
         service=MagicMock(spec=ToolConfigCoreService),
         skills_provider=skills_provider,
         dial_settings=dial_settings,
