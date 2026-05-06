@@ -100,11 +100,16 @@ def noop_timeout_resolver(value: float = 300.0) -> MagicMock:
     return MagicMock(resolve=MagicMock(return_value=value))
 
 
+def make_provider(value: object) -> MagicMock:
+    """MagicMock for `ProviderOf[T]` whose `.get()` returns ``value``."""
+    provider = MagicMock(spec=ProviderOf)
+    provider.get.return_value = value
+    return provider
+
+
 def noop_timeout_resolver_provider(value: float = 300.0) -> MagicMock:
     """MagicMock for `ProviderOf[ToolTimeoutResolver]` whose `.get()` returns ``noop_timeout_resolver(value)``."""
-    provider = MagicMock(spec=ProviderOf)
-    provider.get.return_value = noop_timeout_resolver(value=value)
-    return provider
+    return make_provider(noop_timeout_resolver(value=value))
 
 
 def make_resolved_dial_prompt_skill(

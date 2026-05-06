@@ -680,6 +680,88 @@
       "title": "DeploymentToolSet",
       "type": "object"
     },
+    "DialAppToolSet": {
+      "properties": {
+        "name": {
+          "description": "The name of the tool set.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the tool set.",
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether the toolset is enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "dial-app",
+          "default": "dial-app",
+          "description": "The type of the tool set.",
+          "title": "Type",
+          "type": "string"
+        },
+        "deployment_id": {
+          "description": "The DIAL deployment or application id.",
+          "dial:resource": true,
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "transport": {
+          "default": "auto",
+          "description": "Routing override. 'auto' (default): use MCP if the deployment advertises features.mcp, otherwise chat completion. 'mcp': force MCP — initialization fails with a ToolInitializationException if features.mcp is not advertised. 'chat-completion': force chat completion — the resolver skips the metadata fetch and goes directly to get_basic_tool_config.",
+          "enum": [
+            "auto",
+            "mcp",
+            "chat-completion"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Allowed Tools"
+        },
+        "attachment": {
+          "$ref": "#/$defs/AttachmentConfig",
+          "description": "Configuration for toolset attachments."
+        },
+        "fallback_configuration": {
+          "$ref": "#/$defs/ToolFallbackConfig",
+          "description": "Tool fallback configuration."
+        }
+      },
+      "required": [
+        "name",
+        "deployment_id"
+      ],
+      "title": "DialAppToolSet",
+      "type": "object"
+    },
     "DialDeploymentConfig": {
       "properties": {
         "name": {
@@ -2874,6 +2956,7 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "dial-app": "#/$defs/DialAppToolSet",
             "dial-deployment": "#/$defs/DeploymentToolSet",
             "dial-mcp": "#/$defs/DialMCPToolSet",
             "internal": "#/$defs/InternalToolSet",
@@ -2895,6 +2978,9 @@
           },
           {
             "$ref": "#/$defs/MCPToolSet"
+          },
+          {
+            "$ref": "#/$defs/DialAppToolSet"
           },
           {
             "$ref": "#/$defs/DialMCPToolSet"

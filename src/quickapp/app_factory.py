@@ -11,6 +11,7 @@ from quickapp.common.preview import is_preview_module
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
+from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
@@ -37,6 +38,7 @@ class AppFactory:
             PredefinedToolingModule(),
             RestApiToolingModule(),
             DialDeploymentToolingModule(),
+            DialAppToolingModule(),
             MCPToolingModule(),
             InternalToolModule(),
             StartersModule(),

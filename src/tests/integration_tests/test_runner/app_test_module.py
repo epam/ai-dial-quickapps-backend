@@ -8,6 +8,7 @@ from quickapp.attachment_processing.attachment_processing_module import Attachme
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
+from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
@@ -74,6 +75,7 @@ class TestApp(FastAPI):
                 PredefinedToolingModule(),
                 RestApiToolingModule(),
                 DialDeploymentToolingModule(),
+                DialAppToolingModule(),
                 MCPToolingModule(),
                 PyInterpreterTestModule(),
                 StartersModule(),
