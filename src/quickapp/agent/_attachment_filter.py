@@ -58,6 +58,14 @@ class _AttachmentFilter(PreInvocationTransformer):
             == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
         )
 
+    def _is_get_content_tool_message(self, messages: list[Message], message_index: int) -> bool:
+        msg = messages[message_index]
+        return (
+            msg.role == Role.TOOL
+            and self._tool_function_name_for_tool_message(messages, message_index)
+            == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+        )
+
     def _keep_get_content_tool_attachment(
         self, attachment: Attachment, allowed_urls: set[str]
     ) -> bool:
