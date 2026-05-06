@@ -72,6 +72,7 @@ _BaseHookConfig         [event]
 | Field | Type | Default | Description |
 |---|---|---|---|
 | `event` | `HookEvent` | required | Orchestrator seam where the hook fires. See `HookEvent` values below. |
+| `name` | `str \| None` | `None` | Optional human-readable label for the hook. Used for logging and diagnostics only; no runtime effect. |
 
 `ToolCallHookConfig(_BaseHookConfig)` — resolves a `StagedBaseTool`, calls it, and injects the
 resulting `(ASSISTANT/tool_calls, TOOL)` pair into the message history:
@@ -249,6 +250,10 @@ one branch in `_build`.
   `on_pre_llm` requires an async→sync bridge between `SyntheticToolCallInjector` and
   `PreInvocationTransformer`. Remaining events need new orchestrator seams. All are deferred;
   `HooksModule` raises `ValueError` for any unsupported event at load time.
+- **Structured validation for unsupported `HookEvent` × `kind` combinations.** Currently a
+  `ValueError` at module load time. Future work: surface this as a structured config validation error
+  (Pydantic `@model_validator` → 422 at manifest parse) with a warning+skip fallback in
+  `HooksModule._build` for resilience.
 
 ---
 
@@ -326,7 +331,7 @@ are unaffected.
 
 - `HookEvent` — enum of orchestrator seams (`on_request_start`, `on_pre_llm`, `on_pre_tool_use`,
   `on_post_tool_use`, `on_iteration_end`, `on_completion`)
-- `_BaseHookConfig` — universal field (`event`)
+- `_BaseHookConfig` — universal fields (`event`, `name`)
 - `ToolCallHookConfig(_BaseHookConfig)` — `kind="tool_call"`, adds `toolset_name`, `tool_name`, `arguments`, `frequency`
 - `HookConfig` — discriminated union type alias (currently a single-variant union; extensible)
 
