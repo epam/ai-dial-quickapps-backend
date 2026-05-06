@@ -24,7 +24,6 @@ case.
   code.
 - Reuse all injection mechanics from `SyntheticToolCallInjector` and `StagedToolSyntheticInjector`; no
   duplication.
-- Gate the feature under `ENABLE_PREVIEW_FEATURES` at both the schema and runtime levels.
 
 ---
 
@@ -88,7 +87,7 @@ resulting `(ASSISTANT/tool_calls, TOOL)` pair into the message history:
 Future hook variants (e.g. guards at `on_pre_tool_use`, observers at `on_completion`) extend
 `_BaseHookConfig` directly with their own fields.
 
-`HookEvent` values (from `anthropic-sdk-hooks-applicability.md` § 5):
+`HookEvent` values:
 
 | Value | Fires at |
 |---|---|
@@ -119,8 +118,10 @@ hooks: list[HookConfig] | None = PreviewField(
 ```
 
 When `ENABLE_PREVIEW_FEATURES=false`, `_gate_preview_fields` nullifies this field to `None` at
-request time and the field is stripped from the published JSON schema. When `None` or empty, the
-module provides an empty transformer list.
+request time and the field is stripped from the published JSON schema. `nullify_preview_fields`
+nullifies the `hooks` field itself (not its elements), which is sufficient — once the field is
+`None` the list is unreachable regardless of what individual `HookConfig` variants contain.
+When `None` or empty, the module provides an empty transformer list.
 
 **Change:** Add field to `ApplicationConfig`; run `make dump_app_schema`.
 
@@ -142,13 +143,25 @@ _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)
 ├── get_tool_name()  → sanitize_toolname(f"{toolset_name}_{tool_name}") or tool_name verbatim
 ├── get_arguments()  → config.arguments
 ├── get_frequency()  → config.frequency
-└── get_content()    → inherited from StagedToolSyntheticInjector (calls tool.arun())
+└── get_content()    → inherited from StagedToolSyntheticInjector (calls tool.arun(_ARUN_SYNTHETIC_CALL_ID, **arguments))
 ```
 
 `_ConfigDrivenToolCallHook` inherits from both `_BaseConfigDrivenHook` and
 `StagedToolSyntheticInjector`. Both ultimately extend `SyntheticToolCallInjector`; Python MRO
 resolves the diamond cleanly. `_BaseConfigDrivenHook` is listed first so its methods take
 precedence over `StagedToolSyntheticInjector`.
+
+`_ConfigDrivenToolCallHook` defines an explicit `__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig)`
+that calls `super().__init__(tools)` directly. This is required because `StagedToolSyntheticInjector.__init__`
+carries `@inject` — without the override, the injector library would attempt to wire the class via
+DI rather than accepting the manually-supplied arguments from `HooksModule`.
+
+`_ARUN_SYNTHETIC_CALL_ID` is a fixed probe constant (`"synthetic_injection_probe"`) shared across
+all config-driven hooks. This is safe because `get_content()` discards `result.tool_call_id` and
+only returns `result.content`; the `call_id` embedded in the injected ASSISTANT/TOOL message pair
+is generated independently by `SyntheticToolCallInjector.transform()` (via `uuid4` or content hash).
+The constant is used only for perf-timer naming inside `arun`, and transformers run sequentially so
+there is no concurrent collision.
 
 No hook class uses `@inject` — all are constructed manually by the module's `@multiprovider`
 with explicit arguments.
@@ -176,7 +189,7 @@ with explicit arguments.
 | `on_iteration_end` | *(future seam)* | ❌ Deferred |
 | `on_completion` | *(future seam)* | ❌ Deferred |
 
-Unsupported event+kind combinations raise `ValueError` at module load time (fail fast).
+Unsupported event+kind combinations log an error and are skipped (resilient degradation).
 
 **Semantics:**
 
@@ -206,9 +219,10 @@ class HooksModule(Module):
                 case ToolCallHookConfig():
                     result.append(_ConfigDrivenToolCallHook(tools, entry))
                 case _:
-                    raise ValueError(
-                        f"Hook kind {entry.kind!r} is not supported "
-                        f"for event {entry.event!r}"
+                    logger.error(
+                        "Hook kind %r is not supported for event %r — skipping",
+                        entry.kind,
+                        entry.event,
                     )
         return result
 ```
@@ -249,11 +263,10 @@ one branch in `_build`.
 - **`on_pre_llm` and beyond for `ToolCallHookConfig`.** `on_request_start` is fully wired.
   `on_pre_llm` requires an async→sync bridge between `SyntheticToolCallInjector` and
   `PreInvocationTransformer`. Remaining events need new orchestrator seams. All are deferred;
-  `HooksModule` raises `ValueError` for any unsupported event at load time.
-- **Structured validation for unsupported `HookEvent` × `kind` combinations.** Currently a
-  `ValueError` at module load time. Future work: surface this as a structured config validation error
-  (Pydantic `@model_validator` → 422 at manifest parse) with a warning+skip fallback in
-  `HooksModule._build` for resilience.
+  `HooksModule._build` logs an error and skips any unsupported event+kind combination.
+- **Structured validation for unsupported `HookEvent` × `kind` combinations.** Currently logged
+  and skipped at runtime. Future work: surface this as a structured config validation error
+  (Pydantic `@model_validator` → 422 at manifest parse) so operators get early feedback.
 
 ---
 
@@ -266,7 +279,7 @@ one branch in `_build`.
   "hooks": [
     {
       "kind": "tool_call",
-      "event": "on_pre_llm",
+      "event": "on_request_start",
       "toolset_name": "memory_server",
       "tool_name": "get_memories",
       "arguments": { "user_id": "current" },
@@ -285,7 +298,7 @@ Resolved call name: `sanitize_toolname("memory_server_get_memories")` = `memory_
   "hooks": [
     {
       "kind": "tool_call",
-      "event": "on_pre_llm",
+      "event": "on_request_start",
       "toolset_name": "user_prefs_api",
       "tool_name": "get_preferences",
       "frequency": "append_if_changed"
@@ -301,7 +314,7 @@ Resolved call name: `sanitize_toolname("memory_server_get_memories")` = `memory_
   "hooks": [
     {
       "kind": "tool_call",
-      "event": "on_pre_llm",
+      "event": "on_request_start",
       "tool_name": "My_Summarizer_tool",
       "frequency": "always"
     }
@@ -352,3 +365,36 @@ are unaffected.
 ### `docs/generated-app-schema.json` — REGENERATED
 
 - New `hooks` property (only present when `ENABLE_PREVIEW_FEATURES=true`)
+
+---
+
+## Review Notes — Round 1
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-06
+
+### Verdict
+
+`Blocking issues must be addressed`
+
+The doc is well-structured, clearly scoped, and follows the template faithfully. The component decomposition is clean and the use-case coverage is good. However, two issues must be fixed before approval: all three configuration examples use `on_pre_llm` — an event explicitly marked as ❌ Deferred in the supported-events table — which will actively mislead operators; and the design understates a real MRO problem that arises because `StagedToolSyntheticInjector.__init__` carries `@inject` but config-driven hook instances are constructed manually.
+
+### Blocking issues
+
+1. ~~**Configuration / Usage Examples — all three snippets use `"event": "on_pre_llm"`**~~ — Resolved: all three examples updated to `"event": "on_request_start"`.
+
+2. ~~**Component 3 — `@inject` conflict on `StagedToolSyntheticInjector.__init__`**~~ — Resolved: Component 3 now documents that `_ConfigDrivenToolCallHook` defines an explicit `__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig)` calling `super().__init__(tools)` directly, preventing DI wiring.
+
+### Suggestions
+
+1. ~~**Component 3 — `arun` call signature mismatch**~~ — Resolved: Component 3 now shows the full call shape `tool.arun(_ARUN_SYNTHETIC_CALL_ID, **arguments)` and explains why reusing the constant across multiple hooks is safe.
+
+2. ~~**Component 2 — `nullify_preview_fields` does not recurse into lists**~~ — Resolved: Component 2 now notes that `nullify_preview_fields` nullifies the `hooks` field itself (not its elements), and explains why that is sufficient.
+
+3. ~~**Out of Scope — unsupported event raises `ValueError` at module load**~~ — Resolved: `HooksModule._build` now logs an error and skips unsupported combinations instead of raising `ValueError`. No startup crash.
+
+### Nits
+
+1. ~~**Component 1 — `HookEvent` values reference an external doc**~~ — Resolved: external reference to `anthropic-sdk-hooks-applicability.md § 5` removed; the inline table is self-contained.
+
+2. ~~**Design Goals — Goal 5 is partially hollow**~~ — Resolved: preview-gating goal removed from the list; it is already covered by Component 2 and Component 4.
