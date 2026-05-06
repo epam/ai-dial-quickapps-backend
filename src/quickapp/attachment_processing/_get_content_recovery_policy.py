@@ -6,7 +6,7 @@ from quickapp.common.tool_message_utils import tool_function_name_for_tool_messa
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 
 
-class _GetContentBadRequestRecoveryPolicy(ChatCompletionRecoveryPolicy):
+class _GetContentRecoveryPolicy(ChatCompletionRecoveryPolicy):
     """Rewrites get-content TOOL payloads to an error shape and strips attachments."""
 
     def try_recover(self, messages: list[Message], error: Exception) -> bool:

@@ -114,7 +114,7 @@ class TestGetBasicToolConfig:
         dial_client = _make_async_dial(deployment_model=dep)
         svc = _make_service(dial_client)
 
-        result = await svc.get_deployment_or_application_model("gpt-4")
+        result = await svc.get_deployment_metadata("gpt-4")
 
         assert result is dep
         dial_client.deployments.get.assert_awaited_once_with("gpt-4")
@@ -129,7 +129,7 @@ class TestGetBasicToolConfig:
         )
         svc = _make_service(dial_client)
 
-        result = await svc.get_deployment_or_application_model("my-app")
+        result = await svc.get_deployment_metadata("my-app")
 
         assert result is app
         dial_client.application.get.assert_awaited_once_with("my-app")

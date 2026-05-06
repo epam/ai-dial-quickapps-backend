@@ -62,7 +62,7 @@ class ToolConfigCoreService:
         return self.__dial_client_provider.get()
 
     @staticmethod
-    async def _fetch_deployment_or_application(
+    async def fetch_deployment_or_application(
         dial_client: AsyncDial, deployment: str
     ) -> Deployment | Application:
         deployment_model: Deployment | None = None
@@ -72,8 +72,8 @@ class ToolConfigCoreService:
             deployment_model = await dial_client.deployments.get(deployment)
         except DialException as e:
             if e.status_code == 404:
-                logger.debug(f"No deployment found, trying application for {deployment_id}")
-                application_model = await dial_client.application.get(deployment_id)
+                logger.debug(f"No deployment found, trying application for {deployment}")
+                application_model = await dial_client.application.get(deployment)
             else:
                 raise
 
@@ -86,13 +86,13 @@ class ToolConfigCoreService:
         self, deployment: str, api_key: SecretStr | None = None
     ) -> Deployment | Application:
         dial_client = self._resolve_dial_client(api_key)
-        return await self._fetch_deployment_or_application(dial_client, deployment)
+        return await self.fetch_deployment_or_application(dial_client, deployment)
 
     async def get_basic_tool_config(
         self, deployment: str, api_key: SecretStr | None = None
     ) -> DialDeploymentTool:
         dial_client = self._resolve_dial_client(api_key)
-        model = await self._fetch_deployment_or_application(dial_client, deployment)
+        model = await self.fetch_deployment_or_application(dial_client, deployment)
 
         config_schema: dict[str, Any] | None = None
         if model.features and model.features.configuration:

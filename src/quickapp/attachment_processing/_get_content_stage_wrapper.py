@@ -15,7 +15,7 @@ class _GetContentStageWrapper(TimedStageWrapper):
         return str(url) if url is not None else ""
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
-        return f"### Exception:\n\r{exception}\n\r"
+        return f"\n\r### Exception:\n\r{exception}\n\r"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
-        return f"### Get content file:\n\r{result.content}\n\r"
+        return f"\n\r### Get content file:\n\r{result.content}\n\r"

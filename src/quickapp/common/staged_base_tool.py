@@ -56,8 +56,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
-        *args: Any,
         tool_call_id: str | None = None,
+        *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult: ...
 
@@ -141,7 +141,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         try:
             self.__perf_timer.start_period(timer_name, 3)
             result: ToolCallResult = await self._run_in_stage_async(
-                stage_wrapper, *args, **params, tool_call_id=tool_call_id
+                stage_wrapper, tool_call_id, *args, **params
             )
             result.tool_call_id = tool_call_id
             if result.attachments:

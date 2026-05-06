@@ -200,9 +200,7 @@ async def test_invoke_bad_request_retries_after_recovery():
     assert result == stream_ok
     assert create_mock.await_count == 2
     policy.try_recover.assert_called_once()
-    deferred_registry.sync_deferred_stage_with_recovered_get_content_messages.assert_called_once_with(
-        messages
-    )
+    deferred_registry.sync_deferred_stage_ui_with_tool_messages.assert_called_once_with(messages)
 
 
 @pytest.mark.asyncio

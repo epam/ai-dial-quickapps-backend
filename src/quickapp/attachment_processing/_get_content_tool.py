@@ -88,10 +88,10 @@ class _GetContentTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None = None,
+        tool_call_id: str | None = None,
         attachment_url: str | None = None,
         context_url: str | None = None,
         *args: Any,
-        tool_call_id: str | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
         raw_url = attachment_url if attachment_url is not None else context_url

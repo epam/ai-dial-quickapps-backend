@@ -192,7 +192,7 @@ class Orchestrator:
                         recovered = True
                 if not recovered:
                     raise
-                self.__deferred_stage_close_registry.sync_deferred_stage_with_recovered_get_content_messages(
+                self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(
                     self.__messages_context.messages
                 )
                 if recovery_retry_used:

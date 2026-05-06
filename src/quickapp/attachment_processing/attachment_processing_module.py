@@ -12,9 +12,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
     should_enable_get_content_tool,
 )
-from quickapp.attachment_processing._get_content_bad_request_recovery_policy import (
-    _GetContentBadRequestRecoveryPolicy,
-)
+from quickapp.attachment_processing._get_content_recovery_policy import _GetContentRecoveryPolicy
 from quickapp.attachment_processing._get_content_tool import _GetContentTool
 from quickapp.attachment_processing._tool_configs import (
     AVAILABLE_CONTEXT_TOOL_CONFIG,
@@ -88,4 +86,4 @@ class AttachmentProcessingModule(Module):
 
     @multiprovider
     def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:
-        return [_GetContentBadRequestRecoveryPolicy()]
+        return [_GetContentRecoveryPolicy()]

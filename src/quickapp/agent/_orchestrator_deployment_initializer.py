@@ -45,7 +45,7 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
 
         model = await self.__orchestrator_deployment_cache.get(
             cache_key,
-            self.__tool_config_service.get_deployment_or_application_model,
+            self.__tool_config_service.fetch_deployment_or_application,
             deployment_id,
             api_key=self.__api_key,
         )

@@ -63,7 +63,6 @@ class BaseDeploymentTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
-        *args: Any,
         tool_call_id: str | None = None,
         attachment_urls: list[str] | None = None,
         **kwargs: Any,

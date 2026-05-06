@@ -9,14 +9,12 @@ from aidial_sdk.chat_completion.request import (
     ToolCall,
 )
 
-from quickapp.attachment_processing._get_content_bad_request_recovery_policy import (
-    _GetContentBadRequestRecoveryPolicy,
-)
+from quickapp.attachment_processing._get_content_recovery_policy import _GetContentRecoveryPolicy
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 
 
 def test_try_recover_rewrites_get_content_tool_result() -> None:
-    policy = _GetContentBadRequestRecoveryPolicy()
+    policy = _GetContentRecoveryPolicy()
     messages = [
         Message(role=Role.USER, content="hi"),
         Message(
@@ -58,7 +56,7 @@ def test_try_recover_rewrites_get_content_tool_result() -> None:
 
 
 def test_try_recover_only_touches_current_turn() -> None:
-    policy = _GetContentBadRequestRecoveryPolicy()
+    policy = _GetContentRecoveryPolicy()
     messages = [
         Message(role=Role.USER, content="turn one"),
         Message(

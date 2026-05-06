@@ -4,21 +4,23 @@ from collections.abc import Callable
 from aidial_sdk.chat_completion.request import Message, Role
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.get_content_recovery_payload import (
-    get_content_recovery_json_string,
-    get_content_recovery_tool_call_result,
-)
-from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
-from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.common.tool_call_result import tool_call_result_from_tool_message
 
 logger = logging.getLogger(__name__)
 
 
-def _recovery_hook_for_wrapper(wrapper: BaseStageWrapper) -> Callable[[], None]:
+def _stage_hook_from_tool_message(wrapper: BaseStageWrapper, msg: Message) -> Callable[[], None]:
     def _hook() -> None:
-        wrapper.add_result(get_content_recovery_tool_call_result())
+        wrapper.add_result(tool_call_result_from_tool_message(msg))
 
     return _hook
+
+
+def _tool_message_for_call_id(messages: list[Message], tool_call_id: str) -> Message | None:
+    for msg in messages:
+        if msg.role == Role.TOOL and msg.tool_call_id == tool_call_id:
+            return msg
+    return None
 
 
 class DeferredStageCloseRegistry:
@@ -53,31 +55,23 @@ class DeferredStageCloseRegistry:
                 return
         self._pending.append((stage_wrapper, []))
 
-    def sync_deferred_stage_with_recovered_get_content_messages(
-        self, messages: list[Message]
-    ) -> None:
-        """Align keyed deferred UI with recovered get_content TOOL rows (error JSON)."""
-        recovery_json = get_content_recovery_json_string()
-        for i, msg in enumerate(messages):
-            if msg.role != Role.TOOL:
-                continue
-            if (
-                tool_function_name_for_tool_message(messages, i)
-                != INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-            ):
-                continue
-            if msg.content != recovery_json:
-                continue
-            tcid = msg.tool_call_id
-            if not tcid:
-                continue
+    def sync_deferred_stage_ui_with_tool_messages(self, messages: list[Message]) -> None:
+        """Replace keyed deferred hooks so flush applies add_result matching current TOOL rows.
+
+        Call after chat-completion recovery (or any rewrite of TOOL message bodies) so stage UI
+        stays aligned with conversation state for any tool that registered with ``tool_call_id``.
+        """
+        for tcid in list(self._deferred_ui_by_tool_call_id.keys()):
             stored = self._deferred_ui_by_tool_call_id.get(tcid)
             if stored is None:
                 continue
             wrapper, _old_fn = stored
+            tool_msg = _tool_message_for_call_id(messages, tcid)
+            if tool_msg is None:
+                continue
             self._deferred_ui_by_tool_call_id[tcid] = (
                 wrapper,
-                _recovery_hook_for_wrapper(wrapper),
+                _stage_hook_from_tool_message(wrapper, tool_msg),
             )
 
     def flush(self) -> None:

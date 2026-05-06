@@ -168,7 +168,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
     recovery_policy.try_recover.assert_called_once()
     assert recovery_policy.try_recover.call_args[0][0] is messages_list
     assert recovery_policy.try_recover.call_args[0][1] is api_err
-    deferred_registry.sync_deferred_stage_with_recovered_get_content_messages.assert_called_once_with(
+    deferred_registry.sync_deferred_stage_ui_with_tool_messages.assert_called_once_with(
         messages_list
     )
 

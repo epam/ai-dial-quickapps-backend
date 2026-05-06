@@ -10,6 +10,7 @@ from quickapp.common.attachment_processing_utils import (
     collect_get_content_allowed_urls,
     normalize_attachment_url_argument,
 )
+from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
@@ -49,29 +50,11 @@ class _AttachmentFilter(PreInvocationTransformer):
         xml_parts.append("</attachments>")
         return "\n".join(xml_parts)
 
-    @staticmethod
-    def _tool_function_name_for_tool_message(
-        messages: list[Message], message_index: int
-    ) -> str | None:
-        msg = messages[message_index]
-        if msg.role != Role.TOOL:
-            return None
-        tool_call_id = msg.tool_call_id
-        if not tool_call_id:
-            return None
-        for j in range(message_index - 1, -1, -1):
-            prev = messages[j]
-            if prev.role == Role.ASSISTANT and prev.tool_calls:
-                for tc in prev.tool_calls:
-                    if tc.id == tool_call_id and tc.function:
-                        return tc.function.name
-        return None
-
     def _is_get_content_tool_message(self, messages: list[Message], message_index: int) -> bool:
         msg = messages[message_index]
         return (
             msg.role == Role.TOOL
-            and self._tool_function_name_for_tool_message(messages, message_index)
+            and tool_function_name_for_tool_message(messages, message_index)
             == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
         )
 

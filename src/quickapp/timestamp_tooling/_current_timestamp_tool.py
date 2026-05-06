@@ -44,8 +44,8 @@ class _CurrentTimestampTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None = None,
-        *args: Any,
         tool_call_id: str | None = None,
+        *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
         del tool_call_id

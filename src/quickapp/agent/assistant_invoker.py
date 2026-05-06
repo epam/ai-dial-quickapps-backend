@@ -114,7 +114,7 @@ class AssistantInvoker:
                     "Chat completion rejected with BadRequest/APIError; recovery did not apply"
                 )
                 raise
-            self.__deferred_stage_close_registry.sync_deferred_stage_with_recovered_get_content_messages(
+            self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(
                 self.__messages
             )
             completion_config = self.__prepare_chat_completion_config()

@@ -38,7 +38,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         self._result_to_return = result_to_return
 
     async def _run_in_stage_async(
-        self, stage_wrapper, *args: Any, tool_call_id: str | None = None, **kwargs: Any
+        self, stage_wrapper, tool_call_id: str | None, *args: Any, **kwargs: Any
     ) -> ToolCallResult:
         if self._result_to_return is not None:
             return self._result_to_return
