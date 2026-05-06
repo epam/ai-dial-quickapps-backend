@@ -76,7 +76,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 ### UC-9: Agent deletes an arbitrary file in appdata
 
 **Trigger:** `delete_file(file_url="files/{appdata}/reports/old.md")`.\
-**Behavior:** The tool validates the URL contains no `..` segment (defense-in-depth), then calls `dial_client.files.delete(file_url)`. Appdata isolation already constrains the blast radius; the tool no longer enforces a `generated-files/` prefix.\
+**Behavior:** The tool calls `dial_client.files.delete(file_url)`. Appdata isolation constrains the blast radius; the tool no longer enforces a `generated-files/` prefix or any client-side path validation.\
 **Outcome:** The file is removed. Subsequent reads on that URL fail.
 
 ### UC-10: Agent provides an invalid path
@@ -107,7 +107,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
   1. Validates `path` is a non-empty string.
   2. Rejects any leading `/`, any literal `../` substring, any segment equal to `..`, any empty segment (e.g. `foo//bar`), and trailing whitespace. All failures raise `InvalidToolCallParameterException("path", "...")` with a precise message.
   3. Resolves the bucket via `dial_client.bucket.get_raw()`. Uses `bucket_resp.appdata` if present; if `None`, raises `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. Read/search/list tools never call this helper, so they remain functional even when appdata is missing.
-  4. Returns `f"files/{appdata}/{path}"`.
+  4. Returns `f"files/{appdata}/{path}"`. **Trailing slash is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
 - The previous design's `GENERATED_FILES_ROOT` constant is removed.
 
 `AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`.
@@ -128,31 +128,34 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Algorithm:**
 
 1. Validate `max_depth` in `[1, 10]` — else raise `InvalidToolCallParameterException("max_depth", "...")`.
-2. Normalize `path`: if it does not look like a full DIAL URL (no `files/` prefix), resolve under appdata via `_resolve_appdata_url(path)` (with the trailing `/` preserved).
-3. Call `DialFileService.list_folder(folder_url, max_depth)`.
-4. Format the response as a compact text listing:
+2. Normalize `path` into a folder URL of shape `files/{bucket}/{relative}/`:
+   - If `path` starts with `files/`, treat it as already-resolved.
+   - Otherwise, ensure it ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing) and pass through `_resolve_appdata_url(path)` to anchor under appdata.
+3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service is responsible for translating the `files/{bucket}/{relative}/` URL into the SDK call `dial_client.metadata.get("files", "{bucket}/{relative}/")` — it strips the leading `files/` segment because the SDK's `metadata.get(resource, relative_url)` expects the path *under* `files/`, not the full DIAL URL. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
+4. Format the response as a compact text listing, one entry per line:
    ```
-   D    -    reports/
-     F  1234   summary.md
-     F  56789  data.csv
-     D    -    images/
-       F  2048   logo.png
+   D    -      reports/                          files/{appdata}/reports/
+     F  1234   summary.md                        files/{appdata}/reports/summary.md
+     F  56789  data.csv                          files/{appdata}/reports/data.csv
+     D    -    images/                           files/{appdata}/reports/images/
+       F  2048 logo.png                          files/{appdata}/reports/images/logo.png
    ```
-   - First column: `F` (file) or `D` (folder).
-   - Second column: size in bytes (or `-` for folders).
-   - Third column: name (with trailing `/` for folders).
-   - Indentation = depth.
-   - Folders at the depth bound are listed by name with no expansion.
+   - Column 1: `F` (file) or `D` (folder).
+   - Column 2: size in bytes (or `-` for folders).
+   - Column 3: name (with trailing `/` for folders).
+   - Column 4: full URL — included so the LLM can hand it directly to `read_file_lines` / `search_in_file` / `edit_file` / `delete_file` without reconstructing it. This costs a few tokens per row but removes a class of LLM-side bugs.
+   - **Indentation: two spaces per depth level**, applied to the name column only (URL stays left-aligned in column 4).
+   - Folders at the depth bound are listed by name with no expansion (so the LLM knows they exist and can drill down explicitly with another `list_files` call).
 5. Return `ToolCallResult(content=..., content_type="text/plain")`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_list_files_tool.py`
 
 **Design notes:**
 
-- **Why text output over JSON.** Tabular text is cheaper in tokens and easier for the LLM to scan. The `(name, type, size, url)` tuple per entry is also returned in the JSON `attachments` metadata for tools that prefer structured access.
+- **Why text output over JSON.** Tabular text is cheaper in tokens and easier for the LLM to scan. The URL column is included inline (rather than only via structured `attachments` metadata) because the rest of the file-tools surface returns text content as the primary signal, and there is no precedent in the codebase for tools surfacing structured `attachments` for the LLM to consume directly.
 - **Depth bound exists.** Without it, an LLM could trigger an unbounded walk on a deep user-uploaded folder. `max_depth <= 10` is generous in practice and safe in the worst case.
 - **Pagination is out of scope.** When folder sizes warrant it, this tool can grow `next_token` semantics without breaking the contract (additive optional param + sentinel in the listing).
-- **Reuse.** `DialFileService.list_folder` mirrors the recursion shape already used in `src/tests/integration_tests/test_runner/e2e_runner.py` — that pattern is the only existing `metadata.get("files", ...)` traversal in the repo and is the reference implementation.
+- **Reuse.** `DialFileService.list_folder` mirrors the recursion shape used in `src/tests/integration_tests/test_runner/e2e_runner.py`. That helper hits the metadata endpoint via raw `httpx`; the service uses the SDK's `dial_client.metadata.get("files", ...)` instead so the call participates in the same auth/header plumbing as every other DIAL call in the codebase. The recursion shape (depth-bounded BFS over `items`) is the part that's reused.
 
 ---
 
@@ -205,10 +208,12 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 - **Overwrite is opt-in.** Default safety net (`If-None-Match: *`) preserved from the previous design. The `overwrite=True` path is the explicit, ETag-guarded escape hatch — no silent clobber.
 - **Why one tool, not two.** A separate `overwrite_file` tool was considered. Folding the toggle into a parameter keeps the surface small; the LLM sees one tool with a clearly named optional flag.
-- **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default `text/plain` matches the previous behavior exactly.
+- **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default `text/plain` matches the previous behavior exactly. Client-side validation is intentionally minimal — there is no MIME-type allowlist (the set is open-ended) — but the value is rejected if it contains `\n` or `\r` to prevent header-injection-style abuse before the string reaches DIAL's HTTP layer.
 - **Path-traversal validation runs first.** No partial work — invalid path → no IO, no cache mutation. Validation errors are precise so the LLM can retry without guessing.
 - **`appdata` is required.** The base-class helper raises a descriptive error when the bucket response has no appdata. In our supported deployments this never fires; if it does, the agent gets a clear signal rather than silently writing into the user's personal bucket.
 - **`edit_file` still exists.** `write_file(overwrite=True)` is for full rewrites; `edit_file` is for surgical patches with concurrency safety. The two are complementary, not redundant.
+- **`get_metadata` does double duty.** In the `overwrite=True` branch the metadata fetch serves two purposes: (a) obtain the ETag for the conditional upload, and (b) detect "no prior file" via the 404 so the call falls through to a clean create. There is no separate existence probe — both signals come from the same call.
+- **Alternative considered: try-create-then-retry.** A simpler shape would be: always call `upload_text(if_none_match="*")` first; on 412, call `get_metadata` for the ETag and retry with `if_match=etag`. That removes the metadata round-trip on the common new-file path. Rejected for v1 because the typical `overwrite=True` call is an explicit replacement (the agent expects the file to exist), so the optimistic-create path adds complexity that pays off only for edge cases. Worth revisiting if profiling shows the metadata call dominates write latency.
 
 **`DialFileService.upload_text` extension.** The existing method is extended with a `content_type` keyword (default `"text/plain"`, so existing callers — `_EditFileTool` — are unaffected). The MIME is propagated to the underlying `dial_client.files.upload(file=(name, bytes, mime))` call.
 
@@ -219,8 +224,6 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **What / Parameters / Algorithm:** Unchanged from the previous design. See [`file_tools.md`](file_tools.md) Component 5.
 
 **Owner:** `src/quickapp/dial_files_tooling/_edit_file_tool.py`
-
-**Note:** `edit_file` continues to call `upload_text` without a `content_type` argument, falling back to the default `"text/plain"`. A future revision could preserve the original file's content type by reading it from the metadata; deferred until a concrete need emerges (most edit targets are plain text by construction).
 
 ---
 
@@ -236,17 +239,16 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 **Algorithm:**
 
-1. Reject `file_url` containing the literal `..` substring → `InvalidToolCallParameterException("file_url", "url must not contain '..'")`. Defense-in-depth, even though appdata isolation already constrains the blast radius.
-2. Call `dial_client.files.delete(file_url)`.
-3. On success → `ToolCallResult(content=f"Deleted: {file_url}", content_type="text/plain")`.
-4. On `404` → `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — same shape as `write_file`/`edit_file` errors.
-5. Other errors → propagate as tool-call errors.
+1. Call `dial_client.files.delete(file_url)`.
+2. On success → `ToolCallResult(content=f"Deleted: {file_url}", content_type="text/plain")`.
+3. On `404` → `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — same shape as `write_file`/`edit_file` errors.
+4. Other errors → propagate as tool-call errors.
 
 **Owner:** `src/quickapp/dial_files_tooling/_delete_file_tool.py`
 
 **Design notes:**
 
-- **The `generated-files/` URL guard is gone.** Appdata isolation is the safety boundary; an LLM running in app context cannot delete files outside its own appdata namespace. The previous guard added a second layer that, with appdata always populated, was effectively dead code.
+- **No client-side validation.** Appdata isolation is the safety boundary; an LLM running in app context cannot delete files outside its own appdata namespace. The previous `generated-files/` guard, and an earlier draft's `..`-substring check, are both removed: the substring check would have rejected legitimate filenames containing `..` (e.g. `v1.2..3/log.txt`) and was redundant with appdata isolation, not a real safety layer (it could not prevent escape, only block one syntactic form).
 - **No ETag guard.** Delete is unconditional within the appdata scope; the concurrency window for delete is rarely meaningful.
 - **No soft delete.** DIAL's `files.delete` is a hard delete. No undo.
 
@@ -260,7 +262,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 - Contributes all six tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as the prior `TextFileToolingModule`).
 - Tools are gated per app via `app_config.features.dial_files`. The resolution logic is unchanged from the previous design — `enabled_tools="all"` returns every tool; a list returns only the matching subset.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
-- Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships.
+- Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships. **Cross-reference reminder:** the `internal_text_file_*` → `internal_file_*` prefix rename invalidates any `excluded_tools` list maintained in `large_tool_responses.local.md` — that list must be updated when both designs land.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
 
@@ -345,13 +347,13 @@ class Features(BaseModel):
 | `start_line < 0` or `end_line < start_line` (`read_file_lines`) | `InvalidToolCallParameterException` → surfaced to LLM. |
 | `write_file(overwrite=False)` target already exists (DIAL `412`) | `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`. |
 | `write_file(overwrite=True)` concurrent modification (DIAL `412`) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
-| `write_file` invalid `content_type` | Passed through to DIAL; surface DIAL's response if any. No client-side allowlist (the set of valid MIME types is open-ended). |
+| `write_file` `content_type` contains `\n` or `\r` | `InvalidToolCallParameterException("content_type", "must not contain newline characters")` — client-side, before any IO. |
+| `write_file` otherwise-invalid `content_type` (e.g. malformed `type/subtype`) | Passed through to DIAL; surface DIAL's response if any. No client-side allowlist (the set of valid MIME types is open-ended). |
 | `edit_file` `old_string` not found / matches multiple places / equals `new_string` | Unchanged from previous design. |
 | `edit_file` conditional upload fails (DIAL `412`) | `InvalidToolCallParameterException("file_url", "file changed concurrently; re-read and retry")`. |
 | `list_files` target is not a folder | `InvalidToolCallParameterException("path", "not a folder: {url}")` if DIAL response shape indicates a file. |
 | `list_files` target not found (404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
 | `list_files` `max_depth < 1` or `max_depth > 10` | `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")`. |
-| `delete_file` URL contains `..` | `InvalidToolCallParameterException("file_url", "url must not contain '..'")`. Defense-in-depth. |
 | `delete_file` target not found (404) | `InvalidToolCallParameterException("file_url", "file not found: {url}")`. |
 | `file_url` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
 | File exceeds 10 MB download limit | `InvalidToolCallParameterException("file_url", "file is too large to read (limit: 10 MB)")`. |
@@ -446,7 +448,7 @@ class Features(BaseModel):
 // delete_file
 {
   "name": "internal_file_delete",
-  "description": "Delete a file from DIAL storage. Hard delete; no undo. URL must not contain '..'.",
+  "description": "Delete a file from DIAL storage. Hard delete; no undo.",
   "parameters": {
     "file_url": {"type": "string", "description": "URL of the file to delete."}
   },
@@ -457,12 +459,14 @@ class Features(BaseModel):
 ### `list_files` output format
 
 ```
-D    -    reports/
-  F  1234   summary.md
-  F  56789  data.csv
-  D    -    images/
-    F  2048   logo.png
+D    -      reports/                          files/{appdata}/reports/
+  F  1234   summary.md                        files/{appdata}/reports/summary.md
+  F  56789  data.csv                          files/{appdata}/reports/data.csv
+  D    -    images/                           files/{appdata}/reports/images/
+    F  2048 logo.png                          files/{appdata}/reports/images/logo.png
 ```
+
+Columns: type (`F`/`D`), size, name (indented two spaces per depth level, with trailing `/` for folders), full URL.
 
 ### `write_file` on success
 
@@ -512,6 +516,9 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
 }
 
 // File tools off (default)
+// `features` is auto-populated by Features's default_factory even when omitted from
+// the manifest, so both omitting `features` entirely and writing `"features": {}` result
+// in file tools being off — `dial_files` is None in both cases.
 {
   "features": {}
 }
@@ -523,9 +530,14 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
 
 ### Breaking changes
 
-- **Module rename** (`text_file_tooling/` → `dial_files_tooling/`), config-field rename (`features.text_file_tools` → `features.dial_files`), and tool-prefix rename (`internal_text_file_*` → `internal_file_*`). Any in-flight manifest using `features.text_file_tools` must be updated. Acceptable because the feature is preview-gated and not GA. No back-compat shim.
-- **`write_file` parameter rename** (`filename` → `path`) and signature additions (`content_type`, `overwrite`). Same preview-gated rationale.
+- **Module rename:** `src/quickapp/text_file_tooling/` → `src/quickapp/dial_files_tooling/`. See *Summary of Changes / New files*.
+- **Config-field rename:** `features.text_file_tools` → `features.dial_files`. Any in-flight manifest using the old key must be updated. No back-compat shim.
+- **Tool-prefix rename:** `internal_text_file_*` → `internal_file_*`. Any saved chat history or manifest referencing the old names will not match. See *Summary of Changes / New tools exposed*.
+- **`write_file` parameter rename and additions:** `filename` → `path`; `content_type` and `overwrite` added.
 - **`delete_file` no longer enforces `generated-files/`.** Any caller relying on this guard for safety must migrate to the appdata isolation model.
+- **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` raises `InvalidToolCallParameterException` instead. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list still work because they accept arbitrary URLs and never resolve appdata). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
+
+The above bullets are acceptable because the feature is preview-gated and not GA.
 
 ### Non-breaking changes
 
@@ -580,3 +592,61 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
   - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
 - Integration: offload end-to-end coverage (read-back path) is deferred pending the `large_tool_responses` design.
+
+---
+
+## Review Notes — Round 1
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-06
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-06). Awaiting Round 2 review.**
+
+The design is coherent, well-scoped, and continues a strong tradition from `file_tools.md`. The `list_files` addition, the `path` + `content_type` + `overwrite` write surface, and the prefix rename are all sensible. However, three concrete items must be resolved before approval: (1) the `delete_file` `..` substring check rejects legitimate filenames containing `..`; (2) the `list_files` URL-shape contract is under-specified — the only existing reference implementation in the repo (`e2e_runner._search_file`) requires a fully-qualified `metadata/...` URL, not the `files/{appdata}/...` URL the design implies; and (3) the **appdata-required** posture is described as a no-op for our deployments, but the existing codebase consistently uses `bucket = bucket_resp.appdata or bucket_resp.bucket` as a fallback (4 callsites including the current `_WriteFileTool`) — silently dropping the `bucket` fallback is a behavioral change that deserves an explicit migration note. A handful of suggestions and nits follow.
+
+### Blocking issues
+
+1. **[Resolved]** **Component 7 / UC-9 / Error Handling — `delete_file` `..` check rejects valid filenames.**
+   The algorithm states: "Reject `file_url` containing the literal `..` substring". Combined with UC-9's "validates the URL contains no `..` segment", the implementation will reject any URL whose filename or any segment legitimately contains the substring `..` (e.g., `files/{appdata}/v1.2..3/log.txt`, or any filename a previous tool happened to produce). The substring check is also redundant with the `_resolve_appdata_url` validator for write-side paths, but it is the *only* validation here for delete because `delete_file` takes a fully-qualified `file_url` and never passes it through `_resolve_appdata_url`.
+   **Suggestion:** Either (a) split the URL on `/` and reject only segments that are exactly `..` (matching the write-side rule in `_resolve_appdata_url`), or (b) drop the check altogether and rely on appdata isolation as the doc itself argues for in Component 7's first design note ("the previous guard added a second layer that, with appdata always populated, was effectively dead code"). The current substring check is the worst of both worlds: looser than appdata isolation (it doesn't prevent escape, only the literal `..`) and false-positive-prone.
+
+2. **[Resolved]** **Component 2 — `list_files` URL contract is under-specified vs. the only existing reference.**
+   The design says `DialFileService.list_folder` "wraps `dial_client.metadata.get("files", folder_url)`" and references `e2e_runner.py` as the reference implementation. But `e2e_runner._search_file` constructs its `folder_url` as `f"{dial_client.api_url}metadata/{folder}/"` — a fully-qualified absolute URL, with the `metadata/` segment baked in. The design's UC-1 / UC-2 / Component 2 step 2 implies the input is a `files/{appdata}/...` URL (or a relative path resolved through `_resolve_appdata_url`). It is unclear whether `DialFileService.list_folder` is responsible for the `files/{appdata}/...` → `{api_url}metadata/{appdata}/.../` translation, or whether the calling tool does it, or whether the design is silently assuming the SDK accepts the `files/{appdata}/...` shape directly. Step 2 also says "with the trailing `/` preserved" — but `_resolve_appdata_url` is defined to return `f"files/{appdata}/{path}"` with no trailing slash handling specified.
+   **Suggestion:** State the canonical input/output URL shape for `_resolve_appdata_url` (does it preserve a trailing `/`?), state the URL shape `DialFileService.list_folder` accepts, and state which component is responsible for the `metadata/`-prefix translation. Confirm the SDK call works with the chosen shape (either pin to a tested aidial-client version that accepts `files/...` or follow the e2e_runner pattern verbatim).
+
+3. **[Resolved]** **Components 1, 5 / Migration — silently dropping the `bucket` fallback is a real behavioral change.**
+   `_resolve_appdata_url` is specified to error out when `bucket_resp.appdata is None`. The current `_WriteFileTool` (and three other callsites: `display_content_processor.py`, `input_file_handler.py`, `attachment_service.py`) all do `bucket = bucket_resp.appdata or bucket_resp.bucket`. The doc rationalizes this as "appdata always populated in our deployments", but that is an operational claim, not a property of DIAL Core. If a deployment exists where `appdata` is `None`, the current code silently falls back to the user's bucket; the new code refuses to write/delete entirely. This is a behavioral change worth flagging in *Migration / Breaking changes* (or *Out of Scope* if the team is comfortable forcing the operational invariant). The Error Handling table mentions the new error but the Migration section does not.
+   **Suggestion:** Add a Migration entry: "appdata is now required for write/delete; deployments without an `appdata` bucket lose write/delete tools (read/search/list still work)." Optionally verify with the Core team that this invariant is documented and enforced.
+
+### Suggestions
+
+1. **[Resolved]** **Component 5 — `overwrite=True` race window between `get_metadata` and `upload_text`.**
+   The algorithm reads the ETag, then uploads with `If-Match`. The two calls are not atomic; if a writer races in between, the `If-Match` correctly catches it (412 → clear error). But the design should explicitly call out that the metadata fetch is *just* to obtain the ETag, not a "does it exist" probe — the `404 → fall through to create` branch reuses the same `get_metadata` call for double duty, which is fine but worth naming. Also: an alternative (and simpler) shape is to always call `upload_text` with `if_none_match="*"` first, then on 412 fetch the ETag and retry with `if_match`. Worth listing under "alternatives considered" so reviewers don't ask.
+
+2. **[Resolved]** **Component 5 / Error Handling — `content_type` has no client-side validation.**
+   The design argues against an allowlist (set of MIME types is open-ended) but does not consider basic syntactic validation (must be `type/subtype`, no whitespace). Without this, an LLM passing a garbage `content_type` like `"text"` or `"text/plain; charset=utf-8\nX-Inject: ..."` reaches DIAL's parser. This is probably fine, but a sentence on the trade-off would help future readers. Consider at least rejecting `content_type` with embedded `\n` or `\r`.
+
+3. **[Resolved]** **Component 2 — `list_files` text format swallows long names and offers no URL.**
+   The format shown (`F  1234   summary.md`) is name-only; the LLM cannot then call `read_file_lines(file_url=...)` without first reconstructing the URL. The design notes "the `(name, type, size, url)` tuple per entry is also returned in the JSON `attachments` metadata for tools that prefer structured access" — but the rest of the file tools surface text content as the primary return, and there is no precedent in the codebase for tools returning structured `attachments` for the LLM to consume. The simpler fix is to include the URL in the text listing (one column or one row per entry), at the cost of a few more tokens. Worth reconsidering, or at least naming the trade-off explicitly.
+
+4. **[Resolved]** **Out of Scope — "what is NOT changing" prose in Component 6.**
+   The line "`edit_file` continues to call `upload_text` without a `content_type` argument, falling back to the default `"text/plain"`" is exactly the kind of non-change enumeration the rubric flags. The fact is already implied by Component 5's `DialFileService.upload_text` extension note ("default `"text/plain"`, so existing callers — `_EditFileTool` — are unaffected"). Drop the line in Component 6 (or move it to *Migration / Non-breaking changes*).
+
+5. **[Resolved]** **Component 8 — `excluded_tools` reference is forward-looking and slightly stale.**
+   "The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships." With the prefix rename, this list will need updating in the `large_tool_responses` design. Worth a one-line cross-reference reminder so the work isn't lost: "Note: the prefix rename invalidates any `excluded_tools` list maintained in `large_tool_responses.local.md` — update there when both designs land."
+
+### Nits
+
+1. **Header — `Owner` is in the doc but the template doesn't have it.**
+   The template lists Status + Dependencies. Adding `Owner` is fine and matches `file_tools.md`. No action needed; flagging only because the template (`docs/designs/template.md`) does not include this field.
+
+2. **[Resolved]** **Component 2 — example output uses two-space indent but description says "Indentation = depth".**
+   The example renders depth-1 with two leading spaces and depth-2 with four. State the indent unit explicitly ("two spaces per depth level") so implementers don't pick a different convention.
+
+3. **[Resolved]** **Component 10 / Configuration / Usage Examples — `features` defaulting note is dropped vs. `file_tools.md`.**
+   The previous design's manifest example included a helpful comment explaining that `"features": {}` and omitting `features` are equivalent (because of `default_factory`). The new doc removes that note. Either re-add it or trust readers to infer; the previous version was clearer.
+
+4. **[Resolved]** **Migration — module rename details are scattered.**
+   The breaking-changes bullet says "Module rename" and lists the field/prefix renames in one breath. Splitting into three short bullets (module path, config field, tool prefix) makes the migration easier to apply mechanically; consider also linking each to the corresponding row in *Summary of Changes / Modified files*.
