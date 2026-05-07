@@ -44,6 +44,11 @@ from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
 )
 
 
+def _set_env_if_empty(name: str, value: str) -> None:
+    if not os.getenv(name):
+        os.environ[name] = value
+
+
 def build_dump_application_config() -> ApplicationConfig:
     """Synthetic config so gated multiproviders (e.g. timestamp) materialize tools."""
     return ApplicationConfig(
@@ -115,7 +120,10 @@ def _stable_manifest(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
     # Minimal DIAL URL so `DialSettings` and dependents validate without a real deployment.
-    os.environ.setdefault("DIAL_URL", "http://dump-internal-tools.invalid")
+    _set_env_if_empty("DIAL_URL", "http://dump-internal-tools.invalid")
+    # load_env can inject empty auth vars; set deterministic non-empty fallbacks.
+    _set_env_if_empty("OPENAI_API_KEY", "dump-internal-tools")
+    _set_env_if_empty("OPENAI_ADMIN_KEY", "dump-internal-tools")
 
     modules = AppFactory.build_di_modules()
     injector = Injector(modules)

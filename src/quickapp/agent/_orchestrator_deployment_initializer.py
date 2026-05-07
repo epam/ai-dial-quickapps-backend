@@ -40,18 +40,18 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         self.__api_key: DIAL_API_KEY = api_key
 
     async def initialize(self) -> None:
-        deployment_id = self.__app_config.orchestrator.deployment.name
-        cache_key = f"orchestrator_deployment_{deployment_id}"
+        deployment = self.__app_config.orchestrator.deployment.name
+        cache_key = f"orchestrator_deployment_{deployment}"
 
         model = await self.__orchestrator_deployment_cache.get(
             cache_key,
-            self.__tool_config_service.fetch_deployment_or_application,
-            deployment_id,
+            self.__tool_config_service.get_deployment_metadata,
+            deployment,
             api_key=self.__api_key,
         )
         if model is None:
             raise RuntimeError(
-                f"Orchestrator deployment cache returned no model for '{deployment_id}'"
+                f"Orchestrator deployment cache returned no model for '{deployment}'"
             )
         self.__capabilities.populate_from_dial_model(model)
         logger.debug(

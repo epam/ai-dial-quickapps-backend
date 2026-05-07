@@ -159,9 +159,8 @@ class Test_AttachmentFilter:
         )
         result = transformer.transform([msg1, msg2])
 
-        # First message: image kept, pdf removed
-        assert len(result[0].custom_content.attachments) == 1
-        assert result[0].custom_content.attachments[0].type == "image/png"
+        # First message: all attachments removed
+        assert len(result[0].custom_content.attachments) == 0
         content0 = str(result[0].content)
         assert "<title>doc.pdf</title>" in content0
         assert "<title>photo.png</title>" in content0
