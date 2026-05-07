@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from injector import Injector, Module
 
 from quickapp.agent.agent_module import AgentModule
+from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
 from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.feature_settings import FeatureSettings
@@ -45,6 +46,7 @@ class AppFactory:
             SkillsModule(),
             DialPromptSkillsModule(),
             TimestampModule(),
+            AgentHooksModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(

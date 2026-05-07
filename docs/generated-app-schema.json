@@ -1250,6 +1250,26 @@
       "title": "ForwardAuthTokenAuthorization",
       "type": "object"
     },
+    "HookEvent": {
+      "enum": [
+        "on_request_start",
+        "on_pre_llm",
+        "on_pre_tool_use",
+        "on_post_tool_use",
+        "on_iteration_end",
+        "on_completion"
+      ],
+      "title": "HookEvent",
+      "type": "string"
+    },
+    "InjectionFrequency": {
+      "enum": [
+        "always",
+        "append_if_changed"
+      ],
+      "title": "InjectionFrequency",
+      "type": "string"
+    },
     "InternalTool": {
       "properties": {
         "attachment": {
@@ -2557,6 +2577,62 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "ToolCallHookConfig": {
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/HookEvent"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "toolset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolset Name"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "frequency": {
+          "$ref": "#/$defs/InjectionFrequency",
+          "default": "append_if_changed"
+        }
+      },
+      "required": [
+        "event",
+        "tool_name"
+      ],
+      "title": "ToolCallHookConfig",
+      "type": "object"
+    },
     "ToolCallTimestampConfig": {
       "properties": {
         "injection_strategy": {
@@ -2927,6 +3003,27 @@
         "dial:propertyOrder": 6
       }
     },
+    "hooks": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ToolCallHookConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Config-driven hooks fired at named orchestrator seams.",
+      "title": "Hooks",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
+      }
+    },
     "features": {
       "anyOf": [
         {
@@ -2939,7 +3036,7 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 7
+        "dial:propertyOrder": 8
       }
     },
     "tool_defaults": {
@@ -2965,7 +3062,7 @@
       "type": "object",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 8
+        "dial:propertyOrder": 9
       }
     }
   },
