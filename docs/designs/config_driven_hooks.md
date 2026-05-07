@@ -129,15 +129,15 @@ When `None` or empty, the module provides an empty transformer list.
 
 ### Component 3: Runtime hook classes
 
-**What:** Two runtime classes in `synthetic_injection_tooling/_config_driven_hooks.py`,
+**What:** Two runtime classes in `agent_hooks/_config_driven_hooks.py`,
 mirroring the config hierarchy.
 
-**Owner:** `synthetic_injection_tooling/`
+**Owner:** `agent_hooks/`
 
 **Semantics:**
 
 ```
-_BaseConfigDrivenHook(SyntheticToolCallInjector)     [abstract — for future hook types]
+_BaseConfigDrivenHook(ABC)                           [pure marker — does not commit to any interface]
 
 _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)
 ├── get_tool_name()         → sanitize_toolname(f"{toolset_name}_{tool_name}") or tool_name verbatim
@@ -147,9 +147,15 @@ _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)
                         in try/except; returns the result on success, logs + returns None on exception
 ```
 
+`_BaseConfigDrivenHook` inherits only from `ABC` — it is a pure marker base that imposes no
+interface on future hook variants. Each concrete variant mixes in its own interface
+(e.g. `StagedToolSyntheticInjector` for `ToolCallHookConfig`). This keeps future hook kinds
+(guards, API calls, static checks) from being locked into `MessagesTransformer`.
+
 `_ConfigDrivenToolCallHook` inherits from both `_BaseConfigDrivenHook` and
-`StagedToolSyntheticInjector`. Both ultimately extend `SyntheticToolCallInjector`; Python MRO
-resolves the diamond cleanly. `_BaseConfigDrivenHook` is listed first so its methods take
+`StagedToolSyntheticInjector`. The MRO is:
+`_ConfigDrivenToolCallHook → _BaseConfigDrivenHook → StagedToolSyntheticInjector → SyntheticToolCallInjector → MessagesTransformer → ABC`.
+`_BaseConfigDrivenHook` is listed first so any overrides it defines in the future take
 precedence over `StagedToolSyntheticInjector`.
 
 `_ConfigDrivenToolCallHook` defines an explicit `__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig)`
@@ -350,7 +356,7 @@ are unaffected.
 ### Non-breaking changes
 
 - `AgentHooksModule` is additive. All existing injectors and DI registrations are unchanged.
-- The new `config/hooks.py` and `synthetic_injection_tooling/` package are purely additive.
+- The new `config/hooks.py` and `agent_hooks/` package are purely additive.
 
 ---
 
@@ -368,10 +374,10 @@ are unaffected.
 
 - `ApplicationConfig.hooks: list[HookConfig] | None` — new `PreviewField`
 
-### `synthetic_injection_tooling/` — NEW package
+### `agent_hooks/` — NEW package
 
 - `__init__.py`
-- `_config_driven_hooks.py` — `_BaseConfigDrivenHook`, `_ConfigDrivenToolCallHook`
+- `_config_driven_hooks.py` — `_BaseConfigDrivenHook(ABC)` (pure marker), `_ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)`
 - `agent_hooks_module.py` — `AgentHooksModule` (`@preview_module`)
 
 ### `app_factory.py` — MODIFIED

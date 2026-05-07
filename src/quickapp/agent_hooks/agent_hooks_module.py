@@ -32,7 +32,7 @@ class AgentHooksModule(Module):
 
     @staticmethod
     def _build(
-            app_config: ApplicationConfig,
+        app_config: ApplicationConfig,
         tools: list[StagedBaseTool],
         event: HookEvent,
     ) -> list[MessagesTransformer]:

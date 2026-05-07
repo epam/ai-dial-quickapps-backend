@@ -8,16 +8,13 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
 )
-from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
-    SyntheticToolCallInjector,
-)
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.hooks import ToolCallHookConfig
 
 logger = logging.getLogger(__name__)
 
 
-class _BaseConfigDrivenHook(SyntheticToolCallInjector, ABC):
+class _BaseConfigDrivenHook(ABC):
     """Abstract base for all config-driven hook variants."""
 
 
