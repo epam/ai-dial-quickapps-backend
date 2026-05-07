@@ -11,7 +11,10 @@ import quickapp.application._quick_app_completion as quick_app_completion
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.application._request_context import _RequestContext
 from quickapp.application._request_context_setup import _RequestContextSetup
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.exceptions import (
+    ConfigResolutionException,
+    OrchestratorExceedMaxIterationsException,
+)
 from quickapp.config.config_template_resolver import ConfigResolver
 
 
@@ -105,6 +108,8 @@ def make_request_completion():
         has_binding=True,
         extra_mapping=None,
         messages=None,
+        config_resolver=None,
+        init_handler=None,
     ):
         if messages is None:
             messages = [
@@ -121,12 +126,14 @@ def make_request_completion():
         )
         request.request_dial_application_properties = valid_app_props
 
-        init_handler = SimpleNamespace(handle_initialization_issues=lambda: None)
+        if init_handler is None:
+            init_handler = SimpleNamespace(handle_initialization_issues=lambda: None)
 
         request_context = _RequestContext()
         provider = SimpleNamespace(get=lambda: request_context)
 
-        config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
+        if config_resolver is None:
+            config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
         messages_setup = _MessagesSetup([])
 
         request_context_setup = _RequestContextSetup(
@@ -337,6 +344,51 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
     assert msgs[0].content == "123"
     assert msgs[1].content == "456"
     assert msgs[2].content == "789"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_system_prompt_failure_renders_initialization_stage(
+    make_request_completion,
+):
+    """A system-prompt resolution failure (the only path that still raises
+    `ConfigResolutionException`) routes to the *Initialization issues* handler
+    instead of falling through to the generic fallback message."""
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    def _resolve_raises(_cfg):
+        raise ConfigResolutionException(
+            message="bad",
+            template_name="dial_rag",
+            json_path="/deployment/name",
+        )
+
+    handler_calls = {"count": 0}
+    init_handler = SimpleNamespace(
+        handle_initialization_issues=lambda: handler_calls.__setitem__(
+            "count", handler_calls["count"] + 1
+        )
+    )
+
+    orchestrator_called = {"count": 0}
+
+    class OrchestratorFake:
+        async def invoke(self):
+            orchestrator_called["count"] += 1
+
+    request, completion, _ = make_request_completion(
+        OrchestratorFake(),
+        config_resolver=SimpleNamespace(resolve_config=_resolve_raises),
+        init_handler=init_handler,
+    )
+
+    await completion.chat_completion(request, response)
+
+    assert handler_calls["count"] == 1
+    assert orchestrator_called["count"] == 0
+    assert not any(
+        "Something went wrong with the execution of your request" in c for c in choice.contents
+    )
 
 
 @pytest.mark.asyncio

@@ -25,7 +25,7 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _format_leaf_for_user,
     _MCPToolInitializer,
 )
-from tests.unit_tests.common.common import noop_timeout_resolver
+from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
 def build_side_effect(tool, tool_config):
@@ -188,7 +188,7 @@ def initializer_factory(builder_mock, connection_manager_builder):
         )
         mcp_context = MagicMock()
         initializer = _MCPToolInitializer(
-            [toolset_info],
+            make_provider([toolset_info]),
             mcp_context,
             MagicMock(),  # dial_setting
             MagicMock(),  # api_key_provider
@@ -272,7 +272,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
     )
 
     initializer = _MCPToolInitializer(
-        [toolset_info1, toolset_info2],
+        make_provider([toolset_info1, toolset_info2]),
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
@@ -356,7 +356,7 @@ async def test_connection_manager_build_headers_client_id_secret():
 async def test_no_exception_if_toolset_list_is_empty():
     mcp_context = MagicMock()
     initializer = _MCPToolInitializer(
-        [],  # empty toolset list
+        make_provider([]),  # empty toolset list
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
@@ -539,7 +539,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
     )
     mcp_context = MagicMock()
     initializer = _MCPToolInitializer(
-        [toolset_info],
+        make_provider([toolset_info]),
         mcp_context,
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
