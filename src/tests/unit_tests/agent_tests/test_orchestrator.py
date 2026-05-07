@@ -672,7 +672,7 @@ class TestBuildToolExecutionHistory:
             },
         ]
 
-        result = orchestrator._strip_get_content_tool_attachments_from_history(history)
+        result = orchestrator._clear_get_content_tool_attachments(history)
         tool_msg = result[1]
         assert "custom_content" in tool_msg
         custom_content = tool_msg["custom_content"]
@@ -703,7 +703,7 @@ class TestBuildToolExecutionHistory:
             },
         ]
 
-        result = orchestrator._strip_get_content_tool_attachments_from_history(history)
+        result = orchestrator._clear_get_content_tool_attachments(history)
         tool_msg = result[1]
         custom_content = tool_msg.get("custom_content")
         assert isinstance(custom_content, dict)

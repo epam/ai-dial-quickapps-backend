@@ -17,6 +17,13 @@ from quickapp.common.tool_names import (
 from quickapp.common.utils import matches_type
 from quickapp.config.context import Context, FileContextConfig
 
+context_tool_names = frozenset(
+    {
+        INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+        INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+    }
+)
+
 
 class ContextEntryStatus(str, Enum):
     new = "new"
@@ -162,16 +169,10 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
 
 def has_context_tool_history(messages: Sequence[Message]) -> bool:
     """Check whether message history contains any tool calls for the context list or fetch tools."""
-    names = frozenset(
-        {
-            INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
-            INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
-        }
-    )
     for msg in messages:
         if msg.role == Role.ASSISTANT and msg.tool_calls:
             for tc in msg.tool_calls:
-                if tc.function and tc.function.name in names:
+                if tc.function and tc.function.name in context_tool_names:
                     return True
     return False
 

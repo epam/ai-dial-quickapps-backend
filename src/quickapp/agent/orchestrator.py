@@ -87,7 +87,7 @@ class Orchestrator:
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:
                 if exc_to_reraise is None and self._is_terminal_completion():
-                    tool_execution_history = self._strip_get_content_tool_attachments_from_history(
+                    tool_execution_history = self._clear_get_content_tool_attachments(
                         tool_execution_history
                     )
                 self.__state_holder.add_state(TOOL_EXECUTION_HISTORY, tool_execution_history)
@@ -248,7 +248,7 @@ class Orchestrator:
         return bool(last.role == Role.ASSISTANT and not last.tool_calls)
 
     @staticmethod
-    def _strip_get_content_tool_attachments_from_history(
+    def _clear_get_content_tool_attachments(
         history: list[dict[str, object]],
     ) -> list[dict[str, object]]:
         """Remove TOOL custom_content.attachments for internal_attachments_get_content calls."""
