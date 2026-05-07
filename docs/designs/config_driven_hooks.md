@@ -155,7 +155,7 @@ precedence over `StagedToolSyntheticInjector`.
 `_ConfigDrivenToolCallHook` defines an explicit `__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig)`
 that calls `super().__init__(tools)` directly. This is required because `StagedToolSyntheticInjector.__init__`
 carries `@inject` — without the override, the injector library would attempt to wire the class via
-DI rather than accepting the manually-supplied arguments from `HooksModule`.
+DI rather than accepting the manually-supplied arguments from `AgentHooksModule`.
 
 `StagedBaseTool.arun()` catches exceptions internally and routes them through `FallbackProcessor`.
 If a matching fallback strategy is configured on the tool, `arun()` returns a `ToolCallResult` with
@@ -181,10 +181,10 @@ with explicit arguments.
 
 ---
 
-### Component 4: `HooksModule`
+### Component 4: `AgentHooksModule`
 
 **What:** A new `@preview_module` DI module in
-`synthetic_injection_tooling/hooks_module.py`. It routes each hook to the correct
+`synthetic_injection_tooling/agent_hooks_module.py`. It routes each hook to the correct
 `@multiprovider` list based on `entry.event`, building the skeleton for future event extensions.
 
 **Owner:** `synthetic_injection_tooling/`
@@ -206,7 +206,7 @@ Unsupported event+kind combinations log an error and are skipped (resilient degr
 
 ```python
 @preview_module
-class HooksModule(Module):
+class AgentHooksModule(Module):
 
     @multiprovider
     def _provide_messages_transformers(
@@ -240,17 +240,17 @@ class HooksModule(Module):
 
 `@preview_module` means the module is not loaded at all when `ENABLE_PREVIEW_FEATURES=false`.
 When preview is enabled but `hooks` is `None` or empty, the multiprovider returns an empty list.
-Adding support for a new event requires adding one `@multiprovider` method to `HooksModule` and
+Adding support for a new event requires adding one `@multiprovider` method to `AgentHooksModule` and
 one branch in `_build`.
 
 **Change:** New files `synthetic_injection_tooling/__init__.py` and
-`synthetic_injection_tooling/hooks_module.py`.
+`synthetic_injection_tooling/agent_hooks_module.py`.
 
 ---
 
 ### Component 5: Module registration
 
-**What:** `HooksModule` added to the `Injector` in `app_factory.py`.
+**What:** `AgentHooksModule` added to the `Injector` in `app_factory.py`.
 
 **Owner:** `app_factory.py`
 
@@ -279,7 +279,7 @@ one branch in `_build`.
 - **`on_pre_llm` and beyond for `ToolCallHookConfig`.** `on_request_start` is fully wired.
   `on_pre_llm` is blocked by `PreInvocationTransformer.transform()` being synchronous while
   `tool.arun()` is async — bridging requires running in an event loop or restructuring the interface. Remaining events need new orchestrator seams. All are deferred;
-  `HooksModule._build` logs an error and skips any unsupported event+kind combination.
+  `AgentHooksModule._build` logs an error and skips any unsupported event+kind combination.
 - **Structured validation for unsupported `HookEvent` × `kind` combinations.** Currently logged
   and skipped at runtime. Future work: surface this as a structured config validation error
   (Pydantic `@model_validator` → 422 at manifest parse) so operators get early feedback.
@@ -349,7 +349,7 @@ are unaffected.
 
 ### Non-breaking changes
 
-- `HooksModule` is additive. All existing injectors and DI registrations are unchanged.
+- `AgentHooksModule` is additive. All existing injectors and DI registrations are unchanged.
 - The new `config/hooks.py` and `synthetic_injection_tooling/` package are purely additive.
 
 ---
@@ -372,11 +372,11 @@ are unaffected.
 
 - `__init__.py`
 - `_config_driven_hooks.py` — `_BaseConfigDrivenHook`, `_ConfigDrivenToolCallHook`
-- `hooks_module.py` — `HooksModule` (`@preview_module`)
+- `agent_hooks_module.py` — `AgentHooksModule` (`@preview_module`)
 
 ### `app_factory.py` — MODIFIED
 
-- Register `HooksModule`
+- Register `AgentHooksModule`
 
 ### `docs/generated-app-schema.json` — REGENERATED
 
