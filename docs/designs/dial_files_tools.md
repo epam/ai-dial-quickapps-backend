@@ -3,13 +3,12 @@
 - **Status:** Draft
 - **Owner:** Andrii Novikov
 - **Supersedes:** [file_tools.md](file_tools.md)
-- **Dependencies:** [large_tool_responses](large_tool_responses.local.md) (forward dependency — file tools ship without offload integration; offload integration lands when that design is approved)
 
 ## Problem Statement
 
 The previous iteration ([`file_tools.md`](file_tools.md), Status: Implemented) shipped five **text-only** tools (`read_file_lines`, `search_in_file`, `write_file`, `edit_file`, `delete_file`) anchored to a hard-coded `generated-files/` subdirectory under the bucket. Real-world testing surfaced two gaps:
 
-- **No discovery.** Agents can read/edit files only when they already know the URL. There is no `ls` primitive, so workflows that need to find an existing artifact (a previously written report, an offloaded tool response, a user-uploaded folder) are impossible. The agent can write a file, lose track of the URL, and have no way to recover it.
+- **No discovery.** Agents can read/edit files only when they already know the URL. There is no `ls` primitive, so workflows that need to find an existing artifact (a previously written report, a user-uploaded folder) are impossible. The agent can write a file, lose track of the URL, and have no way to recover it.
 - **Write surface is too narrow.** The `generated-files/` constraint, the lack of nested paths, and the single hard-coded `text/plain` content type mean agents can only produce flat-namespace plain-text files. They cannot organize their working surface into folders or write files of other text types (`text/markdown`, `text/csv`, `application/json`) that downstream consumers (renderers, parsers) rely on for correct handling.
 
 Both gaps prevent agents from using DIAL file storage as a real working surface. This design generalizes the toolkit: agents get a discovery primitive, can organize files into nested directories, can pick the content type, and can explicitly opt into overwriting an existing file.
@@ -40,23 +39,23 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Behavior:** The service walks the tree, calling `metadata.get("files", folder_url)` for each subfolder up to `max_depth` levels. Folder entries beyond the depth bound are listed by name but not expanded (so the LLM knows they exist and can drill down explicitly).\
 **Outcome:** A bounded, traversable listing — the LLM gets enough to navigate without the risk of an unbounded recursion on a deep tree.
 
-### UC-3: Agent writes into a nested path
+### UC-3: Agent writes into a nested path (default content type)
 
-**Trigger:** `write_file(path="reports/2026-Q1/summary.md", content="...", content_type="text/markdown")`.\
-**Behavior:** The tool validates `path` against path traversal, resolves to `files/{appdata}/reports/2026-Q1/summary.md`, and uploads with `If-None-Match: *`. DIAL creates the implicit `reports/` and `2026-Q1/` folders.\
-**Outcome:** A new Markdown file lands at the nested URL; the URL is returned in the `ToolCallResult` along with an `Attachment` so the file appears in the DIAL UI.
+**Trigger:** `write_file(path="reports/2026-Q1/summary.md", content="...")`.\
+**Behavior:** The tool validates `path` against path traversal, resolves to `files/{appdata}/reports/2026-Q1/summary.md`, and uploads with `If-None-Match: *`. `content_type` defaults to `"text/plain"`. DIAL creates the implicit `reports/` and `2026-Q1/` folders.\
+**Outcome:** A new plain-text file lands at the nested URL; the URL is returned in the `ToolCallResult` along with an `Attachment` so the file appears in the DIAL UI.
 
-### UC-4: Agent writes a non-default content type
+### UC-4: Agent writes a non-default content type (flat path)
 
-**Trigger:** `write_file(path="data/orders.csv", content="id,total\\n1,42", content_type="text/csv")`.\
-**Behavior:** Same as UC-3, but the upload propagates `text/csv` as the MIME type. Downstream UI renders the file as a CSV preview rather than raw text.\
+**Trigger:** `write_file(path="orders.csv", content="id,total\\n1,42", content_type="text/csv")`.\
+**Behavior:** The path is intentionally flat — this use case isolates `content_type` selection, not nesting. The upload propagates `text/csv` as the MIME type. Downstream UI renders the file as a CSV preview rather than raw text.\
 **Outcome:** The file is stored with the correct content type so renderers and consumers handle it appropriately.
 
 ### UC-5: Agent overwrites an existing file
 
 **Trigger:** `write_file(path="reports/summary.md", content="...", overwrite=True)`.\
 **Behavior:** The tool fetches the current ETag via the existing metadata path, then uploads with `If-Match: <etag>`. If the file does not exist yet, the upload falls through to create. If a concurrent writer modified the file between the metadata fetch and the upload, DIAL returns `412 Precondition Failed` and the tool surfaces a clear error.\
-**Outcome:** The file at the same URL contains the new content. Subsequent same-turn reads see the update (cache invalidated). On 412, the LLM is told to re-read and retry.
+**Outcome:** The file at the same URL contains the new content. Subsequent same-turn reads see the update (cache invalidated). On `EtagMismatchError`, the LLM is told to re-read and retry.
 
 ### UC-6: Agent reads a line range from a stored file
 
@@ -106,8 +105,8 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 - Provides an `async _resolve_appdata_url(path: str) -> str` helper that:
   1. Validates `path` is a non-empty string.
   2. Rejects any leading `/`, any literal `../` substring, any segment equal to `..`, any empty segment (e.g. `foo//bar`), and trailing whitespace. All failures raise `InvalidToolCallParameterException("path", "...")` with a precise message.
-  3. Resolves the bucket via `dial_client.bucket.get_raw()`. Uses `bucket_resp.appdata` if present; if `None`, raises `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. Read/search/list tools never call this helper, so they remain functional even when appdata is missing.
-  4. Returns `f"files/{appdata}/{path}"`. **Trailing slash is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
+  3. Calls `await dial_client.my_appdata_home()`. If it returns `None`, raises `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. `my_appdata_home()` is the SDK's high-level helper; it caches the bucket response internally, so repeated calls within a request do not incur additional HTTP round-trips. Read/search/list tools never call this helper, so they remain functional even when appdata is missing.
+  4. Returns `f"files/{home}/{path}"` where `home = str(appdata_home)`. **Trailing slash is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
 - The previous design's `GENERATED_FILES_ROOT` constant is removed.
 
 `AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`.
@@ -131,7 +130,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 2. Normalize `path` into a folder URL of shape `files/{bucket}/{relative}/`:
    - If `path` starts with `files/`, treat it as already-resolved.
    - Otherwise, ensure it ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing) and pass through `_resolve_appdata_url(path)` to anchor under appdata.
-3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service is responsible for translating the `files/{bucket}/{relative}/` URL into the SDK call `dial_client.metadata.get("files", "{bucket}/{relative}/")` — it strips the leading `files/` segment because the SDK's `metadata.get(resource, relative_url)` expects the path *under* `files/`, not the full DIAL URL. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
+3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service calls `dial_client.metadata.get("files", folder_url)` directly — `metadata.get` joins its second argument onto `/v1/metadata/`, so the input must already include the `files/` segment; the `files/{bucket}/{relative}/` URL is passed through unchanged. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
 4. Format the response as a compact text listing, one entry per line:
    ```
    D    -      reports/                          files/{appdata}/reports/
@@ -153,7 +152,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Design notes:**
 
 - **Why text output over JSON.** Tabular text is cheaper in tokens and easier for the LLM to scan. The URL column is included inline (rather than only via structured `attachments` metadata) because the rest of the file-tools surface returns text content as the primary signal, and there is no precedent in the codebase for tools surfacing structured `attachments` for the LLM to consume directly.
-- **Depth bound exists.** Without it, an LLM could trigger an unbounded walk on a deep user-uploaded folder. `max_depth <= 10` is generous in practice and safe in the worst case.
+- **Depth bound exists.** Without it, an LLM could trigger an unbounded walk on a deep user-uploaded folder. Each subfolder at each depth level requires one metadata call to Core; a depth-D listing over a tree with W subfolders per level costs O(W^D) calls in the worst case — the `max_depth <= 10` bound limits this. `max_depth <= 10` is generous in practice and safe in the worst case.
 - **Pagination is out of scope.** When folder sizes warrant it, this tool can grow `next_token` semantics without breaking the contract (additive optional param + sentinel in the listing).
 - **Reuse.** `DialFileService.list_folder` mirrors the recursion shape used in `src/tests/integration_tests/test_runner/e2e_runner.py`. That helper hits the metadata endpoint via raw `httpx`; the service uses the SDK's `dial_client.metadata.get("files", ...)` instead so the call participates in the same auth/header plumbing as every other DIAL call in the codebase. The recursion shape (depth-bounded BFS over `items`) is the part that's reused.
 
@@ -192,12 +191,12 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 1. Resolve `url = _resolve_appdata_url(path)`. (Validation + appdata resolution happen here; failures raise before any IO.)
 2. Branch on `overwrite`:
-   - `overwrite == false`: call `DialFileService.upload_text(url=url, content=content, content_type=content_type, if_none_match="*")`. On `412` → `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`.
+   - `overwrite == false`: call `DialFileService.upload_text(url=url, content=content, content_type=content_type, if_none_match="*")`. On `EtagMismatchError` (HTTP 412) → `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`.
    - `overwrite == true`:
      - Try `dial_client.files.get_metadata(url)` to read the current ETag.
-       - On `404` (no prior file): call `upload_text(..., if_none_match="*")` — clean create. (Falls through; not an error.)
+       - On `ResourceNotFoundError` (HTTP 404, no prior file): call `upload_text(..., if_none_match="*")` — clean create. (Falls through; not an error.)
        - On success: call `upload_text(url=url, content=content, content_type=content_type, if_match=etag)`.
-         - On `412`: `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
+         - On `EtagMismatchError` (HTTP 412): `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
      - On a successful overwrite, call `DialFileService.invalidate_cache(url)` so same-turn reads see the new bytes.
 3. Build an `Attachment` pointing at `url` (so the DIAL UI shows the file).
 4. Return `ToolCallResult(content=f"File written: {url}", content_type="text/plain", attachments=[attachment])`.
@@ -241,7 +240,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 1. Call `dial_client.files.delete(file_url)`.
 2. On success → `ToolCallResult(content=f"Deleted: {file_url}", content_type="text/plain")`.
-3. On `404` → `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — same shape as `write_file`/`edit_file` errors.
+3. On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — same shape as `write_file`/`edit_file` errors.
 4. Other errors → propagate as tool-call errors.
 
 **Owner:** `src/quickapp/dial_files_tooling/_delete_file_tool.py`
@@ -262,7 +261,6 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 - Contributes all six tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as the prior `TextFileToolingModule`).
 - Tools are gated per app via `app_config.features.dial_files`. The resolution logic is unchanged from the previous design — `enabled_tools="all"` returns every tool; a list returns only the matching subset.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
-- Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships. **Cross-reference reminder:** the `internal_text_file_*` → `internal_file_*` prefix rename invalidates any `excluded_tools` list maintained in `large_tool_responses.local.md` — that list must be updated when both designs land.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
 
@@ -343,22 +341,21 @@ class Features(BaseModel):
 | Failure | Behavior |
 |---------|----------|
 | Invalid `path` (empty, leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace) | `InvalidToolCallParameterException("path", ...)` with the specific rule violated. |
-| Appdata not populated in bucket response (`bucket_resp.appdata is None`) | `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. Read/search/list still work. |
+| Appdata not available (`dial_client.my_appdata_home()` returns `None`) | `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. Read/search/list still work. |
 | `start_line < 0` or `end_line < start_line` (`read_file_lines`) | `InvalidToolCallParameterException` → surfaced to LLM. |
-| `write_file(overwrite=False)` target already exists (DIAL `412`) | `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`. |
-| `write_file(overwrite=True)` concurrent modification (DIAL `412`) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
+| `write_file(overwrite=False)` target already exists (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`. |
+| `write_file(overwrite=True)` concurrent modification (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
 | `write_file` `content_type` contains `\n` or `\r` | `InvalidToolCallParameterException("content_type", "must not contain newline characters")` — client-side, before any IO. |
 | `write_file` otherwise-invalid `content_type` (e.g. malformed `type/subtype`) | Passed through to DIAL; surface DIAL's response if any. No client-side allowlist (the set of valid MIME types is open-ended). |
 | `edit_file` `old_string` not found / matches multiple places / equals `new_string` | Unchanged from previous design. |
-| `edit_file` conditional upload fails (DIAL `412`) | `InvalidToolCallParameterException("file_url", "file changed concurrently; re-read and retry")`. |
+| `edit_file` conditional upload fails (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("file_url", "file changed concurrently; re-read and retry")`. |
 | `list_files` target is not a folder | `InvalidToolCallParameterException("path", "not a folder: {url}")` if DIAL response shape indicates a file. |
-| `list_files` target not found (404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
+| `list_files` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
 | `list_files` `max_depth < 1` or `max_depth > 10` | `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")`. |
-| `delete_file` target not found (404) | `InvalidToolCallParameterException("file_url", "file not found: {url}")`. |
+| `delete_file` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("file_url", "file not found: {url}")`. |
 | `file_url` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
 | File exceeds 10 MB download limit | `InvalidToolCallParameterException("file_url", "file is too large to read (limit: 10 MB)")`. |
 | File is not valid UTF-8 (read/search/edit) | `UnicodeDecodeError` propagates; LLM sees the error. Binary files are out of scope. |
-| LLM requests an oversized slice | Intended to bypass `LargeResponseProcessor` once that feature ships (read tools will be in `excluded_tools`). |
 
 ---
 
@@ -535,7 +532,7 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
 - **Tool-prefix rename:** `internal_text_file_*` → `internal_file_*`. Any saved chat history or manifest referencing the old names will not match. See *Summary of Changes / New tools exposed*.
 - **`write_file` parameter rename and additions:** `filename` → `path`; `content_type` and `overwrite` added.
 - **`delete_file` no longer enforces `generated-files/`.** Any caller relying on this guard for safety must migrate to the appdata isolation model.
-- **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` raises `InvalidToolCallParameterException` instead. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list still work because they accept arbitrary URLs and never resolve appdata). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
+- **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` calls `dial_client.my_appdata_home()` and raises `InvalidToolCallParameterException` if it returns `None`. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list are unaffected). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
 
 The above bullets are acceptable because the feature is preview-gated and not GA.
 
@@ -559,7 +556,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 | `dial_files_tooling/_search_in_file_tool.py` | `search_in_file` implementation (carried over). |
 | `dial_files_tooling/_write_file_tool.py` | `write_file` implementation: nested `path`, `content_type`, `overwrite`. |
 | `dial_files_tooling/_edit_file_tool.py` | `edit_file` implementation (carried over). |
-| `dial_files_tooling/_delete_file_tool.py` | `delete_file` implementation (path guard removed; `..` defense check added). |
+| `dial_files_tooling/_delete_file_tool.py` | `delete_file` implementation (path guard removed; no client-side validation — appdata isolation is the safety boundary). |
 | `dial_files_tooling/_stage_wrapper.py` | Stage wrapper (carried over). |
 | `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all six tools; renamed prefix. |
 | `dial_files_tooling/dial_files_tooling_module.py` | Preview-gated DI module; contributes tools; reads `app_config.features.dial_files`. |
@@ -586,12 +583,11 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 ### Tests
 
 - Unit: `src/tests/unit_tests/dial_files_tooling/` — all carried-over coverage from the previous design plus:
-  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (404), target-is-not-a-folder, `max_depth` out of range, empty folder.
-  - `write_file`: nested path success, path-traversal rejection (`..` segment, `../` substring, leading `/`, empty segment, trailing whitespace), `content_type` propagated to the upload call, `overwrite=False` collision (412 → `InvalidToolCallParameterException`), `overwrite=True` happy path, `overwrite=True` falls through to create when no prior file (404 on metadata), `overwrite=True` concurrent modification (412 → error), cache invalidated after overwrite, appdata-missing → descriptive error.
-  - `delete_file`: success on arbitrary appdata path (no `generated-files/` requirement), `..` in URL rejected, 404 → `InvalidToolCallParameterException`.
+  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (`ResourceNotFoundError`), target-is-not-a-folder, `max_depth` out of range, empty folder.
+  - `write_file`: nested path success, path-traversal rejection (`..` segment, `../` substring, leading `/`, empty segment, trailing whitespace), `content_type` propagated to the upload call, `overwrite=False` collision (`EtagMismatchError` → `InvalidToolCallParameterException`), `overwrite=True` happy path, `overwrite=True` falls through to create when no prior file (`ResourceNotFoundError` on metadata), `overwrite=True` concurrent modification (`EtagMismatchError` → error), cache invalidated after overwrite, appdata-missing → descriptive error.
+  - `delete_file`: success on arbitrary appdata path (no `generated-files/` requirement), `ResourceNotFoundError` (404) → `InvalidToolCallParameterException`.
   - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
-- Integration: offload end-to-end coverage (read-back path) is deferred pending the `large_tool_responses` design.
 
 ---
 
@@ -650,3 +646,152 @@ The design is coherent, well-scoped, and continues a strong tradition from `file
 
 4. **[Resolved]** **Migration — module rename details are scattered.**
    The breaking-changes bullet says "Module rename" and lists the field/prefix renames in one breath. Splitting into three short bullets (module path, config field, tool prefix) makes the migration easier to apply mechanically; consider also linking each to the corresponding row in *Summary of Changes / Modified files*.
+
+---
+
+## Review Notes — Round 2
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-07
+
+### Verdict
+
+`Blocking issues must be addressed`. Round 1's three blocking items are mostly resolved — `delete_file`'s `..` substring check is gone, the trailing-slash contract is now explicit on `_resolve_appdata_url`, and the appdata-required posture has a clear migration entry. However, the new wording introduced in Round 1's Component 2 fix contains a concrete factual error about the SDK's `metadata.get` URL contract that would break the implementation as written. One additional suggestion and one nit follow.
+
+**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-07). Awaiting Round 3 review.**
+
+### Blocking issues
+
+1. **[Resolved]** **Component 2 — `list_files` URL translation note inverts the SDK contract.**
+   Step 3 says `DialFileService.list_folder` "strips the leading `files/` segment because the SDK's `metadata.get(resource, relative_url)` expects the path *under* `files/`, not the full DIAL URL." This is incorrect. Looking at the SDK (`aidial_client/resources/metadata.py`): `metadata.get` calls `urljoin(METADATA_PREFIX, relative_url)` where `METADATA_PREFIX = "/v1/metadata/"`. The DIAL endpoint is `/v1/metadata/files/{bucket}/{path}/`, so the `relative_url` argument must **include** the `files/` segment. The existing in-repo callsite `src/quickapp/dial_deployment_tooling/dial_completion_service.py:190` confirms this: `metadata.get("files", strip_file_prefix(file_relative_url))` is called with paths that begin with `files/`. Stripping `files/` before the SDK call would produce `/v1/metadata/{bucket}/{path}/` and 404.
+   **Suggestion:** Either drop the "strip the leading `files/` segment" sentence entirely (the simplest fix — pass the `files/{bucket}/{relative}/` shape straight through to `metadata.get("files", folder_url)`), or replace it with the actually-correct contract: "`metadata.get('files', relative_url)` joins `relative_url` onto `/v1/metadata/`, so the input must already include the `files/` segment; pass `folder_url` through unchanged." Worth verifying with a quick experimental call against a DIAL Core instance during implementation.
+
+### Suggestions
+
+1. **[Resolved]** **Component 5 / Algorithm step 2 — name the SDK exception, not the HTTP status.**
+   The algorithm says "On `404` (no prior file): call `upload_text(..., if_none_match=\"*\")`." The aidial-client SDK surfaces missing resources as `ResourceNotFoundError` (see `aidial_client/_exception.py:88`), and the existing `_DeleteFileTool` already catches that specific exception. The design also names raw `412` for ETag mismatches when the implementation actually catches `EtagMismatchError` (see existing `_WriteFileTool`/`_EditFileTool`). Naming the exceptions makes the contract implementable without a translation step. Same comment applies to the `delete_file` algorithm step 3 ("On `404`") and the Error Handling table.
+
+### Nits
+
+1. **[Resolved]** **Migration / "Appdata is now required" bullet — borderline non-change prose.**
+   The clause "(read/search/list still work because they accept arbitrary URLs and never resolve appdata)" enumerates a non-change to inform the migration reader, which is the sanctioned use of *Migration / Non-breaking changes*. As-is it reads cleanly here, but consider trimming the parenthetical to its essential half: "read/search/list are unaffected." The longer form duplicates the rationale already given in Component 1's bullet "Read/search/list tools never call this helper."
+
+### Changes since previous round
+
+- Round-1 blocking #1 (`delete_file` `..` substring rejects valid filenames) — **resolved.** Algorithm and Error Handling no longer mention `..` for `delete_file`; design note in Component 7 explains the removal explicitly.
+- Round-1 blocking #2 (`list_files` URL contract under-specified) — **partially addressed.** Trailing-slash semantics on `_resolve_appdata_url` are now explicit, the responsibility split between tool and service is named, and the e2e_runner reuse note is clarified. However, the new "strip leading `files/`" sentence introduces a new factual error (see Round-2 blocking #1).
+- Round-1 blocking #3 (silently dropping the `bucket` fallback) — **resolved.** Migration / Breaking changes now has a dedicated bullet describing the previous fallback, the new behavior, and the deployment scenarios where this matters.
+- Round-1 suggestion #1 (`overwrite=True` race window — name `get_metadata` double duty + alternative considered) — **resolved.** Both bullets added in Component 5.
+- Round-1 suggestion #2 (`content_type` syntactic validation) — **resolved.** Newline-injection check added; allowlist trade-off named explicitly; Error Handling row split into newline rejection vs. otherwise-malformed.
+- Round-1 suggestion #3 (`list_files` text format includes URL inline) — **resolved.** URL is now column 4 of the listing; design note rewrites the trade-off in terms of the actual codebase precedent.
+- Round-1 suggestion #4 (Component 6 "what is NOT changing" prose) — **resolved.** The `edit_file` non-change note is removed.
+- Round-1 suggestion #5 (cross-reference reminder for `excluded_tools`) — **resolved.** Cross-reference added to Component 8.
+- Round-1 nit #1 (Owner field vs. template) — flagged only, no action requested in Round 1; still applies but harmless.
+- Round-1 nit #2 (indent unit explicit) — **resolved.** "Two spaces per depth level" stated in Component 2 and in the Configuration / Usage Examples block.
+- Round-1 nit #3 (manifest defaulting comment) — **resolved.** Comment about `default_factory` re-added to the third manifest example.
+- Round-1 nit #4 (split migration bullets) — **resolved.** Module rename, config-field rename, and tool-prefix rename are now three separate bullets, each with a back-reference to *Summary of Changes*.
+
+### Changes since Round 2
+
+- Round-2 blocking #1 (Component 2 step 3 inverts SDK contract) — **resolved.** "strips the leading `files/` segment" removed; Step 3 now says `folder_url` is passed unchanged to `metadata.get("files", folder_url)` and explains *why* (`metadata.get` joins its argument onto `/v1/metadata/`, so the `files/` segment must be present).
+- Round-2 suggestion #1 (name SDK exceptions, not raw HTTP codes) — **resolved.** Component 5 algorithm, Component 7 algorithm, Error Handling table, UC-5, and Tests section now reference `ResourceNotFoundError` (HTTP 404) and `EtagMismatchError` (HTTP 412) throughout.
+- Round-2 nit #1 (trim Migration parenthetical) — **resolved.** "(read/search/list still work because they accept arbitrary URLs and never resolve appdata)" → "(read/search/list are unaffected)".
+- Stale Summary of Changes row for `_delete_file_tool.py` — **fixed.** Row previously said "`..` defense check added"; corrected to "no client-side validation — appdata isolation is the safety boundary" (the check was removed in Round 1).
+
+---
+
+## Review Notes — Round 3
+
+- **Reviewer:** Andrii
+- **Date:** 2026-05-07
+
+### Verdict
+Two issues to resolve. But before please answer the questions.
+
+### Blocking issues
+
+1. Remove any mention of large response offload feature.
+2. Component-1: use aidial_client has my_appdata_home. explore ability to use it instead of working with raw data
+
+### Suggestions
+
+### Nits
+
+### Questions
+
+1. AC-2: For each level we need to make a separate call to core, right?
+2. AC-3 and AC-4: what is the difference? them both use custom content_type
+
+---
+
+## Review Notes — Round 4
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-07
+
+### Verdict
+
+`Blocking issues must be addressed`. Round 3 raises two blocking issues from the author plus two questions that, once answered, reveal an additional design gap. The answers to the questions are straightforward; the two blocking issues require targeted edits to the doc body.
+
+**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-07). Awaiting Round 5 review.**
+
+### Answers to Round-3 questions
+
+**Q1 (UC-2): Does `list_files` at depth N require a separate Core call per level?**
+
+Yes. Per Component 2 Algorithm step 3, `DialFileService.list_folder` calls `dial_client.metadata.get("files", folder_url)` for each subfolder it visits. A depth-3 listing over a tree with W subfolders per level costs O(1 + W + W²) metadata calls. This is the correct behavior and is called out in the depth-bound design note ("Depth bound exists … safe in the worst case"). No doc change needed; the doc already implies this, but the author may want to add one sentence to the Component 2 design notes explicitly naming the call-per-folder cost for future readers.
+
+**Q2 (UC-3 vs UC-4): What is the difference?**
+
+UC-3 ("Agent writes into a nested path") demonstrates the `path` nesting capability — writing `reports/2026-Q1/summary.md` with the *default* `text/plain` content type. UC-4 ("Agent writes a non-default content type") uses a *flat* path (`data/orders.csv`) but passes an explicit `content_type="text/csv"`. The two use cases are meant to be orthogonal: one showcases nesting, the other showcases content-type selection. However, as written they are easy to confuse because UC-3 uses `.md` (implying Markdown, not `text/plain`) and neither use case description calls out explicitly what the *other* parameter is doing. The doc should either (a) state the default `content_type` explicitly in UC-3's Behavior line, or (b) rename UC-3 to "Agent writes into a nested path with default content type" to make the contrast crisp.
+
+### Blocking issues
+
+1. **[Resolved]** **[Header / Component 8 / Error Handling / Tests — remove all `large_tool_responses` mentions from the doc body.]**
+   The author's Round-3 blocking issue #1 is to remove any mention of the large-response offload feature. Four locations in the doc body still reference it:
+   - **Header** (line 6): `- **Dependencies:** [large_tool_responses](large_tool_responses.local.md) (forward dependency — …)` — remove the entire `Dependencies` line or replace with `None`.
+   - **Component 8** (last bullet, line 265): "Does **not** depend on or import `tool_call_result_offload`. The offload module's `excluded_tools` will reference the read tools' names as strings once that design ships. **Cross-reference reminder:** …" — remove the entire bullet.
+   - **Error Handling table** (last row, line 361): `| LLM requests an oversized slice | Intended to bypass \`LargeResponseProcessor\` … |` — remove this row.
+   - **Tests** (last bullet, line 594): `- Integration: offload end-to-end coverage (read-back path) is deferred pending the \`large_tool_responses\` design.` — remove this bullet.
+
+   The historical review notes (Rounds 1–3) reference the offload feature in the tracking of resolved items; those are the read-only history and do not need to change.
+   **Suggestion:** After removing the four locations above, re-read Component 8 to confirm no orphaned sentences remain.
+
+2. **[Resolved]** **[Component 1 — evaluate replacing `dial_client.bucket.get_raw()` with `dial_client.my_appdata_home()`.]**
+   The author's Round-3 blocking issue #2 asks whether `aidial_client`'s `my_appdata_home()` helper can replace the manual `bucket.get_raw()` + `.appdata` extraction in `_resolve_appdata_url`. The SDK does expose this: `AsyncDialClient.my_appdata_home()` returns `Optional[PurePosixPath]` where the value is `PurePosixPath(appdata.raw)` (i.e. `{user_bucket}/appdata/{app_name}` as a path). Prepending `"files/"` to that path gives the same URL prefix the design currently builds via `f"files/{appdata}/{path}"`. The SDK also caches the bucket response internally (`_my_appdata` field), so switching avoids a raw HTTP call on every `_resolve_appdata_url` invocation in the same request.
+
+   The doc currently says (Component 1, step 3): "Resolves the bucket via `dial_client.bucket.get_raw()`. Uses `bucket_resp.appdata` if present; if `None`, raises `InvalidToolCallParameterException`…". This must be updated to reflect the chosen approach. The author should decide:
+
+   - **Option A (use `my_appdata_home`):** Replace step 3 with: "Calls `await dial_client.my_appdata_home()`. If it returns `None`, raises `InvalidToolCallParameterException(…)`. Otherwise, constructs `f"files/{home}/{path}"` where `home = str(appdata_home)`." This is the cleaner API and avoids reaching into the raw bucket response.
+   - **Option B (keep `get_raw`):** Explicitly acknowledge in the doc that `my_appdata_home()` exists and explain why the raw path is preferred (e.g., to avoid the `PurePosixPath` intermediate, or because the codebase currently uses `get_raw` everywhere). As-is, the doc silently ignores a cleaner SDK API the author has now pointed out.
+
+   The design doc must resolve this: either adopt `my_appdata_home` and update Component 1's step 3, or state the trade-off and rationale for staying with `get_raw`.
+   **Suggestion:** Adopt Option A. `my_appdata_home()` is the high-level API DIAL intended for exactly this pattern; using it removes the `BucketResponse` knowledge from application code and makes the `None`-means-no-appdata branch obvious. Update Component 1 step 3, the `_resolve_appdata_url` pseudocode, and the `_WriteFileTool` design note in Migration / Breaking changes (which currently cites `bucket_resp.appdata`) accordingly.
+
+### Suggestions
+
+1. **[Resolved]** **[UC-3 / UC-4 — clarify what each use case is isolating.]**
+   Per the Q2 answer above: UC-3's Behavior line should state the default content type explicitly (`content_type` defaults to `text/plain`), and UC-4 should note the path is intentionally flat to isolate the content-type feature. A one-sentence tweak to each use case is sufficient.
+
+2. **[Resolved]** **[Component 2 design notes — name the per-folder call cost.]**
+   Add one sentence to the "Depth bound exists" design note: "Each subfolder at each depth level requires one metadata call to Core; a depth-D listing over a tree with W subfolders per level costs O(W^D) calls in the worst case — the `max_depth <= 10` bound limits this." This directly answers Q1 for future readers and justifies the bound.
+
+### Nits
+
+1. **[Acknowledged, no action]** **[Round-3 review block — status annotation belongs in the reviewer's round, not as a forward-declaration.]**
+   Round 3 ends with "**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-07). Awaiting Round 3 review.**" (under the Round-2 Verdict). This is a status annotation the author added after their revision, but it is embedded inside the Round-2 block rather than in the Round-3 block where the author's verdict lives. It also says "Awaiting Round 3 review" but Round 3 has already landed. This is minor history noise; no action needed beyond noting that future self-annotation should go into the author's own round block, not retroactively into the previous reviewer's block.
+
+### Changes since previous round
+
+- Round-3 blocking #1 (remove large_tool_responses mentions) — **still open.** Four locations in the doc body continue to reference the offload feature (see Round-4 blocking #1 above for the exact lines).
+- Round-3 blocking #2 (evaluate `my_appdata_home`) — **still open.** Component 1 step 3 still uses `dial_client.bucket.get_raw()`. The author's question has been answered (see Round-4 answer to Q2 and blocking #2); the doc must be updated to reflect the chosen approach.
+- Round-3 Q1 (separate call per level) — **answered.** Yes; one Core metadata call per visited folder. Optional: add a sentence to Component 2 design notes.
+- Round-3 Q2 (UC-3 vs UC-4 difference) — **answered.** UC-3 isolates nested paths; UC-4 isolates content-type selection. The two should be made easier to distinguish (see suggestion #1).
+
+### Changes since Round 4
+
+- Round-4 blocking #1 (remove all `large_tool_responses` mentions) — **resolved.** Removed: header `Dependencies` line, Component 8 offload bullet, Error Handling "oversized slice" row, Tests integration-offload bullet. The word "offloaded" in the Problem Statement's discovery use case (`"an offloaded tool response"`) is retained — it describes a file type an agent might want to discover, not a dependency on the offload feature.
+- Round-4 blocking #2 (replace `bucket.get_raw()` with `my_appdata_home()`) — **resolved.** Component 1 step 3 now calls `await dial_client.my_appdata_home()`, with an explanation of the caching behavior. `f"files/{home}/{path}"` replaces `f"files/{appdata}/{path}"`. Error Handling row and Migration bullet updated to use `my_appdata_home()` terminology.
+- Round-4 suggestion #1 (UC-3/UC-4 distinction) — **resolved.** UC-3 renamed to "Agent writes into a nested path (default content type)"; trigger shows no explicit `content_type`; Behavior notes the `"text/plain"` default. UC-4 renamed to "Agent writes a non-default content type (flat path)"; trigger uses a flat path; Behavior explains the path is intentionally flat to isolate the feature.
+- Round-4 suggestion #2 (per-folder call cost) — **resolved.** "Depth bound exists" note now explicitly names the O(W^D) cost and states the `max_depth` bound as the mitigation.
+- Round-4 nit #1 (status annotation placement) — acknowledged, no action.
