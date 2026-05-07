@@ -11,7 +11,7 @@ from quickapp.common.synthetic_injection.synthetic_tool_call_injector import _ma
 
 
 class _AttachmentGetContentInjector(MessagesTransformer):
-    call_id_prefix: str = "synth_get_content_user_"
+    call_id_prefix: str = "s_"
 
     @staticmethod
     def _last_user_with_attachments(messages: list[Message]) -> tuple[int, Message] | None:

@@ -37,7 +37,7 @@ class ResponseValidator:
 
     @staticmethod
     def validate_json_schema_response(
-        content: str, response_format: dict[str, Any], ts: TestStats
+            content: str, response_format: dict[str, Any], ts: TestStats
     ) -> list[Failure]:
         """
         Validates that the response content is valid JSON and optionally matches a schema.
@@ -107,7 +107,7 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_against_schema(
-        data: Any, schema: dict[str, Any], ts: TestStats, path: str = "root"
+            data: Any, schema: dict[str, Any], ts: TestStats, path: str = "root"
     ) -> list[Failure]:
         """
         Validates data against a JSON schema (basic validation).
@@ -244,7 +244,7 @@ class ResponseValidator:
 
     @staticmethod
     def check_similarity(
-        actual: str, expected: str, failure_message: str, similarity_threshold: float
+            actual: str, expected: str, failure_message: str, similarity_threshold: float
     ) -> list[Failure]:
         """
         Checks if the similarity between actual and expected text meets the threshold.
@@ -273,7 +273,7 @@ class ResponseValidator:
 
     @staticmethod
     def check_tool_calls(
-        state: dict, expected_tool_calls: list[ToolCall], ts: TestStats
+            state: dict, expected_tool_calls: list[ToolCall], ts: TestStats
     ) -> list[Failure]:
         """
         Validates tool calls in the response against expected calls.
@@ -305,7 +305,7 @@ class ResponseValidator:
 
     @staticmethod
     def _filter_py_code_interpreter(
-        tool_call_history: list[ParsedToolCall],
+            tool_call_history: list[ParsedToolCall],
     ) -> list[ParsedToolCall]:
         """
         Filters out failed internal_code_execution_python_interpreter tool calls.
@@ -315,19 +315,19 @@ class ResponseValidator:
             tool_call
             for tool_call in tool_call_history
             if not (
-                tool_call.name == 'internal_code_execution_python_interpreter'
-                and (
-                    "FAILURE" in tool_call.result
-                    or "Python Code Interpreter session has been closed" in tool_call.result
-                )
+                    tool_call.name == 'internal_code_execution_python_interpreter'
+                    and (
+                            "FAILURE" in tool_call.result
+                            or "Python Code Interpreter session has been closed" in tool_call.result
+                    )
             )
         ]
 
     @staticmethod
     def _validate_tool_call_counts(
-        tool_call_history: list[ParsedToolCall],
-        expected_tool_calls: list[ToolCall],
-        ts: TestStats,
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
+            ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the count of each tool call.
@@ -361,9 +361,9 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_tool_call_arguments(
-        tool_call_history: list[ParsedToolCall],
-        expected_tool_calls: list[ToolCall],
-        ts: TestStats,
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
+            ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the arguments of each tool call.
@@ -397,18 +397,17 @@ class ResponseValidator:
 
     @staticmethod
     def _check_unexpected_tools(
-        tool_call_history: list[ParsedToolCall],
-        expected_tool_calls: list[ToolCall],
-        ts: TestStats,
+            tool_call_history: list[ParsedToolCall],
+            expected_tool_calls: list[ToolCall],
+            ts: TestStats,
     ) -> list[Failure]:
         """
         Checks for unexpected tool calls.
         """
         failures = []
         expected_names = {tc.name for tc in expected_tool_calls}
-        expected_names.add(
-            "internal_skills_read_skill"
-        )  # Allow internal_skills_read_skill calls in all tests as they are used for tool retrieval
+        expected_names.add("internal_skills_read_skill")
+        expected_names.add("internal_attachments_get_content")
         for actual in tool_call_history:
             if actual.name not in expected_names:
                 failures.append(
@@ -423,9 +422,9 @@ class ResponseValidator:
 
     @staticmethod
     def check_arguments(
-        actual_tool_call: ParsedToolCall,
-        expected_arguments: dict[str, Argument],
-        ts: TestStats,
+            actual_tool_call: ParsedToolCall,
+            expected_arguments: dict[str, Argument],
+            ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the arguments of a tool call against expected arguments.
@@ -454,7 +453,7 @@ class ResponseValidator:
 
     @staticmethod
     def check_attachments(
-        attachments: list[Any], expected_attachments: list[AttachmentCheck], ts: TestStats
+            attachments: list[Any], expected_attachments: list[AttachmentCheck], ts: TestStats
     ) -> list[Failure]:
         """
         Validates attachments against expected attachments.
