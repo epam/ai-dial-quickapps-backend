@@ -4,6 +4,9 @@ from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
+from quickapp.attachment_processing._attachment_get_content_injector import (
+    _AttachmentGetContentInjector,
+)
 from quickapp.attachment_processing._attachment_notification_injector import (
     _AttachmentNotificationInjector,
 )
@@ -36,6 +39,11 @@ class AttachmentProcessingModule(Module):
         binder.bind(
             _AttachmentNotificationInjector,
             to=_AttachmentNotificationInjector,
+            scope=request_scope,
+        )
+        binder.bind(
+            _AttachmentGetContentInjector,
+            to=_AttachmentGetContentInjector,
             scope=request_scope,
         )
 
@@ -80,9 +88,10 @@ class AttachmentProcessingModule(Module):
     @multiprovider
     def provide_message_transformers(
         self,
+        attachment_get_content_injector: _AttachmentGetContentInjector,
         attachment_notification_injector: _AttachmentNotificationInjector,
     ) -> list[MessagesTransformer]:
-        return [attachment_notification_injector]
+        return [attachment_get_content_injector, attachment_notification_injector]
 
     @multiprovider
     def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:

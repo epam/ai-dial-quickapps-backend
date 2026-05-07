@@ -53,15 +53,14 @@ def _attachment(
 
 
 class Test_AttachmentFilter:
-    def test_image_attachments_kept_inline(self):
+    def test_user_attachments_removed_from_custom_content(self):
         transformer = _attachment_filter()
         msg = _user_msg(
             "look at this",
             [_attachment("photo.png", "/files/photo.png", "image/png")],
         )
         result = transformer.transform([msg])
-        assert len(result[0].custom_content.attachments) == 1
-        assert result[0].custom_content.attachments[0].type == "image/png"
+        assert len(result[0].custom_content.attachments) == 0
 
     def test_non_image_attachments_removed(self):
         transformer = _attachment_filter()
@@ -89,11 +88,10 @@ class Test_AttachmentFilter:
         assert "<title>photo.png</title>" in content
         assert "<type>image/png</type>" in content
 
-        # Image attachments are kept inline AND get XML metadata injected
-        assert result[0].custom_content.attachments[0].type == "image/png"
-        assert result[0].custom_content.attachments[0].title == "photo.png"
+        # USER attachments are removed from custom_content, XML metadata remains.
+        assert len(result[0].custom_content.attachments) == 0
 
-    def test_mixed_attachments_only_images_kept(self):
+    def test_mixed_attachments_all_removed_from_custom_content(self):
         transformer = _attachment_filter()
         msg = _user_msg(
             "",
@@ -106,9 +104,7 @@ class Test_AttachmentFilter:
         )
         result = transformer.transform([msg])
         attachments = result[0].custom_content.attachments
-        assert len(attachments) == 2
-        types = {str(a.type) for a in attachments}
-        assert types == {"image/png", "image/jpeg"}
+        assert len(attachments) == 0
 
     def test_filter_does_not_mutate_original_messages(self):
         transformer = _attachment_filter()

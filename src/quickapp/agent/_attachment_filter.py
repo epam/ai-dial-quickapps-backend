@@ -73,7 +73,6 @@ class _AttachmentFilter(PreInvocationTransformer):
     def _filter(
         self,
         message: Message,
-        is_last_user_message: bool,
         is_get_content_tool: bool,
         allowed_get_content_urls: set[str],
     ) -> Message:
@@ -83,12 +82,7 @@ class _AttachmentFilter(PreInvocationTransformer):
         content = message.content if isinstance(message.content, str) else str(message.content)
         all_attachments: list[Attachment] = []
         for attachment in message.custom_content.attachments:  # type: ignore[union-attr]
-            if (
-                is_last_user_message
-                and self.__orchestrator_capabilities.orchestrator_accepts_mime_type(attachment.type)
-            ):
-                updated_attachments.append(attachment)
-            elif is_get_content_tool and self._keep_get_content_tool_attachment(
+            if is_get_content_tool and self._keep_get_content_tool_attachment(
                 attachment, allowed_get_content_urls
             ):
                 updated_attachments.append(attachment)
@@ -109,10 +103,6 @@ class _AttachmentFilter(PreInvocationTransformer):
         Filters attachments in messages based on role, tool type, and capabilities.
         Pre-computes flags for efficiency and collects allowed URLs only when needed.
         """
-        last_user_message_index = -1
-        for i, msg in enumerate(messages):
-            if msg.role == Role.USER:
-                last_user_message_index = i
         # Pre-fill flags for whether each message is a get_content tool message to avoid redundant checks in the attachment loop
         messages_is_get_content_tool_flag = [
             self._is_get_content_tool_message(messages, i) for i in range(len(messages))
@@ -131,7 +121,6 @@ class _AttachmentFilter(PreInvocationTransformer):
             (
                 self._filter(
                     copy.deepcopy(item),
-                    is_last_user_message=(i == last_user_message_index),
                     is_get_content_tool=messages_is_get_content_tool_flag[i],
                     allowed_get_content_urls=allowed_get_content_urls,
                 )

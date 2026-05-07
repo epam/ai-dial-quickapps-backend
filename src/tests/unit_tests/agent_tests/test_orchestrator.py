@@ -645,6 +645,51 @@ class TestBuildToolExecutionHistory:
         assert len(result) == 2
         assert all(r["role"] != "assistant" or "tool_calls" in r for r in result)
 
+    def test_history_includes_synthetic_get_content_pair_in_current_turn(self):
+        messages = [
+            Message(role=Role.USER, content="first"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-old", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(role=Role.TOOL, content='{"ok": true}', tool_call_id="tc-old"),
+            Message(role=Role.ASSISTANT, content="answer one"),
+            Message(role=Role.USER, content="second"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-synth", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(
+                role=Role.TOOL,
+                content='{"ok": true, "url": "files/bucket/new.pdf"}',
+                tool_call_id="tc-synth",
+                custom_content=CustomContent(
+                    attachments=[
+                        Attachment(
+                            title="new.pdf",
+                            type="application/pdf",
+                            url="files/bucket/new.pdf",
+                        )
+                    ]
+                ),
+            ),
+            Message(role=Role.ASSISTANT, content="answer two"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-synth"
+        assert result[1]["role"] == "tool"
+        assert result[1]["tool_call_id"] == "tc-synth"
+
     def test_strip_get_content_attachments_keeps_other_custom_content_fields(self):
         orchestrator = _make_orchestrator([])
         history: list[dict[str, object]] = [

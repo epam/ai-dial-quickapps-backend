@@ -2,7 +2,7 @@
 
 The pipeline runs transformers sequentially via _MessagesSetup:
 
-    _AddSystemPromptTransformer -> _AttachmentNotificationInjector
+    _AddSystemPromptTransformer -> _AttachmentGetContentInjector -> _AttachmentNotificationInjector
 
 - _AddSystemPromptTransformer ensures a system message exists at the start of the conversation.
 - _AttachmentNotificationInjector handles admin-configured context files by injecting
@@ -17,7 +17,10 @@ from injector import Binder
 from starlette.testclient import TestClient
 
 from quickapp.application._messages_setup import _MessagesSetup
-from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.attachment_processing._tool_configs import (
+    AVAILABLE_CONTEXT_TOOL_NAME,
+    GET_CONTENT_TOOL_CONFIG,
+)
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
@@ -94,12 +97,19 @@ def test_user_attachment_text_and_context_tool_call():
 
         result = await messages_setup.run_transformers(messages_setup.extract_tool_calls(messages))
 
-        # Original message + 2 synthetic messages for context
-        assert len(result) == 3
+        # Original message + 2 synthetic get_content messages + 2 synthetic context messages
+        assert len(result) == 5
+
+        get_content_tool_name = GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.name
+        assert result[1].tool_calls[0].function.name == get_content_tool_name
+        assert result[2].role == Role.TOOL
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == "/files/doc.pdf"
 
         # Context notified via synthetic tool call
-        assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
-        data = json.loads(result[2].content)
+        assert result[3].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
+        data = json.loads(result[4].content)
         assert data["entries"][0]["title"] == "ref.csv"
 
         return {"message": "success"}
