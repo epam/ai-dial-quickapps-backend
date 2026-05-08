@@ -4,7 +4,7 @@ import warnings
 
 from aidial_sdk.chat_completion import Message, Role, ToolCall
 from aidial_sdk.utils.pydantic import ExtraAllowModel
-from injector import inject
+from injector import inject, ProviderOf
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -22,13 +22,14 @@ class _MessagesSetup:
 
     def __init__(
         self,
-        transformers: list[MessagesTransformer],
+        transformers_provider: ProviderOf[list[MessagesTransformer]],
     ):
-        self.__transformers = transformers
-        logger.debug(f"Messages transformers: {transformers}")
+        self.__transformers_provider = transformers_provider
 
     async def run_transformers(self, messages: list[Message]) -> list[Message]:
-        for transformer in self.__transformers:
+        transformers = self.__transformers_provider.get()
+        logger.debug(f"Messages transformers: {transformers}")
+        for transformer in transformers:
             messages = await transformer.transform(messages)
         return messages
 

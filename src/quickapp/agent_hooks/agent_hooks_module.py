@@ -1,6 +1,6 @@
 import logging
 
-from injector import Module, multiprovider
+from injector import Module, multiprovider, ProviderOf
 
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -18,29 +18,29 @@ class AgentHooksModule(Module):
     @multiprovider
     def _provide_messages_transformers(
         self,
-        app_config: ApplicationConfig,
-        tools: list[StagedBaseTool],
+        app_config_provider: ProviderOf[ApplicationConfig],
+        tools_provider: ProviderOf[list[StagedBaseTool]],
     ) -> list[MessagesTransformer]:
-        for entry in app_config.hooks or []:
+        for entry in app_config_provider.get().hooks or []:
             if entry.event != HookEvent.ON_REQUEST_START:
                 logger.error(
                     "Hook %r with event %r is not yet supported — skipping",
                     entry.name,
                     entry.event,
                 )
-        return self._build(app_config, tools, HookEvent.ON_REQUEST_START)
+        return self._build(app_config_provider, tools_provider, HookEvent.ON_REQUEST_START)
 
     @staticmethod
     def _build(
-        app_config: ApplicationConfig,
-        tools: list[StagedBaseTool],
+        app_config_provider: ProviderOf[ApplicationConfig],
+        tools_provider: ProviderOf[list[StagedBaseTool]],
         event: HookEvent,
     ) -> list[MessagesTransformer]:
         result: list[MessagesTransformer] = []
-        for entry in app_config.hooks or []:
+        for entry in app_config_provider.get().hooks or []:
             if entry.event != event:
                 continue
             match entry:
                 case ToolCallHookConfig():
-                    result.append(_ConfigDrivenToolCallHook(tools, entry))
+                    result.append(_ConfigDrivenToolCallHook(tools_provider.get(), entry))
         return result
