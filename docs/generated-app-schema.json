@@ -1358,12 +1358,7 @@
     },
     "HookEvent": {
       "enum": [
-        "on_request_start",
-        "on_pre_llm",
-        "on_pre_tool_use",
-        "on_post_tool_use",
-        "on_iteration_end",
-        "on_completion"
+        "on_request_start"
       ],
       "title": "HookEvent",
       "type": "string"

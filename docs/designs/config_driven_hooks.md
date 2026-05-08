@@ -89,14 +89,16 @@ Future hook variants (e.g. guards at `on_pre_tool_use`, observers at `on_complet
 
 `HookEvent` values:
 
-| Value | Fires at |
-|---|---|
-| `on_request_start` | After initializers, before the first orchestrator iteration |
-| `on_pre_llm` | Start of each `_run_iteration`, before the LLM call |
-| `on_pre_tool_use` | `ToolExecutor.execute`, before `tool.arun` |
-| `on_post_tool_use` | After `tool.arun`, before result enrichers |
-| `on_iteration_end` | End of each `_run_iteration` |
-| `on_completion` | After `Orchestrator.invoke` returns |
+| Value | Fires at | Status |
+|---|---|---|
+| `on_request_start` | After initializers, before the first orchestrator iteration | ✅ In enum, wired |
+| `on_pre_llm` | Start of each `_run_iteration`, before the LLM call | ❌ Not in enum yet (deferred) |
+| `on_pre_tool_use` | `ToolExecutor.execute`, before `tool.arun` | ❌ Not in enum yet (deferred) |
+| `on_post_tool_use` | After `tool.arun`, before result enrichers | ❌ Not in enum yet (deferred) |
+| `on_iteration_end` | End of each `_run_iteration` | ❌ Not in enum yet (deferred) |
+| `on_completion` | After `Orchestrator.invoke` returns | ❌ Not in enum yet (deferred) |
+
+Deferred events are commented out in `HookEvent` — they are not accepted by the schema and cannot be specified in manifests until wired.
 
 **Change:** New file `config/hooks.py`.
 
@@ -200,13 +202,13 @@ with explicit arguments.
 | `HookEvent` | DI list contributed to | Status |
 |---|---|---|
 | `on_request_start` | `list[MessagesTransformer]` | ✅ Supported |
-| `on_pre_llm` | `list[PreInvocationTransformer]` | ❌ Deferred (`PreInvocationTransformer.transform()` is synchronous; `tool.arun()` is async — bridging requires running in an event loop or restructuring the interface) |
-| `on_pre_tool_use` | *(future seam)* | ❌ Deferred |
-| `on_post_tool_use` | *(future seam)* | ❌ Deferred |
-| `on_iteration_end` | *(future seam)* | ❌ Deferred |
-| `on_completion` | *(future seam)* | ❌ Deferred |
+| `on_pre_llm` | `list[PreInvocationTransformer]` | ❌ Deferred — not in `HookEvent` enum yet (`PreInvocationTransformer.transform()` is synchronous; bridging `tool.arun()` requires an event loop or interface restructuring) |
+| `on_pre_tool_use` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
+| `on_post_tool_use` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
+| `on_iteration_end` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
+| `on_completion` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
 
-Unsupported event+kind combinations log an error and are skipped (resilient degradation).
+Deferred events are rejected at schema-validation time (Pydantic rejects unknown `HookEvent` values) — they never reach the module.
 
 **Semantics:**
 
@@ -279,16 +281,12 @@ one branch in `_build`.
   in a future iteration.
 - **Content templating.** Arguments and `static` content are treated as literals. Dynamic rendering
   (e.g. Jinja templates) is deferred.
-- **Suppressing stage output for injected tool calls.** `StagedToolSyntheticInjector` calls
-  `tool.arun()`, which may produce visible stages. Hiding stage output for background injections is
-  deferred (tracked in the predecessor design as well).
 - **`on_pre_llm` and beyond for `ToolCallHookConfig`.** `on_request_start` is fully wired.
   `on_pre_llm` is blocked by `PreInvocationTransformer.transform()` being synchronous while
-  `tool.arun()` is async — bridging requires running in an event loop or restructuring the interface. Remaining events need new orchestrator seams. All are deferred;
-  `AgentHooksModule._build` logs an error and skips any unsupported event+kind combination.
-- **Structured validation for unsupported `HookEvent` × `kind` combinations.** Currently logged
-  and skipped at runtime. Future work: surface this as a structured config validation error
-  (Pydantic `@model_validator` → 422 at manifest parse) so operators get early feedback.
+  `tool.arun()` is async — bridging requires running in an event loop or restructuring the interface.
+  Remaining events need new orchestrator seams. All deferred events are commented out in `HookEvent`
+  so they are rejected at schema-validation time; no runtime degradation path is needed until they
+  are wired.
 
 ---
 
