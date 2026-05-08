@@ -8,11 +8,11 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 
 class HookEvent(StrEnum):
     ON_REQUEST_START = "on_request_start"
-    ON_PRE_LLM = "on_pre_llm"
-    ON_PRE_TOOL_USE = "on_pre_tool_use"
-    ON_POST_TOOL_USE = "on_post_tool_use"
-    ON_ITERATION_END = "on_iteration_end"
-    ON_COMPLETION = "on_completion"
+    # ON_PRE_LLM = "on_pre_llm"
+    # ON_PRE_TOOL_USE = "on_pre_tool_use"
+    # ON_POST_TOOL_USE = "on_post_tool_use"
+    # ON_ITERATION_END = "on_iteration_end"
+    # ON_COMPLETION = "on_completion"
 
 
 class _BaseHookConfig(BaseModel):
