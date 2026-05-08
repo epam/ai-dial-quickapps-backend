@@ -4,7 +4,7 @@ import warnings
 
 from aidial_sdk.chat_completion import Message, Role, ToolCall
 from aidial_sdk.utils.pydantic import ExtraAllowModel
-from injector import inject, ProviderOf
+from injector import ProviderOf, inject
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common.abstract.base_transformer import MessagesTransformer

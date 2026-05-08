@@ -1,6 +1,6 @@
 import logging
 
-from injector import Module, multiprovider, ProviderOf
+from injector import Module, ProviderOf, multiprovider
 
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.common.abstract.base_transformer import MessagesTransformer
