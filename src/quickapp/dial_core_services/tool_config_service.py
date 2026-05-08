@@ -10,6 +10,7 @@ from pydantic import SecretStr
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
+from quickapp.common.utils import sanitize_toolname
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -60,14 +61,14 @@ class ToolConfigCoreService:
             )
         return self.__dial_client_provider.get()
 
-    async def get_basic_tool_config(
-        self, deployment: str, api_key: SecretStr | None = None
-    ) -> DialDeploymentTool:
-        dial_client = self._resolve_dial_client(api_key)
+    @staticmethod
+    async def _fetch_deployment_or_application(
+        dial_client: AsyncDial, deployment: str
+    ) -> Deployment | Application:
         deployment_model: Deployment | None = None
         application_model: Application | None = None
         try:
-            logger.debug(f"Getting deployment tool config for {deployment}")
+            logger.debug(f"Getting deployment metadata for {deployment}")
             deployment_model = await dial_client.deployments.get(deployment)
         except DialException as e:
             if e.status_code == 404:
@@ -76,25 +77,28 @@ class ToolConfigCoreService:
             else:
                 raise
 
-        config_schema: dict[str, Any] | None = None
-        if (
-            deployment_model
-            and deployment_model.features
-            and deployment_model.features.configuration
-        ):
-            logger.debug(f"Getting deployment config for {deployment}")
-            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
-        elif (
-            application_model
-            and application_model.features
-            and application_model.features.configuration
-        ):
-            logger.debug(f"Getting application config for {deployment}")
-            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
-
         model = deployment_model or application_model
         if model is None:
             raise RuntimeError(f"Neither deployment nor application found for '{deployment}'")
+        return model
+
+    async def get_deployment_metadata(
+        self, deployment: str, api_key: SecretStr | None = None
+    ) -> Deployment | Application:
+        dial_client = self._resolve_dial_client(api_key)
+        return await self._fetch_deployment_or_application(dial_client, deployment)
+
+    async def get_basic_tool_config(
+        self, deployment: str, api_key: SecretStr | None = None
+    ) -> DialDeploymentTool:
+        dial_client = self._resolve_dial_client(api_key)
+        model = await self._fetch_deployment_or_application(dial_client, deployment)
+
+        config_schema: dict[str, Any] | None = None
+        if model.features and model.features.configuration:
+            logger.debug(f"Getting configuration schema for {deployment}")
+            config_schema = await dial_client.deployments.get_configuration_schema(deployment)
+
         return ToolConfigCoreService._convert_to_openai_tool_format(model, config_schema)
 
     @staticmethod
@@ -111,13 +115,23 @@ class ToolConfigCoreService:
         Returns:
             A DialDeploymentTool representing the final tool configuration.
         """
+
+        # Deployment display_name could contain anything including Cyrillic symbols
+        # deployment.id is already quoted url string like applications/{hash}/deployment%20name.
+        # To make it more readable:
+        # - replace %20(space) with _
+        # - remove bucket prefix
+        deployment_name = sanitize_toolname(
+            f"{deployment.id.split('/')[-1].replace('%20', '_')}_tool"
+        )
+
         output_tool = DialDeploymentTool(
-            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment.id}: ")),
+            display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
             deployment=DialDeploymentConfig(name=deployment.id),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
-                    name=f"{deployment.id.replace('-', '_')}_tool",
+                    name=deployment_name,
                     description=deployment.description or "",
                     parameters=OpenAiToolFunctionParameters(
                         type=JsonTypeEnum.object, properties={}, required=[]

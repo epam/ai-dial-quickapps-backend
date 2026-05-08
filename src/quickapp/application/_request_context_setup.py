@@ -11,6 +11,11 @@ from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
+from ._messages_setup import _MessagesSetup
+from ._request_context import _RequestContext
+
+logger = logging.getLogger(__name__)
+
 
 def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CHANNEL_ID:
     """Extract the client channel ID from forwarded headers (case-insensitive)."""
@@ -19,12 +24,6 @@ def _extract_client_channel_id(forwarded_headers: ForwardedHeaders) -> CLIENT_CH
             if key.lower() == CLIENT_CHANNEL_HEADER.lower():
                 return value
     return None
-
-
-from ._messages_setup import _MessagesSetup
-from ._request_context import _RequestContext
-
-logger = logging.getLogger(__name__)
 
 
 @inject
@@ -77,4 +76,4 @@ class _RequestContextSetup:
         context = self.__context_provider.get()
         context.messages = self.__messages_setup.extract_tool_calls(messages)
         transformed = await self.__messages_setup.run_transformers(context.messages)
-        context._replace_messages(transformed)
+        context.replace_messages(transformed)

@@ -6,6 +6,7 @@ from urllib.parse import unquote
 import httpx
 from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
+from mcp.shared.exceptions import McpError
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
@@ -48,6 +49,37 @@ def _human_readable_dial_id(dial_id: str) -> str:
     return unquote(last_part)
 
 
+def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
+    """Walk nested BaseExceptionGroups and return their leaf exceptions in order."""
+    if isinstance(exc, BaseExceptionGroup):
+        leaves: list[BaseException] = []
+        for sub in exc.exceptions:
+            leaves.extend(_flatten_exceptions(sub))
+        return leaves
+    return [exc]
+
+
+def _format_leaf_for_user(label: str, exc: BaseException) -> str:
+    """Render a leaf exception into a single-line user-facing message."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        status = getattr(exc.response, "status_code", "")
+        reason = getattr(exc.response, "reason_phrase", "")
+        return f"HTTP error for {label}: {status} {reason}".rstrip()
+    if isinstance(exc, McpError):
+        # The MCP streamable_http client converts upstream HTTP 404 into
+        # McpError("Session terminated") (mcp/client/streamable_http.py),
+        # so the underlying httpx error never propagates. Surface this case
+        # distinctly instead of leaking the raw "Session terminated" string.
+        message = exc.error.message
+        if message == "Session terminated":
+            return (
+                f"MCP endpoint for toolset '{label}' did not respond as an MCP server "
+                f"(session terminated — the upstream may have returned 404)"
+            )
+        return f"MCP error for {label}: {message}"
+    return f"{type(exc).__name__}: {exc}"
+
+
 _LOGIN_RESULT_MESSAGES: dict[LoginResult, str] = {
     LoginResult.NO_CHANNEL: "Toolset '{name}' requires sign-in, but no client channel is available",
     LoginResult.DENIED: "Sign-in was denied for toolset '{name}'",
@@ -74,7 +106,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
 class _MCPToolInitializer(CompletionInitializer):
     def __init__(
         self,
-        toolset_list: list[MCPToolSet | DialMCPToolSet],
+        toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]],
         mcp_context: _MCPToolingContext,
         dial_setting: DialSettings,
         api_key_provider: ProviderOf[DIAL_API_KEY],
@@ -84,7 +116,11 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
     ):
-        self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
+        # Resolved lazily in initialize() because dial_app_tooling contributes
+        # to this multibinder only after _DialAppResolver runs.
+        self.__toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]] = (
+            toolset_list_provider
+        )
         self.__mcp_context: _MCPToolingContext = mcp_context
         self.__dial_setting: DialSettings = dial_setting
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
@@ -114,24 +150,27 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        if not self.__toolset_list:
+        toolsets = self.__toolset_list_provider.get()
+        if not toolsets:
             return
 
-        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
+        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in toolsets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        unauthorized = self._classify_initialization_results(results)
+        unauthorized = self._classify_initialization_results(toolsets, results)
         if not unauthorized:
             return
 
         await self._interactive_login_and_retry(unauthorized)
 
     def _classify_initialization_results(
-        self, results: list[BaseException | None]
+        self,
+        toolsets: list[MCPToolSet | DialMCPToolSet],
+        results: list[BaseException | None],
     ) -> list[DialMCPToolSet]:
         """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
         unauthorized: list[DialMCPToolSet] = []
-        for ts, result in zip(self.__toolset_list, results):
+        for ts, result in zip(toolsets, results):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):
@@ -271,29 +310,18 @@ class _MCPToolInitializer(CompletionInitializer):
             logger.error(f"HTTP error: {e}", exc_info=True)
             self.__mcp_context.append_exception(
                 ToolInitializationException(
-                    message=str(e),
+                    message=_format_leaf_for_user(label, e),
                     toolset_name=label,
-                    details=f"HTTP error for {label}: {getattr(e.response, 'status_code', '')} {getattr(e.response, 'reason_phrase', '')}",
                 )
             )
         except Exception as e:
             label = _toolset_label_for_error(toolset_info)
             logger.error(e, exc_info=True)
-            details = ""
-            if hasattr(e, "exceptions"):
-                details_list = []
-                for sub_e in e.exceptions:
-                    if isinstance(sub_e, httpx.HTTPStatusError):
-                        details_list.append(
-                            f"HTTP error for {label}: {getattr(sub_e.response, 'status_code', '')} {getattr(sub_e.response, 'reason_phrase', '')}"
-                        )
-                    else:
-                        details_list.append(str(sub_e))
-                details = "\n".join(details_list)
+            detail_lines = [_format_leaf_for_user(label, leaf) for leaf in _flatten_exceptions(e)]
             self.__mcp_context.append_exception(
                 ToolInitializationException(
-                    message=str(e),
+                    message=detail_lines[0],
                     toolset_name=label,
-                    details=details,
+                    details="\n".join(detail_lines),
                 )
             )

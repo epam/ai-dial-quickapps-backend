@@ -64,7 +64,9 @@ A request-scoped context is created to hold:
 ### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
-definitions from the predefined configuration files.
+definitions from the predefined configuration files. Predefined references with an `override` field have the
+operator-supplied JSON Merge Patch (RFC 7396) applied to the loaded template body before pydantic validation; merge
+or validation failures surface as `ConfigResolutionException` and render in the *Initialization issues* stage.
 
 ### 5. Completion Initialization
 
@@ -298,8 +300,10 @@ The processor builds an aggregated result containing all accumulated data for th
 The system uses two separate mechanisms to inform the agent about available files:
 
 - **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
-  (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
-  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
+  (`<attachments>`) to USER and TOOL message content. Each attachment is represented as an `<attachment>`
+  element with `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements. ASSISTANT
+  messages are exempt: those attachments originated from the model's own prior output, and re-presenting
+  them as XML conditions the model to mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
@@ -356,8 +360,9 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to user messages for all attachments and keeps only supported types
-  inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: Appends text metadata to USER and TOOL messages for all attachments and keeps only
+  supported types inline in `custom_content` for vision model support. ASSISTANT messages are skipped to
+  avoid conditioning the model to emit the metadata format. Used in `AssistantInvoker`, not a pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
@@ -370,22 +375,27 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 13 specialized DI modules:
+The application is composed of 15 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
-5. **MCP Tooling Module**: MCP server tool construction
-6. **Internal Tool Module**: Python interpreter, content downloader
-7. **Starters Module**: UI starter button configuration
-8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
-10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
-11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
-12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
-13. **Skills Module**: Skill reader tool, agent skills provider, skills registry
-14. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
+5. **DIAL App Tooling Module**: Routing resolver for `DialAppToolSet` entries. Fetches deployment metadata once
+   per request, inspects `features.mcp`, and hands either a fully-formed `MCPToolSet` (URL
+   `/v1/toolset/{deployment_id}/mcp` — current DIAL Core path, slated to move to
+   `/v1/deployments/{deployment_id}/mcp`) or a customised `DialDeploymentTool` to the MCP / Deployment
+   initializers for execution.
+6. **MCP Tooling Module**: MCP server tool construction
+7. **Internal Tool Module**: Python interpreter, content downloader
+8. **Starters Module**: UI starter button configuration
+9. **Configuration Support API Module**: Configuration validation endpoints
+10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+13. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
+14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+15. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 

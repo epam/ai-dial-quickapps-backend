@@ -12,14 +12,18 @@ from quickapp.common import (
     StagedBaseTool,
 )
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.tools.deployment import DialDeploymentTool
+from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
+from quickapp.config.toolsets.deployment import DeploymentToolSet
 
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
-from ._di_types import DialDeploymentToolCacheService
 from .deployment_stage_wrapper import DeploymentStageWrapper
 from .dial_completion_service import DialCompletionService
 
@@ -78,3 +82,27 @@ class DialDeploymentToolingModule(Module):
         self, context: _DeploymentToolingContext
     ) -> list[InitializationException]:
         return context.exceptions
+
+    @multiprovider
+    def __provide_dial_deployment_tools(
+        self, app_config: ApplicationConfig
+    ) -> list[DialDeploymentTool]:
+        return [
+            tool
+            for ts in (app_config.tool_sets or [])
+            if isinstance(ts, DeploymentToolSet) and ts.enabled
+            for tool in ts.tools
+            if isinstance(tool, DialDeploymentTool) and tool.enabled
+        ]
+
+    @multiprovider
+    def __provide_dial_deployment_simple_tools(
+        self, app_config: ApplicationConfig
+    ) -> list[DialDeploymentSimpleTool]:
+        return [
+            tool
+            for ts in (app_config.tool_sets or [])
+            if isinstance(ts, DeploymentToolSet) and ts.enabled
+            for tool in ts.tools
+            if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled
+        ]
