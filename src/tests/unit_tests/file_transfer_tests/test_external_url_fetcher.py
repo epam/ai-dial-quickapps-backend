@@ -13,6 +13,7 @@ from quickapp.file_transfer._external_url_fetcher import (
     FetchedBytes,
     _derive_filename,
     _placeholder_filename,
+    _SsrfGuardTransport,
 )
 from tests.unit_tests.common.common import noop_timeout_resolver
 
@@ -147,8 +148,6 @@ async def test_size_limit_via_streaming_when_no_content_length():
 
 @pytest.mark.asyncio
 async def test_ssrf_block_when_host_resolves_to_loopback():
-    from quickapp.file_transfer._external_url_fetcher import _SsrfGuardTransport
-
     transport = _SsrfGuardTransport()
     request = httpx.Request("GET", "https://internal.example/x")
     with patch(_RESOLVE_PATH, new=_patch_resolve(["127.0.0.1"])):
@@ -159,8 +158,6 @@ async def test_ssrf_block_when_host_resolves_to_loopback():
 
 @pytest.mark.asyncio
 async def test_ssrf_block_dns_rebinding_mixed_addresses():
-    from quickapp.file_transfer._external_url_fetcher import _SsrfGuardTransport
-
     transport = _SsrfGuardTransport()
     request = httpx.Request("GET", "https://example.com/x")
     with patch(_RESOLVE_PATH, new=_patch_resolve(["8.8.8.8", "127.0.0.1"])):
@@ -171,11 +168,44 @@ async def test_ssrf_block_dns_rebinding_mixed_addresses():
 
 @pytest.mark.asyncio
 async def test_unresolvable_host_treated_as_ssrf_block():
-    from quickapp.file_transfer._external_url_fetcher import _SsrfGuardTransport
-
     transport = _SsrfGuardTransport()
     request = httpx.Request("GET", "https://nope.invalid/x")
     with patch(_RESOLVE_PATH, new=_patch_resolve([])):
+        with pytest.raises(ExternalFetchError) as excinfo:
+            await transport.handle_async_request(request)
+    assert excinfo.value.reason == "ssrf_block"
+
+
+@pytest.mark.parametrize(
+    "addr",
+    [
+        "0.0.0.0",
+        "100.64.0.1",
+        "192.0.2.1",
+        "198.51.100.1",
+        "203.0.113.1",
+        "224.0.0.1",
+        "fc00::1",
+        "ff02::1",
+        "::ffff:127.0.0.1",
+        "::ffff:10.0.0.1",
+    ],
+)
+@pytest.mark.asyncio
+async def test_ssrf_block_for_extended_ranges(addr: str):
+    transport = _SsrfGuardTransport()
+    request = httpx.Request("GET", "https://anywhere.example/x")
+    with patch(_RESOLVE_PATH, new=_patch_resolve([addr])):
+        with pytest.raises(ExternalFetchError) as excinfo:
+            await transport.handle_async_request(request)
+    assert excinfo.value.reason == "ssrf_block"
+
+
+@pytest.mark.asyncio
+async def test_ssrf_block_when_address_unparseable():
+    transport = _SsrfGuardTransport()
+    request = httpx.Request("GET", "https://anywhere.example/x")
+    with patch(_RESOLVE_PATH, new=_patch_resolve(["not-an-ip"])):
         with pytest.raises(ExternalFetchError) as excinfo:
             await transport.handle_async_request(request)
     assert excinfo.value.reason == "ssrf_block"

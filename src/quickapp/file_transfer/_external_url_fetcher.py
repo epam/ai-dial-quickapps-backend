@@ -19,17 +19,6 @@ from quickapp.common.utils import filename_from_url_path
 logger = logging.getLogger(__name__)
 
 
-_BLOCKED_NETWORKS: list[ipaddress.IPv4Network | ipaddress.IPv6Network] = [
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fe80::/10"),
-]
-
-
 class FetchedBytes(BaseModel):
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
@@ -86,12 +75,41 @@ class ExternalFetchDisabledError(Exception):
         )
 
 
+_CGNAT_NETWORK = ipaddress.ip_network("100.64.0.0/10")
+
+
 def _is_blocked_address(addr: str) -> bool:
+    """Return True if the address is unsafe for external egress.
+
+    Uses stdlib classification flags rather than a hand-curated CIDR list so
+    most IANA-defined ranges (loopback, RFC1918, link-local, multicast,
+    reserved/TEST-NET, unspecified) are inherited automatically. CGNAT
+    (RFC 6598, ``100.64/10``) is not in stdlib ``is_private`` and is checked
+    explicitly. IPv4-mapped IPv6 addresses are unwrapped to IPv4 first so
+    ``[::ffff:127.0.0.1]`` does not bypass the loopback check. Unparseable
+    addresses fail closed — ``_resolve_addresses`` only ever passes strings
+    produced by ``getaddrinfo``, so an unexpected shape is treated as a
+    guard violation rather than silently allowed through.
+    """
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
-        return False
-    return any(ip in net for net in _BLOCKED_NETWORKS)
+        return True
+
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
+        ip = ip.ipv4_mapped
+
+    if isinstance(ip, ipaddress.IPv4Address) and ip in _CGNAT_NETWORK:
+        return True
+
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
 
 
 async def _resolve_addresses(host: str) -> list[str]:
@@ -111,12 +129,26 @@ async def _resolve_addresses(host: str) -> list[str]:
 
 
 class _SsrfGuardTransport(httpx.AsyncHTTPTransport):
-    """Custom transport that SSRF-checks the destination before the TCP connect.
+    """Custom transport that SSRF-checks every redirect target before delegating.
 
-    Re-runs on each redirect because httpx re-enters the transport per hop.
-    Rejects if **any** address resolution returns a blocked range — DNS
-    rebinding defence.
+    Resolves the request host via :func:`_resolve_addresses` and rejects if any
+    returned address is in a blocked range (see :func:`_is_blocked_address`).
+    The check re-runs on each redirect because httpx re-enters the transport
+    per hop.
+
+    **Scope and known limitation.** This guard catches accidental SSRF and
+    multi-answer DNS responses where any address is internal. It does **not**
+    defend against active DNS rebinding: httpx re-resolves DNS at the TCP
+    connect step after this check returns, so an authoritative DNS server
+    that returns different answers between our resolution and httpx's can
+    still steer the connection to a private IP. A resolver-pinning fix
+    (one DNS resolution, pinned for the duration of the request) is tracked
+    as a follow-up.
     """
+
+    # TODO: pin the validated IP for the actual TCP connect to close the
+    # DNS-rebinding gap. Implementation will likely require a custom
+    # httpcore network backend or a scoped getaddrinfo override.
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
