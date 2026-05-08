@@ -8,9 +8,7 @@ from ._helpers import make_metadata, make_resolver
 
 
 @pytest.mark.asyncio
-async def test_mcp_toolset_url_uses_current_toolset_scoped_path():
-    """Current DIAL Core exposes the MCP endpoint at the toolset-scoped path keyed on
-    deployment id. Will move to /v1/deployments/{id}/mcp once the DIAL Core change lands."""
+async def test_mcp_toolset_url_uses_correct_path():
     toolset = DialAppToolSet(name="app", deployment_id="my-deployment")
     resolver, context, _, _ = make_resolver(
         toolsets=[toolset],
@@ -21,7 +19,7 @@ async def test_mcp_toolset_url_uses_current_toolset_scoped_path():
     await resolver.resolve()
 
     built = context.resolved_mcp_toolsets[0]
-    assert built.mcp_server_info.url == "https://dial.example/v1/toolset/my-deployment/mcp"
+    assert built.mcp_server_info.url == "https://dial.example/v1/deployments/my-deployment/mcp"
 
 
 @pytest.mark.asyncio
