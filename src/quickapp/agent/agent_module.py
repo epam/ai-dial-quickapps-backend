@@ -87,7 +87,7 @@ class AgentModule(Module):
         azure_client = AsyncAzureOpenAI(
             azure_endpoint=dial_settings.url,
             api_key=api_key.get_secret_value(),
-            azure_deployment=config.orchestrator.deployment.name,
+            azure_deployment=config.orchestrator.deployment.deployment_id,
             api_version=dial_settings.api_version,
             default_headers=headers,
         )

@@ -9,7 +9,7 @@ def test_provide_openai_client_forwards_bearer_to_default_headers():
     module = AgentModule()
     dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
     config = MagicMock()
-    config.orchestrator.deployment.name = "orchestrator-model"
+    config.orchestrator.deployment.deployment_id = "orchestrator-model"
 
     with patch("quickapp.agent.agent_module.AsyncAzureOpenAI") as openai_client:
         openai_client.return_value = MagicMock()
@@ -32,7 +32,7 @@ def test_provide_openai_client_handles_missing_bearer_without_authorization_head
     module = AgentModule()
     dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
     config = MagicMock()
-    config.orchestrator.deployment.name = "orchestrator-model"
+    config.orchestrator.deployment.deployment_id = "orchestrator-model"
 
     with patch("quickapp.agent.agent_module.AsyncAzureOpenAI") as openai_client:
         openai_client.return_value = MagicMock()
