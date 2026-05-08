@@ -3,7 +3,7 @@ import logging.config
 
 import uvicorn.logging
 
-from quickapp.config._otel_log_filter import OtelDefaultsFilter
+from quickapp.config._otel_aware_formatter import OtelAwareFormatter
 from quickapp.config.logging_settings import LoggingSettings
 
 # Loggers that LoggingConfig pins to the shared "console" handler with
@@ -34,9 +34,7 @@ class LoggingConfig:
         return {
             "fmt": self._settings.log_format,
             "datefmt": self._settings.log_date_format,
-            # None lets uvicorn autodetect TTY — avoids ANSI bytes when stdout
-            # is piped to a log shipper.
-            "use_colors": None,
+            "use_colors": True,
         }
 
     def _get_logging_config(self) -> dict:
@@ -55,14 +53,9 @@ class LoggingConfig:
         return {
             "version": 1,
             "disable_existing_loggers": False,
-            "filters": {
-                "otel_defaults": {
-                    "()": "quickapp.config._otel_log_filter.OtelDefaultsFilter",
-                },
-            },
             "formatters": {
                 "default": {
-                    "()": "uvicorn.logging.DefaultFormatter",
+                    "()": "quickapp.config._otel_aware_formatter.OtelAwareFormatter",
                     **self._formatter_kwargs(),
                 },
             },
@@ -70,7 +63,6 @@ class LoggingConfig:
                 "console": {
                     "class": "logging.StreamHandler",
                     "formatter": "default",
-                    "filters": ["otel_defaults"],
                 },
             },
             "root": {
@@ -99,7 +91,6 @@ class LoggingConfig:
         aidial_sdk_logger.setLevel(self._settings.log_level)
 
         handler = logging.StreamHandler()
-        handler.setFormatter(uvicorn.logging.DefaultFormatter(**self._formatter_kwargs()))
-        handler.addFilter(OtelDefaultsFilter())
+        handler.setFormatter(OtelAwareFormatter(**self._formatter_kwargs()))
 
         aidial_sdk_logger.handlers = [handler]

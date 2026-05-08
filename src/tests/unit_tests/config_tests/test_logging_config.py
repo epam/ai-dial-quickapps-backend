@@ -5,7 +5,7 @@ import re
 import pytest
 import uvicorn.logging
 
-from quickapp.config._otel_log_filter import OtelDefaultsFilter
+from quickapp.config._otel_aware_formatter import OtelAwareFormatter
 from quickapp.config.logging_config import MANAGED_LOGGER_NAMES, LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 
@@ -19,6 +19,15 @@ def _make_record(name: str = "quickapp.test", message: str = "hi") -> logging.Lo
         msg=message,
         args=None,
         exc_info=None,
+    )
+
+
+def _build_formatter() -> OtelAwareFormatter:
+    settings = LoggingSettings()
+    return OtelAwareFormatter(
+        fmt=settings.log_format,
+        datefmt=settings.log_date_format,
+        use_colors=False,
     )
 
 
@@ -57,29 +66,43 @@ def reset_logging_state():
         logger.filters = filters
 
 
-class TestOtelDefaultsFilter:
-    def test_injects_missing_fields(self):
-        record = _make_record()
-        assert OtelDefaultsFilter().filter(record) is True
+class TestOtelAwareFormatter:
+    def test_omits_block_when_attribute_missing(self):
+        formatter = _build_formatter()
+        output = formatter.format(_make_record(message="plain"))
 
-        assert getattr(record, "otelTraceID") == "0"
-        assert getattr(record, "otelSpanID") == "0"
-        assert getattr(record, "otelServiceName") == ""
-        assert getattr(record, "otelTraceSampled") is False
+        assert "trace_id=" not in output
+        assert "span_id=" not in output
+        assert output.endswith("plain")
 
-    def test_preserves_existing_fields(self):
-        record = _make_record()
-        setattr(record, "otelTraceID", "abc123")
-        setattr(record, "otelSpanID", "def456")
-        setattr(record, "otelServiceName", "quickapps2")
-        setattr(record, "otelTraceSampled", True)
+    def test_omits_block_when_trace_id_is_zero(self):
+        record = _make_record(message="zero-trace")
+        record.otelTraceID = "0"
+        record.otelSpanID = "0"
+        record.otelServiceName = ""
+        record.otelTraceSampled = False
 
-        OtelDefaultsFilter().filter(record)
+        output = _build_formatter().format(record)
 
-        assert getattr(record, "otelTraceID") == "abc123"
-        assert getattr(record, "otelSpanID") == "def456"
-        assert getattr(record, "otelServiceName") == "quickapps2"
-        assert getattr(record, "otelTraceSampled") is True
+        assert "trace_id=" not in output
+        assert "span_id=" not in output
+        assert output.endswith("zero-trace")
+
+    def test_renders_block_when_trace_active(self):
+        record = _make_record(message="with-trace")
+        record.otelTraceID = "3fdd3958e0a9ed92c563f5af15009c15"
+        record.otelSpanID = "4cc359214676ab9a"
+        record.otelServiceName = "quickapps2"
+        record.otelTraceSampled = True
+
+        output = _build_formatter().format(record)
+
+        assert (
+            "[trace_id=3fdd3958e0a9ed92c563f5af15009c15 "
+            "span_id=4cc359214676ab9a "
+            "resource.service.name=quickapps2 "
+            "trace_sampled=True] | with-trace"
+        ) in output
 
 
 class TestLoggingConfigFormat:
@@ -89,12 +112,10 @@ class TestLoggingConfigFormat:
         logging.getLogger("quickapp.x").info("hello-world")
 
         captured = capsys.readouterr().err
-        assert "trace_id=0" in captured
-        assert "span_id=0" in captured
-        assert "resource.service.name=" in captured
-        assert "trace_sampled=False" in captured
+        assert "trace_id=" not in captured
+        assert "span_id=" not in captured
         assert " | " in captured
-        assert "hello-world" in captured
+        assert captured.rstrip().endswith("hello-world")
 
     def test_default_format_renders_with_simulated_otel_record(self, capsys, reset_logging_state):
         LoggingConfig(LoggingSettings())
@@ -103,10 +124,10 @@ class TestLoggingConfigFormat:
 
         def factory(*args, **kwargs):
             record = original_factory(*args, **kwargs)
-            setattr(record, "otelTraceID", "3fdd3958e0a9ed92c563f5af15009c15")
-            setattr(record, "otelSpanID", "4cc359214676ab9a")
-            setattr(record, "otelServiceName", "quickapps2")
-            setattr(record, "otelTraceSampled", True)
+            record.otelTraceID = "3fdd3958e0a9ed92c563f5af15009c15"
+            record.otelSpanID = "4cc359214676ab9a"
+            record.otelServiceName = "quickapps2"
+            record.otelTraceSampled = True
             return record
 
         logging.setLogRecordFactory(factory)
@@ -128,6 +149,7 @@ class TestLoggingConfigFormat:
         # The shared "console" handler is on the root logger plus child loggers.
         handler = logging.getLogger("quickapp").handlers[0]
         assert isinstance(handler, logging.StreamHandler)
+        assert isinstance(handler.formatter, OtelAwareFormatter)
         assert isinstance(handler.formatter, uvicorn.logging.DefaultFormatter)
 
         buf = io.StringIO()

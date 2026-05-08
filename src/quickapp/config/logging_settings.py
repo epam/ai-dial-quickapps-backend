@@ -5,12 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_LOG_FORMAT = (
-    "%(levelprefix)s | %(asctime)s | %(process)d | %(name)s "
-    "| [trace_id=%(otelTraceID)s span_id=%(otelSpanID)s "
-    "resource.service.name=%(otelServiceName)s trace_sampled=%(otelTraceSampled)s] "
-    "| %(message)s"
-)
+_DEFAULT_LOG_FORMAT = "%(levelprefix)s | %(asctime)s | %(process)d | %(name)s | %(otel_context)s%(message)s"  # noqa: E501
 _DEFAULT_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
