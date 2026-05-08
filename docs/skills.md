@@ -1,8 +1,4 @@
-# Agent Skills `[Preview]`
-
-> [!IMPORTANT]
-> Agent Skills is a **preview** feature. Its API and behavior may change in breaking ways without a major version bump.
-> See [Feature Lifecycle](../README.md#feature-lifecycle) for details.
+# Agent Skills
 
 Agent skills are reusable instruction modules that enhance agent capabilities. Skills follow the
 [Agent Skills](https://agentskills.io/) open standard and are defined as Markdown files with YAML frontmatter inside
@@ -125,7 +121,7 @@ optional features. The table below summarises what is and isn't supported.
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
 For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).
 
-## DIAL Prompt Skills `[Preview]`
+## DIAL Prompt Skills
 
 In addition to predefined skills bundled at build time, users can configure skills sourced from
 **DIAL prompts** — text content stored via the DIAL Core prompts API (`/v1/prompts/`). A DIAL prompt
