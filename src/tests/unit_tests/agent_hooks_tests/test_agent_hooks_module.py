@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
@@ -13,31 +14,35 @@ def _make_app_config(hooks) -> MagicMock:
     return config
 
 
+def _provider(value):
+    return SimpleNamespace(get=lambda: value)
+
+
 class TestAgentHooksModuleBuild:
     def test_returns_empty_list_when_hooks_is_none(self):
         module = AgentHooksModule()
         config = _make_app_config(None)
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert result == []
 
     def test_returns_empty_list_when_hooks_is_empty(self):
         module = AgentHooksModule()
         config = _make_app_config([])
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert result == []
 
     def test_skips_hooks_for_different_event(self):
         module = AgentHooksModule()
         hook_cfg = ToolCallHookConfig(event=HookEvent.ON_PRE_LLM, tool_name="tool")
         config = _make_app_config([hook_cfg])
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert result == []
 
     def test_returns_hook_for_matching_on_request_start(self):
         module = AgentHooksModule()
         hook_cfg = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
         config = _make_app_config([hook_cfg])
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert len(result) == 1
         assert isinstance(result[0], _ConfigDrivenToolCallHook)
 
@@ -47,7 +52,7 @@ class TestAgentHooksModuleBuild:
         cfg_b = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="tool_b")
         cfg_c = ToolCallHookConfig(event=HookEvent.ON_PRE_LLM, tool_name="tool_c")
         config = _make_app_config([cfg_a, cfg_b, cfg_c])
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert len(result) == 2
         assert all(isinstance(h, _ConfigDrivenToolCallHook) for h in result)
 
@@ -60,7 +65,7 @@ class TestAgentHooksModuleBuild:
             frequency=InjectionFrequency.ALWAYS,
         )
         config = _make_app_config([hook_cfg])
-        result = module._build(config, [], HookEvent.ON_REQUEST_START)
+        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         hook = result[0]
         assert isinstance(hook, _ConfigDrivenToolCallHook)
         assert hook._config is hook_cfg
@@ -74,7 +79,7 @@ class TestAgentHooksModuleProvideMessagesTransformers:
         hook_cfg = ToolCallHookConfig(event=HookEvent.ON_PRE_LLM, tool_name="tool")
         config = _make_app_config([hook_cfg])
         with caplog.at_level(logging.ERROR):
-            module._provide_messages_transformers(config, [])
+            module._provide_messages_transformers(_provider(config), _provider([]))
         assert any("not yet supported" in r.message for r in caplog.records)
 
 

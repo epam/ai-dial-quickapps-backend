@@ -217,24 +217,24 @@ class AgentHooksModule(Module):
     @multiprovider
     def _provide_messages_transformers(
         self,
-        app_config: ApplicationConfig,
-        tools: list[StagedBaseTool],
+        app_config_provider: ProviderOf[ApplicationConfig],
+        tools_provider: ProviderOf[list[StagedBaseTool]],
     ) -> list[MessagesTransformer]:
-        return self._build(app_config, tools, HookEvent.ON_REQUEST_START)
+        return self._build(app_config_provider, tools_provider, HookEvent.ON_REQUEST_START)
 
+    @staticmethod
     def _build(
-        self,
-        app_config: ApplicationConfig,
-        tools: list[StagedBaseTool],
+        app_config_provider: ProviderOf[ApplicationConfig],
+        tools_provider: ProviderOf[list[StagedBaseTool]],
         event: HookEvent,
     ) -> list[MessagesTransformer]:
         result = []
-        for entry in (app_config.hooks or []):
+        for entry in (app_config_provider.get().hooks or []):
             if entry.event != event:
                 continue
             match entry:
                 case ToolCallHookConfig():
-                    result.append(_ConfigDrivenToolCallHook(tools, entry))
+                    result.append(_ConfigDrivenToolCallHook(tools_provider.get(), entry))
                 case _:
                     logger.error(
                         "Hook type %r is not supported for event %r — skipping",

@@ -134,7 +134,7 @@ def make_request_completion():
 
         if config_resolver is None:
             config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
-        messages_setup = _MessagesSetup([])
+        messages_setup = _MessagesSetup(SimpleNamespace(get=lambda: []))
 
         request_context_setup = _RequestContextSetup(
             context_provider=provider,
