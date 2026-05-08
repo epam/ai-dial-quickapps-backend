@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A photorealistic, ultra-high-definition image of a Tyrannosaurus Rex dinosaur standing in a lush prehistoric jungle environment. The dinosaur has incredibly detailed, textured skin with realistic scales, scars, and subtle color variations of dark green, brown, and olive tones. Its eyes are sharp and lifelike with a piercing gaze. The scene is lit by dramatic natural sunlight filtering through towering ancient ferns and conifers, casting volumetric light rays and soft shadows. The ground is covered with moss, fallen logs, and small prehistoric plants. Water droplets glisten on the dinosaur's skin. The atmosphere is humid and misty, evoking a Cretaceous period landscape. Hyper-realistic, cinematic lighting, 8K quality, nature documentary style photography."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Fri, 24 Apr 2026 07:35:23 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-1fd797f0-232d-409d-84b2-4caaf000c15a\",\"created\":1777016121,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-1fd797f0-232d-409d-84b2-4caaf000c15a\",\"created\":1777016121,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/698a6322df2d0c56cb81995ec2517efa027d4f81e3017192d4b2c8c8626d13a3.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-1fd797f0-232d-409d-84b2-4caaf000c15a\",\"created\":1777016121,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-1fd797f0-232d-409d-84b2-4caaf000c15a\",\"created\":1777016121,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
