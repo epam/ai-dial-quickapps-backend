@@ -112,7 +112,7 @@ class _DialAppResolver(CompletionInitializer):
         return bool(metadata.features and metadata.features.mcp)
 
     def _handle_mcp_branch(self, toolset: DialAppToolSet) -> None:
-        url = f"{self.__dial_settings.url}/v1/toolset/{toolset.deployment_id}/mcp"
+        url = f"{self.__dial_settings.url}/v1/deployments/{toolset.deployment_id}/mcp"
         api_key = self.__api_key_provider.get()
         mcp_toolset = MCPToolSet(
             name=toolset.name,
