@@ -6,7 +6,7 @@ from injector import inject
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import FILE_PATTERN
-from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 class _FileArgumentTransformer(ToolArgumentTransformer):
     """Resolves file:{prefix}::{path} references in tool arguments."""
 
-    def __init__(self, file_service: DialFileService):
+    def __init__(self, file_service: FileLoaderService):
         self.__file_service = file_service
 
     async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:

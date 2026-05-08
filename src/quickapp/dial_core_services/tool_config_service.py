@@ -125,6 +125,12 @@ class ToolConfigCoreService:
             f"{deployment.id.split('/')[-1].replace('%20', '_')}_tool"
         )
 
+        supports_url_attachments = (
+            bool(getattr(deployment.features, "url_attachments", None))
+            if deployment.features
+            else False
+        )
+
         output_tool = DialDeploymentTool(
             display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
             deployment=DialDeploymentConfig(deployment_id=deployment.id),
@@ -138,6 +144,7 @@ class ToolConfigCoreService:
                     ),
                 )
             ),
+            supports_url_attachments=supports_url_attachments,
         )
 
         properties: dict[str, ConfigurableSchemaSimpleType | ConfigurableSchemaArray] = {}
@@ -155,12 +162,21 @@ class ToolConfigCoreService:
                 type=JsonTypeEnum.array,
                 items=ConfigurableSchemaSimpleType(
                     type=JsonTypeEnum.string,
-                    description="Attachment url related to tool call. Use full url.",
+                    description=(
+                        "Attachment url related to tool call. Accepts both DIAL "
+                        "file paths (e.g. files/bucket/foo.pdf) and external URLs "
+                        "(e.g. https://example.com/foo.pdf). Use full url."
+                    ),
                     display=ParameterDisplayConfig(
                         stage=FormattedParameterConfig(name="**Prompt:** ")
                     ),
                 ),
-                description="The list of attachment urls related to tool call. Use full url for each item in the list. If no attachments are related use empty list argument value.",
+                description=(
+                    "The list of attachment urls related to tool call. Each entry "
+                    "may be a DIAL file path or an external `https://` URL. Use "
+                    "full url for each item in the list. If no attachments are "
+                    "related use empty list argument value."
+                ),
             )
 
             required_params.append("attachment_urls")

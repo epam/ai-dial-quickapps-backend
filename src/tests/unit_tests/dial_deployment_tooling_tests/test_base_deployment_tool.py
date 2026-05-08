@@ -336,7 +336,10 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["type"] == "application/pdf"
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
-    mock_service.resolve_attachment_urls.assert_awaited_once_with(["files/xyz/doc.pdf"])
+    mock_service.resolve_attachment_urls.assert_awaited_once()
+    awaited_args, awaited_kwargs = mock_service.resolve_attachment_urls.await_args
+    assert awaited_args[0] == ["files/xyz/doc.pdf"]
+    assert "supports_url_attachments" in awaited_kwargs
 
 
 def _make_tool_config(

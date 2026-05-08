@@ -8,11 +8,13 @@ from mcp.types import BlobResourceContents, TextResourceContents, Tool
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
+from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
@@ -42,6 +44,7 @@ class _MCPTool(StagedBaseTool):
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
+        dial_settings: DialSettings,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -62,6 +65,7 @@ class _MCPTool(StagedBaseTool):
         self.__dial_toolset_id = dial_toolset_id
         self.__login_service: InteractiveLoginService = login_service
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
+        self.__dial_url: str = dial_settings.url
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
@@ -73,10 +77,31 @@ class _MCPTool(StagedBaseTool):
             schema_prop = properties.get(key, {})
             if not schema_prop.get("dial_url"):
                 continue
+            candidates: list[str] = []
             if isinstance(value, str):
-                files_to_share.append(value)
+                candidates.append(value)
             elif isinstance(value, list):
-                files_to_share.extend(elem for elem in value if isinstance(elem, str))
+                candidates.extend(elem for elem in value if isinstance(elem, str))
+            for candidate in candidates:
+                scheme = classify_url(candidate, self.__dial_url)
+                if scheme == UrlScheme.EXTERNAL:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            "external URL. Use `file:base64::` or `file:text::` to "
+                            "inline the content, or upload the file to DIAL first."
+                        ),
+                    )
+                if scheme == UrlScheme.UNSUPPORTED:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            f"unsupported URL: {candidate}."
+                        ),
+                    )
+            files_to_share.extend(candidates)
 
         if files_to_share:
             if not self.__dial_toolset_id:

@@ -390,8 +390,14 @@ The application is composed of 15 specialized DI modules:
 7. **Internal Tool Module**: Python interpreter, content downloader
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
-10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
-11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
+    `_DialDownloader` for DIAL file bytes)
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction
+    injection. Owns the loader/fetcher/promoter trio: `FileLoaderService` (scheme-aware bytes loader),
+    `ExternalUrlFetcher` (single egress for external URLs with the SSRF / size / redirect / timeout envelope), and
+    `DialFilePromoter` (URL → DIAL file metadata for the deployment-attachment fallback and Python interpreter
+    staging). External egress is gated by a two-tier policy: `ALLOW_EXTERNAL_URL_FETCH` (admin) and per-app
+    `features.external_url_fetch.enabled` (builder), composed by `ExternalUrlFetchPolicyResolver`.
 12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher
 14. **Skills Module**: Skill reader tool, agent skills provider, skills registry

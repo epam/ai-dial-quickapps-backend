@@ -64,6 +64,13 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 3. **MCP** (`mcp_tooling/`) — Model Context Protocol servers
 4. **Internal** (`internal_tooling/`) — Built-in Python tools (pandas, plotly, etc.)
 
+### File Transfer (`file_transfer/`)
+
+`FileLoaderService`, `ExternalUrlFetcher`, and `DialFilePromoter` together resolve any URL the agent encounters
+(DIAL or external) into bytes or a durable DIAL file. External egress is gated by a two-tier policy: the admin
+`ALLOW_EXTERNAL_URL_FETCH` env switch and the per-app `features.external_url_fetch.enabled` field. The deployment-
+attachment path is capability-aware via `Deployment.features.url_attachments`. See [`docs/file_transfer.md`](docs/file_transfer.md).
+
 ### Skills
 
 Skills are reusable instruction modules. Predefined skills are loaded at startup from `config/predefined/skills/`.

@@ -2,7 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)
 
@@ -19,8 +19,8 @@ class FilePrefixHandlers:
     """Static handlers for file:{prefix}::{file_url} processing."""
 
     @staticmethod
-    async def handle_base64(file_url: str, file_service: DialFileService) -> str:
-        content = await file_service.download_file(file_url)
+    async def handle_base64(file_url: str, file_service: FileLoaderService) -> str:
+        content = await file_service.load(file_url, parameter_name=file_url)
         if not isinstance(content, (bytes, bytearray)):
             try:
                 content = bytes(content)
@@ -34,9 +34,9 @@ class FilePrefixHandlers:
 
     @staticmethod
     async def handle_text(
-        file_url: str, file_service: DialFileService, parameter_name: str = "<unknown>"
+        file_url: str, file_service: FileLoaderService, parameter_name: str = "<unknown>"
     ) -> str:
-        content_bytes = await file_service.download_file(file_url)
+        content_bytes = await file_service.load(file_url, parameter_name=parameter_name)
 
         if not isinstance(content_bytes, (bytes, bytearray)):
             try:
@@ -48,7 +48,6 @@ class FilePrefixHandlers:
                     message="Downloaded content is not bytes and cannot be converted to text.",
                 )
 
-        # Detect common binary signatures and reject for text decoding
         for sig, desc in _BINARY_SIGNATURES:
             if content_bytes.startswith(sig):
                 logger.warning(
@@ -64,10 +63,7 @@ class FilePrefixHandlers:
                     ),
                 )
 
-        # Decode text: utf-8-sig -> utf-8 with replacement
         try:
-            logger.debug("Trying to decode text content as utf-8-sig")
             return content_bytes.decode("utf-8-sig")
         except UnicodeDecodeError:
-            logger.debug("utf-8-sig failed; falling back to utf-8 with replacement")
             return content_bytes.decode("utf-8", errors="replace")

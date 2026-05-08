@@ -77,6 +77,7 @@ class BaseDeploymentTool(StagedBaseTool):
             stage_wrapper,
             attachment_urls,
             history=history,
+            supports_url_attachments=tool_config.supports_url_attachments,
         )
 
     @staticmethod
@@ -146,7 +147,11 @@ class BaseDeploymentTool(StagedBaseTool):
 
         user_msg = UserMessageParam(role="user", content=query or "")
         if attachment_urls:
-            resolved = await self.__dial_completion_service.resolve_attachment_urls(attachment_urls)
+            tool_config = cast(DialDeploymentTool, self.tool_config)
+            resolved = await self.__dial_completion_service.resolve_attachment_urls(
+                attachment_urls,
+                supports_url_attachments=tool_config.supports_url_attachments,
+            )
             if resolved:
                 user_msg["custom_content"] = CustomContentParam(attachments=resolved)
         return user_msg
