@@ -7,13 +7,22 @@ from quickapp.common.external_url_fetch_policy_resolver import ExternalUrlFetchP
 from quickapp.config.application import ExternalUrlFetchConfig, Features, FileLoadingConfig
 
 
-def _resolver(admin_allow: bool, app_enabled: bool | None) -> ExternalUrlFetchPolicyResolver:
+def _resolver(
+    admin_allow: bool = True,
+    app_enabled: bool | None = None,
+    admin_host_allowlist: list[str] | None = None,
+    app_host_allowlist: list[str] | None = None,
+) -> ExternalUrlFetchPolicyResolver:
     settings = MagicMock(spec=ExternalFetchSettings)
     settings.allow = admin_allow
+    settings.host_allowlist = admin_host_allowlist
     app_config = MagicMock()
     app_config.features = Features(
         file_loading=FileLoadingConfig(),
-        external_url_fetch=ExternalUrlFetchConfig(enabled=app_enabled),
+        external_url_fetch=ExternalUrlFetchConfig(
+            enabled=app_enabled,
+            host_allowlist=app_host_allowlist,
+        ),
     )
     return ExternalUrlFetchPolicyResolver(settings, app_config)
 
@@ -76,3 +85,101 @@ def test_settings_connect_timeout_must_be_positive(monkeypatch):
 
 def test_external_url_fetch_config_default_is_none():
     assert ExternalUrlFetchConfig().enabled is None
+    assert ExternalUrlFetchConfig().host_allowlist is None
+
+
+# ---------------------------------------------------------------------------
+# resolve_host
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_host_no_lists_is_allowed():
+    assert _resolver().resolve_host("example.com") == "allowed"
+
+
+def test_resolve_host_admin_only_match():
+    r = _resolver(admin_host_allowlist=["example.com", "*.cdn.net"])
+    assert r.resolve_host("example.com") == "allowed"
+    assert r.resolve_host("a.cdn.net") == "allowed"
+
+
+def test_resolve_host_admin_only_no_match():
+    r = _resolver(admin_host_allowlist=["example.com"])
+    assert r.resolve_host("evil.com") == "admin_allowlist"
+
+
+def test_resolve_host_builder_only_match():
+    r = _resolver(app_host_allowlist=["example.com"])
+    assert r.resolve_host("example.com") == "allowed"
+
+
+def test_resolve_host_builder_only_no_match():
+    r = _resolver(app_host_allowlist=["example.com"])
+    assert r.resolve_host("evil.com") == "builder_allowlist"
+
+
+def test_resolve_host_admin_rejects_first_when_both_set():
+    r = _resolver(
+        admin_host_allowlist=["example.com"],
+        app_host_allowlist=["evil.com"],
+    )
+    assert r.resolve_host("evil.com") == "admin_allowlist"
+
+
+def test_resolve_host_intersection_match():
+    r = _resolver(
+        admin_host_allowlist=["example.com", "partner.io"],
+        app_host_allowlist=["example.com"],
+    )
+    assert r.resolve_host("example.com") == "allowed"
+    assert r.resolve_host("partner.io") == "builder_allowlist"
+
+
+def test_resolve_host_features_none_consults_admin_only():
+    settings = MagicMock(spec=ExternalFetchSettings)
+    settings.allow = True
+    settings.host_allowlist = ["example.com"]
+    app_config = MagicMock()
+    app_config.features = None
+    r = ExternalUrlFetchPolicyResolver(settings, app_config)
+    assert r.resolve_host("example.com") == "allowed"
+    assert r.resolve_host("evil.com") == "admin_allowlist"
+
+
+def test_resolve_host_empty_builder_list_blocks_everything():
+    r = _resolver(app_host_allowlist=[])
+    assert r.resolve_host("anything.com") == "builder_allowlist"
+
+
+# ---------------------------------------------------------------------------
+# ExternalFetchSettings.host_allowlist parsing
+# ---------------------------------------------------------------------------
+
+
+def test_settings_host_allowlist_default_is_none(monkeypatch):
+    monkeypatch.delenv("EXTERNAL_URL_FETCH_HOST_ALLOWLIST", raising=False)
+    assert ExternalFetchSettings().host_allowlist is None
+
+
+def test_settings_host_allowlist_parses_single_value(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_HOST_ALLOWLIST", "example.com")
+    assert ExternalFetchSettings().host_allowlist == ["example.com"]
+
+
+def test_settings_host_allowlist_parses_csv(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_HOST_ALLOWLIST", "example.com,*.cdn.net,partner.io")
+    assert ExternalFetchSettings().host_allowlist == [
+        "example.com",
+        "*.cdn.net",
+        "partner.io",
+    ]
+
+
+def test_settings_host_allowlist_strips_whitespace(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_HOST_ALLOWLIST", " example.com , *.cdn.net ")
+    assert ExternalFetchSettings().host_allowlist == ["example.com", "*.cdn.net"]
+
+
+def test_settings_host_allowlist_empty_value_collapses_to_none(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_HOST_ALLOWLIST", "  ,  ,  ")
+    assert ExternalFetchSettings().host_allowlist is None

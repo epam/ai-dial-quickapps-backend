@@ -28,7 +28,7 @@ class FetchedBytes(BaseModel):
 
 
 _FetchErrorReason = Literal["ssrf_block", "size_limit", "redirect_cap", "timeout", "transport"]
-_DisabledReason = Literal["admin", "builder"]
+_DisabledReason = Literal["admin", "builder", "admin_allowlist", "builder_allowlist"]
 
 
 class ExternalFetchError(Exception):
@@ -58,19 +58,35 @@ class ExternalFetchError(Exception):
         return f"{base} {self.detail}".strip()
 
 
+_DISABLED_DETAIL: dict[_DisabledReason, str] = {
+    "admin": "External URL fetching is disabled by operator policy (ALLOW_EXTERNAL_URL_FETCH).",
+    "builder": (
+        "External URL fetching is disabled by this app "
+        "(features.external_url_fetch.enabled=false)."
+    ),
+    "admin_allowlist": (
+        "External URL host is not in the operator allowlist (EXTERNAL_URL_FETCH_HOST_ALLOWLIST)."
+    ),
+    "builder_allowlist": (
+        "External URL host is not in this app's allowlist "
+        "(features.external_url_fetch.host_allowlist)."
+    ),
+}
+
+
 class ExternalFetchDisabledError(Exception):
-    """Raised when the egress gate is closed, before any network egress happens."""
+    """Raised when the egress gate or host allowlist denies a fetch.
+
+    Raised before any DNS lookup or network egress for the on/off gate
+    reasons (``admin``, ``builder``) and for the host-allowlist reasons
+    (``admin_allowlist``, ``builder_allowlist``).
+    """
 
     def __init__(self, reason: _DisabledReason, url: str) -> None:
         self.reason: _DisabledReason = reason
         self.url = url
-        if reason == "admin":
-            policy = "operator policy (ALLOW_EXTERNAL_URL_FETCH)"
-        else:
-            policy = "this app (features.external_url_fetch.enabled=false)"
         super().__init__(
-            f"External URL fetching is disabled by {policy}. "
-            "Upload the file to DIAL and pass `files/...` instead, "
+            f"{_DISABLED_DETAIL[reason]} Upload the file to DIAL and pass `files/...` instead, "
             f"or use a deployment that supports url_attachments. URL: {url}"
         )
 
@@ -129,14 +145,18 @@ async def _resolve_addresses(host: str) -> list[str]:
 
 
 class _SsrfGuardTransport(httpx.AsyncHTTPTransport):
-    """Custom transport that SSRF-checks every redirect target before delegating.
+    """Custom transport that SSRF-checks and allowlist-checks every redirect target.
 
-    Resolves the request host via :func:`_resolve_addresses` and rejects if any
-    returned address is in a blocked range (see :func:`_is_blocked_address`).
-    The check re-runs on each redirect because httpx re-enters the transport
-    per hop.
+    Two checks run on each hop (initial request and every redirect target):
 
-    **Scope and known limitation.** This guard catches accidental SSRF and
+    * **Host allowlist.** When a policy resolver is supplied, the target host is
+      checked against the admin and per-app allowlists; a denial raises
+      :class:`ExternalFetchDisabledError` with the matching reason.
+    * **SSRF.** The target host is resolved via :func:`_resolve_addresses` and
+      rejected if any returned address is in a blocked range (see
+      :func:`_is_blocked_address`).
+
+    **Scope and known limitation.** The SSRF half catches accidental egress and
     multi-answer DNS responses where any address is internal. It does **not**
     defend against active DNS rebinding: httpx re-resolves DNS at the TCP
     connect step after this check returns, so an authoritative DNS server
@@ -150,10 +170,18 @@ class _SsrfGuardTransport(httpx.AsyncHTTPTransport):
     # DNS-rebinding gap. Implementation will likely require a custom
     # httpcore network backend or a scoped getaddrinfo override.
 
+    def __init__(self, policy: ExternalUrlFetchPolicyResolver | None = None) -> None:
+        super().__init__()
+        self.__policy = policy
+
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
         host = request.url.host
         if not host:
             raise ExternalFetchError(reason="ssrf_block", url=str(request.url), detail="empty host")
+        if self.__policy is not None:
+            host_reason = self.__policy.resolve_host(host)
+            if host_reason != "allowed":
+                raise ExternalFetchDisabledError(reason=host_reason, url=str(request.url))
         addresses = await _resolve_addresses(host)
         if not addresses:
             raise ExternalFetchError(
@@ -228,6 +256,11 @@ class ExternalUrlFetcher:
         if reason != "allowed":
             raise ExternalFetchDisabledError(reason=reason, url=url)
 
+        host = httpx.URL(url).host
+        host_reason = self.__policy.resolve_host(host)
+        if host_reason != "allowed":
+            raise ExternalFetchDisabledError(reason=host_reason, url=url)
+
         tool_timeout = self.__timeout_resolver.resolve()
         timeout = httpx.Timeout(
             connect=self.__settings.connect_timeout_seconds,
@@ -235,7 +268,7 @@ class ExternalUrlFetcher:
             write=tool_timeout,
             pool=tool_timeout,
         )
-        transport = _SsrfGuardTransport()
+        transport = _SsrfGuardTransport(policy=self.__policy)
         limit = self.__size_limit.resolve()
 
         async with httpx.AsyncClient(
@@ -277,7 +310,7 @@ class ExternalUrlFetcher:
                         content_type=content_type,
                         filename=filename,
                     )
-            except ExternalFetchError:
+            except (ExternalFetchError, ExternalFetchDisabledError):
                 raise
             except httpx.TooManyRedirects as exc:
                 raise ExternalFetchError(reason="redirect_cap", url=url, detail=str(exc)) from exc

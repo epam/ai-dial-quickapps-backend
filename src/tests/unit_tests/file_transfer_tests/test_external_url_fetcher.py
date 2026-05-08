@@ -25,9 +25,10 @@ def _settings(allow_redirects: int = 5, connect: float = 5.0) -> MagicMock:
     return s
 
 
-def _policy(reason: str = "allowed") -> MagicMock:
+def _policy(reason: str = "allowed", host_reason: str = "allowed") -> MagicMock:
     p = MagicMock(spec=ExternalUrlFetchPolicyResolver)
     p.resolve_reason.return_value = reason
+    p.resolve_host.return_value = host_reason
     return p
 
 
@@ -76,6 +77,38 @@ async def test_builder_disabled_raises_disabled_error_with_builder_reason():
     with pytest.raises(ExternalFetchDisabledError) as excinfo:
         await fetcher.fetch("https://example.com/x")
     assert excinfo.value.reason == "builder"
+
+
+@pytest.mark.asyncio
+async def test_admin_allowlist_denial_raises_before_dns():
+    policy = _policy(host_reason="admin_allowlist")
+    fetcher = _fetcher(policy=policy)
+    resolve_mock = _patch_resolve([])
+    with patch(_RESOLVE_PATH, new=resolve_mock):
+        with pytest.raises(ExternalFetchDisabledError) as excinfo:
+            await fetcher.fetch("https://evil.com/x")
+    assert excinfo.value.reason == "admin_allowlist"
+    resolve_mock.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_builder_allowlist_denial_raises_with_builder_allowlist_reason():
+    policy = _policy(host_reason="builder_allowlist")
+    fetcher = _fetcher(policy=policy)
+    with pytest.raises(ExternalFetchDisabledError) as excinfo:
+        await fetcher.fetch("https://evil.com/x")
+    assert excinfo.value.reason == "builder_allowlist"
+
+
+@pytest.mark.asyncio
+async def test_transport_redirect_hop_runs_host_check():
+    policy = _policy(host_reason="admin_allowlist")
+    transport = _SsrfGuardTransport(policy=policy)
+    request = httpx.Request("GET", "https://evil.com/redirect-target")
+    with pytest.raises(ExternalFetchDisabledError) as excinfo:
+        await transport.handle_async_request(request)
+    assert excinfo.value.reason == "admin_allowlist"
+    policy.resolve_host.assert_called_once_with("evil.com")
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,7 @@
 # Design: External URLs as First-Class File References
 
 - **Status:** Approved
-- **Approved:** 2026-05-07
+- **Approved:** 2026-05-08
 - **Dependencies:**
   - None
 
@@ -35,8 +35,13 @@ The agent-facing skill `tool-call-file-parameter-formatting` already documents `
 - **One shared "fetch from URL" path** with a single security envelope (SSRF, redirect cap, size limit, credential isolation), used by every surface that needs the actual bytes.
 - **One shared "promote URL to DIAL file" API** that interpreter staging, RAG fallback, and any future "cache this fetched file" caller all go through.
 - **Capability-driven dispatch on the deployment path.** Forward as a `reference_url` when `Deployment.features.url_attachments` is advertised; materialise to a DIAL file otherwise.
-- **Two-tier egress control.** An admin-level env switch is the cap; a per-app config field is the builder-level refinement within that cap. When the admin disallows egress, no app can opt back in; when the admin allows it, individual apps can opt out. The deployment-handoff branch (where bytes never leave DIAL) is unaffected by either tier.
-- **Clear, parameter-aware errors** on unsupported schemes, SSRF blocks, oversize files, and disabled egress — so the agent can self-correct via the existing retry path.
+- **Two-tier egress control.** Admin-level env settings cap the surface; per-app config fields refine within that cap. Two orthogonal axes are gated this way:
+    - **On/off switch** — when the admin disallows egress, no app can opt back in; when the admin allows it, individual apps can opt out.
+    - **Domain allowlist** — admin can restrict outbound fetches to a specific list of hosts; apps can further narrow that list. An app's allowlist never expands what the admin permits. When neither tier specifies a list, any external host that passes the SSRF envelope is reachable.
+
+  The deployment-handoff branch (where bytes never leave DIAL) is unaffected by any tier.
+- **Every external-fetch failure surfaces as `InvalidToolCallParameterException`** at every consumer of `classify_url` (`FileLoaderService.load`, `DialFilePromoter.promote`, `_resolve_attachment`, `InputFileHandler.get_attachment_url`), so the agent's existing retry path applies uniformly across unsupported schemes, SSRF blocks, oversize files, disabled egress, and disallowed hosts.
+- **Failure messages name the offending URL and the closing tier** (admin / builder, gate / allowlist) so operators and builders can diagnose policy issues from a single line of agent-visible text or server log.
 
 ---
 
@@ -88,15 +93,15 @@ UC-6 is the **conceptual** capability shared by UC-2 and UC-5; it does not intro
 
 **Trigger:** An internal caller (today: deployment-attachment fallback in UC-2; interpreter staging in UC-5) needs a DIAL file URL for a given URL of any kind.
 
-**Behaviour:** `DialFilePromoter.promote(url)` is the single API. It fetches via `ExternalUrlFetcher` on the external branch, reads metadata via `dial_client.files.get_metadata` on the DIAL branch, and (on the external branch) uploads via the factored `_upload_bytes` helper shared with `AttachmentService.upload_attachment_to_core`. The result is cached per request so a URL referenced multiple times in one turn produces one upload.
+**Behaviour:** `DialFilePromoter.promote(url)` is the single API. It fetches via `ExternalUrlFetcher` on the external branch, reads metadata via `dial_client.files.get_metadata` on the DIAL branch, and (on the external branch) uploads via `AttachmentService.upload_bytes` — a public alias of the internal `_upload_bytes` helper that the existing `upload_attachment_to_core` flow also delegates to. The alias exists because the promoter wants the raw upload without the swallow-and-return-original-attachment semantics that `upload_attachment_to_core` keeps for back-compat. The result is cached per request so a URL referenced multiple times in one turn produces one upload.
 
 **Outcome:** Future callers (e.g. a "cache this" tool) drop into the same API without reinventing fetch+upload. The single API also localises decisions about filename derivation, MIME inference, and bucket selection.
 
-### UC-7: SSRF, oversize file, or unsupported scheme
+### UC-7: SSRF, oversize file, unsupported scheme, or disallowed host
 
-**Trigger:** Any of: a URL whose host resolves to loopback / RFC1918 / link-local / cloud-metadata; a redirect target that fails the same check; a fetch that exceeds the configured size limit; a `file:` URL or non-`http(s)` scheme.
+**Trigger:** Any of: a URL whose host resolves to loopback / RFC1918 / link-local / cloud-metadata; a redirect target that fails the same check; a fetch that exceeds the configured size limit; a `file:` URL or non-`http(s)` scheme; a host that is not in the effective domain allowlist (UC-10 / UC-11).
 
-**Behaviour:** `ExternalUrlFetcher` raises a typed exception (`ExternalFetchError` with a reason code). All five surfaces translate this into `InvalidToolCallParameterException` with a parameter-aware message — the same retry pipeline that already exists for binary-text mismatches and missing prefixes. The agent gets a clear instruction back; the request continues.
+**Behaviour:** `ExternalUrlFetcher` raises a typed exception (`ExternalFetchError` for envelope violations, `ExternalFetchDisabledError` for policy denials such as a closed gate or a disallowed host). Every consuming surface translates either exception into `InvalidToolCallParameterException` with a parameter-aware message — the same retry pipeline that already exists for binary-text mismatches and missing prefixes. The agent gets a clear instruction back; the request continues.
 
 **Outcome:** Egress is bounded. Errors are diagnosable. The agent can re-route (e.g. ask the user for a DIAL upload) without the request collapsing.
 
@@ -112,9 +117,25 @@ UC-6 is the **conceptual** capability shared by UC-2 and UC-5; it does not intro
 
 **Trigger:** `ALLOW_EXTERNAL_URL_FETCH=true` AND the app's manifest sets `features.external_url_fetch.enabled: false`.
 
-**Behaviour:** The fetcher raises `ExternalFetchDisabledError` for any caller within the request, with a message naming the per-app switch (in contrast to UC-8, which names the admin switch — same exception type, different reason). Other apps in the same process — same admin policy, no per-app `false` — keep the feature.
+**Behaviour:** The fetcher raises `ExternalFetchDisabledError` for any caller within the request, with a message naming the per-app switch (same exception type as UC-8, different reason). Other apps in the same process — same admin policy, no per-app `false` — keep the feature.
 
 **Outcome:** A builder running a security-sensitive or PII-handling app can disable external fetches even when the admin globally allows them, without forcing the operator to split deployments. This is the inverse symmetric case of UC-8: admin caps from the top; builder narrows from below.
+
+### UC-10: Operator restricts external fetches to a specific set of hosts (admin allowlist)
+
+**Trigger:** `ALLOW_EXTERNAL_URL_FETCH=true` AND `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` is set to a non-empty list (e.g. `example.com,*.public-cdn.net`). The fetcher receives a URL whose host is not on that list.
+
+**Behaviour:** `ExternalUrlFetcher.fetch` raises `ExternalFetchDisabledError` with reason `admin_allowlist`, before any DNS lookup. Hosts that *are* on the list proceed through the normal pipeline (SSRF guard, redirect cap, size limit). Each redirect hop's host is re-checked against the same list.
+
+**Outcome:** Operators can permit external egress in principle while still constraining outbound traffic to a known, audited set of upstreams (e.g. a corporate document store, a public dataset host). The blocklist-based SSRF guard and the allowlist are independent and both must pass.
+
+### UC-11: Builder narrows the allowlist for a single app (within admin's set)
+
+**Trigger:** Admin allowlist contains `example.com, public-cdn.net, partner.io`; the app's manifest sets `features.external_url_fetch.host_allowlist: ["example.com"]`. The fetcher receives a URL with host `partner.io`.
+
+**Behaviour:** The effective allowlist for this request is the intersection of the admin and builder lists — `{example.com}`. The fetch is rejected with `ExternalFetchDisabledError` reason `builder_allowlist`. A URL with host `example.com` would proceed.
+
+**Outcome:** Builders can scope a particular app's egress more tightly than the operator-wide policy without operator involvement, and cannot expand it. This is the symmetric case of UC-9 for hosts: admin caps from the top; builder narrows from below. An app whose builder list contains a host the admin doesn't allow is effectively locked out of that host — the empty intersection is the configuration error, surfaced as a `builder_allowlist` denial.
 
 ---
 
@@ -149,11 +170,11 @@ flowchart TD
     P --> U["AttachmentService upload helper"]
     U --> R2["Return new DIAL file URL"]
 
-    G["ExternalUrlFetchPolicyResolver (admin env + per-app config)"] --> E
+    G["ExternalUrlFetchPolicyResolver — on/off gate + host allowlist (admin env + per-app config)"] --> E
     S["SSRF + redirect + size + timeout + credential isolation"] --> E
 ```
 
-The two-tier egress policy and the security envelope both apply to every call into `ExternalUrlFetcher.fetch`; the deployment-handoff branch (UC-1, `reference_url` emission) never reaches the fetcher and is therefore unaffected by either.
+The two-tier egress policy (on/off gate plus host allowlist) and the security envelope both apply to every call into `ExternalUrlFetcher.fetch`; the deployment-handoff branch (UC-1, `reference_url` emission) never reaches the fetcher and is therefore unaffected by either.
 
 ### URL classification
 
@@ -166,7 +187,7 @@ The two-tier egress policy and the security envelope both apply to every call in
 | Input shape | Classification | Examples |
 |-------------|---------------|----------|
 | Bare DIAL relative path | `DIAL` | `files/bucket/foo.pdf`, `files/{hash}/Foo.pdf` |
-| DIAL-absolute URL (host equals configured `DialSettings.url`) | `DIAL` | `<DIAL_URL>/v1/files/bucket/foo.pdf` |
+| DIAL-absolute URL (host equals configured `DialSettings.url`) | `DIAL` | `<DIAL_URL>/files/bucket/foo.pdf` (path is illustrative; the host comparison is the contract) |
 | `http(s)://` URL whose host is *not* the configured DIAL host | `EXTERNAL` | `https://example.com/foo.pdf`, `https://gist.github.com/.../raw/x.md` |
 | `file:`, `ftp:`, `data:`, anything else, or malformed | `UNSUPPORTED` | `file:///etc/passwd`, `ftp://...`, `not a url` |
 
@@ -193,13 +214,13 @@ The two-tier egress policy and the security envelope both apply to every call in
 | **Timeout** | Reuse `ToolTimeoutResolver` for the per-call ceiling; on the deployment-attachment path, use the deployment's resolved tool timeout. | Existing resolver. |
 | **Binary/text policy** | Unchanged — `FilePrefixHandlers.handle_text` already enforces this on the result bytes. The fetcher does not interpret the body. | Existing. |
 
-**Errors:** Two exception classes co-located in the same file as `ExternalUrlFetcher`: `ExternalFetchError(reason: Literal["ssrf_block", "size_limit", "redirect_cap", "timeout", "transport"])` and `ExternalFetchDisabledError` (raised when the egress gate is off). Each carries a human-readable message naming the offending URL and the limit. Consumers re-raise as `InvalidToolCallParameterException` so the agent's existing retry path applies. Unsupported schemes (covered in UC-7) never reach the fetcher — they are rejected upstream by `classify_url` and the consuming services (`FileLoaderService.load`, `DialFilePromoter.promote`), which raise `InvalidToolCallParameterException` directly. The `ExternalFetchError` reason set is therefore narrower than UC-7's full error matrix on purpose.
+**Errors:** Two exception classes co-located in the same file as `ExternalUrlFetcher`: `ExternalFetchError(reason: Literal["ssrf_block", "size_limit", "redirect_cap", "timeout", "transport"])` for security-envelope violations and transport failures; `ExternalFetchDisabledError(reason: Literal["admin", "builder", "admin_allowlist", "builder_allowlist"])` for policy denials raised before any DNS lookup or network egress. The first two reasons cover the on/off gate (UC-8 / UC-9); the latter two cover the host allowlist (UC-10 / UC-11). Each exception carries a human-readable message naming the offending URL and which tier closed the gate. Consumers re-raise as `InvalidToolCallParameterException` so the agent's existing retry path applies. Unsupported schemes (covered in UC-7) never reach the fetcher — they are rejected upstream by `classify_url` and the consuming services (`FileLoaderService.load`, `DialFilePromoter.promote`), which raise `InvalidToolCallParameterException` directly. The `ExternalFetchError` reason set is therefore narrower than UC-7's full error matrix on purpose.
 
 **Change:** New service. Centralises every concern that today is either absent (SSRF) or duplicated ad-hoc (timeouts, in three places: `_rest_api_tool.py:80`, `_py_interpreter_client.py:46`, `_interactive_login_service.py:93`). The other call sites are not migrated by this design — `RestApiTool` already has its own egress policy for tool-defined HTTP — but the fetcher is the shared egress for *file* loading.
 
 ### `FileLoaderService` — scheme-aware bytes loader
 
-**What:** A request-scoped service with one method `load(url: str) -> bytes` that supersedes `DialFileService.download_file`. Used by every caller that wants the *bytes* of a URL (today: `_FileArgumentTransformer` for `file:base64::` and `file:text::`). Dispatches on URL classification, applies the per-request bytes cache (`StateHolder`), enforces the same size limit on both branches.
+**What:** A request-scoped service with one method `load(url: str, parameter_name: str = "<unknown>") -> bytes` that supersedes `DialFileService.download_file`. Used by every caller that wants the *bytes* of a URL (today: `_FileArgumentTransformer` for `file:base64::` and `file:text::`). Callers thread the originating tool-argument name through `parameter_name` so that any failure surfaces as `InvalidToolCallParameterException(parameter_name=...)` and the agent retry pipeline attributes the error to the right parameter. Dispatches on URL classification, applies the per-request bytes cache (`StateHolder`), enforces the same size limit on both branches.
 
 **Owner:** `src/quickapp/file_transfer/_file_loader_service.py` (new file). Bound at request scope.
 
@@ -208,13 +229,12 @@ The two-tier egress policy and the security envelope both apply to every call in
 ```mermaid
 flowchart TD
     A["load url"] --> B{"classify_url"}
-    B -->|"DIAL"| C["_DialDownloader.fetch"]
-    B -->|"EXTERNAL"| D{"ExternalUrlFetchPolicyResolver.resolve()"}
+    B -->|"DIAL"| C["DialDownloader.fetch"]
+    B -->|"EXTERNAL"| F["ExternalUrlFetcher.fetch (gate + host allowlist + SSRF + size + transport)"]
     B -->|"UNSUPPORTED"| E["Raise InvalidToolCallParameterException"]
-    D -->|"true (admin allows + app not opted out)"| F["ExternalUrlFetcher.fetch (returns FetchedBytes)"]
-    D -->|"false (admin caps OR builder opts out)"| G["Raise ExternalFetchDisabledError"]
-    C --> H["Cache bytes via StateHolder"]
-    F --> H
+    F -->|"FetchedBytes"| H["Cache bytes via StateHolder"]
+    F -->|"ExternalFetchDisabledError / ExternalFetchError"| G["Wrap as InvalidToolCallParameterException"]
+    C --> H
     H --> I["Return bytes"]
 ```
 
@@ -224,15 +244,15 @@ The DIAL branch keeps the existing logic verbatim — `dial_client.files.get_met
 
 | Component | Before | After |
 |-----------|--------|-------|
-| `DialFileService.download_file(url)` | Method on `DialFileService` doing DIAL-only download. | Removed. The DIAL-download logic moves into a new request-scoped `_DialDownloader` consumed by `FileLoaderService`. `DialFileService` keeps `grant_permissions_to_files` only — still DIAL-resource-permission management with no external analogue. |
+| `DialFileService.download_file(url)` | Method on `DialFileService` doing DIAL-only download. | Removed. The DIAL-download logic moves into a new request-scoped `DialDownloader` consumed by `FileLoaderService`. `DialFileService` keeps `grant_permissions_to_files` only — still DIAL-resource-permission management with no external analogue. |
 | `_FileArgumentTransformer.__init__` | Takes `DialFileService`. | Takes `FileLoaderService`. |
-| `FilePrefixHandlers.handle_base64 / handle_text` | Take a `DialFileService`. | Take a `FileLoaderService`. The bytes-handling logic (binary signature detection, UTF-8 fallback chain) is unchanged. |
+| `FilePrefixHandlers.handle_base64 / handle_text` | Take a `DialFileService`. | Take a `FileLoaderService`. |
 
 `grant_permissions_to_files` is **not** generalised — granting a DIAL resource permission to a DIAL toolset has no meaning for an external URL. MCP tools that mark a parameter `dial_url: true` retain their existing DIAL-only semantics; if the resolved URL is external, the MCP tool fails with the existing `InvalidToolCallParameterException` ("Files cannot be shared because the URL is not a DIAL file"). The agent can re-route via `file:base64::` / `file:text::`.
 
 ### `DialFilePromoter` — single "URL → DIAL file metadata" API
 
-**What:** A request-scoped service with one method `promote(url: str) -> FileMetadata` that materialises any URL as a durable DIAL file and returns its metadata. `FileMetadata` is the SDK type `aidial_client.types.metadata.FileMetadata` returned by `dial_client.files.get_metadata` and `dial_client.files.upload`; the promoter does not introduce a wrapper. The single shared API for the deployment-attachment fallback (UC-2) and interpreter staging of external files (UC-5).
+**What:** A request-scoped service with one method `promote(url: str, parameter_name: str = "<unknown>") -> FileMetadata` that materialises any URL as a durable DIAL file and returns its metadata. `FileMetadata` is the SDK type `aidial_client.types.metadata.FileMetadata` returned by `dial_client.files.get_metadata` and `dial_client.files.upload`; the promoter does not introduce a wrapper. Callers (`_resolve_attachment`, `_PyInterpreterTool._prepare_input_files` via `InputFileHandler`) thread the originating tool-argument name through `parameter_name` so policy and envelope failures surface as `InvalidToolCallParameterException(parameter_name=...)`. The single shared API for the deployment-attachment fallback (UC-2) and interpreter staging of external files (UC-5).
 
 **Owner:** `src/quickapp/file_transfer/_dial_file_promoter.py` (new file, sibling of the loader). Bound at request scope.
 
@@ -242,7 +262,7 @@ The DIAL branch keeps the existing logic verbatim — `dial_client.files.get_met
 
 | Service | Use case | DIAL branch | External branch |
 |---------|----------|-------------|-----------------|
-| `FileLoaderService.load(url) -> bytes` | Caller wants the bytes themselves. | `_DialDownloader.fetch` (DIAL Core download API). | `ExternalUrlFetcher.fetch` → take `.bytes`. |
+| `FileLoaderService.load(url) -> bytes` | Caller wants the bytes themselves. | `DialDownloader.fetch` (DIAL Core download API). | `ExternalUrlFetcher.fetch` → take `.bytes`. |
 | `DialFilePromoter.promote(url) -> FileMetadata` | Caller wants a durable DIAL file. | `dial_client.files.get_metadata(url)` — passthrough; no upload (the URL already names a DIAL file). | `ExternalUrlFetcher.fetch` → upload bytes via the factored `AttachmentService` helper → return new metadata. |
 
 The promoter goes directly to `ExternalUrlFetcher` and `dial_client.files.get_metadata` — never via `FileLoaderService`. They share the underlying primitives but neither depends on the other. This avoids forcing a single internal contract (bytes-only vs metadata-rich) on both consumers and avoids a redundant cache layer.
@@ -258,7 +278,7 @@ Two caches is correct here: the loader's consumers (file-prefix handlers) only n
 
 1. Classify the URL.
 2. **DIAL** — already a DIAL file; read metadata once via `dial_client.files.get_metadata` and cache the `FileMetadata`. No upload.
-3. **EXTERNAL** — fetch via `ExternalUrlFetcher` (gated by `ExternalUrlFetchPolicyResolver`, which combines the admin env switch and the per-app config); upload via the existing DIAL upload path (factored out of `AttachmentService.upload_attachment_to_core` into a private helper `_upload_bytes(bytes, content_type, filename) -> FileMetadata`); cache the resulting metadata keyed by the original external URL.
+3. **EXTERNAL** — fetch via `ExternalUrlFetcher` (gated by `ExternalUrlFetchPolicyResolver`, which combines the admin env switch, the per-app config, and the host allowlist); upload via `AttachmentService.upload_bytes(bytes, content_type, filename) -> FileMetadata`, the public alias of the internal helper that `upload_attachment_to_core` also delegates to; cache the resulting metadata keyed by the original external URL.
 4. **UNSUPPORTED** — raise `InvalidToolCallParameterException`.
 
 The returned `FileMetadata` carries `url` (DIAL absolute), `content_type`, and `name` — the triple `_resolve_attachment` needs to build an `AttachmentParam`.
@@ -282,18 +302,18 @@ The returned `FileMetadata` carries `url` (DIAL absolute), `content_type`, and `
 
 QuickApps deliberately does **not** issue a HEAD probe on the `EXTERNAL` + supported branch — `AttachmentParam.type` is optional in the TypedDict (`aidial_client/types/chat/request_param.py:13-19`), and probing would itself be QuickApps-originating egress, contradicting the "untouched egress" guarantee in UC-1 and UC-8. The deployment infers the type from its own fetch.
 
-**Interaction with the `file:url::` prefix.** `_resolve_attachment` already strips the `file:` prefix via `strip_file_prefix` (`dial_completion_service.py:190`, defined in `src/quickapp/common/file_reference_pattern.py:8-13`). Classification operates on the post-strip URL, so `file:url::https://example.com/x.pdf` and `https://example.com/x.pdf` reach `classify_url` as the same input. The prefix-stripping step is therefore the canonical normalisation point on this path — a future contributor adding logic *before* the strip must take the prefixed form into account; logic *after* is dealing with bare URLs.
+**Interaction with the `file:url::` prefix.** `_resolve_attachment` already strips the `file:` prefix via `strip_file_prefix` (defined in `src/quickapp/common/file_reference_pattern.py`). Classification operates on the post-strip URL, so `file:url::https://example.com/x.pdf` and `https://example.com/x.pdf` reach `classify_url` as the same input. The prefix-stripping step is therefore the canonical normalisation point on this path — a future contributor adding logic *before* the strip must take the prefixed form into account; logic *after* is dealing with bare URLs.
 
 **Where `features.url_attachments` is read.** The resolver needs the deployment metadata. Two access patterns are already established in the codebase:
 
-- `DialDeploymentTool` configs are built from a one-shot metadata fetch in `ToolConfigCoreService._convert_to_openai_tool_format` (`src/quickapp/dial_core_services/tool_config_service.py:104-141`); that snapshot drops `features` after extracting `input_attachment_types` and `features.configuration`.
+- `DialDeploymentTool` configs are built from a one-shot metadata fetch in `ToolConfigCoreService._convert_to_openai_tool_format`; that snapshot drops `features` after extracting `input_attachment_types` and `features.configuration`.
 - `DialAppToolingModule` (`docs/designs/dial_app_toolset.md`) routes per-request via `ToolConfigCoreService.get_deployment_metadata(deployment_id)` and inspects `features.mcp`.
 
-This design extends the snapshot path: `_convert_to_openai_tool_format` retains `features.url_attachments` on `DialDeploymentTool` as a new `supports_url_attachments: bool` field. The flag is read directly off `self.tool_config` inside `BaseDeploymentTool` (which already holds the `DialDeploymentTool`) and reaches `resolve_attachment_urls` two ways: passed through `complete_request_async` on the live-call path (`_run_in_stage_async` → `complete_request_async` → `resolve_attachment_urls`), and as a direct argument on the history-rebuild call (`_build_user_message_from_tool_call` → `resolve_attachment_urls`, `src/quickapp/dial_deployment_tooling/base_deployment_tool.py:149`). No additional metadata fetch per request.
+This design extends the snapshot path: `_convert_to_openai_tool_format` retains `features.url_attachments` on `DialDeploymentTool` as a new `supports_url_attachments: bool` field. The flag is read directly off `self.tool_config` inside `BaseDeploymentTool` (which already holds the `DialDeploymentTool`) and reaches `resolve_attachment_urls` two ways: passed through `complete_request_async` on the live-call path (`_run_in_stage_async` → `complete_request_async` → `resolve_attachment_urls`), and as a direct argument on the history-rebuild call (`_build_user_message_from_tool_call` → `resolve_attachment_urls`). No additional metadata fetch per request.
 
 **Why snapshot rather than fetch-per-request.** The capability is read once per `DialDeploymentTool` construction; that construction already involves a deployment-metadata fetch cached process-wide in `DialDeploymentToolCacheService`. Making the resolver fetch metadata again would be a second roundtrip per tool call. The cache has no TTL today (`src/quickapp/common/deployment_tool_cache.py`), so an operator who flips `features.url_attachments` on a deployment sees the change only after the **next process restart** — same staleness profile as `input_attachment_types` and `features.configuration` already have. If that surfaces operationally, adding a TTL to the cache is a cross-cutting follow-up.
 
-**Change:** `_resolve_attachment` (currently a one-line `metadata.get` + `AttachmentParam` build) becomes a 4-branch dispatch. `_resolve_attachment` and `resolve_attachment_urls` (`dial_completion_service.py:183-195`) gain a `supports_url_attachments: bool` parameter. `BaseDeploymentTool` reads `self.tool_config.supports_url_attachments` and passes it in to both call sites; `DialCompletionService` itself does not need to thread the flag through any other method.
+**Change:** `_resolve_attachment` (currently a one-line `metadata.get` + `AttachmentParam` build) becomes a 4-branch dispatch. The `supports_url_attachments: bool` parameter is added on `complete_request_async`, threaded through `__build_request_messages` → `__user_message_from_content_and_attachments` → `resolve_attachment_urls` → `_resolve_attachment` so every call site that builds an outbound attachment list sees the flag. `BaseDeploymentTool` reads `self.tool_config.supports_url_attachments` once and passes it to `complete_request_async` (live call) and `resolve_attachment_urls` (history rebuild).
 
 ### Tool argument transformer (`file:base64::`, `file:text::`)
 
@@ -301,9 +321,9 @@ This design extends the snapshot path: `_convert_to_openai_tool_format` retains 
 
 **Owner:** `src/quickapp/file_transfer/_file_argument_transformer.py`, `_file_prefix_handlers.py`.
 
-**Semantics:** `file:url::https://example.com/x` continues to be passthrough — strip the prefix, return the bare URL. The runtime never fetches in the `url` branch. `file:base64::https://...` and `file:text::https://...` go through `FileLoaderService.load`, which classifies and dispatches.
+**Semantics:** `file:url::https://example.com/x` continues to be passthrough — strip the prefix, return the bare URL. `file:base64::https://...` and `file:text::https://...` go through `FileLoaderService.load`, which classifies and dispatches.
 
-**Change:** Constructor parameters; `FilePrefixHandlers.handle_base64 / handle_text` signatures. The regex (`FILE_PATTERN`, `src/quickapp/common/file_reference_pattern.py`) is unchanged.
+**Change:** Constructor parameters; `FilePrefixHandlers.handle_base64 / handle_text` signatures.
 
 ### Python interpreter input staging
 
@@ -314,21 +334,18 @@ This design extends the snapshot path: `_convert_to_openai_tool_format` retains 
 **Semantics:**
 
 - The matching attachment in conversation history is found as today (URL-suffix match against `attachments_urls_map`).
-- Before calling `client.transfer_input_file(InputFileTransferDto(sourceUrl=url, ...))`, classify the matched URL.
-- DIAL path on the same DIAL → unchanged.
-- DIAL path on a different DIAL (the existing `settings.api_key` dev-DIAL upload, `handlers/input_file_handler.py:27-48`) → unchanged.
+- Before calling `client.transfer_input_file(InputFileTransferDto(sourceUrl=url, ...))`, classify the matched URL. DIAL paths (same DIAL or the dev-DIAL upload variant at `handlers/input_file_handler.py:27-48`) keep their existing behaviour.
 - External → `DialFilePromoter.promote(url)`, then pass the resulting DIAL URL to `transfer_input_file`. If the dev-DIAL upload path is also active, the promoter result is uploaded there next, identical to the existing dev path.
 
-**Change:** `InputFileHandler` is currently instantiated inline (`InputFileHandler()` at `_py_interpreter_tool.py:189`) with no DI binding and constructs its own `AsyncDial` instances; consuming `DialFilePromoter` requires it to become a DI participant. Two acceptable shapes:
+**Change:** `InputFileHandler` is currently instantiated inline (`InputFileHandler()` at `_py_interpreter_tool.py:189`) with no DI binding and constructs its own `AsyncDial` instances; consuming `DialFilePromoter` requires it to become a DI participant. Add `@inject` to `InputFileHandler`, register it in `InternalToolModule` at request scope, and have `_PyInterpreterTool` inject it. `get_attachment_url` gains the `external` branch and consumes `DialFilePromoter` (also injected). The existing dev-DIAL upload behaviour is preserved. The wiring change is a real structural step (new DI binding, new injection points), not a one-line patch.
 
-- **Promote to a request-scoped service.** Add `@inject` to `InputFileHandler`, register it in `InternalToolModule` at request scope, and have `_PyInterpreterTool` inject it. `get_attachment_url` gains the `external` branch and consumes `DialFilePromoter` (also injected). The existing dev-DIAL upload behaviour is preserved.
-- **Dissolve into `_PyInterpreterTool`.** Move the two methods (`get_attachment_url`, helpers) into `_PyInterpreterTool` and let it inject `DialFilePromoter` directly. Reasonable if the handler doesn't grow further responsibilities.
-
-This design picks the first option to keep the staging logic isolated from the orchestration logic in `_PyInterpreterTool`. The wiring change is a real structural step (new DI binding, new injection points), not a one-line patch.
+*Considered alternative:* dissolving the handler into `_PyInterpreterTool`. Rejected to keep staging logic isolated from orchestration; `InputFileHandler` is the natural seam for the dev-DIAL cross-upload case and benefits from being independently testable.
 
 ### Operational gating (two-tier)
 
-**What:** Egress is gated by two layers, mirroring the `FileLoadingConfig` pattern (`src/quickapp/config/application.py:59-79` + `src/quickapp/common/file_loading_size_limit_resolver.py`). The deployment-handoff branch (UC-1) is **not** gated — no QuickApps egress happens there, and neither tier reaches it.
+**What:** Egress is gated by two layers, mirroring the `FileLoadingConfig` pattern (`src/quickapp/config/application.py:59-79` + `src/quickapp/common/file_loading_size_limit_resolver.py`). Two orthogonal axes are gated through this composition: **on/off** (does egress happen at all) and **host allowlist** (which destinations are reachable). The deployment-handoff branch (UC-1) is **not** gated — no QuickApps egress happens there, and neither tier reaches it.
+
+**Implementation cadence.** The on/off axis (`enabled`, `ALLOW_EXTERNAL_URL_FETCH`, the corresponding `admin` / `builder` reasons) shipped first within this PR; the host-allowlist axis (`host_allowlist` env + per-app field, `match_host`, `resolve_host`, the corresponding `admin_allowlist` / `builder_allowlist` reasons, the per-redirect-hop re-check) is staged in the same PR as a follow-on commit. Both axes are designed together because they share the resolver, the error class, the SSRF transport's redirect-hop integration, and the agent-facing retry contract — splitting the design would force forward-references in either half.
 
 #### Admin tier — env settings
 
@@ -337,9 +354,11 @@ This design picks the first option to keep the staging logic isolated from the o
 | Setting | Env | Default | Notes |
 |---------|-----|---------|-------|
 | `allow` | `ALLOW_EXTERNAL_URL_FETCH` | `false` | Admin cap. When `false`, no app can fetch externally regardless of its manifest. |
+| `host_allowlist` | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` | `None` | Optional comma-separated list of host patterns (see [Domain matching semantics](#domain-matching-semantics)). When unset, no admin-level host restriction (any host that passes the SSRF envelope is reachable). When set, only listed hosts are reachable; per-app builder lists can narrow but never expand this set. Independent from the SSRF blocklist — both must pass. |
 | `max_redirects` | `EXTERNAL_URL_FETCH_MAX_REDIRECTS` | `5` | Hard ceiling 10 enforced by validator. Not per-app overridable; SSRF policy is uniform. |
 | `connect_timeout_seconds` | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5` | Read/total timeout reuses `ToolTimeoutResolver`. The resolver is request-scoped and returns the app-level tool-timeout default; every consuming surface — `_FileArgumentTransformer`, `DialFilePromoter`, and `_resolve_attachment` (reached during `BaseDeploymentTool.complete_request_async`) — runs inside a tool call and therefore inherits a timeout budget. |
-| (no SSRF allowlist field) | — | — | The SSRF blocklist is not operator-tunable in Phase 1. Keeping it static reduces foot-guns. A future iteration can add an explicit `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` if a concrete need surfaces. |
+
+The SSRF *blocklist* itself remains static (loopback / RFC1918 / link-local / multicast / reserved / CGNAT / unspecified). The new `host_allowlist` is layered *on top of* the blocklist and is about explicitly enumerating reachable upstreams, not punching holes in the SSRF guard.
 
 #### Builder tier — per-app config
 
@@ -347,35 +366,70 @@ This design picks the first option to keep the staging logic isolated from the o
 
 | Field | Type | Default | Notes |
 |-------|------|---------|-------|
-| `enabled` | `bool \| None` | `None` | Builder-level override. `None` means "follow the admin tier". `true` is a no-op when admin allows; meaningless when admin disallows. `false` opts this app out even when admin allows. |
+| `enabled` | `bool \| None` | `None` | Builder-level override of the on/off gate. `None` means "follow the admin tier". `true` is a no-op when admin allows; meaningless when admin disallows. `false` opts this app out even when admin allows. |
+| `host_allowlist` | `list[str] \| None` | `None` | Builder-level allowlist override. `None` means "follow the admin tier". A list narrows: a host must be in *both* the admin and the builder list to be allowed. An explicit empty list (`[]`) means "no host allowed by this app" — a deliberate lock. Patterns follow the same matching rules as the admin list. |
 
 **Why this shape (and why these defaults).** Mirrors `FileLoadingConfig.size_limit: int | None` exactly: `None` defers to env, an explicit value overrides. Adopting the existing pattern means operators and builders already understand the precedence model, the field is documentable in one sentence, and the implementation is a one-method resolver that follows a known precedent. The defaults — admin off, builder unset — bias toward the conservative outcome: external egress is disabled until *both* an operator and (implicitly) a builder choose otherwise.
 
+Why per-app **narrowing** for the host list rather than per-app **substitution**: the admin's allowlist is the operator-controlled audit boundary (logged, reviewable, change-managed). If apps could substitute their own list, a malicious or careless manifest could route egress to upstreams the operator never reviewed. Intersection preserves the audit boundary while letting builders tighten further. This is the same direction the on/off switch points: env sets a cap, app *narrows* it.
+
 Why a per-app **opt-out** rather than per-app **opt-in** when admin allows: the admin gate is the meaningful security boundary; once admin policy permits external fetches, requiring every app to also opt in would be a second redundant switch with no additional security value (a malicious or careless app's manifest can flip an opt-in just as easily as an opt-out). The per-app field is for builders running narrower-trust apps (PII processors, regulated data flows) who want to disable a capability the deployment otherwise grants. This is the same direction `FileLoadingConfig.size_limit` points: env sets a default, app *narrows* it.
+
+#### Domain matching semantics
+
+Host patterns in either tier follow these rules, applied case-insensitively to the URL's host component (port and userinfo ignored):
+
+| Pattern | Matches | Does not match |
+|---------|---------|----------------|
+| `example.com` | `example.com` | `sub.example.com`, `example.com.evil.com` |
+| `*.example.com` | `sub.example.com`, `a.b.example.com` (any number of labels ≥ 1) | `example.com` itself, `notexample.com`, `evil-example.com` |
+| `*.example.com` AND `example.com` (both listed) | both apex and any subdomain | (n/a) |
+
+The wildcard form is the only pattern variant. Mid-string wildcards (`api*.example.com`), suffix wildcards (`example.*`), regex, and CIDR-by-host are out of scope — they invite mistakes, and exact-or-`*.x.y` covers the operator use cases the issue raises (CDN domains, partner APIs, public datasets).
+
+IP-literal hosts (`https://1.2.3.4/...`) are not matchable via the allowlist. If the admin or builder list is set and the URL's host is an IP literal, the fetch is rejected (the SSRF guard remains responsible for IP-level filtering; the allowlist is purely a domain-name policy). IDNs / Unicode hostnames are the operator's responsibility to normalise to ASCII (punycode) when configuring; matching is byte-equality on the lowered ASCII form.
 
 #### Effective-policy resolution
 
-**Owner:** New request-scoped `ExternalUrlFetchPolicyResolver` in `src/quickapp/common/external_url_fetch_policy_resolver.py`, mirroring `FileLoadingSizeLimitResolver`.
+**Owner:** Request-scoped `ExternalUrlFetchPolicyResolver` in `src/quickapp/common/external_url_fetch_policy_resolver.py`, mirroring `FileLoadingSizeLimitResolver`. The resolver exposes two methods:
+
+- `resolve_reason() -> "admin" | "builder" | "allowed"` — the on/off gate, called once per fetch.
+- `resolve_host(host) -> "admin_allowlist" | "builder_allowlist" | "allowed"` — the host check, called once per URL (and re-called on each redirect target).
 
 ```mermaid
 flowchart TD
-    A["ExternalUrlFetchPolicyResolver.resolve()"] --> B{"env.allow?"}
-    B -->|"false (admin disallows)"| F["return False — admin cap"]
-    B -->|"true (admin allows)"| C{"app.features.external_url_fetch.enabled?"}
-    C -->|"None (default)"| T["return True"]
-    C -->|"true"| T
-    C -->|"false (builder opts out)"| D["return False — builder narrowing"]
+    subgraph Gate["resolve_reason() — once per fetch"]
+        A["start"] --> B{"env.allow?"}
+        B -->|"false"| F["admin"]
+        B -->|"true"| C{"app.enabled?"}
+        C -->|"None / true"| TG["allowed"]
+        C -->|"false"| D["builder"]
+    end
+
+    subgraph Host["resolve_host(host) — once per URL + each redirect"]
+        H["start"] --> AA{"admin list set?"}
+        AA -->|"no"| BB{"builder list set?"}
+        AA -->|"yes"| AM{"host matches admin list?"}
+        AM -->|"no"| AR["admin_allowlist"]
+        AM -->|"yes"| BB
+        BB -->|"no"| TH["allowed"]
+        BB -->|"yes"| BM{"host matches builder list?"}
+        BM -->|"no"| BR["builder_allowlist"]
+        BM -->|"yes"| TH
+    end
 ```
 
-`ExternalUrlFetcher.fetch` consumes this resolver. When the resolver returns `False`, the fetcher raises `ExternalFetchDisabledError` immediately — before DNS lookup, before any network egress. The error message names which tier closed the gate (admin or builder) so operators and builders can tell from logs whose policy is in effect. UC-1 is unaffected because it never reaches the fetcher.
+`ExternalUrlFetcher.fetch` consumes the resolver in this order: (1) `resolve_reason()` — if not `"allowed"`, raise `ExternalFetchDisabledError` immediately; (2) `resolve_host(url.host)` — if not `"allowed"`, raise `ExternalFetchDisabledError` with the matching reason. Both checks happen before DNS lookup. On each redirect hop the SSRF transport additionally re-runs `resolve_host` against the redirect target's host so an allowlist-passing URL cannot redirect to a disallowed one.
 
-**Precondition:** The two tiers compose; they do not race. The resolver is request-scoped and reads both `ExternalFetchSettings` (singleton) and `ApplicationConfig` (already request-scoped) once. A request that sees admin=allow + app=opt-out behaves identically to a request that sees admin=disallow on every code path that matters — both raise `ExternalFetchDisabledError` from the same fetcher entry point. The only operator-visible difference is the error reason.
+The error message names which tier rejected (admin or builder) and whether the rejection was the on/off gate or the allowlist, so operators and builders can tell from logs whose policy is in effect. UC-1 is unaffected because it never reaches the fetcher.
+
+**Precondition:** The two tiers compose; they do not race. The resolver is request-scoped and reads both `ExternalFetchSettings` (singleton) and `ApplicationConfig` (already request-scoped) once. A request that sees admin=allow + app=opt-out behaves identically on every code path that matters to a request that sees admin=disallow — both raise `ExternalFetchDisabledError` from the same fetcher entry point. The only operator-visible difference is the error reason.
 
 **Why a dedicated env switch rather than `@preview_module`.** `@preview_module` toggles entire feature modules at process start (`src/quickapp/common/preview.py`); it is appropriate for "this feature is not yet GA." External URL handling here is GA-shaped (the SDK contract is stable, the security envelope is non-negotiable), but operators in regulated tenants still need an off-switch — and individual app owners may want to narrow the surface further. A dedicated env var separates "feature maturity" from "egress policy", and the per-app field separates "deployment-wide policy" from "per-app trust posture". `@preview_module` could express none of these distinctions.
 
 ### Schema and skill alignment
 
-**Schema.** The `attachment_urls` parameter on auto-generated deployment tools is already typed `array[string]` (`src/quickapp/dial_core_services/tool_config_service.py:154-164`). The string description ("Attachment url related to tool call. Use full url.") is updated to explicitly state that both DIAL paths and external `https://` URLs are accepted. `make dump_app_schema` regenerates `docs/generated-app-schema.json`.
+**Schema.** The `attachment_urls` parameter on auto-generated deployment tools is already typed `array[string]` (declared in `ToolConfigCoreService._convert_to_openai_tool_format`). The string description ("Attachment url related to tool call. Use full url.") is updated to explicitly state that both DIAL paths and external `https://` URLs are accepted. `make dump_app_schema` regenerates `docs/generated-app-schema.json`.
 
 **Skill.** `config/predefined/skills/tool-call-file-parameter-formatting/SKILL.md` already documents external URL examples (Example 6 — `fetch_resource(resource_url=...)`; Example 9 — multi-file upload with `file:url::` array). The skill body is reaffirmed with one note: external URLs may fail with a clear error if the operator has disabled egress (or the per-app config has opted out), and the agent should fall back to asking the user for a DIAL upload in that case.
 
@@ -409,9 +463,9 @@ The MCP transformer already requires DIAL files for `dial_url: true` parameters 
 ## Out of Scope
 
 - **Authenticated external URLs.** No outbound credentials (Basic, custom Bearer, OAuth). Builders that need authenticated external sources should configure a REST tool with explicit credentials. Adding credential support here would re-introduce all the per-surface security questions the design intentionally collapses.
-- **Streaming bytes through QuickApps without buffering.** The size limit implies a buffered fetch. A streaming variant is a possible future optimisation but adds substantial complexity (back-pressure, partial-error handling, MIME inference without the full body) for callers that today don't need it.
+- **Streaming bytes through QuickApps without buffering.** The size limit implies a buffered fetch. A streaming variant is a possible future optimisation but adds substantial complexity (back-pressure, partial-error handling, MIME inference without the full body) for callers that today don't need it. A future pass would need a streaming `FetchedBytes` variant that yields chunks, back-pressure-aware size enforcement that works without `Content-Length`, and a streaming `AttachmentService.upload_stream` helper to forward to DIAL Core's chunked-upload endpoint.
 - **Cross-request URL caching.** Per-request `StateHolder` caching is preserved on both branches. A process-wide cache for external URLs (analogous to `DialDeploymentToolCacheService`) would have to grapple with cache invalidation, max-age headers, and per-tenant isolation — none of which are needed for the cases in the issue.
-- **Operator-tunable SSRF allowlist.** The blocklist is static in Phase 1. A future iteration can add `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` if a concrete need emerges (e.g. a tenant who genuinely needs to fetch from `10.x` for a legitimate internal endpoint).
+- **Operator-tunable SSRF carve-outs.** The IP-level blocklist (loopback / RFC1918 / link-local / multicast / reserved / CGNAT / unspecified) is static and not operator-tunable. Punching holes in the SSRF guard for legitimate internal endpoints (e.g. a tenant who needs to fetch from `10.x`) remains out of scope; if that need surfaces, a separate `EXTERNAL_URL_FETCH_BLOCKLIST_OVERRIDES` setting would be added with its own design. The `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` introduced here is *layered on top of* the SSRF guard, not in place of it — both must pass.
 - **Smarter MIME inference.** `Content-Type` from the fetch is good enough; we do not perform binary signature detection on the fetched bytes for type guessing. The existing binary detection in `FilePrefixHandlers.handle_text` continues to be the policy enforcer for "is this text-decodable."
 - **Migrating the other ad-hoc `httpx.AsyncClient` call sites** (`_rest_api_tool.py`, `_py_interpreter_client.py`, `_interactive_login_service.py`) onto a shared client. Those have distinct policies (REST tools deliberately accept arbitrary URLs configured by builders; the interpreter client targets a fixed sandbox; interactive login targets DIAL Core). Sharing a transport for *file* loading — the case the issue raises — is sufficient.
 
@@ -477,7 +531,47 @@ Behaviour:
 ALLOW_EXTERNAL_URL_FETCH=true
 ```
 
-App manifest omits `features.external_url_fetch` entirely. The resolver returns `True`; external fetches proceed under the security envelope. This is the path most apps take once an operator has decided to permit the egress surface.
+App manifest omits `features.external_url_fetch` entirely. The resolver returns `allowed`; external fetches proceed under the security envelope. This is the path most apps take once an operator has decided to permit the egress surface.
+
+### Admin restricts external fetches to a vetted host list
+
+```bash
+ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_HOST_ALLOWLIST=example.com,*.public-cdn.net,partner.io
+```
+
+Behaviour:
+
+- Fetches against `example.com`, `cdn.public-cdn.net`, `a.b.public-cdn.net`, or `partner.io` proceed (subject to SSRF + size + redirect limits).
+- A fetch against `evil.com` raises `ExternalFetchDisabledError(reason="admin_allowlist")`, before DNS lookup. Agent receives a retry response naming the operator-level setting.
+- A redirect from `example.com` to `evil.com` is rejected mid-pipeline by the same check on the redirect target.
+- The deployment-handoff branch (UC-1) is unaffected — the deployment fetches the URL itself, no QuickApps egress.
+
+### Builder narrows the allowlist for a high-trust app
+
+```bash
+ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_HOST_ALLOWLIST=example.com,*.public-cdn.net,partner.io
+```
+
+App manifest:
+
+```json
+{
+  "features": {
+    "external_url_fetch": {
+      "host_allowlist": ["example.com"]
+    }
+  }
+}
+```
+
+Behaviour:
+
+- Fetches against `example.com` from this app proceed.
+- Fetches against `partner.io` from this app raise `ExternalFetchDisabledError(reason="builder_allowlist")` — the host is in the admin list but not the builder list.
+- Other apps without the per-app override keep the full admin set.
+- An app whose manifest names a host not in the admin list (e.g. `["intranet.local"]`) sees its fetches rejected with `builder_allowlist` because the intersection with the admin list is empty for that host. The admin list is a hard cap; the builder list never expands it.
 
 ### Mixed-source RAG call
 
@@ -528,7 +622,7 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 
 ### Non-breaking changes
 
-- New env vars (`ALLOW_EXTERNAL_URL_FETCH`, `EXTERNAL_URL_FETCH_*`) all have safe defaults; the admin cap is **off** by default. The new per-app `features.external_url_fetch` field defaults to absent, which the resolver treats as "follow the admin tier" — no existing manifest needs to be updated.
+- New env vars (`ALLOW_EXTERNAL_URL_FETCH`, `EXTERNAL_URL_FETCH_*`, including the newly-in-scope `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`) all have safe defaults; the admin cap is **off** by default and the host allowlist is **unset** by default (no admin-level host restriction once the cap is open). The new per-app `features.external_url_fetch` field defaults to absent, which the resolver treats as "follow the admin tier" — no existing manifest needs to be updated. Both `enabled` and `host_allowlist` sub-fields default to `None`.
 - New `FileLoaderService`, `ExternalUrlFetcher`, and `DialFilePromoter` services in DI; downstream consumers (`_FileArgumentTransformer`, `FilePrefixHandlers`, `_PyInterpreterTool`, `DialCompletionService`) switch to them. Internal-only — no public type renames.
 - `DialFileService` loses `download_file` (callers migrate to `FileLoaderService.load`); `grant_permissions_to_files` stays. Internal-only — no public consumer.
 - `_resolve_attachment` accepts external URLs.
@@ -542,23 +636,24 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 **New files:**
 
 - `src/quickapp/common/url_classification.py` — `UrlScheme` enum, `classify_url(url) -> UrlScheme`. Single source of truth for the DIAL-vs-external distinction.
-- `src/quickapp/common/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `ALLOW_EXTERNAL_URL_FETCH`, redirect cap, connect timeout. Singleton.
-- `src/quickapp/common/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver.resolve() -> bool`. Request-scoped. Combines the admin tier (`ExternalFetchSettings.allow`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled`) into a single effective flag; mirrors `FileLoadingSizeLimitResolver`.
+- `src/quickapp/common/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `ALLOW_EXTERNAL_URL_FETCH`, `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (parsed from a comma-separated list), redirect cap, connect timeout. Singleton.
+- `src/quickapp/common/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver` with two methods: `resolve_reason()` for the on/off gate and `resolve_host(host)` for the allowlist check. Request-scoped. Combines the admin tier (`ExternalFetchSettings.allow` + `host_allowlist`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled` + `host_allowlist`) into per-axis effective decisions; mirrors `FileLoadingSizeLimitResolver` for the singleton/request layout.
+- `src/quickapp/common/host_pattern_match.py` — small pure helper `match_host(host, patterns) -> bool` implementing the exact-or-`*.suffix` matching rule used by both tiers. Single source of truth, easy to unit-test in isolation from the resolver.
 - `src/quickapp/file_transfer/_external_url_fetcher.py` — `ExternalUrlFetcher` with the shared security envelope; `ExternalFetchError` and `ExternalFetchDisabledError` co-located in the same module. Consumes `ExternalUrlFetchPolicyResolver` for the gate check. Request-scoped.
 - `src/quickapp/file_transfer/_file_loader_service.py` — `FileLoaderService.load(url)`. Request-scoped. Dispatches on `UrlScheme`; reuses `StateHolder` for per-request caching.
 - `src/quickapp/file_transfer/_dial_file_promoter.py` — `DialFilePromoter.promote(url) -> FileMetadata`. Request-scoped. Colocated with the loader; depends on `ExternalUrlFetcher` (external branch) and `AttachmentService`'s factored upload helper (DIAL upload).
 
 **Modified files:**
 
-- `src/quickapp/config/application.py` — `Features` gains `external_url_fetch: ExternalUrlFetchConfig = Field(default_factory=ExternalUrlFetchConfig, ...)` (sibling of `file_loading`). `ExternalUrlFetchConfig.enabled: bool | None = None`, defaulting to "follow the admin tier".
-- `src/quickapp/dial_core_services/dial_file_service.py` — `download_file` removed; the DIAL-download body moves into a new private `_DialDownloader` (still in this directory, request scope) consumed by `FileLoaderService`. `grant_permissions_to_files` unchanged.
-- `src/quickapp/dial_deployment_tooling/dial_completion_service.py` — `_resolve_attachment` becomes 4-branch (DIAL / external+supports / external+materialise / unsupported). `resolve_attachment_urls` gains a `supports_url_attachments: bool` parameter.
-- `src/quickapp/dial_deployment_tooling/base_deployment_tool.py` — passes `supports_url_attachments` from `tool_config` down to `DialCompletionService.complete_request_async`.
+- `src/quickapp/config/application.py` — `Features` gains `external_url_fetch: ExternalUrlFetchConfig = Field(default_factory=ExternalUrlFetchConfig, ...)` (sibling of `file_loading`). `ExternalUrlFetchConfig` carries `enabled: bool | None = None` (on/off override) and `host_allowlist: list[str] | None = None` (per-app domain allowlist; intersects with the admin list, never expands it). Both default to "follow the admin tier".
+- `src/quickapp/dial_core_services/dial_file_service.py` — `download_file` removed; the DIAL-download body moves into a new request-scoped `DialDownloader` in the same directory, consumed by `FileLoaderService`. `grant_permissions_to_files` unchanged.
+- `src/quickapp/dial_deployment_tooling/dial_completion_service.py` — `_resolve_attachment` becomes 4-branch (DIAL / external+supports / external+materialise / unsupported). `complete_request_async`, `__build_request_messages`, `__user_message_from_content_and_attachments`, `resolve_attachment_urls`, and `_resolve_attachment` all thread a new `supports_url_attachments: bool` parameter so every outbound attachment-list construction sees the flag.
+- `src/quickapp/dial_deployment_tooling/base_deployment_tool.py` — reads `self.tool_config.supports_url_attachments` once and passes it to `complete_request_async` (live call) and `resolve_attachment_urls` (history rebuild).
 - `src/quickapp/config/tools/deployment.py` (`DialDeploymentTool`) — gains `supports_url_attachments: bool = False`. Populated by `_convert_to_openai_tool_format`.
 - `src/quickapp/dial_core_services/tool_config_service.py` — `_convert_to_openai_tool_format` reads `deployment.features.url_attachments` and sets the new field. The `attachment_urls` parameter description is updated to mention external URLs explicitly.
-- `src/quickapp/file_transfer/_file_argument_transformer.py` — constructor takes `FileLoaderService`.
-- `src/quickapp/file_transfer/_file_prefix_handlers.py` — `handle_base64`, `handle_text` take `FileLoaderService`.
-- `src/quickapp/dial_core_services/attachment_service.py` — upload body factored into a private helper `_upload_bytes(bytes, content_type, filename) -> FileMetadata` shared with `DialFilePromoter`. Public `upload_attachment_to_core` unchanged.
+- `src/quickapp/file_transfer/_file_argument_transformer.py` — constructor takes `FileLoaderService`. The transformer threads the originating tool-argument key into `FileLoaderService.load(..., parameter_name=key)` so policy / envelope failures attribute to the correct parameter.
+- `src/quickapp/file_transfer/_file_prefix_handlers.py` — `handle_base64`, `handle_text` take `FileLoaderService` and accept `parameter_name`, threading it to `FileLoaderService.load`.
+- `src/quickapp/dial_core_services/attachment_service.py` — upload body factored into an internal helper `_upload_bytes(bytes, content_type, filename) -> FileMetadata`, exposed via a public alias `upload_bytes` for callers (today: `DialFilePromoter`) that want the raw upload without `upload_attachment_to_core`'s "swallow exception, return original attachment" branch. Public `upload_attachment_to_core` signature unchanged.
 - `src/quickapp/internal_tooling/py_interpreter_tooling/_py_interpreter_tool.py`, `handlers/input_file_handler.py` — external branch added; routes through `DialFilePromoter`.
 - `src/quickapp/file_transfer/file_transfer_module.py` — bind `FileLoaderService`, `ExternalUrlFetcher`, `DialFilePromoter` at request scope.
 - `src/quickapp/application/app_module.py` — bind `ExternalFetchSettings` as a singleton and `ExternalUrlFetchPolicyResolver` at request scope, alongside the sibling `FileLoadingSettings` (singleton) and `FileLoadingSizeLimitResolver` (request) that today live in this module.
@@ -572,5 +667,5 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 - `_AttachmentFilter` (`src/quickapp/agent/_attachment_filter.py`) — already reads and surfaces `reference_url` to the LLM.
 - The `file:` prefix grammar and `FILE_PATTERN` (`src/quickapp/common/file_reference_pattern.py`).
 - `RestApiTool`, `_PyInterpreterClient`, `InteractiveLoginService` egress paths — out of scope; their HTTP clients are not migrated.
-- `AttachmentService.upload_attachment_to_core` public signature — its body is factored into a private `_upload_bytes` helper shared with `DialFilePromoter`, but the public method continues to accept `Attachment(data=..., url=None)` and persist it; existing callers (`internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py:67`) need no change.
+- `AttachmentService.upload_attachment_to_core` public signature — its body is factored into an internal `_upload_bytes` helper (exposed via the public `upload_bytes` alias for the promoter), but the public method continues to accept `Attachment(data=..., url=None)` and persist it; existing callers (`internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py:67`) need no change.
 - `DialDeploymentToolCacheService` — process-wide cache of `DialDeploymentTool` snapshots already memoises the `features.url_attachments` read.

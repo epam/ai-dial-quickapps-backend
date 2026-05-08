@@ -3,9 +3,11 @@ from typing import Literal
 from injector import inject
 
 from quickapp.common.external_fetch_settings import ExternalFetchSettings
+from quickapp.common.host_pattern_match import match_host
 from quickapp.config.application import ApplicationConfig
 
 PolicyReason = Literal["admin", "builder", "allowed"]
+HostReason = Literal["admin_allowlist", "builder_allowlist", "allowed"]
 
 
 @inject
@@ -26,4 +28,14 @@ class ExternalUrlFetchPolicyResolver:
         features = self.__app_config.features
         if features is not None and features.external_url_fetch.enabled is False:
             return "builder"
+        return "allowed"
+
+    def resolve_host(self, host: str) -> HostReason:
+        admin_list = self.__settings.host_allowlist
+        if admin_list is not None and not match_host(host, admin_list):
+            return "admin_allowlist"
+        features = self.__app_config.features
+        builder_list = features.external_url_fetch.host_allowlist if features is not None else None
+        if builder_list is not None and not match_host(host, builder_list):
+            return "builder_allowlist"
         return "allowed"

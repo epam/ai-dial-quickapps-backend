@@ -90,7 +90,7 @@ flowchart TD
 
 ### `base64` processing
 
-1. Loads the file via `FileLoaderService` (DIAL files via `_DialDownloader`, external URLs via `ExternalUrlFetcher`).
+1. Loads the file via `FileLoaderService` (DIAL files via `DialDownloader`, external URLs via `ExternalUrlFetcher`).
 2. Base64-encodes the bytes.
 3. Replaces the parameter value with the encoded string.
 
@@ -117,7 +117,7 @@ rejected with an error message. The agent receives retry instructions and can re
 File loading is handled by `FileLoaderService`, a request-scoped service that:
 
 - **Classifies** every URL via `classify_url`: bare DIAL paths and absolute URLs whose host matches the configured
-  DIAL endpoint route to `_DialDownloader` (DIAL Core download API); other `http(s)://` URLs route to
+  DIAL endpoint route to `DialDownloader` (DIAL Core download API); other `http(s)://` URLs route to
   `ExternalUrlFetcher`; everything else (`file:`, `ftp:`, `data:`, malformed) is rejected with a clear error.
 - **Caches downloads** within the request via `StateHolder`, keyed by `sha256(url)`. If the same URL appears in
   multiple tool call parameters (or across multiple tool calls in the same orchestrator iteration), it is loaded
@@ -140,15 +140,29 @@ uniformly across every consumer:
 
 ### Two-tier egress policy
 
-External fetching is gated by two layers, both off by default:
+External fetching is gated along two orthogonal axes — **on/off** (does egress happen at all) and
+**host allowlist** (which destinations are reachable). Each axis has an admin (env) tier and a
+builder (per-app) tier. Defaults are off / unset.
 
-| Tier    | Owner    | Setting                                                                  | Default | Effect                                                                                                       |
-|---------|----------|--------------------------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------|
-| Admin   | Operator | env `ALLOW_EXTERNAL_URL_FETCH`                                           | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                |
-| Builder | App      | manifest `features.external_url_fetch.enabled`                           | `null`  | `null` defers to the admin tier; `true` is a no-op when admin allows; `false` opts this app out from below.  |
+| Axis      | Tier    | Setting                                                  | Default | Effect                                                                                                                                           |
+|-----------|---------|----------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| On/off    | Admin   | env `ALLOW_EXTERNAL_URL_FETCH`                           | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                                                    |
+| On/off    | Builder | manifest `features.external_url_fetch.enabled`           | `null`  | `null` defers to admin; `true` is a no-op when admin allows; `false` opts this app out from below.                                               |
+| Allowlist | Admin   | env `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (comma-separated) | `null` | When unset, no admin-level host restriction. When set, only hosts matching the patterns are reachable; per-app builder lists can narrow further. |
+| Allowlist | Builder | manifest `features.external_url_fetch.host_allowlist`    | `null`  | `null` defers to admin; a non-empty list narrows the admin list (intersection); an explicit empty list locks this app out of all hosts.          |
+
+**Host pattern grammar.** `example.com` matches that host exactly (case-insensitive).
+`*.example.com` matches any subdomain of `example.com` with at least one label
+(`a.example.com`, `a.b.example.com`); it does not match `example.com` itself. List both to allow
+both. IP-literal hosts (`https://1.2.3.4/...`) are never matched by the allowlist — the SSRF
+guard remains responsible for IP-level filtering. IDNs / Unicode hostnames are the operator's
+responsibility to normalise to ASCII (punycode) when configuring.
+
+The allowlist axis is enforced before DNS, both for the initial URL and on every redirect target —
+an allowlist-passing URL cannot redirect to a disallowed one.
 
 The deployment-handoff branch (when a DIAL deployment advertises `features.url_attachments`) is **not** gated:
-QuickApps emits an `AttachmentParam(reference_url=…)` and the deployment fetches the bytes itself, so neither tier
+QuickApps emits an `AttachmentParam(reference_url=…)` and the deployment fetches the bytes itself, so neither axis
 applies.
 
 ## Deployment-attachment dispatch
@@ -192,7 +206,9 @@ response includes the error details so the agent can self-correct:
 | External URL with redirect cap                 | "External URL … exceeded the configured redirect limit."                      |
 | External URL with timeout                      | "External URL … timed out."                                                   |
 | External fetching disabled (admin)             | "External URL fetching is disabled by operator policy (ALLOW_EXTERNAL_URL_FETCH)." |
-| External fetching disabled (per-app)           | "External URL fetching is disabled for this app (features.external_url_fetch.enabled=false)." |
+| External fetching disabled (per-app)           | "External URL fetching is disabled by this app (features.external_url_fetch.enabled=false)." |
+| Host not in admin allowlist                    | "External URL host is not in the operator allowlist (EXTERNAL_URL_FETCH_HOST_ALLOWLIST)." |
+| Host not in per-app allowlist                  | "External URL host is not in this app's allowlist (features.external_url_fetch.host_allowlist)." |
 | `dial_url: true` parameter received external   | "Parameter `…` requires a DIAL file but received an external URL …"           |
 | `dial_url` without configured toolset ID       | "Files cannot be shared because dial_toolset_id is not configured"            |
 
