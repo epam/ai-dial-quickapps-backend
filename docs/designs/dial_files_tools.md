@@ -31,7 +31,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 **Trigger:** The LLM calls `list_files(path="reports/", max_depth=1)`. The relative form resolves under the agent's home dir (`agent_home_dir`, default `files/{appdata}/`).\
 **Behavior:** The tool calls `DialFileService.list_folder(folder_url, max_depth=1)`, which wraps `dial_client.metadata.get("files", folder_url)` and returns only the immediate children. The tool formats the response as a compact text listing.\
-**Outcome:** The LLM sees one entry per child (file or folder) with name, type, and size. Entries under the agent's home dir are emitted as relative paths; entries outside it are emitted as absolute `files/...` URLs (see *Path conventions*).
+**Outcome:** The LLM sees one entry per child (file or folder) with size and path. Folder entries end with `/`; entries under the agent's home dir are emitted as relative paths; entries outside it are emitted as absolute `files/...` URLs (see *Path conventions*).
 
 ### UC-2: Agent lists a folder recursively, depth-bounded
 
@@ -77,13 +77,13 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 ### UC-8: Agent edits an existing file
 
 **Trigger:** `edit_file(path="reports/summary.md", old_string="foo", new_string="bar")`.\
-**Behavior / Outcome:** Unchanged from the previous design (unique-match string replacement, ETag-guarded upload, post-edit cache invalidation). `path` accepts the dual form.
+**Behavior / Outcome:** Unchanged from the previous design (unique-match string replacement, ETag-guarded upload, post-edit cache invalidation). `path` is relative-only (same rule as `write_file`).
 
 ### UC-9: Agent deletes a file under its home dir
 
 **Trigger:** `delete_file(path="reports/old.md")`.\
-**Behavior:** The relative `path` resolves under the agent's home dir; the tool calls `dial_client.files.delete(resolved_url)`. Absolute `files/...` URLs are also accepted (for cleanup of non-home targets the agent has permission to delete). The tool performs no client-side path validation beyond the standard relative-path traversal rules.\
-**Outcome:** The file is removed. The success message echoes the input form (relative if the caller passed a relative path; absolute otherwise).
+**Behavior:** The relative `path` resolves under the agent's home dir; the tool calls `dial_client.files.delete(resolved_url)`. Absolute `files/...` URLs are rejected (same rule as `write_file` / `edit_file`).\
+**Outcome:** The file is removed. The success message echoes the relative path the agent passed in.
 
 ### UC-10: Agent provides an invalid path
 
@@ -125,11 +125,12 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 #### Path conventions
 
-Path handling is uniform across all six tools, with one exception (`write_file`):
+Path handling follows a single rule: **read-only tools accept both forms; mutating tools are relative-only.**
 
 - **Relative paths** address the agent's home directory (`agent_home_dir`, default `files/{appdata}/`). Form: `reports/summary.md`, `data/orders.csv`, `reports/` (folder).
 - **Absolute paths** start with `files/` and address anywhere the caller has access — user uploads, shared admin artifacts, cross-bucket reads. Form: `files/{some_bucket}/uploads/notes.txt`.
-- **Tool inputs** (`path` parameter) accept either form, except `write_file` which is relative-only (the agent authors only inside its own home — cross-namespace writes are deferred until a use case appears; see *Out of Scope*).
+- **Read-only tools** (`list_files`, `read_file_lines`, `search_in_file`) accept either form. The agent can inspect files it doesn't own without writing or deleting them.
+- **Mutating tools** (`write_file`, `edit_file`, `delete_file`) accept **relative paths only**. The agent authors and modifies only inside its own home; cross-namespace mutations are deferred until a use case appears (see *Out of Scope*). Absolute `files/...` URLs passed to these tools are rejected with `InvalidToolCallParameterException` before any IO.
 - **Tool outputs** echo the namespace of the target: entries under the resolved `agent_home_dir` are emitted as **relative** paths; entries outside it are emitted as **absolute** `files/...` URLs. This keeps the agent thinking in its own home namespace and surfaces the absolute form only when the file genuinely lives elsewhere.
 - The default `agent_home_dir = "files/{appdata}/"` means the relative namespace is appdata; operators can repoint it via config (see *Component 10*).
 
@@ -151,28 +152,23 @@ Path handling is uniform across all six tools, with one exception (`write_file`)
 1. Validate `max_depth` in `[1, 10]` — else raise `InvalidToolCallParameterException("max_depth", "...")`.
 2. Ensure `path` ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing). Resolve via `_resolve_appdata_url(path)` — the helper dispatches absolute vs relative as described in *Path conventions*.
 3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service calls `dial_client.metadata.get("files", folder_url)` directly — `metadata.get` joins its second argument onto `/v1/metadata/`, so the input must already include the `files/` segment; the `files/{bucket}/{relative}/` URL is passed through unchanged. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
-4. Format the response as a compact text listing, one entry per line. Column 4 (the path) is run through `_to_display_path` so home-dir entries appear relative and out-of-home entries appear as absolute `files/...` URLs (see *Path conventions*):
+4. Format the response as a compact text listing, one entry per line: size (bytes, or `-` for folders), then the display path (run through `_to_display_path`). Home-dir entries appear relative; out-of-home entries appear as absolute `files/...` URLs (see *Path conventions*). Folder display paths end with `/`. Indentation is two spaces per depth level, applied to the path column:
    ```
-   D    -      reports/                          reports/
-     F  1234   summary.md                        reports/summary.md
-     F  56789  data.csv                          reports/data.csv
-     D    -    images/                           reports/images/
-       F  2048 logo.png                          reports/images/logo.png
+     -  reports/
+     1234    reports/summary.md
+     56789   reports/data.csv
+     -    reports/images/
+     2048      reports/images/logo.png
    ```
-   When the target is outside the agent's home dir, column 4 falls back to the absolute form (e.g. `files/{other_bucket}/uploads/notes.txt`).
-   - Column 1: `F` (file) or `D` (folder).
-   - Column 2: size in bytes (or `-` for folders).
-   - Column 3: name (with trailing `/` for folders).
-   - Column 4: display path — relative under the agent's home dir, or absolute `files/...` URL otherwise. Included so the LLM can hand it directly to `read_file_lines` / `search_in_file` / `edit_file` / `delete_file` without reconstructing it.
-   - **Indentation: two spaces per depth level**, applied to the name column only (display path stays left-aligned in column 4).
-   - Folders at the depth bound are listed by name with no expansion (so the LLM knows they exist and can drill down explicitly with another `list_files` call).
+   When the target is outside the agent's home dir, the path column holds the absolute URL (e.g. `files/{other_bucket}/uploads/notes.txt`).
+   - Folders at the depth bound are listed with no expansion (so the LLM knows they exist and can drill down explicitly with another `list_files` call).
 5. Return `ToolCallResult(content=..., content_type="text/plain")`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_list_files_tool.py`
 
 **Design notes:**
 
-- **Why text output over JSON.** Tabular text is cheaper in tokens and easier for the LLM to scan. The URL column is included inline (rather than only via structured `attachments` metadata) because the rest of the file-tools surface returns text content as the primary signal, and there is no precedent in the codebase for tools surfacing structured `attachments` for the LLM to consume directly.
+- **Why text output over JSON.** Tabular text is cheaper in tokens and easier for the LLM to scan. The path column doubles as the argument to pass directly to other file tools, so no URL reconstruction step is needed.
 - **Depth bound exists.** Without it, an LLM could trigger an unbounded walk on a deep user-uploaded folder. Each subfolder at each depth level requires one metadata call to Core; a depth-D listing over a tree with W subfolders per level costs O(W^D) calls in the worst case — the `max_depth <= 10` bound limits this. `max_depth <= 10` is generous in practice and safe in the worst case.
 - **Pagination is out of scope.** When folder sizes warrant it, this tool can grow `next_token` semantics without breaking the contract (additive optional param + sentinel in the listing).
 - **Reuse.** `DialFileService.list_folder` mirrors the recursion shape used in `src/tests/integration_tests/test_runner/e2e_runner.py`. That helper hits the metadata endpoint via raw `httpx`; the service uses the SDK's `dial_client.metadata.get("files", ...)` instead so the call participates in the same auth/header plumbing as every other DIAL call in the codebase. The recursion shape (depth-bounded BFS over `items`) is the part that's reused.
@@ -214,7 +210,7 @@ Path handling is uniform across all six tools, with one exception (`write_file`)
 
 **Algorithm:**
 
-1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. `write_file` is the one tool that does not accept the dual form (see *Path conventions* and the design note below).
+1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. All mutating tools share this restriction (see *Path conventions* and the design note below).
 2. Resolve `url = await _resolve_appdata_url(path)`. (Path-traversal validation + `agent_home_dir` resolution happen here; failures raise before any IO.)
 3. Branch on `overwrite`:
    - `overwrite == false`: call `DialFileService.upload_text(url=url, content=content, content_type=content_type, if_none_match="*")`. On `EtagMismatchError` (HTTP 412) → `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`.
@@ -231,7 +227,7 @@ Path handling is uniform across all six tools, with one exception (`write_file`)
 
 **Design notes:**
 
-- **Relative-only `path`.** Unlike read/search/edit/delete (which accept both relative and absolute forms), `write_file` accepts only relative paths under `agent_home_dir`. The agent authors files in its own home; cross-namespace writes are out of scope until a use case appears (see *Out of Scope*). An absolute URL passed here is rejected at validation time as a leading-`/` violation (since `files/...` does not start with `/` but does not match the relative form's expected shape, the path-traversal validator surfaces it as an explicit `"path must be relative under agent_home_dir; do not pass an absolute files/... URL"` error).
+- **Relative-only `path`.** All three mutating tools (`write_file`, `edit_file`, `delete_file`) accept only relative paths under `agent_home_dir`. Read-only tools (`list_files`, `read_file_lines`, `search_in_file`) accept either form. The agent authors and mutates files only in its own home; cross-namespace mutations are out of scope until a use case appears (see *Out of Scope*). An absolute `files/...` URL passed to a mutating tool is caught at Algorithm step 1 and rejected before any IO.
 - **Overwrite is opt-in.** Default safety net (`If-None-Match: *`) preserved from the previous design. The `overwrite=True` path is the explicit, ETag-guarded escape hatch — no silent clobber.
 - **Why one tool, not two.** A separate `overwrite_file` tool was considered. Folding the toggle into a parameter keeps the surface small; the LLM sees one tool with a clearly named optional flag.
 - **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default `text/plain` matches the previous behavior exactly. Client-side validation is intentionally minimal — there is no MIME-type allowlist (the set is open-ended) — but the value is rejected if it contains `\n` or `\r` to prevent header-injection-style abuse before the string reaches DIAL's HTTP layer.
@@ -249,7 +245,7 @@ Path handling is uniform across all six tools, with one exception (`write_file`)
 
 **What:** Unique-substring replacement with ETag-guarded upload. Unchanged from the previous design except for the parameter rename below.
 
-**Parameter rename:** `file_url` → `path`. Accepts both shapes per *Path conventions*. Resolution goes through `_resolve_appdata_url(path)`. The rest of the algorithm (download, replace, conditional upload, cache invalidation) is unchanged. See [`file_tools.md`](file_tools.md) Component 5.
+**Parameter rename:** `file_url` → `path`. Accepts **relative paths only** under `agent_home_dir` (absolute `files/...` URLs are rejected — same rule as `write_file`). Resolution goes through `_resolve_appdata_url(path)` (relative branch). The rest of the algorithm (download, replace, conditional upload, cache invalidation) is unchanged. See [`file_tools.md`](file_tools.md) Component 5.
 
 **Owner:** `src/quickapp/dial_files_tooling/_edit_file_tool.py`
 
@@ -263,15 +259,16 @@ Path handling is uniform across all six tools, with one exception (`write_file`)
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `path` | string | yes | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. |
+| `path` | string | yes | Relative path under the agent's home dir. **Rejected:** leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace, absolute `files/...` URL. |
 
 **Algorithm:**
 
-1. `url = await _resolve_appdata_url(path)`.
-2. Call `dial_client.files.delete(url)`.
-3. On success → `ToolCallResult(content=f"Deleted: {_to_display_path(url)}", content_type="text/plain")` — echoes the namespace form of the target (relative for home-dir targets, absolute otherwise) per *Path conventions*.
-4. On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("path", "file not found: {path}")` — same shape as `write_file`/`edit_file` errors.
-5. Other errors → propagate as tool-call errors.
+1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "delete_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`.
+2. `url = await _resolve_appdata_url(path)` (relative branch — path-traversal validation + `agent_home_dir` resolution).
+3. Call `dial_client.files.delete(url)`.
+4. On success → `ToolCallResult(content=f"Deleted: {_to_display_path(url)}", content_type="text/plain")` — echoes the relative path the agent passed in.
+5. On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("path", "file not found: {path}")` — same shape as `write_file`/`edit_file` errors.
+6. Other errors → propagate as tool-call errors.
 
 **Owner:** `src/quickapp/dial_files_tooling/_delete_file_tool.py`
 
@@ -391,7 +388,7 @@ class Features(BaseModel):
 | Failure | Behavior |
 |---------|----------|
 | Invalid relative `path` (empty, leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace) | `InvalidToolCallParameterException("path", ...)` with the specific rule violated. Applies to the relative branch only — absolute `files/...` URLs bypass this validator (server-side rejection if malformed). |
-| Absolute URL passed to `write_file` (path starts with `files/`) | `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. |
+| Absolute URL passed to `write_file` / `edit_file` / `delete_file` (path starts with `files/`) | `InvalidToolCallParameterException("path", "{tool} requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. |
 | Absolute URL contains `\n` / `\r` (any tool) | `InvalidToolCallParameterException("path", "absolute URL must not contain newline characters")`. |
 | `agent_home_dir` fails config-load validation (missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment) | Startup error: `pydantic.ValidationError` raised by the `DialFilesConfig` field validator. The app fails to boot until the operator fixes the manifest. |
 | `agent_home_dir` contains `{appdata}` but `my_appdata_home()` returns `None` at request time | `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Tools that pass an absolute URL (and therefore skip the relative branch) are unaffected. |
@@ -409,6 +406,7 @@ class Features(BaseModel):
 | `path` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
 | File exceeds 10 MB download limit | `InvalidToolCallParameterException("path", "file is too large to read (limit: 10 MB)")`. |
 | File is not valid UTF-8 (read/search/edit) | `UnicodeDecodeError` propagates; LLM sees the error. Binary files are out of scope. |
+| DIAL responds HTTP 403 Forbidden (any tool) | `InvalidToolCallParameterException("path", "access denied: {url}")`. Surfaces to the LLM as a tool-call error so it can pick a different path rather than retrying blindly. The resolved URL is included so the operator can see exactly what was attempted. **Implementation note:** the SDK (`aidial_client`) has no typed `PermissionDeniedError` subclass — 403 surfaces as the base `DialException` with `status_code == 403`. Catch `DialException` in `_DialFileTool` and branch on `e.status_code == 403` so every tool benefits without per-tool duplication. Reference: `aidial_client/_exception.py`. |
 
 ---
 
@@ -424,7 +422,7 @@ class Features(BaseModel):
 - **Pagination on `list_files`.** Deferred until folder sizes warrant it. Additive optional param + sentinel in the listing when introduced.
 - **Recursive delete.** Out of scope — agents loop over a `list_files` result to delete trees explicitly. Reduces blast radius.
 - **MIME sniffing for `write_file`.** Caller-provided only. Sniffing risks misclassification.
-- **Cross-namespace writes.** `write_file` is relative-only and targets the agent's home dir. Writing into a bucket the agent doesn't own is deferred until a use case appears. (Operators that need agents to author into a shared namespace can repoint `agent_home_dir` itself.)
+- **Cross-namespace mutations.** All three mutating tools (`write_file`, `edit_file`, `delete_file`) are relative-only and target the agent's home dir. Mutating files in a bucket the agent doesn't own is deferred until a use case appears. (Operators that need agents to author into a shared namespace can repoint `agent_home_dir` itself.)
 - **Per-app fixed subdirectories.** Covered by `agent_home_dir` — set `"files/{appdata}/workspace/"` (or any other prefix) to pin the agent to a subdirectory under appdata.
 - **Hard limits on read parameters** (truncation, pagination tokens). Deferred — the 10 MB download cap is the only enforced limit in v1.
 
@@ -489,7 +487,7 @@ class Features(BaseModel):
   "name": "internal_file_edit",
   "description": "Replace a unique substring in an existing UTF-8 text file. old_string must occur exactly once. Fails if the file changed concurrently.",
   "parameters": {
-    "path":       {"type": "string", "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."},
+    "path":       {"type": "string", "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'). Absolute files/... URLs are rejected."},
     "old_string": {"type": "string", "description": "Exact substring to replace. Must occur exactly once. Include surrounding context to disambiguate."},
     "new_string": {"type": "string", "description": "Replacement text. May be empty to delete the match."}
   },
@@ -501,7 +499,7 @@ class Features(BaseModel):
   "name": "internal_file_delete",
   "description": "Delete a file from DIAL storage. Hard delete; no undo.",
   "parameters": {
-    "path": {"type": "string", "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."}
+    "path": {"type": "string", "description": "Relative path under the agent's home dir (e.g. 'reports/old.md'). Absolute files/... URLs are rejected."}
   },
   "required": ["path"]
 }
@@ -509,24 +507,24 @@ class Features(BaseModel):
 
 ### `list_files` output format
 
-Listing a folder under the agent's home dir (`list_files(path="reports/", max_depth=3)`) — column 4 emits relative paths:
+Listing a folder under the agent's home dir (`list_files(path="reports/", max_depth=3)`) — path column emits relative paths:
 
 ```
-D    -      reports/                          reports/
-  F  1234   summary.md                        reports/summary.md
-  F  56789  data.csv                          reports/data.csv
-  D    -    images/                           reports/images/
-    F  2048 logo.png                          reports/images/logo.png
+  -  reports/
+  1234    reports/summary.md
+  56789   reports/data.csv
+  -    reports/images/
+  2048      reports/images/logo.png
 ```
 
-Listing a non-home folder (`list_files(path="files/{other_bucket}/uploads/", max_depth=1)`) — column 4 emits absolute URLs:
+Listing a non-home folder (`list_files(path="files/{other_bucket}/uploads/", max_depth=1)`) — path column emits absolute URLs:
 
 ```
-F  4096  notes.txt                          files/{other_bucket}/uploads/notes.txt
-F  8192  resume.pdf                         files/{other_bucket}/uploads/resume.pdf
+  4096  files/{other_bucket}/uploads/notes.txt
+  8192  files/{other_bucket}/uploads/resume.pdf
 ```
 
-Columns: type (`F`/`D`), size, name (indented two spaces per depth level, with trailing `/` for folders), display path (relative under home dir, absolute otherwise).
+Columns: size (bytes, or `-` for folders), display path (relative under home dir, absolute otherwise; two spaces of indentation per depth level; folder paths end with `/`).
 
 ### `write_file` on success
 
@@ -560,10 +558,10 @@ InvalidToolCallParameterException: write_file requires a relative path under age
 Deleted: reports/old.md
 ```
 
-### `delete_file` on success (non-home target)
+### `delete_file` on absolute URL (rejected)
 
 ```
-Deleted: files/{other_bucket}/uploads/stale.pdf
+InvalidToolCallParameterException: delete_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL
 ```
 
 ### Per-app manifest
@@ -626,7 +624,7 @@ Deleted: files/{other_bucket}/uploads/stale.pdf
 - **Config-field rename:** `features.text_file_tools` → `features.dial_files`. Any in-flight manifest using the old key must be updated. No back-compat shim.
 - **Tool-prefix rename:** `internal_text_file_*` → `internal_file_*`. Any saved chat history or manifest referencing the old names will not match. See *Summary of Changes / New tools exposed*.
 - **`write_file` parameter rename and additions:** `filename` → `path`; `content_type` and `overwrite` added.
-- **`read_file_lines` / `search_in_file` / `edit_file` / `delete_file` parameter rename:** `file_url` → `path`. The new parameter accepts both relative paths (resolved under `agent_home_dir`) and absolute `files/...` URLs (passed through unchanged). Any existing manifest or saved chat history referencing `file_url` will not match.
+- **`read_file_lines` / `search_in_file` / `edit_file` / `delete_file` parameter rename:** `file_url` → `path`. For read-only tools (`read_file_lines`, `search_in_file`), the new parameter accepts both relative paths (resolved under `agent_home_dir`) and absolute `files/...` URLs (passed through unchanged). For mutating tools (`edit_file`, `delete_file`), the new parameter accepts relative paths only — absolute URLs are rejected (same rule as `write_file`). Any existing manifest or saved chat history referencing `file_url` will not match.
 - **`delete_file` no longer enforces `generated-files/`.** Any caller relying on this guard for safety must migrate to the appdata isolation model.
 - **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` calls `dial_client.my_appdata_home()` and raises `InvalidToolCallParameterException` if it returns `None`. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list are unaffected). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
 
@@ -638,7 +636,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 - `DialFileService` gains `list_folder` — additive.
 - `AttachmentService` is unchanged.
 - `DialFilesConfig` gains `agent_home_dir` (default `"files/{appdata}/"`) — existing manifests that omit the field are unaffected; relative paths continue to resolve under appdata.
-- `_resolve_appdata_url` now accepts both relative and absolute (`files/...`) inputs. Existing call sites that previously passed only relative paths continue to work; new call sites in the read/search/edit/delete tools rely on the absolute pass-through. This is a contract expansion, not a break.
+- `_resolve_appdata_url` now accepts both relative and absolute (`files/...`) inputs. Existing call sites that previously passed only relative paths continue to work; new read-only call sites (`list_files`, `read_file_lines`, `search_in_file`) rely on the absolute pass-through. Mutating tools (`write_file`, `edit_file`, `delete_file`) reject absolute inputs before calling `_resolve_appdata_url`. This is a contract expansion for read tools, not a break.
 
 ---
 
@@ -684,10 +682,11 @@ The above bullets are acceptable because the feature is preview-gated and not GA
   - `_resolve_appdata_url`: relative path resolves to `agent_home_dir + path`; absolute `files/...` passes through unchanged; absolute URL with `\n` rejected; path traversal applied to relative branch only; `agent_home_dir` template with `{appdata}` resolved via `my_appdata_home()`; `agent_home_dir` without `{appdata}` does not call `my_appdata_home()` (read/search/list usable when appdata missing); appdata-missing with `{appdata}` template → descriptive error.
   - `DialFilesConfig` field validator: rejects missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment — all raise `pydantic.ValidationError` at config-load time.
   - `_to_display_path`: home-dir URL → relative; non-home URL → unchanged; edge case `agent_home_dir` itself → empty relative ("").
-  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (`ResourceNotFoundError`), target-is-not-a-folder, `max_depth` out of range, empty folder, relative `path` input, absolute `path` input, output column 4 uses relative form for home-dir entries and absolute form otherwise.
+  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (`ResourceNotFoundError`), target-is-not-a-folder, `max_depth` out of range, empty folder, relative `path` input, absolute `path` input, two-column output (size + path) with relative display paths for home-dir entries and absolute for non-home.
   - `write_file`: nested path success, absolute URL rejected ("relative-only" error), path-traversal rejection (`..` segment, `../` substring, leading `/`, empty segment, trailing whitespace), `content_type` propagated to the upload call, `overwrite=False` collision (`EtagMismatchError` → `InvalidToolCallParameterException`), `overwrite=True` happy path, `overwrite=True` falls through to create when no prior file (`ResourceNotFoundError` on metadata), `overwrite=True` concurrent modification (`EtagMismatchError` → error), cache invalidated after overwrite, appdata-missing → descriptive error, success message echoes relative path.
-  - `read_file_lines` / `search_in_file` / `edit_file`: accept relative `path` (resolves through `agent_home_dir`), accept absolute `files/...` URL (pass-through), parameter rename from `file_url` to `path` reflected end-to-end.
-  - `delete_file`: success on relative path under home dir (success line shows relative form), success on absolute non-home URL (success line shows absolute form), `ResourceNotFoundError` (404) → `InvalidToolCallParameterException("path", ...)`.
+  - `read_file_lines` / `search_in_file`: accept relative `path` (resolves through `agent_home_dir`), accept absolute `files/...` URL (pass-through), parameter rename from `file_url` to `path` reflected end-to-end.
+  - `edit_file`: accept relative `path` (resolves through `agent_home_dir`), absolute `files/...` URL rejected with `InvalidToolCallParameterException`, parameter rename from `file_url` to `path` reflected end-to-end.
+  - `delete_file`: success on relative path under home dir (success line shows relative form), absolute `files/...` URL rejected with `InvalidToolCallParameterException`, `ResourceNotFoundError` (404) → `InvalidToolCallParameterException("path", ...)`.
   - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
 
@@ -1054,3 +1053,120 @@ UC-3 ("Agent writes into a nested path") demonstrates the `path` nesting capabil
 - Round-6 suggestion #1 (Migration note) — **resolved.** *Non-breaking changes* includes the `agent_home_dir` bullet ("default `"files/{appdata}/"` — existing manifests unaffected").
 - Round-6 suggestion #2 (manifest examples) — **resolved.** Two new manifests in *Configuration / Usage Examples*: shared org bucket and appdata workspace subdir.
 - Round-6 nit #1 (drop "per-app `subdir`" bullet from *Out of Scope*) — **resolved.** Removed; replaced with the "per-app fixed subdirectories" entry that points to `agent_home_dir`. Also added "cross-namespace writes" as the new deferred item for `write_file`'s relative-only constraint.
+
+---
+
+## Review Notes — Round 7
+
+- **Reviewer:** Andrii
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. Three changes tighten the surface area: (1) shrink the `list_files` output to path + size only — drop the `F`/`D` type column and the redundant `name` column; (2) make `edit_file` and `delete_file` relative-only, matching `write_file` (all *mutating* tools confined to `agent_home_dir`); (3) explicitly handle DIAL's 403 Forbidden response across every tool.
+
+### Blocking issues
+
+1. **[Component 2 / `list_files` — reduce output to path + size only.]**
+   Current output has four columns: type (`F`/`D`), size, name, display path. The name column is redundant with the display path (the basename is the last segment), and the type marker is also redundant — folders end with `/` in the display path. Reduce to two columns: size, path.
+
+   New format:
+   ```
+   -      reports/
+   1234   reports/summary.md
+   56789  reports/data.csv
+   -      reports/images/
+   2048   reports/images/logo.png
+   ```
+
+   - Column 1: size in bytes (right-padded), or `-` for folders.
+   - Column 2: display path — relative under the agent's home dir, or absolute `files/...` URL otherwise (via `_to_display_path`). Folders keep their trailing `/`.
+   - Drop the two-space-per-depth indentation: depth is already encoded in the path (`reports/images/logo.png` is two levels deep). Removing it makes parsing trivial and saves tokens.
+
+   Update Component 2 Algorithm step 4, *Configuration / Usage Examples → `list_files` output format*, and any UC text that references the four-column layout (UC-1, UC-2).
+
+2. **[Components 6 & 7 — `edit_file` and `delete_file` become relative-only, matching `write_file`.]**
+   The three mutating tools (`write_file`, `edit_file`, `delete_file`) should share the same path contract: relative under `agent_home_dir`, no absolute `files/...` URLs. The agent edits and deletes only what lives in its own home. Cross-namespace mutations are out of scope (already true for `write_file`).
+
+   Concrete changes:
+   - **Component 6 (`edit_file`):** Remove "Accepts both shapes per *Path conventions*." Replace with: "Relative path under `agent_home_dir` only. Absolute `files/...` URLs are rejected at validation (same shape as `write_file`)." Update the algorithm to call `_resolve_appdata_url` in the relative-only mode.
+   - **Component 7 (`delete_file`):** Update the `path` parameter description: "Relative path under the agent's home dir. Absolute `files/...` URLs are rejected." Remove the "echoes the namespace form of the target" wording from step 3 — the success message always uses the relative form (mirrors `write_file`). Remove the UC for deleting a non-home target if any exists.
+   - **Path conventions subsection (Component 1):** Reword to say *read-side* tools (`list_files`, `read_file_lines`, `search_in_file`) accept both forms; *write-side* tools (`write_file`, `edit_file`, `delete_file`) are relative-only.
+   - **Error Handling:** Generalize the existing "Absolute URL passed to `write_file`" row to "Absolute URL passed to `write_file` / `edit_file` / `delete_file`" with the same error shape.
+   - **Configuration / Usage Examples:** Update *`delete_file` on success (non-home target)* — remove the example, or replace with a rejection example mirroring *`write_file` on absolute URL (rejected)*.
+   - **Out of Scope:** Update the "Cross-namespace writes" bullet to "Cross-namespace mutations" and note it covers `write_file`, `edit_file`, and `delete_file`.
+
+3. **[Error Handling — handle 403 Forbidden from DIAL Core.]**
+   Any of the underlying SDK calls (`dial_client.metadata.get`, `dial_client.files.get_metadata`, `files.upload`, `files.delete`, `DialFileService.download_*`) can return HTTP 403 when the caller lacks permission for the resolved URL — most likely when `agent_home_dir` points at a bucket the per-request token isn't authorized for, or when a read-side tool is handed an absolute URL the agent can't access.
+
+   Add one row to the Error Handling table, applied uniformly to every tool:
+   - DIAL responds 403 Forbidden (any tool) → `InvalidToolCallParameterException("path", "access denied: {url}")`. The error is surfaced to the LLM as a tool-call error so it can pick a different path rather than retrying blindly. The resolved URL is included so the LLM (and the operator reading the trace) can see exactly what was attempted.
+
+   Implementation note: the SDK raises a typed `PermissionDeniedError` (or HTTPX `HTTPStatusError` with `response.status_code == 403` depending on which call path) — catch in `_DialFileTool` so every tool benefits without per-tool duplication.
+
+### Suggestions
+
+_None._
+
+### Nits
+
+_None._
+
+### Changes since Round 7
+
+**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 9 review.**
+
+- Round-7 blocking #1 (`list_files` output reduced to size + path) — **resolved.** Component 2 Algorithm step 4 reduced to two columns (size, path). "Why text output over JSON" design note trimmed. Configuration / Usage Examples samples updated. UC-1 and UC-2 outcome text updated.
+- Round-7 blocking #2 (`edit_file` / `delete_file` relative-only) — **resolved.** Path conventions subsection rewritten (read-only tools accept both forms; mutating tools are relative-only). Component 6 updated to reject absolute URLs. Component 7 parameter table, algorithm, and design notes updated; success message is now always relative form. Tool schemas updated. `delete_file` non-home success sample replaced with absolute-URL rejection sample. UC-8 and UC-9 updated. Error Handling row generalized to all three mutating tools. Out of Scope bullet renamed to "Cross-namespace mutations". Test list updated (edit_file: absolute URL rejection; delete_file: absolute URL rejection instead of non-home success). Migration breaking-changes note updated. `_resolve_appdata_url` non-breaking expansion note updated.
+- Round-7 blocking #3 (403 handling) + Round-8 factual correction — **resolved.** Added 403 Forbidden row to Error Handling table. Implementation note uses `DialException(status_code=403)` (the actual SDK shape) instead of the non-existent `PermissionDeniedError` as flagged by Round 8.
+
+---
+
+## Review Notes — Round 8
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 9 review.** Round 7 introduced three blocking items from the author; none of them have been applied to the doc body yet (Component 2 still shows the four-column listing, Components 6/7 still describe the dual-form `path` for `edit_file` / `delete_file`, and the Error Handling table has no 403 row). In addition, one of Round 7's own claims — that the SDK surfaces 403 as a typed `PermissionDeniedError` — is factually incorrect against the installed `aidial_client` and would mislead the implementer. Once the three Round-7 blocks are applied, the surface looks coherent; the rest of the doc is in good shape.
+
+### Blocking issues
+
+1. **[Resolved] [Round-7 #1 — Component 2 / Configuration examples / UC-1, UC-2.]** The doc body still describes a four-column `list_files` output (type, size, name, display path) with two-space-per-depth indentation. Concrete locations that must change to the new two-column (size, path) layout:
+   - Component 2 Algorithm step 4 (lines 154-168 of the doc body) — still enumerates "Column 1: `F`/`D`", "Column 2: size", "Column 3: name", "Column 4: display path" and explicitly states "**Indentation: two spaces per depth level**".
+   - Configuration / Usage Examples → `list_files` output format (lines 510-529) — still shows the four-column rendered output for both the home-dir and non-home cases.
+   - UC-1 Outcome (line 34) and UC-2 Outcome (line 40) — reference "one entry per child (file or folder) with name, type, and size" / "bounded, traversable listing"; these read OK with the new two-column shape but should be re-checked once the rendered samples change.
+   **Suggestion:** Apply Round-7 #1 as specified. After editing, re-read Component 2's design notes (the "Why text output over JSON" bullet currently references column-4 inclusion of the URL — it stays correct under the new shape but the wording should be re-checked).
+
+2. **[Resolved] [Round-7 #2 — Components 6, 7 / Component 1 Path conventions / Error Handling / Configuration examples / UC-8, UC-9.]** `edit_file` and `delete_file` still accept the dual form. Concrete locations:
+   - Component 1 *Path conventions* (lines 128-134) — still says "Tool inputs (`path` parameter) accept either form, except `write_file` which is relative-only". This must split read-side (`list_files`, `read_file_lines`, `search_in_file`) from write-side (`write_file`, `edit_file`, `delete_file`).
+   - Component 6 (line 252) — "Accepts both shapes per *Path conventions*" must flip to relative-only with the same rejection shape as `write_file`.
+   - Component 7 *Parameters* table (line 266) and Algorithm step 3 (line 272) — `path` description and "echoes the namespace form of the target" must change; the success message becomes relative-only.
+   - Error Handling row at line 394 — "Absolute URL passed to `write_file`" must be generalized to `write_file` / `edit_file` / `delete_file`.
+   - Tool schemas in *Configuration / Usage Examples* (lines 487-507) — `edit_file` and `delete_file` descriptions still advertise the dual form.
+   - Sample output *`delete_file` on success (non-home target)* (lines 563-567) — drop or replace with a rejection example.
+   - UC-9 (lines 82-86) — "Absolute `files/...` URLs are also accepted (for cleanup of non-home targets the agent has permission to delete)" must be removed.
+   - *Out of Scope* "Cross-namespace writes" bullet (line 427) — rename to "Cross-namespace mutations" and extend to all three write-side tools.
+   - Tests for `delete_file` (line 690) — the "success on absolute non-home URL" assertion is now an absolute-URL rejection assertion.
+
+3. **[Resolved] [Round-7 #3 with factual correction — Error Handling.]** The Error Handling table has no row for HTTP 403. Add the row Round 7 specifies. **However, Round 7's implementation note that "the SDK raises a typed `PermissionDeniedError`" is wrong against the installed `aidial_client==<current>`.** The SDK's `_exception.py` defines only `DialException` (base), `InvalidRequestError` (400), `InvalidDialURLError`, `NotDialURLError`, `ParsingDataError` (422), `EtagMismatchError` (412), and `ResourceNotFoundError` (404). A 403 surfaces as the base `DialException` with `status_code == 403`, not as a typed subclass. The implementation guidance must therefore be: catch `DialException` in `_DialFileTool` and dispatch on `status_code == 403`, **or** check `aidial_client` whether a typed 403 exception was added in a later release the project pins to.
+   **Suggestion:** Add the row as Round 7 specified, but rewrite the implementation note to: "The SDK surfaces 403 as `DialException` with `status_code == 403` (no typed subclass exists in the currently pinned `aidial_client`). Catch `DialException` in `_DialFileTool._handle_dial_error` (or equivalent) and branch on `status_code` so every tool benefits without per-tool duplication. If a future SDK version adds `PermissionDeniedError`, switch to that." Reference: `aidial_client/_exception.py`.
+
+### Suggestions
+
+1. **[Resolved] [Component 2 — "Why text output over JSON" design note trimmed.]** Reduced to one sentence stating that the path column doubles as the argument to pass to other file tools.
+
+2. **[Resolved] [Component 7 / Tests — `delete_file` test list updated.]** The non-home success case replaced with an absolute-URL rejection test.
+
+### Nits
+
+1. **[Header — `Supersedes` row but `template.md` doesn't include it.]** `template.md` (this repo's canonical structure) lists only Status and Dependencies. `Supersedes:` here is a fine addition (matches `file_tools.md` lineage) and worth keeping; flag only because Round-1 nit #1 already noted the `Owner` discrepancy. The two header fields together suggest `template.md` should grow `Owner` and `Supersedes` rows, but that's a separate change.
+
+2. **[Round-7 self-status annotation embedded in Round 6.]** Round 6's block ends with the author's own status note "**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 7 review.**" — the same anti-pattern Round 4 nit #1 flagged for Round 3. Harmless history noise; leave for future cleanup.
+
+### Changes since Round 8
+
+- Round-7 blocking #1 (`list_files` output reduced to size + path) — **resolved.** See "Changes since Round 7" above.
+- Round-7 blocking #2 (`edit_file` / `delete_file` relative-only) — **resolved.** See "Changes since Round 7" above.
+- Round-7 blocking #3 + Round-8 factual correction (403 / `PermissionDeniedError`) — **resolved.** See "Changes since Round 7" above.
