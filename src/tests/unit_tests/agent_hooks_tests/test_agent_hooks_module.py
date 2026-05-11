@@ -22,13 +22,13 @@ class TestAgentHooksModuleBuild:
     def test_returns_empty_list_when_hooks_is_none(self):
         module = AgentHooksModule()
         config = _make_app_config(None)
-        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
+        result = module._build_on_request_message_transformers(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert result == []
 
     def test_returns_empty_list_when_hooks_is_empty(self):
         module = AgentHooksModule()
         config = _make_app_config([])
-        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
+        result = module._build_on_request_message_transformers(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert result == []
 
     # def test_skips_hooks_for_different_event(self):
@@ -42,7 +42,7 @@ class TestAgentHooksModuleBuild:
         module = AgentHooksModule()
         hook_cfg = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
         config = _make_app_config([hook_cfg])
-        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
+        result = module._build_on_request_message_transformers(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert len(result) == 1
         assert isinstance(result[0], _ConfigDrivenToolCallHook)
 
@@ -51,7 +51,7 @@ class TestAgentHooksModuleBuild:
         cfg_a = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="tool_a")
         cfg_b = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="tool_b")
         config = _make_app_config([cfg_a, cfg_b])
-        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
+        result = module._build_on_request_message_transformers(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         assert len(result) == 2
         assert all(isinstance(h, _ConfigDrivenToolCallHook) for h in result)
 
@@ -64,7 +64,7 @@ class TestAgentHooksModuleBuild:
             frequency=InjectionFrequency.ALWAYS,
         )
         config = _make_app_config([hook_cfg])
-        result = module._build(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
+        result = module._build_on_request_message_transformers(_provider(config), _provider([]), HookEvent.ON_REQUEST_START)
         hook = result[0]
         assert isinstance(hook, _ConfigDrivenToolCallHook)
         assert hook._config is hook_cfg
