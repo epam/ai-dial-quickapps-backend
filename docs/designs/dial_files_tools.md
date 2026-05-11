@@ -164,13 +164,13 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 1. Validate `max_depth` in `[1, 10]` — else raise `InvalidToolCallParameterException("max_depth", "...")`.
 2. Ensure `path` ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing). Resolve via `_resolve_appdata_url(path)` — the helper dispatches absolute vs relative as described in *Path conventions*.
 3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service calls `dial_client.metadata.get("files", folder_url)` directly — `metadata.get` joins its second argument onto `/v1/metadata/`, so the input must already include the `files/` segment; the `files/{bucket}/{relative}/` URL is passed through unchanged. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
-4. Format the response as a compact text listing, one entry per line: size (bytes, or `-` for folders), then the display path (run through `_to_display_path`). Home-dir entries appear relative; out-of-home entries appear as absolute `files/...` URLs (see *Path conventions*). Folder display paths end with `/`. Indentation is two spaces per depth level, applied to the path column:
+4. Format the response as a compact text listing, one entry per line: size (bytes, or `-` for folders), then the display path (run through `_to_display_path`). Home-dir entries appear relative; out-of-home entries appear as absolute `files/...` URLs (see *Path conventions*). Folder display paths end with `/`. No indentation — depth is already encoded in the path:
    ```
-     -  reports/
-     1234    reports/summary.md
-     56789   reports/data.csv
-     -    reports/images/
-     2048      reports/images/logo.png
+   -  reports/
+   1234  reports/summary.md
+   56789  reports/data.csv
+   -  reports/images/
+   2048  reports/images/logo.png
    ```
    When the target is outside the agent's home dir, the path column holds the absolute URL (e.g. `files/{other_bucket}/uploads/notes.txt`).
    - Folders at the depth bound are listed with no expansion (so the LLM knows they exist and can drill down explicitly with another `list_files` call).
@@ -412,7 +412,7 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 **What:** `OpenAiToolConfig` definitions with JSON-schema parameters, plus `ToolDisplayConfig` for the DIAL stage UI.
 
 **Highlights:**
-- Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`.
+- Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`, `internal_file_copy`, `internal_file_move`.
 - Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
 - The `path` parameter renders in the stage as `**File:** {basename}` (last path segment of the display path, computed via `_to_display_path`) so the UI stays compact.
 
@@ -480,7 +480,7 @@ class Features(BaseModel):
     file_loading: FileLoadingConfig = Field(...)
     dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
         default=None,
-        description="Built-in DIAL files tools (list / read / search / write / edit / delete).",
+        description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
 ```
 
@@ -653,21 +653,21 @@ class Features(BaseModel):
 Listing a folder under the agent's home dir (`list_files(path="reports/", max_depth=3)`) — path column emits relative paths:
 
 ```
-  -  reports/
-  1234    reports/summary.md
-  56789   reports/data.csv
-  -    reports/images/
-  2048      reports/images/logo.png
+-  reports/
+1234  reports/summary.md
+56789  reports/data.csv
+-  reports/images/
+2048  reports/images/logo.png
 ```
 
 Listing a non-home folder (`list_files(path="files/{other_bucket}/uploads/", max_depth=1)`) — path column emits absolute URLs:
 
 ```
-  4096  files/{other_bucket}/uploads/notes.txt
-  8192  files/{other_bucket}/uploads/resume.pdf
+4096  files/{other_bucket}/uploads/notes.txt
+8192  files/{other_bucket}/uploads/resume.pdf
 ```
 
-Columns: size (bytes, or `-` for folders), display path (relative under home dir, absolute otherwise; two spaces of indentation per depth level; folder paths end with `/`).
+Columns: size (bytes, or `-` for folders), display path (relative under home dir, absolute otherwise; no indentation — depth is encoded in the path; folder paths end with `/`).
 
 ### `write_file` on success
 
@@ -728,7 +728,7 @@ Moved to: final/report.md
 ### Per-app manifest
 
 ```jsonc
-// All six tools enabled
+// All eight tools enabled (default)
 {
   "features": {
     "dial_files": {}            // defaults: enabled_tools = "all"
@@ -836,7 +836,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 | `dial_files_tooling/_copy_file_tool.py` | `copy_file` implementation — server-side copy via `/v1/ops/resource/copy`. |
 | `dial_files_tooling/_move_file_tool.py` | `move_file` implementation — server-side move via `/v1/ops/resource/move`. |
 | `dial_files_tooling/_stage_wrapper.py` | Stage wrapper (carried over). |
-| `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all six tools; renamed prefix. |
+| `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all eight tools; renamed prefix. |
 | `dial_files_tooling/dial_files_tooling_module.py` | Preview-gated DI module; contributes tools; reads `app_config.features.dial_files`. |
 | `config/dial_files.py` | `DialFilesConfig` model — `enabled_tools: Literal["all"] \| list[DialFilesToolName]`. |
 
@@ -855,8 +855,10 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 - `internal_file_read_lines(path, start_line, end_line)` (parameter rename: `file_url` → `path`)
 - `internal_file_search(path, pattern, context_lines=0, case_insensitive=False)` (parameter rename)
 - `internal_file_write(path, content, content_type="text/plain", overwrite=False)`
-- `internal_file_edit(path, old_string, new_string)` (parameter rename)
-- `internal_file_delete(path)` (parameter rename)
+- `internal_file_edit(path, old_string, new_string)` (parameter rename; relative-only)
+- `internal_file_delete(path)` (parameter rename; relative-only)
+- `internal_file_copy(source, destination, overwrite=False)`
+- `internal_file_move(source, destination, overwrite=False)`
 
 ### Tests
 
@@ -1301,7 +1303,7 @@ _None._
 
 **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 9 review.**
 
-- Round-7 blocking #1 (`list_files` output reduced to size + path) — **resolved.** Component 2 Algorithm step 4 reduced to two columns (size, path). "Why text output over JSON" design note trimmed. Configuration / Usage Examples samples updated. UC-1 and UC-2 outcome text updated.
+- Round-7 blocking #1 (`list_files` output reduced to size + path, no indentation) — **resolved** (completed in Round 12). Component 2 Algorithm step 4 reduced to two columns (size, path); indentation removed. "Why text output over JSON" design note trimmed. Configuration / Usage Examples samples and column legend updated. UC-1 and UC-2 outcome text updated.
 - Round-7 blocking #2 (`edit_file` / `delete_file` relative-only) — **resolved.** Path conventions subsection rewritten (read-only tools accept both forms; mutating tools are relative-only). Component 6 updated to reject absolute URLs. Component 7 parameter table, algorithm, and design notes updated; success message is now always relative form. Tool schemas updated. `delete_file` non-home success sample replaced with absolute-URL rejection sample. UC-8 and UC-9 updated. Error Handling row generalized to all three mutating tools. Out of Scope bullet renamed to "Cross-namespace mutations". Test list updated (edit_file: absolute URL rejection; delete_file: absolute URL rejection instead of non-home success). Migration breaking-changes note updated. `_resolve_appdata_url` non-breaking expansion note updated.
 - Round-7 blocking #3 (403 handling) + Round-8 factual correction — **resolved.** Added 403 Forbidden row to Error Handling table. Implementation note uses `DialException(status_code=403)` (the actual SDK shape) instead of the non-existent `PermissionDeniedError` as flagged by Round 8.
 
@@ -1558,3 +1560,116 @@ _None._
 - Round-10 suggestion #1 (cache invalidation note in DialFileService extension) — **resolved.** `move` and `copy` method docs note they invalidate the cache themselves.
 - Round-10 suggestion #2 (folder move/copy Out of Scope) — **resolved.** "Recursive folder move/copy" bullet added to Out of Scope.
 - Round-10 suggestion #3 (UC-12 promoted from suggestion) — **resolved.** UC-12 is now a first-class use case in the doc body.
+
+---
+
+## Review Notes — Round 11
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Ready for approval pending minor suggestions`. The Round-9/10 expansion (`copy_file`, `move_file`, the `DialFileService` extension, the *Path conventions* split, the Error Handling 403 row) is applied throughout the doc body and matches the codebase facts I spot-checked: `aidial_client._exception` exposes no typed `PermissionDeniedError` (only `DialException`, `InvalidRequestError`, `InvalidDialURLError`, `NotDialURLError`, `ParsingDataError`, `EtagMismatchError`, `ResourceNotFoundError`); `resources/files.py` exposes only `upload`/`delete`/`get_metadata`/download (no `copy`/`move`); `AsyncDialClient.my_appdata_home()` returns `Optional[PurePosixPath]` and the bucket response is internally cached on `_my_appdata`. The remaining issues are a small set of stale "six-tool" references that survived the eight-tool expansion — none of them changes the design but each will mislead a reader landing on that section in isolation. Fix those and the doc is approval-ready.
+
+### Blocking issues
+
+1. **[Component 9 — stage-titles list and tool-name list are out of sync.]** Component 9's *Highlights* reads:
+
+   > Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`.
+   > Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
+
+   The Names list has six entries; the Stage-titles list has eight. `internal_file_copy` and `internal_file_move` are missing from the Names line.
+   **Suggestion:** Append `internal_file_copy`, `internal_file_move` to the Names line so the two parallel lists agree.
+
+2. **[Summary of Changes / New tools exposed to the LLM — only six tools listed.]** The bullet block under *New tools exposed to the LLM* lists `internal_file_list` through `internal_file_delete` only. `internal_file_copy(source, destination, overwrite=False)` and `internal_file_move(source, destination, overwrite=False)` are missing. *Summary of Changes* is the scannable reference for the doc — a reader checking "what tools does this design expose?" will conclude six.
+   **Suggestion:** Add the two missing tool entries with their signatures.
+
+3. **[Summary of Changes / New files — `_tool_configs.py` row says "all six tools".]** The row for `dial_files_tooling/_tool_configs.py` reads "`OpenAiToolConfig` + `ToolDisplayConfig` for all six tools; renamed prefix." There are eight tools.
+   **Suggestion:** Change to "for all eight tools".
+
+4. **[Component 10 — `Features.dial_files` description still says "list / read / search / write / edit / delete".]** The wiring snippet:
+
+   ```python
+   dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
+       default=None,
+       description="Built-in DIAL files tools (list / read / search / write / edit / delete).",
+   )
+   ```
+
+   This description is the operator-facing config-schema doc — copy/move are missing.
+   **Suggestion:** Update to "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
+
+### Suggestions
+
+
+### Nits
+
+
+### Changes since previous round
+
+- Round-10 blocking #1 (apply the full Round-9 plan to the doc body) — **resolved.** Components 7.5 (`copy_file`) and 7.6 (`move_file`) are present; `DialFilesToolName` lists eight tools; `DialFileService.copy` / `DialFileService.move` are documented with `_http_client.request` + `FinalRequestOptions`; Error Handling table has the new 403 row plus copy/move-specific rows; *Out of Scope* replaces "Rename / move / copy" with "Recursive folder move/copy", "Cross-namespace moves", "Move/copy via official SDK", and "Destination folder auto-creation"; UC-12 and UC-13 added; sample outputs added; *Summary of Changes* lists `_copy_file_tool.py`, `_move_file_tool.py`, and the new `DialFileService` methods. Residual staleness: a few "six tools" strings survive — see Round-11 blocking #1-#4.
+- Round-10 blocking #2 (name the SDK transport explicitly + private-API risk) — **resolved.** Components 7.5 and 7.6 explicitly name `_http_client.request` + `FinalRequestOptions` and add a *Private SDK API note* describing the maintenance risk.
+- Round-10 blocking #3 (destination-folder / source-is-folder / same-src-dst edge cases) — **resolved.** "Destination folder auto-creation for move/copy" added to Out of Scope; folder ops deferred via the new "Recursive folder move/copy" bullet.
+- Round-10 suggestion #1 (cache-invalidation responsibility on `DialFileService`) — **resolved.** Component 7.6's closing line documents the source+destination cache invalidation on the service itself.
+- Round-10 suggestion #2 (folder move/copy Out of Scope) — **resolved.** See blocking #3 above.
+- Round-10 suggestion #3 (promote UC-12 to a first-class use case) — **resolved.** UC-12 is in the Use Cases section.
+- Round-10 nits #1 (self-status annotations) and #2 (Postman citation) — acknowledged; nit #2 is effectively moot because the body has no `.a_onlylocal/` reference (only review-notes history cites it).
+
+---
+
+## Review Notes — Round 12
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 13 review.** The four Round-11 stale "six-tool" references are still in the doc body — the *Changes since* checklist for Round 11 is empty / unfilled, and grep confirms each of the four locations still reads as Round 11 flagged it. In addition, a separate inconsistency in Component 2 surfaces on a fresh read: Round-7 blocking #1 was claimed resolved ("Component 2 Algorithm step 4 reduced to two columns (size, path)") but the *Algorithm* still prescribes two-space-per-depth indentation, and the *Configuration / Usage Examples* listing samples still render with indentation and a trailing column legend that re-asserts the indent rule. None of the issues touch the design; they are pure documentation hygiene. Fix them and the doc is approval-ready.
+
+### Blocking issues
+
+1. **[Resolved] [Component 9 / Highlights — Names list still six entries.]** Line 415 reads:
+
+   > Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`.
+
+   The adjacent *Stage titles* line on line 416 already lists eight entries (adds `Copy file`, `Move file`). The Names line must match — append `internal_file_copy`, `internal_file_move`. This is exactly the same finding as Round-11 blocking #1; it has not been applied.
+
+2. **[Resolved] [Component 10 / `Features.dial_files` description still says "list / read / search / write / edit / delete".]** Line 483:
+
+   ```python
+   description="Built-in DIAL files tools (list / read / search / write / edit / delete).",
+   ```
+
+   Operator-facing config-schema text — copy/move missing. Same finding as Round-11 blocking #4; not applied.
+
+3. **[Resolved] [Summary of Changes / New files — `_tool_configs.py` row still says "all six tools".]** Line 839:
+
+   > `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all six tools; renamed prefix.
+
+   Change to "all eight tools". Same finding as Round-11 blocking #3; not applied.
+
+4. **[Resolved] [Summary of Changes / New tools exposed to the LLM — only six entries.]** Lines 854-859 enumerate `internal_file_list` through `internal_file_delete` with their signatures; `internal_file_copy(source, destination, overwrite=False)` and `internal_file_move(source, destination, overwrite=False)` are missing. Same finding as Round-11 blocking #2; not applied. The *Changes since previous round* block under Round 11 (lines 1607-1616) does not list any entries for these four items, indicating the revision pass that addressed Round 11 silently skipped them.
+
+5. **[Resolved] [Component 2 / Configuration examples — indentation contradicts Round-7 #1.]** Round-7 blocking #1 explicitly required: "Drop the two-space-per-depth indentation: depth is already encoded in the path (`reports/images/logo.png` is two levels deep). Removing it makes parsing trivial and saves tokens." The doc body still prescribes the indent in two places:
+   - **Component 2 Algorithm step 4** (line 167): "Indentation is two spaces per depth level, applied to the path column" — followed by an indented sample (lines 168-174).
+   - **Configuration / Usage Examples → `list_files` output format** (lines 655-660, 666-667, plus the legend on line 670 — "two spaces of indentation per depth level; folder paths end with `/`").
+
+   The Round-7 *Changes since* note claims this was resolved, but a grep confirms the indentation language and sample formatting survived.
+   **Suggestion:** Either (a) honor Round-7 #1: strip the indent from the algorithm prose, the samples, and the legend (so output is flush-left two columns: size then path); or (b) if the author has changed their mind and wants to keep the indent for readability, update Round-7's *Changes since* entry to reflect that decision and remove the contradiction. The current state is mid-flight between the two.
+
+### Suggestions
+
+1. **[Resolved] [Round-11 *Changes since* block — fill it in once the four blocking edits land.]** See "Changes since Round 12" below.
+
+### Nits
+
+1. **[Self-status annotations embedded in Claude reviewer blocks.]** Round 4 nit #1, Round 8 nit #2, and Round 10 nit #1 all flagged the pattern of the author appending a status line ("Status: all blocking issues … addressed. Awaiting Round N+1 review.") inside the *reviewer's* block rather than in a follow-up author block. The current revision continues the pattern (Round 7's block ends with such a line, Round 9's *Changes since Round 8* block opens with one, etc.). Harmless history noise; flagged once more for the record. No action required for approval.
+
+### Changes since Round 12
+
+- Round-11/12 blocking #1 (Names list in Highlights) — **resolved.** `internal_file_copy` and `internal_file_move` appended to the names line at line 415.
+- Round-11/12 blocking #2 (`Features.dial_files` description) — **resolved.** Description updated to "list / read / search / write / edit / delete / copy / move".
+- Round-11/12 blocking #3 (`_tool_configs.py` row "all six tools") — **resolved.** Changed to "all eight tools".
+- Round-11/12 blocking #4 (New tools exposed list) — **resolved.** `internal_file_copy(source, destination, overwrite=False)` and `internal_file_move(source, destination, overwrite=False)` added to the list; `edit_file` and `delete_file` annotated as relative-only.
+- Round-12 blocking #5 (Component 2 / Configuration examples indentation) — **resolved.** Indentation removed from Algorithm step 4 prose, Algorithm step 4 sample, Configuration samples, and legend. Both samples are now flush-left two-column (size, path); legend updated to "no indentation — depth is encoded in the path".
