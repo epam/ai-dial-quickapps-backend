@@ -27,15 +27,15 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 ## Use Cases
 
-### UC-1: Agent lists the immediate contents of a folder
+### UC-1: Agent lists the immediate contents of a folder under its home
 
-**Trigger:** The LLM calls `list_files(path="files/{appdata}/reports/", max_depth=1)`.\
+**Trigger:** The LLM calls `list_files(path="reports/", max_depth=1)`. The relative form resolves under the agent's home dir (`agent_home_dir`, default `files/{appdata}/`).\
 **Behavior:** The tool calls `DialFileService.list_folder(folder_url, max_depth=1)`, which wraps `dial_client.metadata.get("files", folder_url)` and returns only the immediate children. The tool formats the response as a compact text listing.\
-**Outcome:** The LLM sees one entry per child (file or folder) with name, type, size, and URL.
+**Outcome:** The LLM sees one entry per child (file or folder) with name, type, and size. Entries under the agent's home dir are emitted as relative paths; entries outside it are emitted as absolute `files/...` URLs (see *Path conventions*).
 
 ### UC-2: Agent lists a folder recursively, depth-bounded
 
-**Trigger:** `list_files(path=..., max_depth=3)`.\
+**Trigger:** `list_files(path="reports/", max_depth=3)`.\
 **Behavior:** The service walks the tree, calling `metadata.get("files", folder_url)` for each subfolder up to `max_depth` levels. Folder entries beyond the depth bound are listed by name but not expanded (so the LLM knows they exist and can drill down explicitly).\
 **Outcome:** A bounded, traversable listing — the LLM gets enough to navigate without the risk of an unbounded recursion on a deep tree.
 
@@ -57,26 +57,33 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Behavior:** The tool fetches the current ETag via the existing metadata path, then uploads with `If-Match: <etag>`. If the file does not exist yet, the upload falls through to create. If a concurrent writer modified the file between the metadata fetch and the upload, DIAL returns `412 Precondition Failed` and the tool surfaces a clear error.\
 **Outcome:** The file at the same URL contains the new content. Subsequent same-turn reads see the update (cache invalidated). On `EtagMismatchError`, the LLM is told to re-read and retry.
 
-### UC-6: Agent reads a line range from a stored file
+### UC-6: Agent reads a line range from a file in its home dir
 
-**Trigger:** `read_file_lines(file_url=..., start_line=0, end_line=50)`.\
-**Behavior / Outcome:** Unchanged from the previous design. Read tools accept any accessible URL (appdata or otherwise).
+**Trigger:** `read_file_lines(path="reports/summary.md", start_line=0, end_line=50)`.\
+**Behavior:** The relative `path` resolves under the agent's home dir. Read contract is otherwise unchanged from the previous design.\
+**Outcome:** Lines `[start_line, end_line)` are returned.
+
+### UC-6b: Agent reads a non-home file (user upload or shared artifact)
+
+**Trigger:** `read_file_lines(path="files/{other_bucket}/uploads/notes.txt", start_line=0, end_line=200)`.\
+**Behavior:** The `path` starts with `files/` and is treated as an absolute DIAL URL — `_resolve_appdata_url` returns it unchanged. Used for files the agent does not own (user-uploaded attachments, shared admin artifacts).\
+**Outcome:** Same as UC-6; demonstrates *when* the absolute form is the right choice.
 
 ### UC-7: Agent searches for a substring
 
-**Trigger:** `search_in_file(file_url=..., pattern="ERROR", context_lines=2, case_insensitive=True)`.\
-**Behavior / Outcome:** Unchanged from the previous design.
+**Trigger:** `search_in_file(path="reports/summary.md", pattern="ERROR", context_lines=2, case_insensitive=True)`.\
+**Behavior / Outcome:** Unchanged from the previous design. `path` accepts the same dual form (relative under home dir, or absolute `files/...`).
 
 ### UC-8: Agent edits an existing file
 
-**Trigger:** `edit_file(file_url=..., old_string="foo", new_string="bar")`.\
-**Behavior / Outcome:** Unchanged from the previous design (unique-match string replacement, ETag-guarded upload, post-edit cache invalidation).
+**Trigger:** `edit_file(path="reports/summary.md", old_string="foo", new_string="bar")`.\
+**Behavior / Outcome:** Unchanged from the previous design (unique-match string replacement, ETag-guarded upload, post-edit cache invalidation). `path` accepts the dual form.
 
-### UC-9: Agent deletes an arbitrary file in appdata
+### UC-9: Agent deletes a file under its home dir
 
-**Trigger:** `delete_file(file_url="files/{appdata}/reports/old.md")`.\
-**Behavior:** The tool calls `dial_client.files.delete(file_url)`. Appdata isolation constrains the blast radius; the tool no longer enforces a `generated-files/` prefix or any client-side path validation.\
-**Outcome:** The file is removed. Subsequent reads on that URL fail.
+**Trigger:** `delete_file(path="reports/old.md")`.\
+**Behavior:** The relative `path` resolves under the agent's home dir; the tool calls `dial_client.files.delete(resolved_url)`. Absolute `files/...` URLs are also accepted (for cleanup of non-home targets the agent has permission to delete). The tool performs no client-side path validation beyond the standard relative-path traversal rules.\
+**Outcome:** The file is removed. The success message echoes the input form (relative if the caller passed a relative path; absolute otherwise).
 
 ### UC-10: Agent provides an invalid path
 
@@ -86,7 +93,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 ### UC-11: Repeated reads of the same file in one request
 
-**Trigger:** Multiple `read_file_lines` / `search_in_file` calls against the same `file_url`.\
+**Trigger:** Multiple `read_file_lines` / `search_in_file` calls against the same `path`.\
 **Behavior / Outcome:** Unchanged — `DialFileService` caches the download per request.
 
 ---
@@ -102,14 +109,29 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Semantics:**
 
 - Provides `self._dial_file_service` to subclasses (download + upload + cache primitives).
-- Provides an `async _resolve_appdata_url(path: str) -> str` helper that:
+- Receives `DialFilesConfig` (in particular `agent_home_dir`) by injection so `_resolve_appdata_url` can read the template at request time.
+- Provides an `async _resolve_appdata_url(path: str) -> str` helper that branches on input shape:
   1. Validates `path` is a non-empty string.
-  2. Rejects any leading `/`, any literal `../` substring, any segment equal to `..`, any empty segment (e.g. `foo//bar`), and trailing whitespace. All failures raise `InvalidToolCallParameterException("path", "...")` with a precise message.
-  3. Calls `await dial_client.my_appdata_home()`. If it returns `None`, raises `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. `my_appdata_home()` is the SDK's high-level helper; it caches the bucket response internally, so repeated calls within a request do not incur additional HTTP round-trips. Read/search/list tools never call this helper, so they remain functional even when appdata is missing.
-  4. Returns `f"files/{home}/{path}"` where `home = str(appdata_home)`. **Trailing slash is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
+  2. **Absolute branch.** If `path` starts with `files/`, treat it as a fully-qualified DIAL URL and return it unchanged after a minimal sanity check (no embedded `\n` / `\r`). Path-traversal validation is intentionally not applied — an absolute URL containing `..` is the caller's responsibility, and DIAL Core rejects malformed URLs server-side.
+  3. **Relative branch.** Apply the path-traversal validator to `path`: reject any leading `/`, any literal `../` substring, any segment equal to `..`, any empty segment (e.g. `foo//bar`), and trailing whitespace. All failures raise `InvalidToolCallParameterException("path", "...")` with a precise message.
+  4. Resolve `agent_home_dir` (config-validated to start with `files/` and end with `/`):
+     - If the template contains `{appdata}`: call `await dial_client.my_appdata_home()`. If it returns `None`, raise `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Substitute the returned path string. `my_appdata_home()` caches the bucket response internally, so repeated calls within a request do not incur extra HTTP round-trips.
+     - If the template contains no `{appdata}`: use as-is; no SDK call is needed (read/search/list tools therefore work even when appdata is unavailable, provided the operator pointed `agent_home_dir` at a non-appdata bucket).
+  5. Returns `f"{resolved_home}{path}"`. `agent_home_dir` always ends with `/`, so the joined URL is well-formed. **Trailing slash on `path` is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
+- Provides an inverse helper `_to_display_path(url: str) -> str` used by tool result messages: if `url` is prefixed by the resolved `agent_home_dir`, return the trailing relative portion; otherwise return `url` unchanged. Used by `write_file` / `delete_file` success lines and `list_files` row formatting to keep returned paths in the form the agent uses to address them.
 - The previous design's `GENERATED_FILES_ROOT` constant is removed.
 
 `AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`.
+
+#### Path conventions
+
+Path handling is uniform across all six tools, with one exception (`write_file`):
+
+- **Relative paths** address the agent's home directory (`agent_home_dir`, default `files/{appdata}/`). Form: `reports/summary.md`, `data/orders.csv`, `reports/` (folder).
+- **Absolute paths** start with `files/` and address anywhere the caller has access — user uploads, shared admin artifacts, cross-bucket reads. Form: `files/{some_bucket}/uploads/notes.txt`.
+- **Tool inputs** (`path` parameter) accept either form, except `write_file` which is relative-only (the agent authors only inside its own home — cross-namespace writes are deferred until a use case appears; see *Out of Scope*).
+- **Tool outputs** echo the namespace of the target: entries under the resolved `agent_home_dir` are emitted as **relative** paths; entries outside it are emitted as **absolute** `files/...` URLs. This keeps the agent thinking in its own home namespace and surfaces the absolute form only when the file genuinely lives elsewhere.
+- The default `agent_home_dir = "files/{appdata}/"` means the relative namespace is appdata; operators can repoint it via config (see *Component 10*).
 
 ---
 
@@ -121,29 +143,28 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
-| `path` | string | yes | — | Folder URL or relative path. Folder URLs end with `/`. |
+| `path` | string | yes | — | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. Folder paths end with `/`. |
 | `max_depth` | integer | no | `1` | Recursion depth. `1` = immediate children only. Must be `>= 1` and `<= 10`. |
 
 **Algorithm:**
 
 1. Validate `max_depth` in `[1, 10]` — else raise `InvalidToolCallParameterException("max_depth", "...")`.
-2. Normalize `path` into a folder URL of shape `files/{bucket}/{relative}/`:
-   - If `path` starts with `files/`, treat it as already-resolved.
-   - Otherwise, ensure it ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing) and pass through `_resolve_appdata_url(path)` to anchor under appdata.
+2. Ensure `path` ends with `/` (DIAL Core requires the trailing slash for folder listing — append one if missing). Resolve via `_resolve_appdata_url(path)` — the helper dispatches absolute vs relative as described in *Path conventions*.
 3. Call `DialFileService.list_folder(folder_url, max_depth)`. The service calls `dial_client.metadata.get("files", folder_url)` directly — `metadata.get` joins its second argument onto `/v1/metadata/`, so the input must already include the `files/` segment; the `files/{bucket}/{relative}/` URL is passed through unchanged. (The `e2e_runner.py` helper bypasses the SDK and hits `{api_url}metadata/{folder}/` directly via `httpx`; we use the SDK path here for consistency with every other DIAL call in the codebase.)
-4. Format the response as a compact text listing, one entry per line:
+4. Format the response as a compact text listing, one entry per line. Column 4 (the path) is run through `_to_display_path` so home-dir entries appear relative and out-of-home entries appear as absolute `files/...` URLs (see *Path conventions*):
    ```
-   D    -      reports/                          files/{appdata}/reports/
-     F  1234   summary.md                        files/{appdata}/reports/summary.md
-     F  56789  data.csv                          files/{appdata}/reports/data.csv
-     D    -    images/                           files/{appdata}/reports/images/
-       F  2048 logo.png                          files/{appdata}/reports/images/logo.png
+   D    -      reports/                          reports/
+     F  1234   summary.md                        reports/summary.md
+     F  56789  data.csv                          reports/data.csv
+     D    -    images/                           reports/images/
+       F  2048 logo.png                          reports/images/logo.png
    ```
+   When the target is outside the agent's home dir, column 4 falls back to the absolute form (e.g. `files/{other_bucket}/uploads/notes.txt`).
    - Column 1: `F` (file) or `D` (folder).
    - Column 2: size in bytes (or `-` for folders).
    - Column 3: name (with trailing `/` for folders).
-   - Column 4: full URL — included so the LLM can hand it directly to `read_file_lines` / `search_in_file` / `edit_file` / `delete_file` without reconstructing it. This costs a few tokens per row but removes a class of LLM-side bugs.
-   - **Indentation: two spaces per depth level**, applied to the name column only (URL stays left-aligned in column 4).
+   - Column 4: display path — relative under the agent's home dir, or absolute `files/...` URL otherwise. Included so the LLM can hand it directly to `read_file_lines` / `search_in_file` / `edit_file` / `delete_file` without reconstructing it.
+   - **Indentation: two spaces per depth level**, applied to the name column only (display path stays left-aligned in column 4).
    - Folders at the depth bound are listed by name with no expansion (so the LLM knows they exist and can drill down explicitly with another `list_files` call).
 5. Return `ToolCallResult(content=..., content_type="text/plain")`.
 
@@ -160,7 +181,9 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 ### Component 3: `read_file_lines`
 
-**What / Parameters / Algorithm:** Unchanged from the previous design. See [`file_tools.md`](file_tools.md) Component 2.
+**What:** Read a line range from a UTF-8 text file. Unchanged from the previous design except for the parameter rename below.
+
+**Parameter rename:** `file_url` → `path`. The `path` parameter accepts both shapes per *Path conventions*: a relative path under the agent's home dir, or an absolute `files/...` URL for non-home targets. Resolution goes through `_resolve_appdata_url(path)`; the rest of the algorithm (download via `DialFileService`, slice `[start_line, end_line)`, return text) is unchanged. See [`file_tools.md`](file_tools.md) Component 2.
 
 **Owner:** `src/quickapp/dial_files_tooling/_read_file_lines_tool.py`
 
@@ -168,7 +191,9 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 ### Component 4: `search_in_file`
 
-**What / Parameters / Algorithm:** Unchanged from the previous design. See [`file_tools.md`](file_tools.md) Component 3.
+**What:** Substring search with optional case-insensitivity and context lines. Unchanged from the previous design except for the parameter rename below.
+
+**Parameter rename:** `file_url` → `path`. Accepts both shapes per *Path conventions*. Resolution goes through `_resolve_appdata_url(path)`; the rest of the algorithm is unchanged. See [`file_tools.md`](file_tools.md) Component 3.
 
 **Owner:** `src/quickapp/dial_files_tooling/_search_in_file_tool.py`
 
@@ -189,8 +214,9 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 **Algorithm:**
 
-1. Resolve `url = _resolve_appdata_url(path)`. (Validation + appdata resolution happen here; failures raise before any IO.)
-2. Branch on `overwrite`:
+1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. `write_file` is the one tool that does not accept the dual form (see *Path conventions* and the design note below).
+2. Resolve `url = await _resolve_appdata_url(path)`. (Path-traversal validation + `agent_home_dir` resolution happen here; failures raise before any IO.)
+3. Branch on `overwrite`:
    - `overwrite == false`: call `DialFileService.upload_text(url=url, content=content, content_type=content_type, if_none_match="*")`. On `EtagMismatchError` (HTTP 412) → `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`.
    - `overwrite == true`:
      - Try `dial_client.files.get_metadata(url)` to read the current ETag.
@@ -198,13 +224,14 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
        - On success: call `upload_text(url=url, content=content, content_type=content_type, if_match=etag)`.
          - On `EtagMismatchError` (HTTP 412): `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
      - On a successful overwrite, call `DialFileService.invalidate_cache(url)` so same-turn reads see the new bytes.
-3. Build an `Attachment` pointing at `url` (so the DIAL UI shows the file).
-4. Return `ToolCallResult(content=f"File written: {url}", content_type="text/plain", attachments=[attachment])`.
+4. Build an `Attachment` pointing at `url` (so the DIAL UI shows the file; attachment URLs are always absolute — the UI needs the resolved form).
+5. Return `ToolCallResult(content=f"File written: {_to_display_path(url)}", content_type="text/plain", attachments=[attachment])`. Since `write_file` only accepts relative paths (see Suggestion #1 in Round 5 — resolved here), the displayed form is always the relative path the agent passed in.
 
 **Owner:** `src/quickapp/dial_files_tooling/_write_file_tool.py`
 
 **Design notes:**
 
+- **Relative-only `path`.** Unlike read/search/edit/delete (which accept both relative and absolute forms), `write_file` accepts only relative paths under `agent_home_dir`. The agent authors files in its own home; cross-namespace writes are out of scope until a use case appears (see *Out of Scope*). An absolute URL passed here is rejected at validation time as a leading-`/` violation (since `files/...` does not start with `/` but does not match the relative form's expected shape, the path-traversal validator surfaces it as an explicit `"path must be relative under agent_home_dir; do not pass an absolute files/... URL"` error).
 - **Overwrite is opt-in.** Default safety net (`If-None-Match: *`) preserved from the previous design. The `overwrite=True` path is the explicit, ETag-guarded escape hatch — no silent clobber.
 - **Why one tool, not two.** A separate `overwrite_file` tool was considered. Folding the toggle into a parameter keeps the surface small; the LLM sees one tool with a clearly named optional flag.
 - **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default `text/plain` matches the previous behavior exactly. Client-side validation is intentionally minimal — there is no MIME-type allowlist (the set is open-ended) — but the value is rejected if it contains `\n` or `\r` to prevent header-injection-style abuse before the string reaches DIAL's HTTP layer.
@@ -220,7 +247,9 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 ### Component 6: `edit_file`
 
-**What / Parameters / Algorithm:** Unchanged from the previous design. See [`file_tools.md`](file_tools.md) Component 5.
+**What:** Unique-substring replacement with ETag-guarded upload. Unchanged from the previous design except for the parameter rename below.
+
+**Parameter rename:** `file_url` → `path`. Accepts both shapes per *Path conventions*. Resolution goes through `_resolve_appdata_url(path)`. The rest of the algorithm (download, replace, conditional upload, cache invalidation) is unchanged. See [`file_tools.md`](file_tools.md) Component 5.
 
 **Owner:** `src/quickapp/dial_files_tooling/_edit_file_tool.py`
 
@@ -234,14 +263,15 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `file_url` | string | yes | URL of the file in DIAL storage to delete. |
+| `path` | string | yes | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. |
 
 **Algorithm:**
 
-1. Call `dial_client.files.delete(file_url)`.
-2. On success → `ToolCallResult(content=f"Deleted: {file_url}", content_type="text/plain")`.
-3. On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("file_url", "file not found: {file_url}")` — same shape as `write_file`/`edit_file` errors.
-4. Other errors → propagate as tool-call errors.
+1. `url = await _resolve_appdata_url(path)`.
+2. Call `dial_client.files.delete(url)`.
+3. On success → `ToolCallResult(content=f"Deleted: {_to_display_path(url)}", content_type="text/plain")` — echoes the namespace form of the target (relative for home-dir targets, absolute otherwise) per *Path conventions*.
+4. On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("path", "file not found: {path}")` — same shape as `write_file`/`edit_file` errors.
+5. Other errors → propagate as tool-call errors.
 
 **Owner:** `src/quickapp/dial_files_tooling/_delete_file_tool.py`
 
@@ -275,7 +305,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Highlights:**
 - Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`.
 - Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`.
-- The `file_url` / `path` parameter renders in the stage as `**File:** {basename}` (last path segment only) so the UI stays compact.
+- The `path` parameter renders in the stage as `**File:** {basename}` (last path segment of the display path, computed via `_to_display_path`) so the UI stays compact.
 
 **Owner:** `src/quickapp/dial_files_tooling/_tool_configs.py`
 
@@ -309,7 +339,26 @@ class DialFilesConfig(BaseModel):
             "or a list to restrict (e.g. ['internal_file_read_lines', 'internal_file_search'])."
         ),
     )
+    agent_home_dir: str = Field(
+        default="files/{appdata}/",
+        description=(
+            "Base directory for relative path resolution. Must start with 'files/' and end with '/'. "
+            "Supports the {appdata} template variable, resolved at request time via my_appdata_home(). "
+            "Examples: 'files/{appdata}/' (default), 'files/shared-bucket/admin/', "
+            "'files/{appdata}/workspace/'."
+        ),
+    )
 ```
+
+**`agent_home_dir` validation (at config-load time, not request time)** — implemented as a Pydantic field validator on `DialFilesConfig`:
+
+- Must start with `files/` and end with `/`.
+- Must not contain `..` segments.
+- May contain at most one `{appdata}` placeholder. No other template variables are defined; unknown `{...}` tokens are a validation error so operators catch typos early at startup rather than at first tool call.
+
+A `pydantic.ValidationError` is raised on startup if any of these rules is violated.
+
+**`agent_home_dir` resolution (at request time)** — performed inside `_resolve_appdata_url` as described in *Component 1*. Default `"files/{appdata}/"` resolves identically to the previous `f"files/{home}/"` from `my_appdata_home()`, so there is no behavioral change for existing deployments.
 
 **Wiring on `Features`:**
 
@@ -330,7 +379,8 @@ class Features(BaseModel):
 
 - **Default semantics.** `features.dial_files` defaults to `None` — file tools are off unless the app author explicitly opts in. Once enabled, `enabled_tools` defaults to `"all"`.
 - **Preview gating.** `dial_files` is a `PreviewField`. When `ENABLE_PREVIEW_FEATURES=false`, `nullify_preview_fields` clears it back to `None` and the module contributes nothing.
-- **Future knobs.** `DialFilesConfig` is the natural home for additions like `max_file_size_bytes`, allow/deny path prefixes, a per-app `subdir` under appdata, or a default `content_type` override.
+- **`agent_home_dir` repointing.** Operators can point the agent's home at a non-appdata bucket (e.g. `"files/org-shared-bucket/reports/"`) or at a subdirectory under appdata (e.g. `"files/{appdata}/workspace/"`). When the template omits `{appdata}`, read/search/list still work even if `my_appdata_home()` would have returned `None` — useful for app-style deployments where appdata isn't provisioned but a shared bucket is.
+- **Future knobs.** `DialFilesConfig` is the natural home for additions like `max_file_size_bytes`, allow/deny path prefixes, or a default `content_type` override. (The "per-app subdir under appdata" use case is now covered by `agent_home_dir`.)
 
 **Owner:** `src/quickapp/config/dial_files.py` and a small edit to `src/quickapp/config/application.py`.
 
@@ -340,21 +390,24 @@ class Features(BaseModel):
 
 | Failure | Behavior |
 |---------|----------|
-| Invalid `path` (empty, leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace) | `InvalidToolCallParameterException("path", ...)` with the specific rule violated. |
-| Appdata not available (`dial_client.my_appdata_home()` returns `None`) | `InvalidToolCallParameterException("path", "appdata namespace is not available in this deployment; write/delete tools are disabled")`. Read/search/list still work. |
+| Invalid relative `path` (empty, leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace) | `InvalidToolCallParameterException("path", ...)` with the specific rule violated. Applies to the relative branch only — absolute `files/...` URLs bypass this validator (server-side rejection if malformed). |
+| Absolute URL passed to `write_file` (path starts with `files/`) | `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. |
+| Absolute URL contains `\n` / `\r` (any tool) | `InvalidToolCallParameterException("path", "absolute URL must not contain newline characters")`. |
+| `agent_home_dir` fails config-load validation (missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment) | Startup error: `pydantic.ValidationError` raised by the `DialFilesConfig` field validator. The app fails to boot until the operator fixes the manifest. |
+| `agent_home_dir` contains `{appdata}` but `my_appdata_home()` returns `None` at request time | `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Tools that pass an absolute URL (and therefore skip the relative branch) are unaffected. |
 | `start_line < 0` or `end_line < start_line` (`read_file_lines`) | `InvalidToolCallParameterException` → surfaced to LLM. |
 | `write_file(overwrite=False)` target already exists (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`. |
 | `write_file(overwrite=True)` concurrent modification (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
 | `write_file` `content_type` contains `\n` or `\r` | `InvalidToolCallParameterException("content_type", "must not contain newline characters")` — client-side, before any IO. |
 | `write_file` otherwise-invalid `content_type` (e.g. malformed `type/subtype`) | Passed through to DIAL; surface DIAL's response if any. No client-side allowlist (the set of valid MIME types is open-ended). |
 | `edit_file` `old_string` not found / matches multiple places / equals `new_string` | Unchanged from previous design. |
-| `edit_file` conditional upload fails (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("file_url", "file changed concurrently; re-read and retry")`. |
+| `edit_file` conditional upload fails (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
 | `list_files` target is not a folder | `InvalidToolCallParameterException("path", "not a folder: {url}")` if DIAL response shape indicates a file. |
 | `list_files` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
 | `list_files` `max_depth < 1` or `max_depth > 10` | `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")`. |
-| `delete_file` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("file_url", "file not found: {url}")`. |
-| `file_url` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
-| File exceeds 10 MB download limit | `InvalidToolCallParameterException("file_url", "file is too large to read (limit: 10 MB)")`. |
+| `delete_file` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "file not found: {path}")`. |
+| `path` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
+| File exceeds 10 MB download limit | `InvalidToolCallParameterException("path", "file is too large to read (limit: 10 MB)")`. |
 | File is not valid UTF-8 (read/search/edit) | `UnicodeDecodeError` propagates; LLM sees the error. Binary files are out of scope. |
 
 ---
@@ -371,7 +424,8 @@ class Features(BaseModel):
 - **Pagination on `list_files`.** Deferred until folder sizes warrant it. Additive optional param + sentinel in the listing when introduced.
 - **Recursive delete.** Out of scope — agents loop over a `list_files` result to delete trees explicitly. Reduces blast radius.
 - **MIME sniffing for `write_file`.** Caller-provided only. Sniffing risks misclassification.
-- **LLM-controlled subdirectories under a fixed root.** The agent now controls the full path under appdata. A per-app `subdir` config field can be added on `DialFilesConfig` if a deployment wants to namespace agents further.
+- **Cross-namespace writes.** `write_file` is relative-only and targets the agent's home dir. Writing into a bucket the agent doesn't own is deferred until a use case appears. (Operators that need agents to author into a shared namespace can repoint `agent_home_dir` itself.)
+- **Per-app fixed subdirectories.** Covered by `agent_home_dir` — set `"files/{appdata}/workspace/"` (or any other prefix) to pin the agent to a subdirectory under appdata.
 - **Hard limits on read parameters** (truncation, pagination tokens). Deferred — the 10 MB download cap is the only enforced limit in v1.
 
 ---
@@ -386,7 +440,7 @@ class Features(BaseModel):
   "name": "internal_file_list",
   "description": "List entries (files and folders) under a folder in DIAL storage. Depth-bounded recursion.",
   "parameters": {
-    "path":      {"type": "string",  "description": "Folder URL or relative path. Folder URLs end with '/'."},
+    "path":      {"type": "string",  "description": "Relative folder path under the agent's home dir (e.g. 'reports/'), or absolute DIAL folder URL starting with 'files/' (e.g. 'files/{bucket}/uploads/'). Folder paths end with '/'."},
     "max_depth": {"type": "integer", "description": "Recursion depth. 1 = immediate children only. Range: [1, 10]. Default: 1."}
   },
   "required": ["path"]
@@ -397,11 +451,11 @@ class Features(BaseModel):
   "name": "internal_file_read_lines",
   "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive).",
   "parameters": {
-    "file_url":   {"type": "string",  "description": "URL of the file to read."},
+    "path":       {"type": "string",  "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."},
     "start_line": {"type": "integer", "description": "First line to include (0-indexed)."},
     "end_line":   {"type": "integer", "description": "First line to exclude (0-indexed). Like Python slice end."}
   },
-  "required": ["file_url", "start_line", "end_line"]
+  "required": ["path", "start_line", "end_line"]
 }
 
 // search_in_file
@@ -409,20 +463,20 @@ class Features(BaseModel):
   "name": "internal_file_search",
   "description": "Search for a substring in a file stored in DIAL. Returns matching lines with optional surrounding context.",
   "parameters": {
-    "file_url":         {"type": "string",  "description": "URL of the file to search."},
+    "path":             {"type": "string",  "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."},
     "pattern":          {"type": "string",  "description": "Substring to search for."},
     "context_lines":    {"type": "integer", "description": "Lines of context around each match. Default: 0."},
     "case_insensitive": {"type": "boolean", "description": "If true, search is case-insensitive. Default: false."}
   },
-  "required": ["file_url", "pattern"]
+  "required": ["path", "pattern"]
 }
 
 // write_file
 {
   "name": "internal_file_write",
-  "description": "Create or overwrite a UTF-8 text file in DIAL appdata storage. Path is relative to appdata; nested paths allowed; '..' rejected. Default content_type is text/plain. overwrite=False fails on collision; overwrite=True replaces with ETag guard.",
+  "description": "Create or overwrite a UTF-8 text file under the agent's home dir. Relative path only (absolute files/... URLs are rejected). Nested paths allowed; '..' rejected. Default content_type is text/plain. overwrite=False fails on collision; overwrite=True replaces with ETag guard.",
   "parameters": {
-    "path":         {"type": "string",  "description": "Path under appdata. Forward slashes for nesting. Rejected: leading '/', '..' segments, '../' substring, empty segments."},
+    "path":         {"type": "string",  "description": "Relative path under the agent's home dir. Forward slashes for nesting. Rejected: leading '/', '..' segments, '../' substring, empty segments, absolute 'files/...' URLs."},
     "content":      {"type": "string",  "description": "UTF-8 text content of the file."},
     "content_type": {"type": "string",  "description": "MIME type. Default: text/plain. Common: text/markdown, text/csv, application/json."},
     "overwrite":    {"type": "boolean", "description": "If true, replace an existing file. Default: false."}
@@ -435,11 +489,11 @@ class Features(BaseModel):
   "name": "internal_file_edit",
   "description": "Replace a unique substring in an existing UTF-8 text file. old_string must occur exactly once. Fails if the file changed concurrently.",
   "parameters": {
-    "file_url":   {"type": "string", "description": "URL of the file to edit."},
+    "path":       {"type": "string", "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."},
     "old_string": {"type": "string", "description": "Exact substring to replace. Must occur exactly once. Include surrounding context to disambiguate."},
     "new_string": {"type": "string", "description": "Replacement text. May be empty to delete the match."}
   },
-  "required": ["file_url", "old_string", "new_string"]
+  "required": ["path", "old_string", "new_string"]
 }
 
 // delete_file
@@ -447,34 +501,45 @@ class Features(BaseModel):
   "name": "internal_file_delete",
   "description": "Delete a file from DIAL storage. Hard delete; no undo.",
   "parameters": {
-    "file_url": {"type": "string", "description": "URL of the file to delete."}
+    "path": {"type": "string", "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."}
   },
-  "required": ["file_url"]
+  "required": ["path"]
 }
 ```
 
 ### `list_files` output format
 
+Listing a folder under the agent's home dir (`list_files(path="reports/", max_depth=3)`) — column 4 emits relative paths:
+
 ```
-D    -      reports/                          files/{appdata}/reports/
-  F  1234   summary.md                        files/{appdata}/reports/summary.md
-  F  56789  data.csv                          files/{appdata}/reports/data.csv
-  D    -    images/                           files/{appdata}/reports/images/
-    F  2048 logo.png                          files/{appdata}/reports/images/logo.png
+D    -      reports/                          reports/
+  F  1234   summary.md                        reports/summary.md
+  F  56789  data.csv                          reports/data.csv
+  D    -    images/                           reports/images/
+    F  2048 logo.png                          reports/images/logo.png
 ```
 
-Columns: type (`F`/`D`), size, name (indented two spaces per depth level, with trailing `/` for folders), full URL.
+Listing a non-home folder (`list_files(path="files/{other_bucket}/uploads/", max_depth=1)`) — column 4 emits absolute URLs:
+
+```
+F  4096  notes.txt                          files/{other_bucket}/uploads/notes.txt
+F  8192  resume.pdf                         files/{other_bucket}/uploads/resume.pdf
+```
+
+Columns: type (`F`/`D`), size, name (indented two spaces per depth level, with trailing `/` for folders), display path (relative under home dir, absolute otherwise).
 
 ### `write_file` on success
 
+`write_file` is relative-only; the success line always echoes the relative path:
+
 ```
-File written: https://dial-storage/.../files/<appdata>/reports/2026-Q1/summary.md
+File written: reports/2026-Q1/summary.md
 ```
 
 ### `write_file` on collision (overwrite=False)
 
 ```
-InvalidToolCallParameterException: file already exists: https://dial-storage/.../files/<appdata>/reports/summary.md; pass overwrite=True to replace
+InvalidToolCallParameterException: file already exists: reports/summary.md; pass overwrite=True to replace
 ```
 
 ### `write_file` on path traversal
@@ -483,10 +548,22 @@ InvalidToolCallParameterException: file already exists: https://dial-storage/...
 InvalidToolCallParameterException: path must not contain '..'
 ```
 
-### `delete_file` on success
+### `write_file` on absolute URL (rejected)
 
 ```
-Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
+InvalidToolCallParameterException: write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL
+```
+
+### `delete_file` on success (home-dir target)
+
+```
+Deleted: reports/old.md
+```
+
+### `delete_file` on success (non-home target)
+
+```
+Deleted: files/{other_bucket}/uploads/stale.pdf
 ```
 
 ### Per-app manifest
@@ -512,6 +589,24 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
   }
 }
 
+// Agent writes to a shared org bucket instead of per-request appdata
+{
+  "features": {
+    "dial_files": {
+      "agent_home_dir": "files/org-shared-bucket/reports/"
+    }
+  }
+}
+
+// Agent isolated to its own workspace subdir under appdata
+{
+  "features": {
+    "dial_files": {
+      "agent_home_dir": "files/{appdata}/workspace/"
+    }
+  }
+}
+
 // File tools off (default)
 // `features` is auto-populated by Features's default_factory even when omitted from
 // the manifest, so both omitting `features` entirely and writing `"features": {}` result
@@ -531,6 +626,7 @@ Deleted: https://dial-storage/.../files/<appdata>/reports/old.md
 - **Config-field rename:** `features.text_file_tools` → `features.dial_files`. Any in-flight manifest using the old key must be updated. No back-compat shim.
 - **Tool-prefix rename:** `internal_text_file_*` → `internal_file_*`. Any saved chat history or manifest referencing the old names will not match. See *Summary of Changes / New tools exposed*.
 - **`write_file` parameter rename and additions:** `filename` → `path`; `content_type` and `overwrite` added.
+- **`read_file_lines` / `search_in_file` / `edit_file` / `delete_file` parameter rename:** `file_url` → `path`. The new parameter accepts both relative paths (resolved under `agent_home_dir`) and absolute `files/...` URLs (passed through unchanged). Any existing manifest or saved chat history referencing `file_url` will not match.
 - **`delete_file` no longer enforces `generated-files/`.** Any caller relying on this guard for safety must migrate to the appdata isolation model.
 - **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` calls `dial_client.my_appdata_home()` and raises `InvalidToolCallParameterException` if it returns `None`. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list are unaffected). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
 
@@ -541,6 +637,8 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 - `DialFileService.upload_text` gains a `content_type` keyword (default `"text/plain"`, so existing `_EditFileTool` continues to work).
 - `DialFileService` gains `list_folder` — additive.
 - `AttachmentService` is unchanged.
+- `DialFilesConfig` gains `agent_home_dir` (default `"files/{appdata}/"`) — existing manifests that omit the field are unaffected; relative paths continue to resolve under appdata.
+- `_resolve_appdata_url` now accepts both relative and absolute (`files/...`) inputs. Existing call sites that previously passed only relative paths continue to work; new call sites in the read/search/edit/delete tools rely on the absolute pass-through. This is a contract expansion, not a break.
 
 ---
 
@@ -574,18 +672,22 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 ### New tools exposed to the LLM
 
 - `internal_file_list(path, max_depth=1)`
-- `internal_file_read_lines(file_url, start_line, end_line)` (carried over)
-- `internal_file_search(file_url, pattern, context_lines=0, case_insensitive=False)` (carried over)
+- `internal_file_read_lines(path, start_line, end_line)` (parameter rename: `file_url` → `path`)
+- `internal_file_search(path, pattern, context_lines=0, case_insensitive=False)` (parameter rename)
 - `internal_file_write(path, content, content_type="text/plain", overwrite=False)`
-- `internal_file_edit(file_url, old_string, new_string)` (carried over)
-- `internal_file_delete(file_url)`
+- `internal_file_edit(path, old_string, new_string)` (parameter rename)
+- `internal_file_delete(path)` (parameter rename)
 
 ### Tests
 
 - Unit: `src/tests/unit_tests/dial_files_tooling/` — all carried-over coverage from the previous design plus:
-  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (`ResourceNotFoundError`), target-is-not-a-folder, `max_depth` out of range, empty folder.
-  - `write_file`: nested path success, path-traversal rejection (`..` segment, `../` substring, leading `/`, empty segment, trailing whitespace), `content_type` propagated to the upload call, `overwrite=False` collision (`EtagMismatchError` → `InvalidToolCallParameterException`), `overwrite=True` happy path, `overwrite=True` falls through to create when no prior file (`ResourceNotFoundError` on metadata), `overwrite=True` concurrent modification (`EtagMismatchError` → error), cache invalidated after overwrite, appdata-missing → descriptive error.
-  - `delete_file`: success on arbitrary appdata path (no `generated-files/` requirement), `ResourceNotFoundError` (404) → `InvalidToolCallParameterException`.
+  - `_resolve_appdata_url`: relative path resolves to `agent_home_dir + path`; absolute `files/...` passes through unchanged; absolute URL with `\n` rejected; path traversal applied to relative branch only; `agent_home_dir` template with `{appdata}` resolved via `my_appdata_home()`; `agent_home_dir` without `{appdata}` does not call `my_appdata_home()` (read/search/list usable when appdata missing); appdata-missing with `{appdata}` template → descriptive error.
+  - `DialFilesConfig` field validator: rejects missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment — all raise `pydantic.ValidationError` at config-load time.
+  - `_to_display_path`: home-dir URL → relative; non-home URL → unchanged; edge case `agent_home_dir` itself → empty relative ("").
+  - `list_files`: depth-1 listing, depth-N recursion (depth bound respected), folder-not-found (`ResourceNotFoundError`), target-is-not-a-folder, `max_depth` out of range, empty folder, relative `path` input, absolute `path` input, output column 4 uses relative form for home-dir entries and absolute form otherwise.
+  - `write_file`: nested path success, absolute URL rejected ("relative-only" error), path-traversal rejection (`..` segment, `../` substring, leading `/`, empty segment, trailing whitespace), `content_type` propagated to the upload call, `overwrite=False` collision (`EtagMismatchError` → `InvalidToolCallParameterException`), `overwrite=True` happy path, `overwrite=True` falls through to create when no prior file (`ResourceNotFoundError` on metadata), `overwrite=True` concurrent modification (`EtagMismatchError` → error), cache invalidated after overwrite, appdata-missing → descriptive error, success message echoes relative path.
+  - `read_file_lines` / `search_in_file` / `edit_file`: accept relative `path` (resolves through `agent_home_dir`), accept absolute `files/...` URL (pass-through), parameter rename from `file_url` to `path` reflected end-to-end.
+  - `delete_file`: success on relative path under home dir (success line shows relative form), success on absolute non-home URL (success line shows absolute form), `ResourceNotFoundError` (404) → `InvalidToolCallParameterException("path", ...)`.
   - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
 
@@ -795,3 +897,160 @@ UC-3 ("Agent writes into a nested path") demonstrates the `path` nesting capabil
 - Round-4 suggestion #1 (UC-3/UC-4 distinction) — **resolved.** UC-3 renamed to "Agent writes into a nested path (default content type)"; trigger shows no explicit `content_type`; Behavior notes the `"text/plain"` default. UC-4 renamed to "Agent writes a non-default content type (flat path)"; trigger uses a flat path; Behavior explains the path is intentionally flat to isolate the feature.
 - Round-4 suggestion #2 (per-folder call cost) — **resolved.** "Depth bound exists" note now explicitly names the O(W^D) cost and states the `max_depth` bound as the mitigation.
 - Round-4 nit #1 (status annotation placement) — acknowledged, no action.
+
+---
+
+## Review Notes — Round 5
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 7 review.** Focused review on **path consistency**: the agent should address its own appdata namespace with **relative paths**, and reserve full DIAL URLs for files it does not own (shared artifacts, user uploads, admin-context attachments). The current design half-adopts this principle — `write_file` is relative-only — but every other tool, every example, and the `list_files` output force the LLM back into the absolute-URL mental model. The result is an asymmetric surface where the agent writes `summary.md` but must immediately read it back as `files/{appdata}/reports/2026-Q1/summary.md`. This is the worst of both worlds: relative paths give no ergonomic benefit, and the LLM still has to learn the absolute-URL shape. The four blocking issues below align the surface on a single rule: **relative-or-absolute everywhere the agent can plausibly own the target; absolute-only only where it cannot**.
+
+### Blocking issues
+
+1. **[Resolved]** **[Components 3, 4, 6, 7 / UC-6, UC-7, UC-8, UC-9 — `file_url` parameters should also accept a relative appdata path.]**
+   `read_file_lines`, `search_in_file`, `edit_file`, and `delete_file` take a parameter strictly named `file_url` and described as "URL of the file in DIAL storage". With the new appdata-relative semantics established for `write_file`, this is asymmetric: the agent writes `reports/summary.md`, gets back the absolute URL in the success message, and must use that absolute URL to read/edit/delete it on the next turn. Under the user's stated principle ("relative paths for the agent's home dir"), the right shape is: each of these four tools accepts **either** a relative path (resolved through `_resolve_appdata_url`) **or** an absolute DIAL URL starting with `files/` (passed through unchanged, used for non-appdata files like user uploads or shared admin artifacts).
+   **Suggestion:** Generalize `_resolve_appdata_url` (or add a sibling helper `_resolve_path_or_url`) that returns the URL as-is when the input starts with `files/`, and resolves through appdata otherwise. Apply uniformly across `list_files`, `read_file_lines`, `search_in_file`, `edit_file`, `delete_file`. Rename the parameter from `file_url` to `path` everywhere for consistency with `write_file` and `list_files`, and update the parameter description: "Relative path under appdata (e.g. `reports/summary.md`) or absolute DIAL file URL starting with `files/` (for shared or user-uploaded files)." Update the tool schemas in *Configuration / Usage Examples* and the UC triggers accordingly.
+
+2. **[Resolved]** **[Components 2, 5 / UC-3, write_file output / list_files output — return values must emit relative paths for appdata-owned targets.]**
+   The doc shapes the agent's input to allow relative paths but its output is absolute-only:
+   - `write_file` success message (line 471): `File written: https://dial-storage/.../files/<appdata>/reports/2026-Q1/summary.md`.
+   - `delete_file` success message (line 489): same absolute shape.
+   - `list_files` text format (lines 459-464, column 4): every entry shows its full URL, even when the entry is under appdata.
+   Under the user's principle, when the tool *knows* it just operated on an appdata target, it should echo back the appdata-relative path the agent passed in. Showing the absolute URL teaches the LLM the wrong default and forces it to track two namespaces simultaneously.
+   **Suggestion:** Define and apply a single output rule: for entries under the current request's appdata home, emit `appdata:reports/summary.md` (or `./reports/summary.md`, or just `reports/summary.md` — pick a scheme); for entries outside appdata, emit the full `files/{bucket}/...` URL. Update `write_file`'s success line, `delete_file`'s success line, and `list_files` column 4 to use this rule. State the rule once (probably in Component 1 or a new "Path conventions" subsection) and refer to it from the per-component docs.
+
+3. **[Resolved]** **[UC-1, UC-2, UC-9 / Configuration examples — examples should show relative paths for appdata operations, full URLs only for non-appdata.]**
+   The use-case triggers currently set the wrong precedent:
+   - UC-1: `list_files(path="files/{appdata}/reports/", max_depth=1)` — absolute URL into appdata.
+   - UC-9: `delete_file(file_url="files/{appdata}/reports/old.md")` — absolute URL into appdata.
+   - UC-6: `read_file_lines(file_url=..., start_line=0, end_line=50)` — opaque, but the description "any accessible URL (appdata or otherwise)" plus the absolute examples implicitly endorse the absolute form for appdata.
+   These examples define the contract for the LLM-facing prompt that ships with the tools and for the integration tests. As-written, they will encode "always use absolute URLs" into the model's behavior even though the surface technically accepts relative paths.
+   **Suggestion:** Rewrite each appdata-targeting use case to use a relative path: `list_files(path="reports/", max_depth=1)`, `delete_file(path="reports/old.md")`. Add a new use case (or extend UC-6) that explicitly demonstrates the absolute-URL form for a non-appdata target — e.g. reading a user-uploaded file from the conversation's attachments — so it is clear *when* the absolute form is the right choice. The Configuration / Usage Examples block should mirror this split.
+
+4. **[Resolved]** **[Component 1 / Migration — `_resolve_appdata_url` contract must document the relative-vs-absolute branching.]**
+   Component 1 step 3-4 describes `_resolve_appdata_url` as always prepending `files/{home}/` to the input. If blocking issues #1-3 are adopted, this helper must instead detect the absolute form (`startswith("files/")`) and return it unchanged. Without this branch, passing an absolute URL through the helper would produce `files/{appdata}/files/{other_bucket}/...`. The path-traversal validation must also apply only to the relative branch (an absolute URL containing `..` is the caller's responsibility to validate — and in practice DIAL Core rejects bad URLs server-side).
+   **Suggestion:** Rewrite Component 1 step 3 to: "If `path` starts with `files/`, treat it as a fully-qualified DIAL URL and return it unchanged (after a minimal sanity check: no embedded newlines, non-empty). Otherwise, apply the path-traversal validator and prepend `files/{home}/` after resolving `home` via `await dial_client.my_appdata_home()` (raise `InvalidToolCallParameterException` on `None`)." Update the parameter docstrings and error messages to reflect that both shapes are accepted. Note in *Migration / Breaking changes* that the helper now accepts pre-resolved URLs as a pass-through (this is a contract expansion, not a break — but it changes the helper's responsibility surface).
+
+### Suggestions
+
+1. **[Resolved]** **[Component 5 / write_file — clarify whether `path` accepts an absolute URL.]**
+   If blocking issue #1 generalizes the other tools to accept both shapes, `write_file` becomes the lone outlier that *only* accepts relative paths. The author should decide explicitly: either (a) `write_file` also accepts an absolute `files/{some_bucket}/...` URL and writes there if the caller has permission (useful for writing into a shared admin namespace), or (b) `write_file` stays appdata-only on the principle that "the agent only authors files in its own home". Either is defensible; the doc should state which and why. Most likely (b), with a note in *Out of Scope*: "writing outside appdata — agents author in their own home; cross-namespace writes are deferred until a use case appears."
+
+2. **[Resolved]** **[Component 1 / new subsection — add an explicit "Path conventions" subsection.]**
+   The path rule is now load-bearing across every tool. Rather than scatter it across per-component docs, add a short subsection (under *Proposed Design* or *Component 1*) titled **Path conventions** that states the rule once: relative paths address appdata; absolute `files/...` URLs address anywhere the caller has access; tools accept either form (except `write_file`, per suggestion #1); return values use the form that matches the target's namespace. This becomes the canonical reference and shortens the per-component prose.
+
+### Nits
+
+1. **[Resolved]** **[Configuration / Usage Examples — tool schema descriptions should hint at both forms.]**
+   Each `parameters.path` / `parameters.file_url` description in the JSON-schema block should mention the dual form once: `"Relative path under appdata (e.g. 'reports/summary.md'), or absolute DIAL URL starting with 'files/' for shared files."` This is the prompt the LLM literally sees, so the wording matters more than for human-facing docs.
+
+### Changes since previous round
+
+- Path-consistency review was not in scope of Rounds 1-4. All four blocking issues above are new findings driven by the user's stated principle ("LLM should operate with relative paths for its home dir, absolute URLs only for shared/admin contexts"). No prior-round items are affected.
+
+---
+
+## Review Notes — Round 6
+
+- **Reviewer:** Andrii
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 7 review.** One new feature: introduce `agent_home_dir` on `DialFilesConfig` to make the base directory for relative path resolution configurable. The field supports a `{appdata}` template variable (resolved at request time) so operators can point the agent's home anywhere inside DIAL storage while keeping appdata as the default.
+
+### Blocking issues
+
+1. **[Resolved]** **[Component 10 / DialFilesConfig — add `agent_home_dir` field.]**
+   Add a new field to `DialFilesConfig`:
+
+   ```python
+   agent_home_dir: str = Field(
+       default="files/{appdata}/",
+       description=(
+           "Base directory for relative path resolution. Must start with 'files/' and end with '/'."
+           " Supports the {appdata} template variable, resolved at request time via my_appdata_home()."
+           " Examples: 'files/{appdata}/' (default), 'files/shared-bucket/admin/',"
+           " 'files/{appdata}/workspace/'."
+       ),
+   )
+   ```
+
+   **Validation (at config-load time, not request time):**
+   - Must start with `files/` and end with `/`.
+   - Must not contain `..` segments.
+   - May contain at most one `{appdata}` placeholder (no other template variables are defined; unknown `{...}` tokens are a validation error so operators catch typos early).
+
+   **Resolution (at request time, inside `_resolve_appdata_url`):**
+   - If the template contains `{appdata}`: call `await dial_client.my_appdata_home()`. If it returns `None`, raise `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Substitute the returned path string for `{appdata}`.
+   - If the template contains no `{appdata}`: use as-is — no SDK call is needed, so read/search/list work even when appdata is unavailable.
+   - Append the validated relative path to the resolved `agent_home_dir`.
+
+   **Default preserves current behavior.** `"files/{appdata}/"` resolves identically to the current `f"files/{home}/"` from `my_appdata_home()`. No behavioral change for existing deployments.
+
+2. **[Resolved]** **[Component 1 — update `_resolve_appdata_url` to use `agent_home_dir`.]**
+   Replace the current step 3 ("Calls `await dial_client.my_appdata_home()`...") with the two-branch resolution described in blocking issue #1. The helper needs access to `DialFilesConfig.agent_home_dir`; inject `DialFilesConfig` into `_DialFileTool` (or pass it from the module during construction — follow whichever pattern the existing tool-config injection uses).
+
+   The path-traversal validator (no leading `/`, no `..` segments, no empty segments, no trailing whitespace) continues to apply to the *relative* portion only. The `agent_home_dir` itself is validated at config-load time.
+
+3. **[Resolved]** **[Error Handling table — add `agent_home_dir`-related errors.]**
+   Add two rows:
+   - `agent_home_dir` fails config-load validation (missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment) → startup error (Pydantic `ValidationError`), not a runtime `InvalidToolCallParameterException`.
+   - `agent_home_dir` contains `{appdata}` but `my_appdata_home()` returns `None` at request time → `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`.
+
+### Suggestions
+
+1. **[Resolved]** **[Component 10 / Migration — `agent_home_dir` is a new optional config key; document its default.]**
+   Add a note to *Migration / Non-breaking changes*: "`DialFilesConfig` gains `agent_home_dir` (default `"files/{appdata}/"`) — existing manifests that omit the field are unaffected; relative paths continue to resolve under appdata."
+
+2. **[Resolved]** **[Configuration / Usage Examples — add a manifest example for a non-default `agent_home_dir`.]**
+   Add one example showing a shared-bucket deployment:
+   ```jsonc
+   // Agent writes to a shared org bucket instead of per-request appdata
+   {
+     "features": {
+       "dial_files": {
+         "agent_home_dir": "files/org-shared-bucket/reports/"
+       }
+     }
+   }
+   ```
+   And one showing an appdata subdirectory:
+   ```jsonc
+   // Agent isolated to its own workspace subdir under appdata
+   {
+     "features": {
+       "dial_files": {
+         "agent_home_dir": "files/{appdata}/workspace/"
+       }
+     }
+   }
+   ```
+
+### Nits
+
+1. **[Resolved]** **[Out of Scope — remove the "per-app `subdir`" deferred item.]**
+   The last bullet in *Out of Scope* reads: "LLM-controlled subdirectories under a fixed root … A per-app `subdir` config field can be added on `DialFilesConfig` if a deployment wants to namespace agents further." `agent_home_dir` covers this use case (set `"files/{appdata}/workspace/"` for a fixed subdir under appdata). Remove or replace that bullet with a forward reference: "Use `agent_home_dir` to pin the agent to a subdirectory under appdata (e.g. `'files/{appdata}/workspace/'`)."
+
+### Changes since Round 5
+
+- Round-5 blocking #1 (Components 3, 4, 6, 7 accept relative-or-absolute) — **resolved.** `read_file_lines`, `search_in_file`, `edit_file`, `delete_file` now expose a single `path` parameter (renamed from `file_url`) that accepts both shapes. `_resolve_appdata_url` dispatches on the `files/` prefix per *Path conventions*.
+- Round-5 blocking #2 (return values emit relative for home-dir targets) — **resolved.** Added `_to_display_path` helper in Component 1. `write_file`, `delete_file`, and `list_files` column 4 all run their output URLs through it; home-dir entries appear relative, non-home entries appear absolute. Sample outputs in *Configuration / Usage Examples* updated accordingly.
+- Round-5 blocking #3 (use-case examples use relative paths for home-dir operations) — **resolved.** UC-1, UC-2, UC-6, UC-7, UC-8, UC-9 rewritten with relative paths. Added UC-6b demonstrating the absolute form for a non-home (user-uploaded) target.
+- Round-5 blocking #4 (`_resolve_appdata_url` documents the branching) — **resolved.** Component 1 steps 1–5 now describe the absolute-vs-relative branches, the per-branch validation rules, and the home-dir resolution explicitly. *Migration / Non-breaking changes* notes the contract expansion.
+- Round-5 suggestion #1 (`write_file` relative-only) — **resolved.** Algorithm step 1 explicitly rejects absolute `files/...` URLs; a new design note (*Relative-only `path`*) records the rationale and points to *Out of Scope* (cross-namespace writes). *Configuration / Usage Examples* shows the rejection error.
+- Round-5 suggestion #2 (add *Path conventions* subsection) — **resolved.** New subsection at the end of Component 1; per-component prose now defers to it.
+- Round-5 nit #1 (tool schema hints at both forms) — **resolved.** Every `path` parameter description in the JSON-schema block names the dual form; `write_file`'s description explicitly excludes the absolute form.
+
+### Changes since Round 6
+
+- Round-6 blocking #1 (`agent_home_dir` field on `DialFilesConfig`) — **resolved.** Component 10 schema gains `agent_home_dir` with the field validator (startup-time) and the description from the review. Default `"files/{appdata}/"` preserves current behavior.
+- Round-6 blocking #2 (`_resolve_appdata_url` uses `agent_home_dir`) — **resolved.** Component 1 step 4 substitutes `{appdata}` only when present and skips `my_appdata_home()` otherwise — read/search/list now work even without appdata when `agent_home_dir` is repointed to a fixed bucket. Component 1 also notes `DialFilesConfig` is injected into the base class.
+- Round-6 blocking #3 (Error Handling additions for `agent_home_dir`) — **resolved.** Two new rows: startup `pydantic.ValidationError` for bad templates; runtime `InvalidToolCallParameterException` for `{appdata}` template with no appdata.
+- Round-6 suggestion #1 (Migration note) — **resolved.** *Non-breaking changes* includes the `agent_home_dir` bullet ("default `"files/{appdata}/"` — existing manifests unaffected").
+- Round-6 suggestion #2 (manifest examples) — **resolved.** Two new manifests in *Configuration / Usage Examples*: shared org bucket and appdata workspace subdir.
+- Round-6 nit #1 (drop "per-app `subdir`" bullet from *Out of Scope*) — **resolved.** Removed; replaced with the "per-app fixed subdirectories" entry that points to `agent_home_dir`. Also added "cross-namespace writes" as the new deferred item for `write_file`'s relative-only constraint.
