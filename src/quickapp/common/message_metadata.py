@@ -2,7 +2,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_serializer
 
 MESSAGE_METADATA_KEY = "_message_metadata"
 
@@ -16,6 +16,12 @@ class TimestampMetadata(BaseModel):
     response_timestamp: datetime | None = None
     timestamp_source: TimestampSource | None = None
     timezone_name: str | None = None
+
+    @field_serializer("response_timestamp", when_used="json")
+    def _serialize_response_timestamp(self, dt: datetime | None) -> str | None:
+        if dt is None:
+            return None
+        return dt.isoformat(timespec="milliseconds")
 
 
 class MessageMetadata(BaseModel):
