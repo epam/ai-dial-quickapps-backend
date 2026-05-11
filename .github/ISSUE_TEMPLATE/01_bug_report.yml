@@ -1,5 +1,6 @@
 name: 🐞 Bug report
 description: Create a report to help us improve
+type: Bug
 labels: ["bug"]
 body:
   - type: markdown
@@ -11,13 +12,16 @@ body:
     attributes:
       label: QuickApps version
       description: Application version
-      placeholder: 0.1.0
+      placeholder: latest
+      value: latest
     validations:
       required: true
   - type: textarea
     attributes:
       label: What steps will reproduce the bug?
-      description: Enter details about your bug.
+      description: >
+        Enter details about your bug. For bugs related to orchestrator model, include the model name and version.
+        For bugs related to toolsets or subagents, include details on toolset/subagent configuration.
       placeholder: |
         1. In this environment...
         2. With this config...
