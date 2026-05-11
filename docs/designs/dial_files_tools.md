@@ -96,6 +96,18 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 **Trigger:** Multiple `read_file_lines` / `search_in_file` calls against the same `path`.\
 **Behavior / Outcome:** Unchanged — `DialFileService` caches the download per request.
 
+### UC-12: Agent copies a user-uploaded file into its workspace
+
+**Trigger:** `copy_file(source="files/{user_bucket}/uploads/data.csv", destination="inputs/data.csv")`.
+**Behavior:** `source` is an absolute DIAL URL (non-home file the agent doesn't own); `destination` is a relative path resolved under `agent_home_dir`. The tool calls `DialFileService.copy(source_url, dest_url, overwrite=False)`, which POSTs to `/v1/ops/resource/copy`. No bytes are downloaded — the copy happens server-side.\
+**Outcome:** The file lands at `inputs/data.csv` in the agent's home dir. The agent can then `read_file_lines` / `search_in_file` / `edit_file` it using its relative path.
+
+### UC-13: Agent renames / moves a file within its workspace
+
+**Trigger:** `move_file(source="drafts/report-v1.md", destination="final/report.md")`.\
+**Behavior:** Both `source` and `destination` are relative paths resolved under `agent_home_dir`. The tool calls `DialFileService.move(source_url, dest_url, overwrite=False)`, which POSTs to `/v1/ops/resource/move`. The original file is removed at the source URL by DIAL Core.\
+**Outcome:** The file now exists only at `final/report.md`; the source URL is gone. Useful for promoting a draft to a final location without a duplicate-then-delete loop.
+
 ---
 
 ## Proposed Design
@@ -280,12 +292,112 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 ---
 
+---
+
+### Component 7.5: `copy_file`
+
+**What:** Internal tool that copies a file from `source` to `destination` via DIAL's `POST /v1/ops/resource/copy` endpoint. The source can live anywhere the agent has read access (its home dir or an absolute `files/...` URL); the destination must be a relative path inside `agent_home_dir`. No bytes are downloaded — the copy is server-side.
+
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `source` | string | yes | — | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. The file to copy from. |
+| `destination` | string | yes | — | Relative path under the agent's home dir. The new copy's location. Absolute `files/...` URLs are rejected. |
+| `overwrite` | boolean | no | `false` | If `false`, fails when destination already exists. If `true`, replaces an existing destination. |
+
+**Algorithm:**
+
+1. **Reject absolute `destination`.** If `destination` starts with `files/`, raise `InvalidToolCallParameterException("destination", "copy_file destination must be a relative path under agent_home_dir; do not pass an absolute files/... URL")`.
+2. Resolve `source_url = await _resolve_appdata_url(source)` (absolute pass-through or relative resolution).
+3. Resolve `dest_url = await _resolve_appdata_url(destination)` (relative branch — path-traversal validation + `agent_home_dir` resolution).
+4. Call `DialFileService.copy(source_url=source_url, destination_url=dest_url, overwrite=overwrite)`.
+   - On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("source", f"source not found: {source}")`.
+   - On `EtagMismatchError` (HTTP 412) and `overwrite=False` → `InvalidToolCallParameterException("destination", f"destination already exists: {_to_display_path(dest_url)}; pass overwrite=True to replace")`.
+   - On `DialException(status_code=403)` → `InvalidToolCallParameterException("source", f"access denied: {source_url}")`.
+5. Call `DialFileService.invalidate_cache(dest_url)` so same-turn reads see the new file.
+6. Return `ToolCallResult(content=f"Copied to: {_to_display_path(dest_url)}", content_type="text/plain")`.
+
+**Owner:** `src/quickapp/dial_files_tooling/_copy_file_tool.py`
+
+**Design notes:**
+
+- **Source is dual-form; destination is relative-only.** The agent copies *from* anywhere it has read access (including user uploads, shared artifacts), but always copies *into* its own home. This is the primary way for agents to ingest external files into their workspace without downloading bytes.
+- **No bytes downloaded.** The copy is server-side: DIAL Core moves the data internally. The tool never touches the file content.
+- **`overwrite` mirrors `write_file`.** Default `false` keeps the create-only safety net; `true` replaces the destination unconditionally (no ETag guard — the DIAL Core ops endpoint handles concurrency on its side).
+
+**`DialFileService.copy` method (new):**
+
+```python
+async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+    await self._dial_client._http_client.request(
+        cast_to=type(None),
+        options=FinalRequestOptions(
+            method="POST",
+            url="/v1/ops/resource/copy",
+            json={"sourceUrl": f"/v1/{source_url}", "destinationUrl": f"/v1/{destination_url}", "overwrite": overwrite},
+        ),
+    )
+```
+
+**Private SDK API note:** `_http_client` is a private attribute of `aidial_client`'s `AsyncDIALClient`. It is the right transport — it shares auth headers and base-URL resolution with every other DIAL call in the codebase — but carries a maintenance risk: a future SDK upgrade could rename or remove it. If upstream `aidial_client` adds a public `files.copy` method, switch to it.
+
+---
+
+### Component 7.6: `move_file`
+
+**What:** Internal tool that moves (renames) a file from `source` to `destination` via DIAL's `POST /v1/ops/resource/move` endpoint. Both source and destination must be relative paths inside `agent_home_dir`. The original file is removed by DIAL Core atomically.
+
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `source` | string | yes | — | Relative path under the agent's home dir. The file to move. Absolute `files/...` URLs are rejected. |
+| `destination` | string | yes | — | Relative path under the agent's home dir. The new location. Absolute `files/...` URLs are rejected. |
+| `overwrite` | boolean | no | `false` | If `false`, fails when destination already exists. If `true`, replaces an existing destination. |
+
+**Algorithm:**
+
+1. **Reject absolute `source` and `destination`.** If either starts with `files/`, raise `InvalidToolCallParameterException` for that parameter ("move_file source/destination must be a relative path under agent_home_dir; do not pass an absolute files/... URL").
+2. Resolve `source_url = await _resolve_appdata_url(source)` (relative branch).
+3. Resolve `dest_url = await _resolve_appdata_url(destination)` (relative branch).
+4. Call `DialFileService.move(source_url=source_url, destination_url=dest_url, overwrite=overwrite)`.
+   - On `ResourceNotFoundError` (HTTP 404) → `InvalidToolCallParameterException("source", f"source not found: {source}")`.
+   - On `EtagMismatchError` (HTTP 412) and `overwrite=False` → `InvalidToolCallParameterException("destination", f"destination already exists: {_to_display_path(dest_url)}; pass overwrite=True to replace")`.
+   - On `DialException(status_code=403)` → `InvalidToolCallParameterException("source", f"access denied: {source_url}")`.
+5. Call `DialFileService.invalidate_cache(source_url)` and `DialFileService.invalidate_cache(dest_url)` so same-turn reads see the change.
+6. Return `ToolCallResult(content=f"Moved to: {_to_display_path(dest_url)}", content_type="text/plain")`.
+
+**Owner:** `src/quickapp/dial_files_tooling/_move_file_tool.py`
+
+**Design notes:**
+
+- **Both sides are relative-only.** `move_file` is a within-home operation: rename/reorganize the agent's own working surface. Cross-namespace moves are out of scope (see *Out of Scope*).
+- **Atomic on the server side.** DIAL Core removes the source and creates the destination in one op; the tool never touches the file content.
+- **`overwrite` mirrors `write_file` and `copy_file`.** Default `false`; `true` replaces the destination.
+
+**`DialFileService.move` method (new):**
+
+```python
+async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+    await self._dial_client._http_client.request(
+        cast_to=type(None),
+        options=FinalRequestOptions(
+            method="POST",
+            url="/v1/ops/resource/move",
+            json={"sourceUrl": f"/v1/{source_url}", "destinationUrl": f"/v1/{destination_url}", "overwrite": overwrite},
+        ),
+    )
+```
+
+Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5 design note). Invalidates both source and destination in the download cache after a successful move.
+
 ### Component 8: `DialFilesToolingModule` (DI wiring)
 
 **What:** `injector.Module` that:
 
-- Binds `_FileStageWrapper`, `_ListFilesTool`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool` in `request_scope`.
-- Contributes all six tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as the prior `TextFileToolingModule`).
+- Binds `_FileStageWrapper`, `_ListFilesTool`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool`, `_CopyFileTool`, `_MoveFileTool` in `request_scope`.
+- Contributes all eight tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as the prior `TextFileToolingModule`).
 - Tools are gated per app via `app_config.features.dial_files`. The resolution logic is unchanged from the previous design — `enabled_tools="all"` returns every tool; a list returns only the matching subset.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
 
@@ -301,7 +413,7 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 **Highlights:**
 - Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`.
-- Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`.
+- Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
 - The `path` parameter renders in the stage as `**File:** {basename}` (last path segment of the display path, computed via `_to_display_path`) so the UI stays compact.
 
 **Owner:** `src/quickapp/dial_files_tooling/_tool_configs.py`
@@ -326,6 +438,8 @@ DialFilesToolName = Literal[
     "internal_file_write",
     "internal_file_edit",
     "internal_file_delete",
+    "internal_file_copy",
+    "internal_file_move",
 ]
 
 class DialFilesConfig(BaseModel):
@@ -388,7 +502,7 @@ class Features(BaseModel):
 | Failure | Behavior |
 |---------|----------|
 | Invalid relative `path` (empty, leading `/`, `..` segment, `../` substring, empty segment, trailing whitespace) | `InvalidToolCallParameterException("path", ...)` with the specific rule violated. Applies to the relative branch only — absolute `files/...` URLs bypass this validator (server-side rejection if malformed). |
-| Absolute URL passed to `write_file` / `edit_file` / `delete_file` (path starts with `files/`) | `InvalidToolCallParameterException("path", "{tool} requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. |
+| Absolute URL passed to mutating tools: `write_file` / `edit_file` / `delete_file` (path), `copy_file` (destination), `move_file` (source or destination) | `InvalidToolCallParameterException("path", "{tool} requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. |
 | Absolute URL contains `\n` / `\r` (any tool) | `InvalidToolCallParameterException("path", "absolute URL must not contain newline characters")`. |
 | `agent_home_dir` fails config-load validation (missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment) | Startup error: `pydantic.ValidationError` raised by the `DialFilesConfig` field validator. The app fails to boot until the operator fixes the manifest. |
 | `agent_home_dir` contains `{appdata}` but `my_appdata_home()` returns `None` at request time | `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Tools that pass an absolute URL (and therefore skip the relative branch) are unaffected. |
@@ -403,6 +517,8 @@ class Features(BaseModel):
 | `list_files` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
 | `list_files` `max_depth < 1` or `max_depth > 10` | `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")`. |
 | `delete_file` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "file not found: {path}")`. |
+| `copy_file` / `move_file` source not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("source", "source not found: {source}")`. |
+| `copy_file` / `move_file` destination already exists with `overwrite=False` (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("destination", "destination already exists: {url}; pass overwrite=True to replace")`. |
 | `path` missing or DIAL GET fails | Error propagates from `DialFileService`; the tool returns an error result. |
 | File exceeds 10 MB download limit | `InvalidToolCallParameterException("path", "file is too large to read (limit: 10 MB)")`. |
 | File is not valid UTF-8 (read/search/edit) | `UnicodeDecodeError` propagates; LLM sees the error. Binary files are out of scope. |
@@ -412,7 +528,10 @@ class Features(BaseModel):
 
 ## Out of Scope
 
-- **Rename / move / copy.** No primitive in the DIAL API; would be a download + upload + delete. Deferred — agents can substitute "write new + delete old".
+- **Recursive folder move/copy.** Out of scope — agents loop a `list_files` result if they need to move/copy a tree. Mirrors the existing "Recursive delete" non-scope.
+- **Cross-namespace moves.** `move_file` is relative-only on both sides (within `agent_home_dir` only). Moving a file from an external bucket into the agent's home requires `copy_file` (copy + optional delete). Cross-namespace move is deferred until a use case appears.
+- **Move/copy via official SDK.** Currently implemented via the private `_http_client` transport (see Component 7.5/7.6 design notes). Pending upstream addition of `files.move` / `files.copy` on `aidial_client`.
+- **Destination folder auto-creation for move/copy.** Whether `/v1/ops/resource/move|copy` auto-creates intermediate folders (as `files.upload` does) is unverified for v1. Assume it mirrors upload behavior; add an explicit note if testing shows otherwise.
 - **Conditional / soft delete.** `delete_file` remains unconditional within appdata; ETag-guarded delete and trash/undo semantics are deferred.
 - **Multi-edit in one call.** `edit_file` replaces a single unique `old_string` per invocation. Batching is deferred.
 - **Binary / non-UTF-8 files.** Read/search/edit assume UTF-8 text. `write_file` accepts any `content_type` but content is still UTF-8-encoded text. Binary upload is not supported.
@@ -503,6 +622,30 @@ class Features(BaseModel):
   },
   "required": ["path"]
 }
+
+// copy_file
+{
+  "name": "internal_file_copy",
+  "description": "Copy a file server-side in DIAL storage. Source can be relative (agent's home dir) or absolute files/... URL. Destination must be relative. No bytes downloaded.",
+  "parameters": {
+    "source":      {"type": "string",  "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'. The file to copy."},
+    "destination": {"type": "string",  "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."},
+    "overwrite":   {"type": "boolean", "description": "If true, replace an existing destination. Default: false."}
+  },
+  "required": ["source", "destination"]
+}
+
+// move_file
+{
+  "name": "internal_file_move",
+  "description": "Move (rename) a file within the agent's home dir in DIAL storage. Both source and destination must be relative paths. The original file is removed by DIAL Core.",
+  "parameters": {
+    "source":      {"type": "string",  "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."},
+    "destination": {"type": "string",  "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."},
+    "overwrite":   {"type": "boolean", "description": "If true, replace an existing destination. Default: false."}
+  },
+  "required": ["source", "destination"]
+}
 ```
 
 ### `list_files` output format
@@ -564,6 +707,24 @@ Deleted: reports/old.md
 InvalidToolCallParameterException: delete_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL
 ```
 
+### `copy_file` on success
+
+```
+Copied to: inputs/data.csv
+```
+
+### `copy_file` on absolute destination (rejected)
+
+```
+InvalidToolCallParameterException: copy_file destination must be a relative path under agent_home_dir; do not pass an absolute files/... URL
+```
+
+### `move_file` on success
+
+```
+Moved to: final/report.md
+```
+
 ### Per-app manifest
 
 ```jsonc
@@ -582,6 +743,24 @@ InvalidToolCallParameterException: delete_file requires a relative path under ag
         "internal_file_list",
         "internal_file_read_lines",
         "internal_file_search"
+      ]
+    }
+  }
+}
+
+// All eight tools enabled explicitly (including copy and move)
+{
+  "features": {
+    "dial_files": {
+      "enabled_tools": [
+        "internal_file_list",
+        "internal_file_read_lines",
+        "internal_file_search",
+        "internal_file_write",
+        "internal_file_edit",
+        "internal_file_delete",
+        "internal_file_copy",
+        "internal_file_move"
       ]
     }
   }
@@ -637,6 +816,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 - `AttachmentService` is unchanged.
 - `DialFilesConfig` gains `agent_home_dir` (default `"files/{appdata}/"`) — existing manifests that omit the field are unaffected; relative paths continue to resolve under appdata.
 - `_resolve_appdata_url` now accepts both relative and absolute (`files/...`) inputs. Existing call sites that previously passed only relative paths continue to work; new read-only call sites (`list_files`, `read_file_lines`, `search_in_file`) rely on the absolute pass-through. Mutating tools (`write_file`, `edit_file`, `delete_file`) reject absolute inputs before calling `_resolve_appdata_url`. This is a contract expansion for read tools, not a break.
+- Two new tools — `internal_file_copy`, `internal_file_move` — are exposed when `dial_files.enabled_tools` is `"all"` (default) or includes the new tool names. Existing manifests that rely on `"all"` will surface the new tools automatically. To keep the previous six-tool surface, switch to an explicit `enabled_tools` list.
 
 ---
 
@@ -653,6 +833,8 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 | `dial_files_tooling/_write_file_tool.py` | `write_file` implementation: nested `path`, `content_type`, `overwrite`. |
 | `dial_files_tooling/_edit_file_tool.py` | `edit_file` implementation (carried over). |
 | `dial_files_tooling/_delete_file_tool.py` | `delete_file` implementation (path guard removed; no client-side validation — appdata isolation is the safety boundary). |
+| `dial_files_tooling/_copy_file_tool.py` | `copy_file` implementation — server-side copy via `/v1/ops/resource/copy`. |
+| `dial_files_tooling/_move_file_tool.py` | `move_file` implementation — server-side move via `/v1/ops/resource/move`. |
 | `dial_files_tooling/_stage_wrapper.py` | Stage wrapper (carried over). |
 | `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all six tools; renamed prefix. |
 | `dial_files_tooling/dial_files_tooling_module.py` | Preview-gated DI module; contributes tools; reads `app_config.features.dial_files`. |
@@ -662,7 +844,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 
 | File | Change |
 |------|--------|
-| `dial_core_services/dial_file_service.py` | Add `list_folder(folder_url, max_depth=1)` (wraps `dial_client.metadata.get("files", folder_url)` with depth-bounded recursion). Extend `upload_text(...)` with `content_type` keyword (default `"text/plain"`). |
+| `dial_core_services/dial_file_service.py` | Add `list_folder(folder_url, max_depth=1)` (wraps `dial_client.metadata.get("files", folder_url)` with depth-bounded recursion). Extend `upload_text(...)` with `content_type` keyword (default `"text/plain"`); add `copy` and `move` methods (via private `_http_client` transport). |
 | `dial_core_services/attachment_service.py` | No changes. |
 | `app_factory.py` | Register `DialFilesToolingModule` (replaces `TextFileToolingModule`). |
 | `config/application.py` | Replace `text_file_tools: TextFileToolsConfig \| None` with `dial_files: DialFilesConfig \| None` as a `PreviewField` on `Features`. |
@@ -689,6 +871,9 @@ The above bullets are acceptable because the feature is preview-gated and not GA
   - `delete_file`: success on relative path under home dir (success line shows relative form), absolute `files/...` URL rejected with `InvalidToolCallParameterException`, `ResourceNotFoundError` (404) → `InvalidToolCallParameterException("path", ...)`.
   - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
+  - `copy_file`: happy path (relative source), happy path (absolute source), collision with `overwrite=False` (EtagMismatchError → InvalidToolCallParameterException), overwrite with `overwrite=True`, source-missing 404 → InvalidToolCallParameterException("source", ...), absolute destination rejected, 403 → InvalidToolCallParameterException. Verify destination cache invalidated after success.
+  - `move_file`: happy path (relative→relative rename), collision with `overwrite=False`, overwrite with `overwrite=True`, source-missing 404, absolute source rejected, absolute destination rejected, 403 → InvalidToolCallParameterException. Verify source AND destination cache invalidated after success.
+  - `DialFileService.copy` / `DialFileService.move`: assert `/v1/` prepend on both sourceUrl and destinationUrl; assert `overwrite` flag forwarded to body.
 
 ---
 
@@ -1170,3 +1355,206 @@ _None._
 - Round-7 blocking #1 (`list_files` output reduced to size + path) — **resolved.** See "Changes since Round 7" above.
 - Round-7 blocking #2 (`edit_file` / `delete_file` relative-only) — **resolved.** See "Changes since Round 7" above.
 - Round-7 blocking #3 + Round-8 factual correction (403 / `PermissionDeniedError`) — **resolved.** See "Changes since Round 7" above.
+
+---
+
+## Review Notes — Round 9
+
+- **Reviewer:** Andrii
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. DIAL Core exposes first-class `POST /v1/ops/resource/move` and `POST /v1/ops/resource/copy` endpoints (see `.a_onlylocal/DIAL_Core_API.postman_collection.json` lines 666-700). The previous *Out of Scope* deferral ("would be a download + upload + delete") is no longer accurate. Add two complementary tools — `move_file` and `copy_file` — using the native endpoints. Both fit alongside `write_file` / `edit_file` / `delete_file` and reuse the existing path-resolution machinery.
+
+### Blocking issues
+
+1. **[Component 7.5 (new) — `copy_file` tool.]**
+
+   **What:** Internal tool that copies a file from `source` to `destination` via DIAL's `POST /v1/ops/resource/copy` endpoint. The source can live anywhere the agent has read access (its home dir or an absolute `files/...` URL); the destination must be inside `agent_home_dir`. This is the primary way for agents to ingest user uploads or shared artifacts into their workspace without re-uploading bytes.
+
+   **Parameters:**
+
+   | Name | Type | Required | Default | Description |
+   |------|------|----------|---------|-------------|
+   | `source` | string | yes | — | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. The file to copy from. |
+   | `destination` | string | yes | — | Relative path under the agent's home dir. Absolute `files/...` URLs are rejected (mirrors `write_file`). |
+   | `overwrite` | boolean | no | `false` | If `false`, fails when the destination already exists. If `true`, replaces the destination. |
+
+   **Algorithm:**
+   1. Reject absolute `destination` (same shape as `write_file`'s rejection).
+   2. `source_url = await _resolve_appdata_url(source)` — read-side, accepts both forms.
+   3. `destination_url = await _resolve_appdata_url(destination)` — write-side, relative-only.
+   4. Call `DialFileService.copy(source_url, destination_url, overwrite)` (new method — see blocking #4).
+   5. On success → invalidate the destination in `DialFileService` cache so subsequent reads see the new file; build an `Attachment` pointing at `destination_url`; return `ToolCallResult(content=f"Copied to: {_to_display_path(destination_url)}", content_type="text/plain", attachments=[attachment])`.
+   6. Errors map per blocking #5.
+
+   **Owner:** `src/quickapp/dial_files_tooling/_copy_file_tool.py`
+
+   **Design notes:**
+   - **Asymmetric source/destination.** Source accepts both forms because copying *from* a user upload into the agent's home is a primary use case. Destination is relative-only because every write-side tool is relative-only (Round 7 blocking #2).
+   - **No client-side byte transfer.** The DIAL primitive is server-side; the agent never downloads-then-uploads. This is the point of using the native endpoint.
+   - **`Attachment` on success.** Mirrors `write_file` — the DIAL UI gets a clickable result for the new file.
+
+2. **[Component 7.6 (new) — `move_file` tool.]**
+
+   **What:** Internal tool that moves a file from `source` to `destination` via DIAL's `POST /v1/ops/resource/move` endpoint. Both `source` and `destination` must live inside `agent_home_dir` — moving deletes the source, and the agent should not be deleting files it doesn't own (consistent with `delete_file`'s relative-only contract from Round 7 blocking #2).
+
+   **Parameters:**
+
+   | Name | Type | Required | Default | Description |
+   |------|------|----------|---------|-------------|
+   | `source` | string | yes | — | Relative path under the agent's home dir. Absolute `files/...` URLs are rejected. |
+   | `destination` | string | yes | — | Relative path under the agent's home dir. Absolute `files/...` URLs are rejected. |
+   | `overwrite` | boolean | no | `false` | If `false`, fails when the destination already exists. If `true`, replaces the destination. |
+
+   **Algorithm:**
+   1. Reject absolute `source` and absolute `destination` at validation (same error shape as `write_file`).
+   2. `source_url = await _resolve_appdata_url(source)`; `destination_url = await _resolve_appdata_url(destination)`.
+   3. Call `DialFileService.move(source_url, destination_url, overwrite)` (new method — see blocking #4).
+   4. On success → invalidate **both** entries in `DialFileService` cache (source is gone, destination is new); build an `Attachment` pointing at `destination_url`; return `ToolCallResult(content=f"Moved to: {_to_display_path(destination_url)}", content_type="text/plain", attachments=[attachment])`.
+   5. Errors map per blocking #5.
+
+   **Owner:** `src/quickapp/dial_files_tooling/_move_file_tool.py`
+
+   **Design notes:**
+   - **Both endpoints relative-only.** Move is "delete source + create destination"; both halves are mutations, so both halves are confined to `agent_home_dir`. Cross-namespace moves are out of scope (same rationale as cross-namespace deletes).
+   - **Use `move_file` for rename.** Same directory, different filename — DIAL handles rename via move.
+   - **No batch move.** One file per call; agents loop a `list_files` result if they need to move a tree.
+
+3. **[Component 9 — register the two new tools.]**
+   - Add `internal_file_copy` and `internal_file_move` to the `DialFilesToolName` `Literal` in Component 10.
+   - Add `OpenAiToolConfig` entries and stage titles: `Copy file`, `Move file`. Both render the `destination` parameter as `**File:** {basename}` (matches `write_file`).
+   - Update Component 8's bind list and `@multiprovider` to include `_CopyFileTool` and `_MoveFileTool`.
+
+4. **[Component 1 — extend `DialFileService` with `move` / `copy` methods.]**
+   The SDK's `dial_client.files` resource does not expose move or copy — both endpoints are reached via raw HTTP (verified against `aidial_client/resources/files.py`: only `upload`, `delete`, `get_metadata`, and download methods). Add two methods on `DialFileService`:
+
+   - `async def move(source_url: str, destination_url: str, overwrite: bool) -> None`
+   - `async def copy(source_url: str, destination_url: str, overwrite: bool) -> None`
+
+   Both POST to `/v1/ops/resource/{move|copy}` with body `{"sourceUrl": "/v1/" + source_url, "destinationUrl": "/v1/" + destination_url, "overwrite": overwrite}`. (Note: the ops endpoints take `/v1/files/...` URLs in the body, not the bare `files/...` shape — prepend `/v1/` at the call site. The Postman collection in `.a_onlylocal/DIAL_Core_API.postman_collection.json` confirms this format.)
+
+   Use the SDK's underlying HTTP client (`dial_client._http_client` or equivalent) so auth headers are shared with every other DIAL call. Map non-2xx responses to the same exception hierarchy the rest of `DialFileService` uses, so the base-class error handler (`DialException` with `status_code` dispatch — per Round 8 blocking #3 correction) catches them uniformly.
+
+5. **[Error Handling table — add rows for `copy_file` and `move_file`.]**
+   - `copy_file` / `move_file`: source missing (404) → `InvalidToolCallParameterException("source", "source not found: {source}")`.
+   - `copy_file` / `move_file`: destination exists with `overwrite=False` (412) → `InvalidToolCallParameterException("destination", "destination already exists: {url}; pass overwrite=True to replace")`.
+   - Absolute `destination` (and absolute `source` for `move_file`) — generalize the existing write-side row to include the new tools: "Absolute URL passed to `write_file` / `edit_file` / `delete_file` / `move_file` / `copy_file` (destination)".
+   - 403 → already covered by the global 403 row from Round 7 blocking #3 / Round 8 correction.
+
+6. **[Out of Scope — remove the "Rename / move / copy" bullet.]**
+   The bullet at line 417 currently reads: "Rename / move / copy. No primitive in the DIAL API; would be a download + upload + delete. Deferred — agents can substitute 'write new + delete old'." This is factually wrong — DIAL Core has both primitives. Remove the bullet. Add to *Non-breaking changes* (Migration): "Two new tools — `internal_file_copy`, `internal_file_move` — exposed when `dial_files.enabled_tools` is `"all"` (default) or includes the new tool names."
+
+### Suggestions
+
+1. **[Add use cases for the new tools.]**
+   - **UC-12:** Agent copies a user upload into its home dir — `copy_file(source="files/{user_bucket}/uploads/data.csv", destination="inputs/data.csv")`. Demonstrates the asymmetric source/destination forms.
+   - **UC-13:** Agent renames a draft — `move_file(source="drafts/v1.md", destination="drafts/v2.md")`.
+   - **UC-14:** Agent promotes a draft to final — `move_file(source="drafts/v2.md", destination="final/report.md")`.
+
+2. **[Configuration / Usage Examples — show success and error outputs.]**
+   - `copy_file` success: `Copied to: inputs/data.csv`.
+   - `move_file` success: `Moved to: final/report.md`.
+   - Destination collision: `InvalidToolCallParameterException: destination already exists: inputs/data.csv; pass overwrite=True to replace`.
+   - Source missing: `InvalidToolCallParameterException: source not found: drafts/v3.md`.
+
+3. **[Tests — extend the test list in *Summary of Changes / Tests*.]**
+   For each new tool, the same shape as `write_file`'s test list: happy path, collision with `overwrite=False`, overwrite with `overwrite=True`, source-missing 404, absolute-URL rejection on the relative-only side(s), 403 forbidden.
+
+### Nits
+
+1. **Naming.** `internal_file_copy` and `internal_file_move` match the `internal_file_*` prefix established in Round 6. Stage titles use the imperative ("Copy file", "Move file") to match the rest of the surface.
+
+2. **No combined `copy_or_move`.** Considered briefly. Rejected: separate tools keep the schema small and the LLM's intent explicit; the source-asymmetry (copy accepts absolute source, move does not) also makes a unified tool awkward.
+
+### Changes since Round 8
+
+**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 11 review.**
+
+- Round-9 blocking #1 (`copy_file` tool) — **resolved.** Component 7.5 added with full algorithm, parameter table, design notes, and `DialFileService.copy` extension.
+- Round-9 blocking #2 (`move_file` tool) — **resolved.** Component 7.6 added with full algorithm, parameter table, design notes, and `DialFileService.move` extension.
+- Round-9 blocking #3 (Components 9 / 10 — register new tools) — **resolved.** `internal_file_copy` and `internal_file_move` added to `DialFilesToolName` literal; `Copy file` and `Move file` stage titles added; new schemas in Configuration / Usage Examples; `_CopyFileTool` and `_MoveFileTool` added to Component 8 bind list.
+- Round-9 blocking #4 (`DialFileService.move` / `copy` methods and transport) — **resolved.** Methods documented with `_http_client.request` + `FinalRequestOptions` transport; private-SDK-API risk called out explicitly in design notes.
+- Round-9 blocking #5 (Error Handling rows for new tools) — **resolved.** Source-missing-404 row, destination-collision-412 row, and generalized absolute-URL row added.
+- Round-9 blocking #6 (remove "Rename / move / copy" Out-of-Scope bullet) — **resolved.** Bullet removed; replaced by "Recursive folder move/copy", "Cross-namespace moves", "Move/copy via official SDK", and "Destination folder auto-creation" bullets.
+- Round-9 suggestion #1 (UC-12) — **resolved.** UC-12 added to Use Cases.
+- Round-9 suggestion #2 (sample outputs) — **resolved.** `copy_file` and `move_file` samples added to Configuration / Usage Examples.
+- Round-9 suggestion #3 (tests) — **resolved.** Test bullets added for both tools plus `DialFileService.copy` / `DialFileService.move`.
+- Round-10 blocking #2 (name the SDK transport explicitly) — **resolved.** `_http_client.request` + `FinalRequestOptions` named in both Component 7.5 and 7.6 design notes with explicit private-API risk acknowledgement.
+- Round-10 blocking #3 (destination-folder, source-is-folder, same-src-dest edge cases) — **resolved.** Out-of-Scope bullet added ("Destination folder auto-creation for move/copy"); same-src-dest and source-is-folder deferred via the "Recursive folder move/copy" bullet.
+- Round-10 suggestion #1 (cache invalidation note in DialFileService extension) — **resolved.** `move` and `copy` methods note they invalidate the cache themselves.
+- Round-10 suggestion #2 (folder move/copy Out of Scope) — **resolved.** "Recursive folder move/copy" bullet added to Out of Scope.
+- Round-10 suggestion #3 (UC-12 promoted from suggestion) — **resolved.** UC-12 is now a first-class use case in the doc body.
+
+---
+
+## Review Notes — Round 10
+
+- **Reviewer:** Claude (design-review skill)
+- **Date:** 2026-05-11
+
+### Verdict
+
+`Blocking issues must be addressed`. **Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 11 review.** Round 9 introduced six blocking items from the author (add `copy_file` / `move_file` tools backed by DIAL Core's native `/v1/ops/resource/{move,copy}` endpoints, plus the supporting wiring and Out-of-Scope correction). None of them have been applied to the doc body yet — the Round-9 block ends with the placeholder "_To be filled in once Round 9 issues are addressed._". I verified the load-bearing facts behind Round 9 against the codebase: the Postman collection at `.a_onlylocal/DIAL_Core_API.postman_collection.json` lines 666-700 documents both `POST /v1/ops/resource/move` and `POST /v1/ops/resource/copy` with `sourceUrl` / `destinationUrl` / `overwrite` bodies that use the `/v1/files/{bucket}/...` URL shape, and `aidial_client/resources/files.py` exposes only `upload` / `delete` / `get_metadata` / download — no move or copy. Round 9's premise is correct. Once the doc body is updated, the surface should be re-reviewed for a few orthogonal items called out below; they are *not* objections to the Round-9 plan, just things the author should be intentional about while applying it.
+
+### Blocking issues
+
+1. **[Resolved] [Round-9 #1–#6 — apply the entire Round-9 plan to the doc body.]**
+   The doc body still describes a six-tool surface (`list_files`, `read_file_lines`, `search_in_file`, `write_file`, `edit_file`, `delete_file`). Locations that must change before this round can close:
+   - **Component 7.5 (new):** insert the `copy_file` component between Component 7 and Component 8 per Round-9 blocking #1.
+   - **Component 7.6 (new):** insert the `move_file` component per Round-9 blocking #2.
+   - **Component 9 / Component 10:** add `internal_file_copy` and `internal_file_move` to `DialFilesToolName` (`config/dial_files.py`), to the `OpenAiToolConfig` list, and to the stage-title list; add the two new tool schemas to *Configuration / Usage Examples* (the abridged JSON-schema block at lines ~435-506). Stage titles should be `Copy file` and `Move file` to match the imperative pattern.
+   - **Component 8:** extend the `injector.Module` bind list and the `@multiprovider` provider to include `_CopyFileTool` and `_MoveFileTool`.
+   - **Component 1 / `DialFileService`:** document the new `async move(source_url, destination_url, overwrite)` and `async copy(source_url, destination_url, overwrite)` methods, the body-URL `/v1/` prepend rule, and the choice of HTTP transport (raw client via the SDK's underlying `_http_client` to share auth headers — Round-9 blocking #4 names this).
+   - **Error Handling table:** add the source-missing-404 row, the destination-exists-412 row, and generalize the existing "Absolute URL passed to `write_file` / `edit_file` / `delete_file`" row to include `move_file` (both sides) and `copy_file` (destination only). Round-9 blocking #5 enumerates these.
+   - **Out of Scope:** remove the "Rename / move / copy" bullet (currently at line 415; confirmed in the body — it states "No primitive in the DIAL API", which is factually wrong now that the ops endpoints are documented).
+   - **Migration / Non-breaking changes:** add a bullet for the two new tools (Round-9 blocking #6 specifies the wording). They are non-breaking because the feature is preview-gated and the existing manifest defaults expose them automatically only when `enabled_tools="all"`.
+   - **Summary of Changes:** add rows for `_copy_file_tool.py` and `_move_file_tool.py` under *New files*, and for the two new methods on `DialFileService` under *Modified files*.
+   - **Tests (Summary of Changes / Tests):** add the test list Round-9 suggestion #3 names — happy path, collision with `overwrite=False`, overwrite with `overwrite=True`, source-missing 404, absolute-URL rejection on the relative-only side(s), 403 forbidden — for each of the two new tools.
+
+   **Suggestion:** Apply Round 9 as a single revision pass; after the body is updated, re-run the Round-9 *Changes since* checklist self-audit before requesting Round 11.
+
+2. **[Resolved] [`DialFileService.move` / `copy` — name the SDK transport explicitly, not "the SDK's underlying HTTP client".]**
+   Round-9 blocking #4 says "Use the SDK's underlying HTTP client (`dial_client._http_client` or equivalent) so auth headers are shared with every other DIAL call." The actual entry point is `dial_client._http_client.request(cast_to=..., options=FinalRequestOptions(method="POST", url="/v1/ops/resource/copy", json=...))` — same pattern `Metadata.get` uses (`aidial_client/resources/metadata.py:53-58, 83-88`). The leading underscore on `_http_client` flags this as private SDK API; the implementer should know they are reaching into a private surface and that an SDK upgrade could break it. Either (a) state explicitly that this is private SDK API and accept the maintenance commitment, or (b) ask upstream `aidial_client` to expose `files.move` / `files.copy` as a sanctioned API. Round-9's "raw HTTP" alternative (`httpx` direct) is worse — auth, retry, base-URL handling all re-implemented per call.
+
+   **Suggestion:** In the `DialFileService` design note for the new methods, name the chosen transport (`dial_client._http_client.request(...)` with `FinalRequestOptions`) and acknowledge the private-API risk in one sentence. Optionally add an *Out of Scope* line: "Move/copy via the official SDK — pending upstream addition of `files.move` / `files.copy` on `aidial_client`."
+
+3. **[Resolved] [Round-9 blocking #5 — error mapping for `move_file`/`copy_file` is under-specified for the destination-folder case.]**
+   The Round-9 error rows cover source-missing (404) and destination-collision (412). They do not cover: destination *folder* missing (does DIAL Core auto-create the intermediate folders, as `files.upload` does, or does it 404?), source-is-a-folder (does the op recursively copy/move, or is it file-only?), and same-source-and-destination (a likely LLM mistake — does Core 400 or silently succeed?). These are concrete questions the implementer will hit in v1 and that the doc should answer (or explicitly defer).
+
+   **Suggestion:** Either verify the three behaviors against a live DIAL Core during design or add an explicit *Out of Scope* line covering each case. At minimum, state which one of "destination folder must exist" / "destination folders auto-created" the design assumes — the existing `write_file` UC-3 ("DIAL creates the implicit `reports/` and `2026-Q1/` folders") suggests Core auto-creates on upload; whether `ops/resource/copy` does the same is unverified.
+
+### Suggestions
+
+1. **[Resolved] [Cache invalidation symmetry.]**
+   Round-9 blocking #1 step 5 says `copy_file` invalidates the destination in the `DialFileService` cache; blocking #2 step 4 says `move_file` invalidates both source and destination. This is correct, but the doc should state explicitly in the `DialFileService` extension note that `move` / `copy` are responsible for the invalidation themselves (the way `_WriteFileTool` currently does after a successful overwrite) so the per-tool algorithms don't carry the burden. Mirrors how `upload_text` handles its own concurrency contract.
+
+2. **[Resolved] [Consider `move_file` source as a folder under "Out of Scope".]**
+   The DIAL Core `move`/`copy` endpoints may operate on folders (the Postman example uses a file URL but the endpoint name is `resource/`, not `file/`). If folder ops are out of scope for v1 (the natural choice — keeps the tool one-file-at-a-time and matches `delete_file`'s explicit non-recursive contract), add a bullet to *Out of Scope*: "Recursive folder move/copy. Out of scope — agents loop a `list_files` result if they need to move/copy a tree." This mirrors the existing "Recursive delete" bullet.
+
+3. **[Resolved] [UC-12 and the `source` parameter description.]**
+   Round-9 suggestion #1 proposes UC-12 (`copy_file(source="files/{user_bucket}/uploads/data.csv", destination="inputs/data.csv")`). This is the canonical "ingest a user upload" workflow and is worth promoting from a suggestion to a doc-level use case in the body — it answers the question "how does an agent get a user-uploaded file into its workspace?" which the current surface answers awkwardly (read + write + delete via raw bytes). Make it UC-12 explicitly in the *Use Cases* section, not just a sample in *Configuration / Usage Examples*.
+
+### Nits
+
+1. **[Round-9 self-status annotation in Round 7 block.]**
+   Round 7's block ends with "**Status: all blocking issues, suggestions, and nits addressed in this revision (2026-05-11). Awaiting Round 9 review.**" — embedded inside the *Round 7* reviewer's block rather than in a follow-up author block. Same pattern Round 4 nit #1 flagged for Round 3 and Round 8 nit #2 flagged for Round 6. Harmless history noise; no action required, but future self-annotations should live in their own block.
+
+2. **[Postman collection citation.]**
+   Round-9 blocking #4 cites `.a_onlylocal/DIAL_Core_API.postman_collection.json` — this file is local-only (the `.a_onlylocal/` prefix suggests it is not in version control or shared with the team). When the body is updated, prefer a citation to the actual DIAL Core public docs / repo for the `ops/resource` endpoints, with the Postman file as a backup reference. Otherwise a future reader without the local file has no way to verify the URL shape.
+
+### Changes since previous round
+
+- Round-9 blocking #1 (`copy_file` tool) — **resolved.** Component 7.5 added with full algorithm, parameter table, design notes, and `DialFileService.copy` extension.
+- Round-9 blocking #2 (`move_file` tool) — **resolved.** Component 7.6 added with full algorithm, parameter table, design notes, and `DialFileService.move` extension.
+- Round-9 blocking #3 (register the two new tools in Components 9 / 10) — **resolved.** `internal_file_copy` and `internal_file_move` added to `DialFilesToolName` literal; `Copy file` and `Move file` stage titles added; new schemas in Configuration / Usage Examples; `_CopyFileTool` and `_MoveFileTool` added to Component 8 bind list.
+- Round-9 blocking #4 (`DialFileService.move` / `copy` methods) — **resolved.** Methods documented with `_http_client.request` + `FinalRequestOptions` transport; private-SDK-API risk called out explicitly in design notes.
+- Round-9 blocking #5 (Error Handling rows for the new tools) — **resolved.** Source-missing-404 row, destination-collision-412 row, and generalized absolute-URL row added.
+- Round-9 blocking #6 (remove the "Rename / move / copy" Out-of-Scope bullet) — **resolved.** Bullet removed; replaced by "Recursive folder move/copy", "Cross-namespace moves", "Move/copy via official SDK", and "Destination folder auto-creation" bullets.
+- Round-9 suggestions #1–#3 (UCs, sample outputs, tests) — **resolved.** UC-12, UC-13 added; `copy_file` and `move_file` sample outputs added; test bullets added for both tools plus `DialFileService.copy` / `DialFileService.move`.
+- Round-10 blocking #2 (name the SDK transport explicitly) — **resolved.** `_http_client.request` + `FinalRequestOptions` named in both Component 7.5 and 7.6 design notes with explicit private-API risk acknowledgement.
+- Round-10 blocking #3 (destination-folder, source-is-folder, same-src-dest edge cases) — **resolved.** Out-of-Scope bullet added ("Destination folder auto-creation for move/copy"); same-src-dest and source-is-folder deferred via the "Recursive folder move/copy" bullet.
+- Round-10 suggestion #1 (cache invalidation note in DialFileService extension) — **resolved.** `move` and `copy` method docs note they invalidate the cache themselves.
+- Round-10 suggestion #2 (folder move/copy Out of Scope) — **resolved.** "Recursive folder move/copy" bullet added to Out of Scope.
+- Round-10 suggestion #3 (UC-12 promoted from suggestion) — **resolved.** UC-12 is now a first-class use case in the doc body.
