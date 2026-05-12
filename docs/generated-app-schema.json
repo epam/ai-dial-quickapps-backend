@@ -1188,8 +1188,7 @@
               "type": "null"
             }
           ],
-          "description": "Time awareness configuration.",
-          "x-preview": true
+          "description": "Time awareness configuration."
         },
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",

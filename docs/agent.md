@@ -268,7 +268,7 @@ The setup pipeline runs the following steps in order:
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
 
-4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`, preview): Appends a synthetic
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
    `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
    interaction is happening. Historical timestamps are restored from state with their original times.
 
@@ -277,7 +277,7 @@ The setup pipeline runs the following steps in order:
 Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
 
 1. **Attachment Filter** (`_AttachmentFilter`): Filters unsupported attachment types and injects attachment XML metadata.
-2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`, preview): Appends human-readable
+2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`): Appends human-readable
    `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
 ### Streaming Response Processing
@@ -399,7 +399,7 @@ The application is composed of 15 specialized DI modules:
 11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
 12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
   (when gated), attachment change detection injector
-13. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
+13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher
 14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
 15. **DIAL Prompt Skills Module**: Resolver for DIAL-prompt-sourced skills
 
