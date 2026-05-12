@@ -1,10 +1,13 @@
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
+from quickapp.common.tool_call_result import ToolCallResult
+from tests.unit_tests.common.common import make_provider
 
 # ---------------------------------------------------------------------------
 # Minimal concrete implementations for testing
@@ -23,7 +26,12 @@ class _AlwaysInjector(SyntheticToolCallInjector):
 
 
 class _AppendIfChangedInjector(SyntheticToolCallInjector):
-    def __init__(self, content: str = "append content"):
+    def __init__(
+        self,
+        content: str = "append content",
+        enrichers: list[ToolCallResultEnricher] | None = None,
+    ):
+        super().__init__(make_provider(enrichers) if enrichers else None)
         self._content = content
 
     async def get_tool_name(self) -> str:
@@ -43,6 +51,7 @@ class _ParamDrivenInjector(SyntheticToolCallInjector):
         frequency: InjectionFrequency,
         content: str | None = None,
     ):
+        super().__init__()
         self._arguments = arguments
         self._frequency = frequency
         self._content = content
@@ -62,6 +71,7 @@ class _ParamDrivenInjector(SyntheticToolCallInjector):
 
 class _ConditionalInjector(SyntheticToolCallInjector):
     def __init__(self, condition_result: bool = True):
+        super().__init__()
         self._condition_result = condition_result
 
     async def get_tool_name(self) -> str:
@@ -312,6 +322,65 @@ class TestNullContent:
         result = await injector.transform(messages)
 
         assert result is messages
+
+
+# ---------------------------------------------------------------------------
+# Tests: enrichment
+# ---------------------------------------------------------------------------
+
+
+class _StampingEnricher(ToolCallResultEnricher):
+    def __init__(self, marker: str = "x"):
+        self._marker = marker
+
+    def enrich(self, result: ToolCallResult) -> None:
+        if result.state is None:
+            result.state = {}
+        result.state["marker"] = self._marker
+
+
+class TestEnrichment:
+    @pytest.mark.asyncio
+    async def test_enriched_state_lands_on_synthetic_tool_message(self):
+        injector = _AppendIfChangedInjector(enrichers=[_StampingEnricher("seen")])
+        result = await injector.transform([_user("hi")])
+
+        tool_msg = result[2]
+        assert tool_msg.custom_content is not None
+        assert tool_msg.custom_content.state == {"marker": "seen"}
+
+    @pytest.mark.asyncio
+    async def test_no_custom_content_when_no_enrichers(self):
+        injector = _AppendIfChangedInjector()
+        result = await injector.transform([_user("hi")])
+
+        tool_msg = result[2]
+        assert tool_msg.custom_content is None
+
+    @pytest.mark.asyncio
+    async def test_multiple_enrichers_compose(self):
+        class _SecondEnricher(ToolCallResultEnricher):
+            def enrich(self, result: ToolCallResult) -> None:
+                if result.state is None:
+                    result.state = {}
+                result.state["extra"] = "yes"
+
+        injector = _AppendIfChangedInjector(
+            enrichers=[_StampingEnricher("first"), _SecondEnricher()],
+        )
+        result = await injector.transform([_user("hi")])
+
+        tool_msg = result[2]
+        assert tool_msg.custom_content is not None
+        assert tool_msg.custom_content.state == {"marker": "first", "extra": "yes"}
+
+    @pytest.mark.asyncio
+    async def test_assistant_message_has_no_custom_content(self):
+        injector = _AppendIfChangedInjector(enrichers=[_StampingEnricher()])
+        result = await injector.transform([_user("hi")])
+
+        assistant_msg = result[1]
+        assert assistant_msg.custom_content is None
 
 
 # ---------------------------------------------------------------------------

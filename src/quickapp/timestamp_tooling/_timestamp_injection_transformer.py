@@ -1,6 +1,7 @@
 from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
@@ -24,7 +25,9 @@ class _TimestampInjectionTransformer(SyntheticToolCallInjector):
         self,
         time_provider: TimeProvider,
         config_provider: ProviderOf[ApplicationConfig],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
     ):
+        super().__init__(enrichers_provider)
         self.__time_provider = time_provider
         self.__config_provider = config_provider
 

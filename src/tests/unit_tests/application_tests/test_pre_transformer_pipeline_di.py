@@ -13,12 +13,13 @@ import json
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected
-from injector import Binder
+from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from tests.unit_tests.common.common import create_app_configuration, create_test_app
@@ -39,6 +40,15 @@ def _attachment(title: str, url: str, mime_type: str) -> Attachment:
     )
 
 
+class _EmptyEnrichersModule(Module):
+    def configure(self, binder: Binder) -> None:
+        pass
+
+    @multiprovider
+    def _enrichers(self) -> list[ToolCallResultEnricher]:
+        return []
+
+
 def _make_context_app(ctx_url: str):
     ctx = FileContextConfig(url=ctx_url, description="Reference doc")
 
@@ -47,7 +57,7 @@ def _make_context_app(ctx_url: str):
         app_config.contexts = [ctx]
         binder.bind(ApplicationConfig, to=app_config)
 
-    return create_test_app([AttachmentProcessingModule, configure])
+    return create_test_app([AttachmentProcessingModule, _EmptyEnrichersModule, configure])
 
 
 def test_context_file_notified_via_synthetic_tool_call():
