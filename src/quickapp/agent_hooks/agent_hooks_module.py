@@ -21,7 +21,9 @@ class AgentHooksModule(Module):
         app_config_provider: ProviderOf[ApplicationConfig],
         tools_provider: ProviderOf[list[StagedBaseTool]],
     ) -> list[MessagesTransformer]:
-        return self._build_on_request_message_transformers(app_config_provider, tools_provider, HookEvent.ON_REQUEST_START)
+        return self._build_on_request_message_transformers(
+            app_config_provider, tools_provider, HookEvent.ON_REQUEST_START
+        )
 
     @staticmethod
     def _build_on_request_message_transformers(
