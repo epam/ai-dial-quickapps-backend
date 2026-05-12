@@ -90,7 +90,7 @@ class TestGetBasicToolConfig:
 
         result = await svc.get_basic_tool_config("gpt-4")
 
-        assert result.deployment.name == "gpt-4"
+        assert result.deployment.deployment_id == "gpt-4"
         dial_client.deployments.get.assert_awaited_once_with("gpt-4")
         dial_client.application.get.assert_not_called()
 
@@ -105,7 +105,7 @@ class TestGetBasicToolConfig:
 
         result = await svc.get_basic_tool_config("my-app")
 
-        assert result.deployment.name == "my-app"
+        assert result.deployment.deployment_id == "my-app"
         dial_client.application.get.assert_awaited_once_with("my-app")
 
     @pytest.mark.asyncio

@@ -45,7 +45,7 @@ def build_dump_application_config() -> ApplicationConfig:
     return ApplicationConfig(
         orchestrator=OrchestratorConfig(
             deployment=DialDeploymentConfig(
-                name="gpt-4o-mini-2024-07-18",
+                deployment_id="gpt-4o-mini-2024-07-18",
                 parameters=DialDeploymentParameters(),
             ),
             system_prompt=CustomSystemPromptConfig(

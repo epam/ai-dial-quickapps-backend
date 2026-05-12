@@ -17,7 +17,9 @@ from tests.unit_tests.common.common import make_provider
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
     return DialDeploymentTool(
-        deployment=DialDeploymentConfig(name="my-app", parameters=DialDeploymentParameters()),
+        deployment=DialDeploymentConfig(
+            deployment_id="my-app", parameters=DialDeploymentParameters()
+        ),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name=name,

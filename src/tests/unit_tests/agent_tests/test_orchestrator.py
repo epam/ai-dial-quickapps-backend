@@ -60,7 +60,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
             max_iterations=5,
-            deployment=SimpleNamespace(name="test-model"),
+            deployment=SimpleNamespace(deployment_id="test-model"),
             propagate_stages=True,
         )
     )
@@ -161,7 +161,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
             max_iterations=10,
-            deployment=SimpleNamespace(name="test-model"),
+            deployment=SimpleNamespace(deployment_id="test-model"),
             propagate_stages=True,
         )
     )
@@ -248,7 +248,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=5,
-                deployment=SimpleNamespace(name="m"),
+                deployment=SimpleNamespace(deployment_id="m"),
                 propagate_stages=True,
             )
         ),
@@ -318,7 +318,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
             max_iterations=5,
-            deployment=SimpleNamespace(name="test-model"),
+            deployment=SimpleNamespace(deployment_id="test-model"),
             propagate_stages=True,
         )
     )
@@ -368,7 +368,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,
-                deployment=SimpleNamespace(name="m"),
+                deployment=SimpleNamespace(deployment_id="m"),
                 propagate_stages=True,
             )
         ),

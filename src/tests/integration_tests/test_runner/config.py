@@ -68,7 +68,8 @@ class TestConfig:
         return ApplicationConfig(
             orchestrator=OrchestratorConfig(
                 deployment=DialDeploymentConfig(
-                    name=model, parameters=DialDeploymentParameters(temperature=temperature)
+                    deployment_id=model,
+                    parameters=DialDeploymentParameters(temperature=temperature),
                 ),
                 system_prompt=PredefinedSystemPromptConfig(template=template),
             ),

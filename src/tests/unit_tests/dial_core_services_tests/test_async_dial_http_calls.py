@@ -153,7 +153,7 @@ class TestToolConfigServiceHttpCalls:
 
         result = await _tool_config_service(_dial_client()).get_basic_tool_config("test-model")
 
-        assert result.deployment.name == "test-model"
+        assert result.deployment.deployment_id == "test-model"
         requests = httpx_mock.get_requests()
         assert len(requests) == 1
         assert "openai/deployments/test-model" in str(requests[0].url)
@@ -174,7 +174,7 @@ class TestToolConfigServiceHttpCalls:
 
         result = await _tool_config_service(_dial_client()).get_basic_tool_config("test-app")
 
-        assert result.deployment.name == "test-app"
+        assert result.deployment.deployment_id == "test-app"
         urls = [str(r.url) for r in httpx_mock.get_requests()]
         assert any("openai/deployments/test-app" in u for u in urls)
         assert any("openai/applications/test-app" in u for u in urls)
@@ -225,7 +225,7 @@ class TestToolConfigServiceHttpCalls:
         )
         result = await svc.get_basic_tool_config("test-model", api_key=SecretStr(API_KEY))
 
-        assert result.deployment.name == "test-model"
+        assert result.deployment.deployment_id == "test-model"
         provider.get.assert_not_called()
 
     @pytest.mark.asyncio
