@@ -32,7 +32,7 @@ dependencies = [
 
     # Authentication & networking
     "authlib>=1.6.11,<2.0.0",                      # OAuth / JWT authentication
-    "urllib3>=2.6.3,<3.0.0",                      # HTTP client library
+    "urllib3>=2.7.0,<3.0.0",                      # HTTP client library
 
     # Utilities
     "common>=0.1.2,<0.2.0",                       # Shared utilities

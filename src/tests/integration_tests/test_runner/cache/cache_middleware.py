@@ -30,14 +30,11 @@ logger = logging.getLogger("__name__")
 
 # Specify all models that should be not cached.
 AGENT_MODELS = [
-    "gpt-4.1-2025-04-14",
     "gpt-5-2025-08-07",
     "gpt-5-mini-2025-08-07",
     "gpt-5.2-2025-12-11",
-    "claude-opus-4@20250514",
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
-    "us.anthropic.claude-3-7-sonnet-20250219-v1",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
     "anthropic.claude-v4-5-sonnet-v1",
     "anthropic.claude-opus-4-6-v1",

@@ -115,7 +115,7 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
     )
-    skills: list[SkillConfig] | None = PreviewField(  # type: ignore[assignment]
+    skills: list[SkillConfig] | None = Field(
         default=None,
         description="Optional list of user-configured agent skills.",
     )

@@ -3065,7 +3065,6 @@
       "default": null,
       "description": "Optional list of user-configured agent skills.",
       "title": "Skills",
-      "x-preview": true,
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 6
