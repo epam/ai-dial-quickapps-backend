@@ -10,6 +10,7 @@ This folder contains technical documentation for the Quick Apps backend.
 | [Application Schema](./application-schema.md) | How to configure QuickApps in DIAL Core (schema endpoint vs full schema).                                                            |
 | [ChatHub](./chathub.md)                       | Configuration guide for ChatHub variants — variant structure, authoring, and customization recipes.                                  |
 | [File Transfer](file_transfer.md)             | How Quick Apps handles file parameters in tool calls (`file:{prefix}::` convention, preprocessing pipeline).                         |
+| [Agent Skills](skills.md)                     | How to create and manage reusable agent skills (directory layout, metadata).                                                         |
 
 ## Preview Features
 
@@ -18,7 +19,6 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) for details.
 
 | Document                              | Description                                                                  |
 |---------------------------------------|------------------------------------------------------------------------------|
-| [Agent Skills](skills.md) `[Preview]`            | How to create and manage reusable agent skills (directory layout, metadata). |
 | [Time Awareness](time_awareness.md) `[Preview]`  | How the agent knows the current time and reasons about data freshness.       |
 
 ## Diagrams
