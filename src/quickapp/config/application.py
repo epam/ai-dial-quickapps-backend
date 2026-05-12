@@ -7,11 +7,11 @@ from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField,
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
-from quickapp.config.text_file_tools import TextFileToolsConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 
@@ -79,9 +79,9 @@ class Features(BaseModel):
         default_factory=FileLoadingConfig,
         description="File loader configuration (download size limits, etc.).",
     )
-    text_file_tools: TextFileToolsConfig | None = PreviewField(  # type: ignore[assignment]
+    dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
         default=None,
-        description="Built-in file read/write/edit/delete tools.",
+        description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
 
 

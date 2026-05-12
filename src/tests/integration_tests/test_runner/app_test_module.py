@@ -11,6 +11,7 @@ from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
@@ -26,7 +27,6 @@ from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
-from quickapp.text_file_tooling.text_file_tooling_module import TextFileToolingModule
 from tests.integration_tests.test_runner.config import TestConfig
 
 
@@ -86,7 +86,7 @@ class TestApp(FastAPI):
                 AttachmentProcessingModule(),
                 SkillsModule(),
                 DialPromptSkillsModule(),
-                TextFileToolingModule(),
+                DialFilesToolingModule(),
             ]
         )
         dial_settings = DialSettings(url=TestConfig.get_mock_dial_core_url(port))

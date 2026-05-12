@@ -1,14 +1,14 @@
 from typing import Any
 
-from aidial_client._exception import EtagMismatchError
+from aidial_client._exception import DialException, EtagMismatchError
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.text_file_tooling._base_file_tool import _TextFileTool
+from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
 
 
-class _EditFileTool(_TextFileTool):
+class _EditFileTool(_DialFileTool):
 
     async def _run_in_stage_async(
         self,
@@ -16,7 +16,7 @@ class _EditFileTool(_TextFileTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        file_url: str = kwargs["file_url"]
+        path: str = kwargs["path"]
         old_string: str = kwargs["old_string"]
         new_string: str = kwargs["new_string"]
 
@@ -25,7 +25,11 @@ class _EditFileTool(_TextFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        content, metadata = await self._download_text(file_url)
+        self._reject_absolute_path("path", "edit_file", path)
+        url = await self._resolve_appdata_url(path)
+        display_path = await self._to_display_path(url)
+
+        content, metadata = await self._download_text(url, display_path=path)
         etag = metadata.etag if metadata else None
 
         count = content.count(old_string)
@@ -40,17 +44,18 @@ class _EditFileTool(_TextFileTool):
         new_content = content.replace(old_string, new_string, 1)
 
         try:
-            await self._dial_file_service.upload_text(
-                url=file_url, content=new_content, if_match=etag
-            )
-        except EtagMismatchError:
+            await self._dial_file_service.upload_text(url=url, content=new_content, if_match=etag)
+        except EtagMismatchError as e:
             raise InvalidToolCallParameterException(
-                "file_url", "file changed concurrently; re-read and retry"
-            )
+                "path", "file changed concurrently; re-read and retry"
+            ) from e
+        except DialException as e:
+            self._check_permission_denied(e, display_path)
+            raise
 
-        self._dial_file_service.invalidate_cache(file_url)
+        self._dial_file_service.invalidate_cache(url)
 
-        result = ToolCallResult(content=f"Edited: {file_url}", content_type="text/plain")
+        result = ToolCallResult(content=f"Edited: {display_path}", content_type="text/plain")
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result

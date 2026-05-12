@@ -1,14 +1,26 @@
 import logging
+from collections import deque
 from typing import Literal
 
 from aidial_client import AsyncDial
-from aidial_client.types.metadata import FileMetadata
+from aidial_client._internal_types._http_request import FinalRequestOptions
+from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 
 logger = logging.getLogger(__name__)
+
+
+class FolderEntry(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    name: str
+    is_folder: bool
+    size: int | None
 
 
 @inject
@@ -49,6 +61,7 @@ class DialFileService:
         url: str,
         content: str,
         *,
+        content_type: str = "text/plain",
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
     ) -> str:
@@ -56,7 +69,7 @@ class DialFileService:
         filename = url.split("/")[-1]
         metadata = await self.__dial_client.files.upload(
             url=url,
-            file=(filename, encoded, "text/plain"),
+            file=(filename, encoded, content_type),
             etag_if_none_match=if_none_match,
             etag_if_match=if_match,
         )
@@ -64,6 +77,66 @@ class DialFileService:
 
     def invalidate_cache(self, file_url: str) -> None:
         self.__state_holder.invalidate_file_data(file_url)
+
+    async def list_folder(self, folder_url: str, max_depth: int = 1) -> list[FolderEntry]:
+        """Depth-bounded recursive listing of a folder under DIAL files.
+
+        `folder_url` must end with '/' and begin with 'files/'. Folders at the
+        depth bound are listed but not expanded.
+        """
+        results: list[FolderEntry] = []
+        queue: deque[tuple[str, int]] = deque([(folder_url, 1)])
+        while queue:
+            current_url, depth = queue.popleft()
+            metadata = await self.__dial_client.metadata.get("files", current_url)
+            if metadata.node_type != "FOLDER":
+                raise ValueError(f"not a folder: {current_url}")
+            items: list[FileItem] = metadata.items or []
+            for item in items:
+                is_folder = item.node_type == "FOLDER"
+                item_name = item.name or ""
+                item_url = item.url
+                if is_folder and not item_url.endswith("/"):
+                    item_url = item_url + "/"
+                results.append(
+                    FolderEntry(
+                        url=item_url,
+                        name=item_name,
+                        is_folder=is_folder,
+                        size=item.content_length,
+                    )
+                )
+                if is_folder and depth < max_depth:
+                    queue.append((item_url, depth + 1))
+        return results
+
+    async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+        await self.__dial_client._http_client.request(
+            cast_to=type(None),
+            options=FinalRequestOptions(
+                method="POST",
+                url="/v1/ops/resource/copy",
+                json_data={
+                    "sourceUrl": f"/v1/{source_url}",
+                    "destinationUrl": f"/v1/{destination_url}",
+                    "overwrite": overwrite,
+                },
+            ),
+        )
+
+    async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+        await self.__dial_client._http_client.request(
+            cast_to=type(None),
+            options=FinalRequestOptions(
+                method="POST",
+                url="/v1/ops/resource/move",
+                json_data={
+                    "sourceUrl": f"/v1/{source_url}",
+                    "destinationUrl": f"/v1/{destination_url}",
+                    "overwrite": overwrite,
+                },
+            ),
+        )
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str

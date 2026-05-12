@@ -2,10 +2,10 @@ from typing import Any
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.text_file_tooling._base_file_tool import _TextFileTool
+from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
 
 
-class _SearchInFileTool(_TextFileTool):
+class _SearchInFileTool(_DialFileTool):
 
     async def _run_in_stage_async(
         self,
@@ -13,12 +13,13 @@ class _SearchInFileTool(_TextFileTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        file_url: str = kwargs["file_url"]
+        path: str = kwargs["path"]
         pattern: str = kwargs["pattern"]
         context_lines: int = int(kwargs.get("context_lines") or 0)
         case_insensitive: bool = bool(kwargs.get("case_insensitive", False))
 
-        text, _ = await self._download_text(file_url)
+        url = await self._resolve_appdata_url(path)
+        text, _ = await self._download_text(url, display_path=path)
         lines = text.splitlines()
 
         needle = pattern.lower() if case_insensitive else pattern

@@ -1040,6 +1040,45 @@
       "title": "DialDeploymentTool",
       "type": "object"
     },
+    "DialFilesConfig": {
+      "properties": {
+        "enabled_tools": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "internal_file_list",
+                  "internal_file_read_lines",
+                  "internal_file_search",
+                  "internal_file_write",
+                  "internal_file_edit",
+                  "internal_file_delete",
+                  "internal_file_copy",
+                  "internal_file_move"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "all",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['internal_file_read_lines', 'internal_file_search']).",
+          "title": "Enabled Tools"
+        },
+        "agent_home_dir": {
+          "default": "files/{appdata}/",
+          "description": "Base directory for relative path resolution. Must start with 'files/' and end with '/'. Supports the {appdata} template variable, resolved at request time via my_appdata_home(). Examples: 'files/{appdata}/' (default), 'files/shared-bucket/admin/', 'files/{appdata}/workspace/'.",
+          "title": "Agent Home Dir",
+          "type": "string"
+        }
+      },
+      "title": "DialFilesConfig",
+      "type": "object"
+    },
     "DialMCPToolSet": {
       "anyOf": [
         {
@@ -1225,17 +1264,17 @@
           "$ref": "#/$defs/FileLoadingConfig",
           "description": "File loader configuration (download size limits, etc.)."
         },
-        "text_file_tools": {
+        "dial_files": {
           "anyOf": [
             {
-              "$ref": "#/$defs/TextFileToolsConfig"
+              "$ref": "#/$defs/DialFilesConfig"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Built-in file read/write/edit/delete tools.",
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
           "x-preview": true
         }
       },
@@ -2747,36 +2786,6 @@
         }
       },
       "title": "StopStrategyModel",
-      "type": "object"
-    },
-    "TextFileToolsConfig": {
-      "properties": {
-        "enabled_tools": {
-          "anyOf": [
-            {
-              "const": "all",
-              "type": "string"
-            },
-            {
-              "items": {
-                "enum": [
-                  "internal_text_file_read_lines",
-                  "internal_text_file_search",
-                  "internal_text_file_write",
-                  "internal_text_file_edit",
-                  "internal_text_file_delete"
-                ],
-                "type": "string"
-              },
-              "type": "array"
-            }
-          ],
-          "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['internal_text_file_read_lines', 'internal_text_file_search']).",
-          "title": "Enabled Tools"
-        }
-      },
-      "title": "TextFileToolsConfig",
       "type": "object"
     },
     "ToolCallHookConfig": {
