@@ -395,7 +395,7 @@ The application is composed of 15 specialized DI modules:
 12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 13. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
 14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
-15. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
+15. **DIAL Prompt Skills Module**: Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -459,7 +459,7 @@ Tools are organized into toolsets that share common configuration:
 
 `AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
 `SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
-(see [Skills documentation](skills.md#dial-prompt-skills-preview) for details).
+(see [Skills documentation](skills.md#dial-prompt-skills) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 
