@@ -1,8 +1,10 @@
 # Design: File Management Tools
 
-- **Status:** Implemented
+- **Status:** Superseded
 - **Owner:** Andrii Novikov
 - **Dependencies:** [large_tool_responses](large_tool_responses.local.md) (forward dependency — file tools ship without offload integration; offload integration lands when that design is approved)
+
+Replaced with [dial_file_tools.md](dial_files_tools.md)
 
 
 ## Problem Statement
