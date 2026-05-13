@@ -9,6 +9,7 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
 )
+from tests.unit_tests.common.common import make_provider
 
 
 def _make_staged_tool(sanitized_name: str, run_content: str = "tool result") -> MagicMock:
@@ -28,7 +29,7 @@ def _make_staged_tool(sanitized_name: str, run_content: str = "tool result") -> 
 
 class _ConcreteInjector(StagedToolSyntheticInjector):
     def __init__(self, tools, tool_name: str):
-        super().__init__(tools)
+        super().__init__(tools, enrichers_provider=make_provider([]))
         self._tool_name = tool_name
 
     async def get_tool_name(self) -> str:
