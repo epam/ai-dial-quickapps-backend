@@ -2,7 +2,9 @@ import logging
 from abc import ABC
 
 from aidial_sdk.chat_completion import Message
+from injector import ProviderOf
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
@@ -25,8 +27,13 @@ class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInject
     so AgentHooksModule can instantiate this class manually.
     """
 
-    def __init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig):
-        super().__init__(tools)
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        config: ToolCallHookConfig,
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
+    ):
+        super().__init__(tools, enrichers_provider)
         self._config = config
 
     async def get_tool_name(self) -> str:

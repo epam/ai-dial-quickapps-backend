@@ -7,7 +7,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "anthropic.claude-opus-4-6-v1",
+            "deployment_id": "anthropic.claude-opus-4-6-v1",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288
@@ -42,7 +42,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+            "deployment_id": "anthropic.claude-sonnet-4-5-20250929-v1:0",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288
@@ -76,7 +76,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "claude-sonnet-4@20250514",
+            "deployment_id": "claude-sonnet-4@20250514",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288
@@ -110,7 +110,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "us.anthropic.claude-3-7-sonnet-20250219-v1",
+            "deployment_id": "us.anthropic.claude-3-7-sonnet-20250219-v1",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288

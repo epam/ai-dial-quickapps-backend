@@ -44,7 +44,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
 
     def __init_deployment_tool(self, tool: DialDeploymentTool):
         built_tool = self.__builder.build(
-            application_id=tool.deployment.name,
+            application_id=tool.deployment.deployment_id,
             application_name=tool.open_ai_tool.function.name,
             description=tool.open_ai_tool.function.description,
             content_propagation=tool.content_propagation,

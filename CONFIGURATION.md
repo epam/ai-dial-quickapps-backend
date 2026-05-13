@@ -30,7 +30,7 @@ The project contains predefined configs of application and predefined tools
 {
   "orchestrator": {
     "deployment": {
-      "name": "gpt-4o-2024-05-13",
+      "deployment_id": "gpt-4o-2024-05-13",
       "parameters": {
         "temperature": 1.0,
         "seed": 820288
@@ -124,7 +124,7 @@ The project contains predefined configs of application and predefined tools
             }
           },
           "deployment": {
-            "name": "dall-e-3"
+            "deployment_id": "dall-e-3"
           },
           "open_ai_tool": {
             "type": "function",

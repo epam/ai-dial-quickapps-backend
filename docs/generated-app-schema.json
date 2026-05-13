@@ -763,20 +763,35 @@
       "type": "object"
     },
     "DialDeploymentConfig": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ],
       "properties": {
-        "name": {
-          "description": "The name of the DIAL deployment.",
-          "title": "Name",
+        "deployment_id": {
+          "description": "The id of the DIAL deployment.",
+          "dial:resource": true,
+          "title": "Deployment Id",
           "type": "string"
         },
         "parameters": {
           "$ref": "#/$defs/DialDeploymentParameters",
           "description": "The predefined parameters for the DIAL deployment."
+        },
+        "name": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
       "title": "DialDeploymentConfig",
       "type": "object"
     },
@@ -1025,6 +1040,18 @@
       "type": "object"
     },
     "DialMCPToolSet": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "dial_id"
+          ]
+        }
+      ],
       "properties": {
         "name": {
           "default": "untitled-mcp-toolset",
@@ -1058,10 +1085,10 @@
           "title": "Type",
           "type": "string"
         },
-        "dial_id": {
-          "description": "The Dial ID associated with this MCP toolset.",
+        "deployment_id": {
+          "description": "The id of the DIAL deployment associated with this MCP toolset.",
           "dial:resource": true,
-          "title": "Dial Id",
+          "title": "Deployment Id",
           "type": "string"
         },
         "transport": {
@@ -1097,11 +1124,13 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "dial_id": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "type": "string"
         }
       },
-      "required": [
-        "dial_id"
-      ],
       "title": "DialMCPToolSet",
       "type": "object"
     },
@@ -1188,8 +1217,7 @@
               "type": "null"
             }
           ],
-          "description": "Time awareness configuration.",
-          "x-preview": true
+          "description": "Time awareness configuration."
         },
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",
@@ -3130,7 +3158,6 @@
       "default": null,
       "description": "Optional list of user-configured agent skills.",
       "title": "Skills",
-      "x-preview": true,
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 6

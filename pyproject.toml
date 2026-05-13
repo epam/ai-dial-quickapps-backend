@@ -31,8 +31,8 @@ dependencies = [
     "bs4>=0.0.2,<0.0.3",                          # BeautifulSoup4 meta-package
 
     # Authentication & networking
-    "authlib>=1.6.11,<2.0.0",                      # OAuth / JWT authentication
-    "urllib3>=2.6.3,<3.0.0",                      # HTTP client library
+    "authlib>=1.6.12,<2.0.0",                      # OAuth / JWT authentication
+    "urllib3>=2.7.0,<3.0.0",                      # HTTP client library
 
     # Utilities
     "common>=0.1.2,<0.2.0",                       # Shared utilities

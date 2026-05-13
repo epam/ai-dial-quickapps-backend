@@ -17,9 +17,11 @@ from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedExce
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
-def _make_dial_toolset(dial_id: str = "toolsets/public/ts1", name: str = "ts1") -> DialMCPToolSet:
+def _make_dial_toolset(
+    deployment_id: str = "toolsets/public/ts1", name: str = "ts1"
+) -> DialMCPToolSet:
     return DialMCPToolSet(
-        dial_id=dial_id,
+        deployment_id=deployment_id,
         name=name,
         enabled=True,
     )
@@ -128,7 +130,7 @@ async def test_no_401_no_login_called():
 @pytest.mark.asyncio
 async def test_dial_toolset_401_triggers_batch_login():
     """DialMCPToolSet returning 401 triggers batch interactive login."""
-    ts = _make_dial_toolset(dial_id="toolsets/public/ts1")
+    ts = _make_dial_toolset(deployment_id="toolsets/public/ts1")
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))
@@ -155,7 +157,7 @@ async def test_dial_toolset_401_triggers_batch_login():
 @pytest.mark.asyncio
 async def test_dial_toolset_401_success_retries():
     """DialMCPToolSet 401 → login SUCCESS → retry succeeds."""
-    ts = _make_dial_toolset(dial_id="toolsets/public/ts1")
+    ts = _make_dial_toolset(deployment_id="toolsets/public/ts1")
 
     call_count = 0
 
@@ -189,7 +191,7 @@ async def test_dial_toolset_401_success_retries():
 @pytest.mark.asyncio
 async def test_retry_failure_appends_exception():
     """Login SUCCESS but retry still fails → ToolInitializationException appended."""
-    ts = _make_dial_toolset(dial_id="toolsets/public/ts1", name="ts1")
+    ts = _make_dial_toolset(deployment_id="toolsets/public/ts1", name="ts1")
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))
@@ -235,8 +237,8 @@ async def test_plain_mcp_toolset_401_not_eligible():
 @pytest.mark.asyncio
 async def test_batch_multiple_toolsets():
     """Multiple DialMCPToolSets fail with 401 → single batch login call."""
-    ts1 = _make_dial_toolset(dial_id="toolsets/public/ts1", name="ts1")
-    ts2 = _make_dial_toolset(dial_id="toolsets/public/ts2", name="ts2")
+    ts1 = _make_dial_toolset(deployment_id="toolsets/public/ts1", name="ts1")
+    ts2 = _make_dial_toolset(deployment_id="toolsets/public/ts2", name="ts2")
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts"))
@@ -270,7 +272,7 @@ async def test_batch_multiple_toolsets():
 @pytest.mark.asyncio
 async def test_no_channel_appends_exception():
     """Login returns NO_CHANNEL → ToolInitializationException with appropriate message."""
-    ts = _make_dial_toolset(dial_id="toolsets/public/ts1", name="ts1")
+    ts = _make_dial_toolset(deployment_id="toolsets/public/ts1", name="ts1")
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))

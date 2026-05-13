@@ -6,7 +6,6 @@ from injector import AssistedBuilder, Binder, Module, multiprovider
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.common.preview import preview_module
 from quickapp.common.time_provider import TimeProvider
 from quickapp.config.application import ApplicationConfig
 from quickapp.timestamp_tooling._current_timestamp_tool import _CurrentTimestampTool
@@ -22,7 +21,6 @@ from quickapp.timestamp_tooling._tool_configs import CURRENT_TIMESTAMP_TOOL_CONF
 logger = logging.getLogger(__name__)
 
 
-@preview_module
 class TimestampModule(Module):
 
     def configure(self, binder: Binder) -> None:
