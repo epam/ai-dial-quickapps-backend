@@ -112,7 +112,7 @@ class ImmediateStageCloseRegistry:
         *,
         tool_call_id: str | None = None,
     ) -> None:
-        del tool_call_id
+        del tool_call_id  # Unused.
         wid = id(stage_wrapper)
         self._hooks_by_id.setdefault(wid, []).append(fn)
 

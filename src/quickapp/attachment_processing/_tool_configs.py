@@ -52,7 +52,6 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
                         description=(
                             "Exact file `url` from `internal_attachments_available_context.entries[].url` "
                             "or from user `<attachments>` section (same string, including path). "
-                            "Legacy alias `context_url` is still accepted."
                         ),
                     )
                 },

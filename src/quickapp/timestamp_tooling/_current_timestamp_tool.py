@@ -48,7 +48,7 @@ class _CurrentTimestampTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        del tool_call_id
+        del tool_call_id  # Unused.
         timezone_str: str | None = kwargs.get("timezone")
 
         if timezone_str is not None:

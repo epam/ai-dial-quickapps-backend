@@ -8,8 +8,6 @@
 #   python dump_internal_tools.py docs/generated-internal-tools.json
 #   python dump_internal_tools.py docs/generated-internal-tools.json --check
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

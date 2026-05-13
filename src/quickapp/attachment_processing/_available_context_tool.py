@@ -56,7 +56,7 @@ class _AvailableContextTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        del tool_call_id
+        del tool_call_id  # Unused.
         response = self._get_response()
         content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
         result = ToolCallResult(content=content, content_type="application/json")

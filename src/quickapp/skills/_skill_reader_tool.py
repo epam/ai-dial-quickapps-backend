@@ -45,7 +45,7 @@ class _SkillReaderTool(StagedBaseTool):
         **kwargs: Any,
     ) -> ToolCallResult:
         """Execute the skill reader tool."""
-        del tool_call_id
+        del tool_call_id  # Unused.
         if not skill_name:
             error_msg = "Missing required parameter: skill_name"
             logger.error(error_msg)

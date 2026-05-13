@@ -65,9 +65,9 @@ class BaseDeploymentTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None,
         tool_call_id: str | None = None,
         attachment_urls: list[str] | None = None,
-        **kwargs: Any,
+        **kwargs,
     ) -> ToolCallResult:
-        del tool_call_id
+        del tool_call_id  # Unused.
         tool_config = cast(DialDeploymentTool, self.tool_config)
         history = None
         if self.__content_propagation and self.__content_propagation.propagate_history:

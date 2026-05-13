@@ -1,6 +1,6 @@
-# Design: Lazy context attachment (internal get flow)
+# Design: Pass attachments to orchestrator
 
-- **Status:** Draft
+- **Status:** Implemented
 
 ## Problem Statement
 

@@ -2,8 +2,6 @@
 Prefetch orchestrator deployment metadata for each chat completion.
 """
 
-from __future__ import annotations
-
 import logging
 
 from injector import inject

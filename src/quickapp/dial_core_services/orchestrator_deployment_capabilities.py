@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
 

@@ -8,8 +8,6 @@ after :func:`normalize_attachment_url_argument`, equals one of request-allowed U
 No prefix-only or traversal matches — membership in the allowed set only.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 from typing import Any

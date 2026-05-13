@@ -3,8 +3,6 @@
 Used by attachment processing and agent pre-invocation transformers.
 """
 
-from __future__ import annotations
-
 import mimetypes
 from collections.abc import Sequence
 
