@@ -3,7 +3,7 @@ import logging
 from pydantic import BaseModel, Field, model_validator
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
+from quickapp.common.base_config import BaseApplicationTypeConfig, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
@@ -70,7 +70,7 @@ class FileLoadingConfig(BaseModel):
 
 
 class Features(BaseModel):
-    timestamp: TimestampConfig | None = PreviewField(  # type: ignore[assignment]
+    timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
         description="Time awareness configuration.",
     )
@@ -116,7 +116,7 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
     )
-    skills: list[SkillConfig] | None = PreviewField(  # type: ignore[assignment]
+    skills: list[SkillConfig] | None = Field(
         default=None,
         description="Optional list of user-configured agent skills.",
     )

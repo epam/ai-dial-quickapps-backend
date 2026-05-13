@@ -1,8 +1,9 @@
 from collections import deque
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
@@ -203,6 +204,84 @@ def _preview_field(default=None, **kwargs) -> FieldInfo:
     if has_factory:
         return Field(**kwargs)
     return Field(default, **kwargs)
+
+
+@dataclass(frozen=True)
+class LegacyAlias:
+    """Annotation declaring that a field accepts a legacy property name as input.
+
+    Compose with any field helper inside ``Annotated[...]``::
+
+        deployment_id: Annotated[
+            str,
+            DialResourceConfigField(description="..."),
+            LegacyAlias("name"),
+        ]
+
+    Active when the model inherits from :class:`LegacyAliasModel`.
+    """
+
+    name: str
+    description: str | None = None
+
+
+def _find_legacy_alias(field_info: FieldInfo) -> LegacyAlias | None:
+    for item in field_info.metadata:
+        if isinstance(item, LegacyAlias):
+            return item
+    return None
+
+
+class LegacyAliasModel(BaseModel):
+    """Base for models that opt into :class:`LegacyAlias` field annotations.
+
+    For each field carrying a ``LegacyAlias``:
+
+    - At class init: extends the field's ``validation_alias`` to
+      ``AliasChoices(<field>, <legacy>)`` and forces ``model_rebuild`` so the
+      change takes effect at validation time.
+    - At ``model_json_schema()``: adds the legacy name as a deprecated sibling
+      property, removes the canonical from the top-level ``required`` list,
+      and appends an ``anyOf`` clause requiring at least one of
+      (canonical, legacy) — so DIAL Core's schema validator accepts both keys.
+    """
+
+    _legacy_alias_pairs: ClassVar[list[tuple[str, LegacyAlias]]] = []
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        pairs: list[tuple[str, LegacyAlias]] = []
+        for field_name, field_info in cls.model_fields.items():
+            legacy = _find_legacy_alias(field_info)
+            if legacy is None:
+                continue
+            field_info.validation_alias = AliasChoices(field_name, legacy.name)
+            pairs.append((field_name, legacy))
+        cls._legacy_alias_pairs = pairs
+        if pairs:
+            cls.model_rebuild(force=True)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema: Any, handler: Any) -> dict[str, Any]:
+        json_schema = handler(schema)
+        if not cls._legacy_alias_pairs:
+            return json_schema
+        properties = json_schema.setdefault("properties", {})
+        required = json_schema.get("required") or []
+        any_of = json_schema.setdefault("anyOf", [])
+        for canonical, legacy in cls._legacy_alias_pairs:
+            properties[legacy.name] = {
+                "type": "string",
+                "description": legacy.description or f"DEPRECATED. Legacy alias for `{canonical}`.",
+                "deprecated": True,
+            }
+            if canonical in required:
+                required.remove(canonical)
+            any_of.extend([{"required": [canonical]}, {"required": [legacy.name]}])
+        if not required:
+            json_schema.pop("required", None)
+        return json_schema
 
 
 def has_preview_marker(field_info: FieldInfo) -> bool:

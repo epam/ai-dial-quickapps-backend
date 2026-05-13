@@ -78,7 +78,8 @@ def create_app_configuration(toolsets: list[ToolSet]) -> ApplicationConfig:
     return ApplicationConfig(
         orchestrator=OrchestratorConfig(
             deployment=DialDeploymentConfig(
-                name="gpt-4o-mini-2024-07-18", parameters=DialDeploymentParameters()
+                deployment_id="gpt-4o-mini-2024-07-18",
+                parameters=DialDeploymentParameters(),
             ),
             system_prompt=CustomSystemPromptConfig(
                 type="custom", content="test", variables={"test": "test"}

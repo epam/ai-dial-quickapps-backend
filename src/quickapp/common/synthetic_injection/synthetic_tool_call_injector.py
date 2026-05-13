@@ -2,19 +2,32 @@ import hashlib
 import json
 import logging
 from abc import ABC, abstractmethod
+from typing import Any
 from uuid import uuid4
 
-from aidial_sdk.chat_completion import Message, Role
+from aidial_sdk.chat_completion import CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from injector import ProviderOf
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.media_types import MediaTypes
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
+from quickapp.common.tool_call_result import ToolCallResult
 
 logger = logging.getLogger(__name__)
 
 
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
     call_id_prefix: str = "synth_"
+
+    def __init__(
+        self,
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
+    ) -> None:
+        # Lazy: resolved at transform() time so this class can be constructed
+        # during _RequestContextSetup, before ApplicationConfig is populated.
+        self._enrichers_provider = enrichers_provider
 
     @abstractmethod
     async def get_tool_name(self) -> str: ...
@@ -35,19 +48,16 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         ...
 
     async def transform(self, messages: list[Message]) -> list[Message]:
-        # 1. Precondition gate
         if not await self.should_inject(messages):
             return messages
 
         tool_name = await self.get_tool_name()
         arguments = await self.get_arguments()
 
-        # 2. Content fetch
         content = await self.get_content(messages)
         if content is None:
             return messages
 
-        # 3. Frequency gate + implicit position
         frequency = await self.get_frequency(messages)
 
         match frequency:
@@ -65,9 +75,26 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
                 )
                 idx = len(messages) if has_prior else _after_first_user_idx(messages)
 
-        # 4. Pair construction + splice
-        pair = _build_pair(tool_name, call_id, arguments, content)
+        # Enrich the synthetic result so metadata matches real tool results.
+        state = self._enrich_state(call_id, content)
+
+        pair = _build_pair(tool_name, call_id, arguments, content, state)
         return messages[:idx] + list(pair) + messages[idx:]
+
+    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
+        if self._enrichers_provider is None:
+            return None
+        enrichers = self._enrichers_provider.get()
+        if not enrichers:
+            return None
+        transient = ToolCallResult(
+            tool_call_id=call_id,
+            content=content,
+            content_type=MediaTypes.PLAIN_TEXT,
+        )
+        for enricher in enrichers:
+            enricher.enrich(transient)
+        return transient.state
 
 
 # ---------------------------------------------------------------------------
@@ -110,7 +137,11 @@ def _has_any_pair_for_tool_and_args(
 
 
 def _build_pair(
-    tool_name: str, call_id: str, arguments: dict, content: str
+    tool_name: str,
+    call_id: str,
+    arguments: dict,
+    content: str,
+    state: dict[str, Any] | None = None,
 ) -> tuple[Message, Message]:
     assistant_msg = Message(
         role=Role.ASSISTANT,
@@ -130,5 +161,6 @@ def _build_pair(
         role=Role.TOOL,
         content=content,
         tool_call_id=call_id,
+        custom_content=CustomContent(state=state) if state else None,
     )
     return assistant_msg, tool_msg

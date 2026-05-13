@@ -6,7 +6,7 @@
     }
   },
   "deployment": {
-    "name": "gpt-image-1"
+    "deployment_id": "gpt-image-1"
   },
   "open_ai_tool": {
     "type": "function",

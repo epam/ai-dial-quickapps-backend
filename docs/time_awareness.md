@@ -1,8 +1,4 @@
-# Time Awareness `[Preview]`
-
-> [!IMPORTANT]
-> Time Awareness is a **preview** feature. Its API and behavior may change in breaking ways without a major
-> version bump. See [Feature Lifecycle](../README.md#feature-lifecycle) for details.
+# Time Awareness
 
 ## Why
 
@@ -43,8 +39,7 @@ Add a `features` section to the application config:
 }
 ```
 
-The feature is enabled by default when preview features are active. To explicitly disable it for a specific app,
-set `"timestamp": null`.
+The feature is enabled by default. To explicitly disable it for a specific app, set `"timestamp": null`.
 
 ## What the agent sees
 

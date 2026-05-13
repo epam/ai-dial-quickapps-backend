@@ -2,8 +2,9 @@ import logging
 from abc import ABC
 
 from aidial_sdk.chat_completion import Message
-from injector import inject
+from injector import ProviderOf, inject
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
@@ -19,7 +20,12 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
     OpenAI function name and calling `tool.arun()` with the declared arguments."""
 
     @inject
-    def __init__(self, tools: list[StagedBaseTool]):
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+    ):
+        super().__init__(enrichers_provider)
         self.__tools: dict[str, StagedBaseTool] = {
             tool.tool_config.open_ai_tool.function.name: tool for tool in tools
         }

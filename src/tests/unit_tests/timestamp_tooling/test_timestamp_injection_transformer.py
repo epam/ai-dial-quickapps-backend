@@ -4,15 +4,19 @@ from unittest.mock import Mock
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.message_metadata import get_metadata_from_state
 from quickapp.common.time_provider import TimeProvider
 from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.timestamp_tooling._timestamp_injection_transformer import (
     _TimestampInjectionTransformer,
 )
+from quickapp.timestamp_tooling._timestamp_metadata_enricher import _TimestampMetadataEnricher
 from quickapp.timestamp_tooling._tool_configs import (
     CURRENT_TIMESTAMP_TOOL_NAME,
     SYNTHETIC_TIMESTAMP_CALL_PREFIX,
 )
+from tests.unit_tests.common.common import make_provider
 
 
 def _make_config_provider(enabled: bool = True) -> Mock:
@@ -23,10 +27,14 @@ def _make_config_provider(enabled: bool = True) -> Mock:
     return provider
 
 
-def _make_transformer(enabled: bool = True) -> _TimestampInjectionTransformer:
+def _make_transformer(
+    enabled: bool = True,
+    enrichers: list[ToolCallResultEnricher] | None = None,
+) -> _TimestampInjectionTransformer:
     return _TimestampInjectionTransformer(
         time_provider=TimeProvider(),
         config_provider=_make_config_provider(enabled),
+        enrichers_provider=make_provider(enrichers if enrichers is not None else []),
     )
 
 
@@ -98,3 +106,26 @@ class TestTimestampInjectionTransformer:
         result = await transformer.transform(messages)
 
         assert result is messages
+
+    @pytest.mark.asyncio
+    async def test_synthetic_tool_message_carries_enriched_metadata(self):
+        transformer = _make_transformer(
+            enrichers=[_TimestampMetadataEnricher(TimeProvider())],
+        )
+        result = await transformer.transform([Message(role=Role.USER, content="hi")])
+
+        tool_msg = result[2]
+        assert tool_msg.custom_content is not None
+        metadata = get_metadata_from_state(tool_msg.custom_content.state)
+        assert metadata is not None
+        assert metadata.timestamp is not None
+        assert metadata.timestamp.response_timestamp is not None
+        assert metadata.timestamp.timezone_name == "UTC"
+
+    @pytest.mark.asyncio
+    async def test_synthetic_tool_message_has_no_state_without_enrichers(self):
+        transformer = _make_transformer()
+        result = await transformer.transform([Message(role=Role.USER, content="hi")])
+
+        tool_msg = result[2]
+        assert tool_msg.custom_content is None

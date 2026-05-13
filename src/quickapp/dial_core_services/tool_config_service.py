@@ -127,7 +127,7 @@ class ToolConfigCoreService:
 
         output_tool = DialDeploymentTool(
             display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
-            deployment=DialDeploymentConfig(name=deployment.id),
+            deployment=DialDeploymentConfig(deployment_id=deployment.id),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
