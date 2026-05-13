@@ -152,7 +152,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=5,
-                deployment=SimpleNamespace(name="test-model"),
+                deployment=SimpleNamespace(deployment_id="test-model"),
                 propagate_stages=True,
             )
         ),
@@ -208,7 +208,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=5,
-                deployment=SimpleNamespace(name="test-model"),
+                deployment=SimpleNamespace(deployment_id="test-model"),
                 propagate_stages=True,
             )
         ),
@@ -831,7 +831,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,
-                deployment=SimpleNamespace(name="test-model"),
+                deployment=SimpleNamespace(deployment_id="test-model"),
                 propagate_stages=True,
             )
         ),
@@ -922,7 +922,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,
-                deployment=SimpleNamespace(name="test-model"),
+                deployment=SimpleNamespace(deployment_id="test-model"),
                 propagate_stages=True,
             )
         ),

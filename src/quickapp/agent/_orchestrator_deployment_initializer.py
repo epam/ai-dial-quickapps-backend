@@ -40,7 +40,7 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         self.__api_key: DIAL_API_KEY = api_key
 
     async def initialize(self) -> None:
-        deployment = self.__app_config.orchestrator.deployment.name
+        deployment = self.__app_config.orchestrator.deployment.deployment_id
         cache_key = f"orchestrator_deployment_{deployment}"
 
         model = await self.__orchestrator_deployment_cache.get(
