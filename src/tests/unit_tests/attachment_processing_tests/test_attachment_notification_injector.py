@@ -28,7 +28,7 @@ def _make_injector(contexts: list[Context] = None) -> _AttachmentNotificationInj
     config = ApplicationConfig(
         contexts=contexts,
         orchestrator=OrchestratorConfig(
-            deployment=DialDeploymentConfig(name="gpt-4"),
+            deployment=DialDeploymentConfig(deployment_id="gpt-4"),
             system_prompt=CustomSystemPromptConfig(content="", variables={}),
         ),
         tool_sets=[],

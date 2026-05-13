@@ -68,7 +68,7 @@ class AssistantInvoker:
         payload: dict[str, Any] = {
             "messages": prepared_messages,
             "stream": True,
-            "model": self.__config.orchestrator.deployment.name,
+            "model": self.__config.orchestrator.deployment.deployment_id,
             "tools": self.__tools,
         }
 

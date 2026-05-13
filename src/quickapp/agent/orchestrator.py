@@ -61,7 +61,7 @@ class Orchestrator:
         self.__stream_handler = stream_handler
         self.__iterations_counter = 0
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
-        self.__orchestrator_deployment_name = app_config.orchestrator.deployment.name
+        self.__orchestrator_deployment_name = app_config.orchestrator.deployment.deployment_id
         self.__propagate_orchestrator_stages: bool = app_config.orchestrator.propagate_stages
         self.__usage_statistics_list: list[DeploymentUsage] = []
         self.__perf_timer: PerformanceTimer = perf_timer

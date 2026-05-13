@@ -100,7 +100,7 @@ class TestResolverAppliesMerge:
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         result = resolver.resolve_tool(PredefinedTool(template_name="dial_rag"))
         assert isinstance(result, DialDeploymentTool)
-        assert result.deployment.name == "dial-rag"
+        assert result.deployment.deployment_id == "dial-rag"
         mock_provider.read_json.assert_called_once_with(ContentType.TOOL, "dial_rag")
 
     def test_resolve_tool_applies_deployment_name_swap(
@@ -114,7 +114,7 @@ class TestResolverAppliesMerge:
             )
         )
         assert isinstance(result, DialDeploymentTool)
-        assert result.deployment.name == "hr-rag-prod"
+        assert result.deployment.deployment_id == "hr-rag-prod"
 
     def test_resolve_tool_applies_function_description_revision(
         self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
@@ -132,7 +132,7 @@ class TestResolverAppliesMerge:
         assert result.open_ai_tool.function.description == "Search internal HR docs."
         # Other fields untouched.
         assert result.open_ai_tool.function.name == "rag_search_tool"
-        assert result.deployment.name == "dial-rag"
+        assert result.deployment.deployment_id == "dial-rag"
 
     def test_resolve_tool_does_not_mutate_template(
         self, resolver: PredefinedConfigResolver, mock_provider: MagicMock
@@ -215,8 +215,8 @@ class TestErrorWrapping:
     ):
         mock_provider.read_json.return_value = _minimal_deployment_tool_template()
         with pytest.raises(ConfigResolutionException) as excinfo:
-            # `deployment.name` must be a string; passing an int triggers
-            # pydantic validation after the merge.
+            # `deployment.name` (legacy alias for `deployment_id`) must be a string;
+            # passing an int triggers pydantic validation after the merge.
             resolver.resolve_tool(
                 PredefinedTool(
                     template_name="dial_rag",
@@ -330,7 +330,7 @@ class TestResolveConfigPartialTolerance:
 
         assert isinstance(result, DeploymentToolSet)
         resolved_names = [
-            t.deployment.name for t in result.tools if isinstance(t, DialDeploymentTool)
+            t.deployment.deployment_id for t in result.tools if isinstance(t, DialDeploymentTool)
         ]
         assert resolved_names == ["dial-rag", "dial-rag"]
         assert len(result.tools) == 2

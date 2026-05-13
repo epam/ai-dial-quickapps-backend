@@ -42,7 +42,7 @@ def make_async_loader(returns: Any) -> AsyncMock:
 
 def make_tool_config(name: str = "deployment_id_tool") -> DialDeploymentTool:
     return DialDeploymentTool(
-        deployment=DialDeploymentConfig(name="deployment-id"),
+        deployment=DialDeploymentConfig(deployment_id="deployment-id"),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name=name,
