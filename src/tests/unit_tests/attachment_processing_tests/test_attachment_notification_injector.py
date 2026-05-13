@@ -12,6 +12,7 @@ from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import CustomSystemPromptConfig
+from tests.unit_tests.common.common import make_provider
 
 
 def _user_msg(content: str = "", attachments: list[Attachment] | None = None) -> Message:
@@ -34,7 +35,10 @@ def _make_injector(contexts: list[Context] = None) -> _AttachmentNotificationInj
         tool_sets=[],
     )
     provider = SimpleNamespace(get=lambda: config)
-    return _AttachmentNotificationInjector(config_provider=provider)
+    return _AttachmentNotificationInjector(
+        config_provider=provider,
+        enrichers_provider=make_provider([]),
+    )
 
 
 def _extract_synthetic(result: list[Message], original_count: int) -> list[Message]:

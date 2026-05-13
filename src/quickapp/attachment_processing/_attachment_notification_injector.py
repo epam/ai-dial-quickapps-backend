@@ -11,6 +11,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
@@ -25,7 +26,12 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
     available contexts when changes are detected."""
 
     @inject
-    def __init__(self, config_provider: ProviderOf[ApplicationConfig]):
+    def __init__(
+        self,
+        config_provider: ProviderOf[ApplicationConfig],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+    ):
+        super().__init__(enrichers_provider)
         self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
 
     async def get_tool_name(self) -> str:
