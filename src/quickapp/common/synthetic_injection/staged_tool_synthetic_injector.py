@@ -23,7 +23,7 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
     def __init__(
         self,
         tools: list[StagedBaseTool],
-        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
     ):
         super().__init__(enrichers_provider)
         self.__tools: dict[str, StagedBaseTool] = {
