@@ -40,6 +40,7 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
 - [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
+- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -55,6 +56,40 @@ fallback, attachments, authorization types, parameter/display configurations and
 file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
+
+### Hooks `[Preview]`
+
+Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code. Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
+
+Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app manifest:
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "memory_server",
+      "tool_name": "get_memories",
+      "arguments": { "user_id": "123" },
+      "frequency": "always"
+    }
+  ]
+}
+```
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `kind` | Hook type. Only `"tool_call"` is supported today. |
+| `event` | Orchestrator seam. Only `"on_request_start"` is wired today. |
+| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools. |
+| `tool_name` | Tool name within the toolset, or the exact function name when `toolset_name` is omitted. |
+| `arguments` | Arguments forwarded to the tool call. |
+| `frequency` | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
+
+See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
 
 ### Forwarding headers
 

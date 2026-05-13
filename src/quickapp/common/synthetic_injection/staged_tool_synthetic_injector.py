@@ -23,7 +23,7 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
     def __init__(
         self,
         tools: list[StagedBaseTool],
-        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
     ):
         super().__init__(enrichers_provider)
         self.__tools: dict[str, StagedBaseTool] = {
@@ -40,5 +40,5 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
             )
             return None
         arguments = await self.get_arguments()
-        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, **arguments)
+        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, suppress_stage=True, **arguments)
         return result.content

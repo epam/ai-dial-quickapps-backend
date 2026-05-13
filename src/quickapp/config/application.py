@@ -3,10 +3,11 @@ import logging
 from pydantic import BaseModel, Field, model_validator
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, has_preview_marker
+from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.hooks import HookConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
@@ -118,6 +119,10 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     skills: list[SkillConfig] | None = Field(
         default=None,
         description="Optional list of user-configured agent skills.",
+    )
+    hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Config-driven hooks fired at named orchestrator seams.",
     )
     features: Features | None = Field(
         default_factory=Features,
