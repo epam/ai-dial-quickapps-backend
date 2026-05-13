@@ -7,6 +7,7 @@ from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField,
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.hooks import HookConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
@@ -56,10 +57,26 @@ def nullify_preview_fields(model: BaseModel) -> None:
             nullify_preview_fields(value)
 
 
+class FileLoadingConfig(BaseModel):
+    size_limit: int | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Maximum size (in bytes) of a single file the agent will download. "
+            "When unset, the env default `DEFAULT_FILE_LOADING_SIZE_LIMIT` is used "
+            "(default 10 MiB)."
+        ),
+    )
+
+
 class Features(BaseModel):
-    timestamp: TimestampConfig | None = PreviewField(  # type: ignore[assignment]
+    timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
         description="Time awareness configuration.",
+    )
+    file_loading: FileLoadingConfig = Field(
+        default_factory=FileLoadingConfig,
+        description="File loader configuration (download size limits, etc.).",
     )
 
 
@@ -99,9 +116,13 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     conversation_starters: ConversationStartersConfig | None = Field(
         description="The configuration for conversation starters.", default=None
     )
-    skills: list[SkillConfig] | None = PreviewField(  # type: ignore[assignment]
+    skills: list[SkillConfig] | None = Field(
         default=None,
         description="Optional list of user-configured agent skills.",
+    )
+    hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Config-driven hooks fired at named orchestrator seams.",
     )
     features: Features | None = Field(
         default_factory=Features,

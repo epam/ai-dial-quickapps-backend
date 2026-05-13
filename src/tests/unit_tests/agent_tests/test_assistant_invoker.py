@@ -42,7 +42,7 @@ class DummyParams:
 class DummyDeployment:
     def __init__(self):
         self.parameters = DummyParams()
-        self.name = "test-model"
+        self.deployment_id = "test-model"
 
 
 class DummyOrchestrator:

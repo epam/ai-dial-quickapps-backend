@@ -7,7 +7,6 @@ from pydantic import SecretStr, TypeAdapter
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import ContentType
 from quickapp.config.skill import DialPromptSkillConfig, SkillConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
@@ -16,6 +15,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import (
     fetch_and_validate_dial_prompt_skill,
 )
+from quickapp.predefined_tooling import PredefinedConfigResolver
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
@@ -28,7 +28,7 @@ class _Controller:
 
     def __init__(
         self,
-        config_resolver: ConfigResolver,
+        config_resolver: PredefinedConfigResolver,
         service: ToolConfigCoreService,
         skills_provider: AgentSkillsProvider,
         dial_settings: DialSettings,

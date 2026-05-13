@@ -345,7 +345,7 @@ def _make_tool_config(
 ) -> DialDeploymentTool:
     """Build a real DialDeploymentTool for _pre_process_params tests."""
     deployment = DialDeploymentConfig(
-        name="test-deployment",
+        deployment_id="test-deployment",
         parameters=parameters or DialDeploymentParameters(),
     )
     if configuration_param_names:

@@ -3,7 +3,19 @@ import logging.config
 
 import uvicorn.logging
 
+from quickapp.config._otel_aware_formatter import OtelAwareFormatter
 from quickapp.config.logging_settings import LoggingSettings
+
+# Loggers that LoggingConfig pins to the shared "console" handler with
+# propagate=False. Exposed so tests can snapshot/restore identical state.
+MANAGED_LOGGER_NAMES: tuple[str, ...] = (
+    "quickapp",
+    "uvicorn",
+    "uvicorn.access",
+    "uvicorn.error",
+    "httpcore",
+    "openai",
+)
 
 
 class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
@@ -18,14 +30,33 @@ class LoggingConfig:
         self._configure_logging()
         self._override_aidial_sdk_logger()
 
+    def _formatter_kwargs(self) -> dict:
+        return {
+            "fmt": self._settings.log_format,
+            "datefmt": self._settings.log_date_format,
+            "use_colors": True,
+        }
+
     def _get_logging_config(self) -> dict:
+        per_logger_config = {
+            name: {
+                "handlers": ["console"],
+                "level": (
+                    self._settings.quickapp_log_level
+                    if name == "quickapp"
+                    else self._settings.log_level
+                ),
+                "propagate": False,
+            }
+            for name in MANAGED_LOGGER_NAMES
+        }
         return {
             "version": 1,
             "disable_existing_loggers": False,
             "formatters": {
                 "default": {
-                    "()": "logging.Formatter",
-                    "fmt": self._settings.log_format,
+                    "()": "quickapp.config._otel_aware_formatter.OtelAwareFormatter",
+                    **self._formatter_kwargs(),
                 },
             },
             "handlers": {
@@ -38,39 +69,7 @@ class LoggingConfig:
                 "handlers": ["console"],
                 "level": self._settings.log_level,
             },
-            "loggers": {
-                "quickapp": {
-                    "handlers": ["console"],
-                    "level": self._settings.quickapp_log_level,
-                    "propagate": False,
-                },
-                # override third-party libs log format
-                "uvicorn": {
-                    "handlers": ["console"],
-                    "level": self._settings.log_level,
-                    "propagate": False,
-                },
-                "uvicorn.access": {
-                    "handlers": ["console"],
-                    "level": self._settings.log_level,
-                    "propagate": False,
-                },
-                "uvicorn.error": {
-                    "handlers": ["console"],
-                    "level": self._settings.log_level,
-                    "propagate": False,
-                },
-                "httpcore": {
-                    "handlers": ["console"],
-                    "level": self._settings.log_level,
-                    "propagate": False,
-                },
-                "openai": {
-                    "handlers": ["console"],
-                    "level": self._settings.log_level,
-                    "propagate": False,
-                },
-            },
+            "loggers": per_logger_config,
         }
 
     def _configure_logging(self) -> None:
@@ -85,24 +84,13 @@ class LoggingConfig:
         )
         quickapp_logger.setLevel(level)
 
-        # Override "aidial_sdk" logger to meet same logging format
-        from aidial_sdk import logger as aidial_sdk_logger
+    def _override_aidial_sdk_logger(self) -> None:
+        from aidial_sdk import logger as aidial_sdk_logger  # type: ignore
 
         aidial_sdk_logger.propagate = False
         aidial_sdk_logger.setLevel(self._settings.log_level)
 
         handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(self._settings.log_format))
-
-        aidial_sdk_logger.handlers = [handler]
-
-    def _override_aidial_sdk_logger(self) -> None:
-        from aidial_sdk import logger as aidial_sdk_logger  # type: ignore
-
-        aidial_sdk_logger.propagate = False
-        aidial_sdk_logger.setLevel("INFO")
-
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(self._settings.log_format))
+        handler.setFormatter(OtelAwareFormatter(**self._formatter_kwargs()))
 
         aidial_sdk_logger.handlers = [handler]

@@ -1,8 +1,9 @@
 import logging
 
 from aidial_sdk.chat_completion import Message
-from injector import inject
+from injector import ProviderOf, inject
 
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
@@ -20,7 +21,12 @@ class _InjectFileTransferInstructionTransformer(SyntheticToolCallInjector):
     exactly once per conversation."""
 
     @inject
-    def __init__(self, skills_provider: AgentSkillsProvider):
+    def __init__(
+        self,
+        skills_provider: AgentSkillsProvider,
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+    ):
+        super().__init__(enrichers_provider)
         self.__skills_provider = skills_provider
 
     async def get_tool_name(self) -> str:

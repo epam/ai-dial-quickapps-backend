@@ -7,7 +7,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-4o-2024-11-20",
+            "deployment_id": "gpt-4o-2024-11-20",
             "parameters": {
               "temperature": 1.0,
               "seed": 820288
@@ -46,7 +46,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-5-2025-08-07",
+            "deployment_id": "gpt-5-2025-08-07",
             "parameters": {
               "seed": 820288
             }
@@ -84,7 +84,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-5.2-2025-12-11"
+            "deployment_id": "gpt-5.2-2025-12-11"
           },
           "system_prompt": {
             "type": "predefined",

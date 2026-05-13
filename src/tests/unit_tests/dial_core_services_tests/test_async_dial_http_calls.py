@@ -24,6 +24,7 @@ from injector import ProviderOf
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -116,6 +117,12 @@ def _provider(client: AsyncDial) -> MagicMock:
     return provider
 
 
+def _file_loading_size_limit_resolver(size_limit: int = 10 * 1024 * 1024) -> MagicMock:
+    resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
+    resolver.resolve.return_value = size_limit
+    return resolver
+
+
 def _dial_settings() -> DialSettings:
     return DialSettings(url=BASE_URL)
 
@@ -146,7 +153,7 @@ class TestToolConfigServiceHttpCalls:
 
         result = await _tool_config_service(_dial_client()).get_basic_tool_config("test-model")
 
-        assert result.deployment.name == "test-model"
+        assert result.deployment.deployment_id == "test-model"
         requests = httpx_mock.get_requests()
         assert len(requests) == 1
         assert "openai/deployments/test-model" in str(requests[0].url)
@@ -167,7 +174,7 @@ class TestToolConfigServiceHttpCalls:
 
         result = await _tool_config_service(_dial_client()).get_basic_tool_config("test-app")
 
-        assert result.deployment.name == "test-app"
+        assert result.deployment.deployment_id == "test-app"
         urls = [str(r.url) for r in httpx_mock.get_requests()]
         assert any("openai/deployments/test-app" in u for u in urls)
         assert any("openai/applications/test-app" in u for u in urls)
@@ -218,7 +225,7 @@ class TestToolConfigServiceHttpCalls:
         )
         result = await svc.get_basic_tool_config("test-model", api_key=SecretStr(API_KEY))
 
-        assert result.deployment.name == "test-model"
+        assert result.deployment.deployment_id == "test-model"
         provider.get.assert_not_called()
 
     @pytest.mark.asyncio
@@ -286,6 +293,7 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            size_limit_resolver=_file_loading_size_limit_resolver(),
         )
         result = await svc.download_file("files/my-bucket/test.txt")
 
@@ -306,6 +314,7 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            size_limit_resolver=_file_loading_size_limit_resolver(),
         )
         with pytest.raises(ValueError, match="exceeds the limit"):
             await svc.download_file("files/my-bucket/large.bin")
@@ -325,6 +334,7 @@ class TestDialFileServiceHttpCalls:
         svc = DialFileService(
             dial_client=_dial_client(),
             state_holder=StateHolder(),
+            size_limit_resolver=_file_loading_size_limit_resolver(),
         )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],

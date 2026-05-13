@@ -95,10 +95,10 @@ def _login_result_message(result: LoginResult, toolset_label: str) -> str:
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """Return a label for this toolset suitable for error messages.
-    For DialMCPToolSet with default name, use a human-readable form of dial_id.
+    For DialMCPToolSet with default name, use a human-readable form of deployment_id.
     """
     if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
-        return _human_readable_dial_id(toolset_info.dial_id)
+        return _human_readable_dial_id(toolset_info.deployment_id)
     return getattr(toolset_info, "name", "")
 
 
@@ -106,7 +106,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
 class _MCPToolInitializer(CompletionInitializer):
     def __init__(
         self,
-        toolset_list: list[MCPToolSet | DialMCPToolSet],
+        toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]],
         mcp_context: _MCPToolingContext,
         dial_setting: DialSettings,
         api_key_provider: ProviderOf[DIAL_API_KEY],
@@ -116,7 +116,11 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
     ):
-        self.__toolset_list: list[MCPToolSet | DialMCPToolSet] = toolset_list
+        # Resolved lazily in initialize() because dial_app_tooling contributes
+        # to this multibinder only after _DialAppResolver runs.
+        self.__toolset_list_provider: ProviderOf[list[MCPToolSet | DialMCPToolSet]] = (
+            toolset_list_provider
+        )
         self.__mcp_context: _MCPToolingContext = mcp_context
         self.__dial_setting: DialSettings = dial_setting
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
@@ -146,24 +150,27 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        if not self.__toolset_list:
+        toolsets = self.__toolset_list_provider.get()
+        if not toolsets:
             return
 
-        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in self.__toolset_list]
+        tasks = [asyncio.create_task(self._process_toolset(ts)) for ts in toolsets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        unauthorized = self._classify_initialization_results(results)
+        unauthorized = self._classify_initialization_results(toolsets, results)
         if not unauthorized:
             return
 
         await self._interactive_login_and_retry(unauthorized)
 
     def _classify_initialization_results(
-        self, results: list[BaseException | None]
+        self,
+        toolsets: list[MCPToolSet | DialMCPToolSet],
+        results: list[BaseException | None],
     ) -> list[DialMCPToolSet]:
         """Collect unauthorized DialMCPToolSets for interactive login, record other errors."""
         unauthorized: list[DialMCPToolSet] = []
-        for ts, result in zip(self.__toolset_list, results):
+        for ts, result in zip(toolsets, results):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):
@@ -183,12 +190,12 @@ class _MCPToolInitializer(CompletionInitializer):
 
     async def _interactive_login_and_retry(self, unauthorized: list[DialMCPToolSet]) -> None:
         """Batch interactive login for unauthorized toolsets, then retry successful ones."""
-        dial_ids = [ts.dial_id for ts in unauthorized]
-        signin_results = await self.__login_service.request_signin_batch(dial_ids)
+        deployment_ids = [ts.deployment_id for ts in unauthorized]
+        signin_results = await self.__login_service.request_signin_batch(deployment_ids)
 
         retry_toolsets: list[DialMCPToolSet] = []
         for ts in unauthorized:
-            login_result = signin_results.get(ts.dial_id, LoginResult.ERROR)
+            login_result = signin_results.get(ts.deployment_id, LoginResult.ERROR)
             if login_result == LoginResult.SUCCESS:
                 retry_toolsets.append(ts)
             else:
@@ -234,13 +241,13 @@ class _MCPToolInitializer(CompletionInitializer):
             # Resolve DialMCPToolSet data asynchronously if needed
             if isinstance(toolset_info, DialMCPToolSet):
                 dial_toolset_info: ToolsetInfo | None = await self.__mcp_cache.get(
-                    f"mcp_toolset_{toolset_info.dial_id}",
+                    f"mcp_toolset_{toolset_info.deployment_id}",
                     self.__tool_config_service.get_basic_toolset_config,
-                    toolset_info.dial_id,
+                    toolset_info.deployment_id,
                 )
                 if not dial_toolset_info:
                     raise ToolInitializationException(
-                        message=f"Failed to retrieve toolset info for DIAL ID {toolset_info.dial_id}",
+                        message=f"Failed to retrieve toolset info for DIAL ID {toolset_info.deployment_id}",
                         toolset_name=_toolset_label_for_error(toolset_info),
                     )
                 resolved_toolset = MCPToolSet(
@@ -251,7 +258,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     attachment=toolset_info.attachment,
                     fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(
-                        url=f"{self.__dial_setting.url}/v1/toolset/{toolset_info.dial_id}/mcp",
+                        url=f"{self.__dial_setting.url}/v1/toolset/{toolset_info.deployment_id}/mcp",
                         authorization=MCPApiKeyAuthorization(
                             key=self.__api_key_provider.get().get_secret_value(), name="Api-Key"
                         ),
@@ -286,7 +293,9 @@ class _MCPToolInitializer(CompletionInitializer):
                     ),
                     connection_manager=connection_manager,
                     dial_toolset_id=(
-                        toolset_info.dial_id if isinstance(toolset_info, DialMCPToolSet) else None
+                        toolset_info.deployment_id
+                        if isinstance(toolset_info, DialMCPToolSet)
+                        else None
                     ),
                 )
                 created_tools.append(mcp_tool)

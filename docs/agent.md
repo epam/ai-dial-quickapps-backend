@@ -64,7 +64,9 @@ A request-scoped context is created to hold:
 ### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
-definitions from the predefined configuration files.
+definitions from the predefined configuration files. Predefined references with an `override` field have the
+operator-supplied JSON Merge Patch (RFC 7396) applied to the loaded template body before pydantic validation; merge
+or validation failures surface as `ConfigResolutionException` and render in the *Initialization issues* stage.
 
 ### 5. Completion Initialization
 
@@ -265,7 +267,7 @@ The setup pipeline runs the following steps in order:
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `available_context` tool. Returns messages unchanged when inactive.
 
-4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`, preview): Appends a synthetic
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
    `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
    interaction is happening. Historical timestamps are restored from state with their original times.
 
@@ -274,7 +276,7 @@ The setup pipeline runs the following steps in order:
 Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
 
 1. **Attachment Filter** (`_AttachmentFilter`): Filters unsupported attachment types and injects attachment XML metadata.
-2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`, preview): Appends human-readable
+2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`): Appends human-readable
    `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
 ### Streaming Response Processing
@@ -373,22 +375,27 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 13 specialized DI modules:
+The application is composed of 15 specialized DI modules:
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
-5. **MCP Tooling Module**: MCP server tool construction
-6. **Internal Tool Module**: Python interpreter, content downloader
-7. **Starters Module**: UI starter button configuration
-8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
-10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
-11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
-12. **Timestamp Module** (preview): Timestamp tool, injection/annotation transformers, metadata enricher
-13. **Skills Module**: Skill reader tool, agent skills provider, skills registry
-14. **DIAL Prompt Skills Module** (preview): Resolver for DIAL-prompt-sourced skills
+5. **DIAL App Tooling Module**: Routing resolver for `DialAppToolSet` entries. Fetches deployment metadata once
+   per request, inspects `features.mcp`, and hands either a fully-formed `MCPToolSet` (URL
+   `/v1/toolset/{deployment_id}/mcp` — current DIAL Core path, slated to move to
+   `/v1/deployments/{deployment_id}/mcp`) or a customised `DialDeploymentTool` to the MCP / Deployment
+   initializers for execution.
+6. **MCP Tooling Module**: MCP server tool construction
+7. **Internal Tool Module**: Python interpreter, content downloader
+8. **Starters Module**: UI starter button configuration
+9. **Configuration Support API Module**: Configuration validation endpoints
+10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher
+14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+15. **DIAL Prompt Skills Module**: Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -452,7 +459,7 @@ Tools are organized into toolsets that share common configuration:
 
 `AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
 `SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
-(see [Skills documentation](skills.md#dial-prompt-skills-preview) for details).
+(see [Skills documentation](skills.md#dial-prompt-skills) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 

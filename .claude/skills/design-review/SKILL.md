@@ -62,6 +62,7 @@ For each dimension, produce a finding only when something is actually off — do
 - **Alignment with project conventions.** DI pattern (`*_module.py` + `configure(binder)`), module boundaries, preview-feature gating (`ENABLE_PREVIEW_FEATURES`), config schema auto-gen (`make dump_app_schema`), `aidial_sdk` vs `aidial_client` type boundaries.
 - **Trade-offs & alternatives.** Does the doc name alternatives considered and why this one wins?
 - **Clarity.** Prose over code snippets? Mermaid diagrams where they clarify? Referenced components named (e.g. `StagedBaseTool._run_in_stage_report_success`) rather than inlined?
+- **Change focus — no "what is NOT changing" prose.** Design docs describe what changes. Flag any sentence or paragraph that exists only to enumerate non-changes — e.g. "no new bindings are introduced", "no new types", "behavior with the new field unset is byte-identical to today", "no change to `Foo`", "this does not require X". The *Migration / Non-breaking changes* section is the sanctioned home for such facts (and even there, keep it terse); elsewhere they bloat the doc without informing the reader. Recommend cutting.
 - **Out of Scope justification.** Is each deferral explained, or is the section a dumping ground?
 
 Prefer a small number of sharp findings over exhaustive nitpicking.

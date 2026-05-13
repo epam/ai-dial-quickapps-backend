@@ -8,6 +8,7 @@ from injector import Injector, inject
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
+from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 
@@ -45,7 +46,13 @@ class _QuickAppCompletion(ChatCompletion):
         with response.create_single_choice() as choice:
             try:
                 request_context_setup = self.__injector.get(_RequestContextSetup)
-                await request_context_setup.setup_context(request, choice)
+                try:
+                    await request_context_setup.setup_context(request, choice)
+                except ConfigResolutionException:
+                    # System prompt resolution is the only path that still raises;
+                    # tool / toolset failures are skip-and-record inside the resolver.
+                    self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
+                    return
                 timer_service.add_milestone(self.__timer_period_name, "request context pre-init")
                 await invoke_initializers(self.__injector, InitializerType.completion)
                 timer_service.add_milestone(self.__timer_period_name, "initializers")

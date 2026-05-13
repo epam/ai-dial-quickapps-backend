@@ -39,7 +39,8 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
-- [Agent Skills](docs/skills.md) `[Preview]` - How to create and manage reusable agent skills
+- [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
+- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -55,6 +56,40 @@ fallback, attachments, authorization types, parameter/display configurations and
 file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
+
+### Hooks `[Preview]`
+
+Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code. Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
+
+Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app manifest:
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "memory_server",
+      "tool_name": "get_memories",
+      "arguments": { "user_id": "123" },
+      "frequency": "always"
+    }
+  ]
+}
+```
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `kind` | Hook type. Only `"tool_call"` is supported today. |
+| `event` | Orchestrator seam. Only `"on_request_start"` is wired today. |
+| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools. |
+| `tool_name` | Tool name within the toolset, or the exact function name when `toolset_name` is omitted. |
+| `arguments` | Arguments forwarded to the tool call. |
+| `frequency` | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
+
+See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
 
 ### Forwarding headers
 
@@ -77,7 +112,8 @@ your gateways or downstream services expect.
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
 | **Logging**                                |                            |          |                                                                                                              |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                 |
+| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string. The default references `%(otel_context)s`, a synthetic field populated by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] ` block when OTEL log correlation is active (`OTEL_PYTHON_LOG_CORRELATION=true` and a span is in scope) and to an empty string otherwise. Custom formats may reference `%(otelTraceID)s`/`%(otelSpanID)s`/`%(otelServiceName)s`/`%(otelTraceSampled)s` directly, but those placeholders only resolve while correlation is on. |
+| `LOG_DATE_FORMAT`                          | `%Y-%m-%d %H:%M:%S`        | No       | `strftime`-style format for the `%(asctime)s` field                                                          |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
 | `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
@@ -94,6 +130,7 @@ your gateways or downstream services expect.
 | `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
 | **Tool Timeouts**                          |                            |          |                                                                                                              |
 | `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
+| `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
 | **Feature Gating**                         |                            |          |                                                                                                              |
 | `ENABLE_PREVIEW_FEATURES`                  | `false`                    | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                            |          |                                                                                                              |
@@ -127,7 +164,7 @@ your gateways or downstream services expect.
 
 > [!WARNING]
 > The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills \[Preview\]](docs/skills.md), which offer richer
+> removed. Instructions are replaced by [Agent Skills](docs/skills.md), which offer richer
 > metadata,
 > on-demand retrieval, and layered overrides. See the
 > [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.

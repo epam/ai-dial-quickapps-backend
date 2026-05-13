@@ -30,7 +30,7 @@ The project contains predefined configs of application and predefined tools
 {
   "orchestrator": {
     "deployment": {
-      "name": "gpt-4o-2024-05-13",
+      "deployment_id": "gpt-4o-2024-05-13",
       "parameters": {
         "temperature": 1.0,
         "seed": 820288
@@ -124,7 +124,7 @@ The project contains predefined configs of application and predefined tools
             }
           },
           "deployment": {
-            "name": "dall-e-3"
+            "deployment_id": "dall-e-3"
           },
           "open_ai_tool": {
             "type": "function",
@@ -385,10 +385,20 @@ The context loaded by URL:
 
 #### PredefinedToolSet Configuration
 
-| Field         | Required | Type   | Description                      | Default Value |
-|---------------|----------|--------|----------------------------------|---------------|
-| type          | Yes      | String | The type of the tool set.        | `predefined`  |
-| template_name | Yes      | String | Name of the predefined template. | -             |
+| Field         | Required | Type           | Description                                                                                                                                                                                                              | Default Value |
+|---------------|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| type          | Yes      | String         | The type of the tool set.                                                                                                                                                                                                | `predefined`  |
+| template_name | Yes      | String         | Name of the predefined template.                                                                                                                                                                                         | -             |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`        |
+
+#### PredefinedTool Configuration
+
+| Field         | Required | Type           | Description                                                                                                                                                                                                            | Default Value     |
+|---------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| type          | Yes      | String         | The type indicating this is a tool template reference.                                                                                                                                                                 | `predefined-tool` |
+| template_name | Yes      | String         | The name of the tool template file (without extension).                                                                                                                                                                | -                 |
+| enabled       | No       | Boolean        | Whether the tool is enabled.                                                                                                                                                                                           | `true`            |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`            |
 
 #### MCPToolSet Configuration
 
@@ -424,6 +434,33 @@ The context loaded by URL:
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
+
+#### DialAppToolSet Configuration
+
+Use `DialAppToolSet` to reference a DIAL application or deployment by its id and have QuickApps choose the
+transport automatically at initialization time. If the deployment advertises MCP (`features.mcp == true`),
+**all** MCP tools it publishes are surfaced as first-class QuickApp tools over the path
+`/v1/toolset/{deployment_id}/mcp` (current DIAL Core behaviour; this will move to
+`/v1/deployments/{deployment_id}/mcp` once the matching DIAL Core change ships). Otherwise the toolset
+falls back to the existing chat-completion path (single synthetic `query` tool per deployment), matching
+`DialDeploymentSimpleTool` behaviour.
+
+This differs from `DialMCPToolSet` semantically: `DialMCPToolSet` points at a DIAL *toolset* resource
+(identified by `dial_id`), while `DialAppToolSet` points at a DIAL *deployment/application* (identified by
+`deployment_id`). Both currently hit the same `/v1/toolset/{id}/mcp` path prefix in DIAL Core, but the ids
+have different semantics and will diverge once the deployment-scoped endpoint lands.
+
+| Field                  | Required | Type               | Description                                                                                                                                                                                | Default Value |
+|------------------------|----------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| name                   | Yes      | String             | The name of the tool set. Used as the tool-name prefix on the MCP branch; on the chat-completion fallback branch the synthetic tool name is derived from the deployment id, so this field has no effect on the agent-visible name. | -             |
+| description            | No       | String             | The description of the tool set.                                                                                                                                                           | `null`        |
+| enabled                | No       | Boolean            | Whether the toolset is enabled.                                                                                                                                                            | `true`        |
+| type                   | Yes      | String             | The type of the tool set.                                                                                                                                                                  | `dial-app`    |
+| deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
+| transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
+| allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
+| attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
+| fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 
 #### InternalToolSet Configuration
 

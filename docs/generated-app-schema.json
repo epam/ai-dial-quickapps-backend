@@ -680,21 +680,118 @@
       "title": "DeploymentToolSet",
       "type": "object"
     },
-    "DialDeploymentConfig": {
+    "DialAppToolSet": {
       "properties": {
         "name": {
-          "description": "The name of the DIAL deployment.",
+          "description": "The name of the tool set.",
           "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the tool set.",
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether the toolset is enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "dial-app",
+          "default": "dial-app",
+          "description": "The type of the tool set.",
+          "title": "Type",
+          "type": "string"
+        },
+        "deployment_id": {
+          "description": "The DIAL deployment or application id.",
+          "dial:resource": true,
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "transport": {
+          "default": "auto",
+          "description": "Routing override. 'auto' (default): use MCP if the deployment advertises features.mcp, otherwise chat completion. 'mcp': force MCP — initialization fails with a ToolInitializationException if features.mcp is not advertised. 'chat-completion': force chat completion — the resolver skips the metadata fetch and goes directly to get_basic_tool_config.",
+          "enum": [
+            "auto",
+            "mcp",
+            "chat-completion"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Allowed Tools"
+        },
+        "attachment": {
+          "$ref": "#/$defs/AttachmentConfig",
+          "description": "Configuration for toolset attachments."
+        },
+        "fallback_configuration": {
+          "$ref": "#/$defs/ToolFallbackConfig",
+          "description": "Tool fallback configuration."
+        }
+      },
+      "required": [
+        "name",
+        "deployment_id"
+      ],
+      "title": "DialAppToolSet",
+      "type": "object"
+    },
+    "DialDeploymentConfig": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ],
+      "properties": {
+        "deployment_id": {
+          "description": "The id of the DIAL deployment.",
+          "dial:resource": true,
+          "title": "Deployment Id",
           "type": "string"
         },
         "parameters": {
           "$ref": "#/$defs/DialDeploymentParameters",
           "description": "The predefined parameters for the DIAL deployment."
+        },
+        "name": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
       "title": "DialDeploymentConfig",
       "type": "object"
     },
@@ -943,6 +1040,18 @@
       "type": "object"
     },
     "DialMCPToolSet": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "dial_id"
+          ]
+        }
+      ],
       "properties": {
         "name": {
           "default": "untitled-mcp-toolset",
@@ -976,10 +1085,10 @@
           "title": "Type",
           "type": "string"
         },
-        "dial_id": {
-          "description": "The Dial ID associated with this MCP toolset.",
+        "deployment_id": {
+          "description": "The id of the DIAL deployment associated with this MCP toolset.",
           "dial:resource": true,
-          "title": "Dial Id",
+          "title": "Deployment Id",
           "type": "string"
         },
         "transport": {
@@ -1015,11 +1124,13 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "dial_id": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "type": "string"
         }
       },
-      "required": [
-        "dial_id"
-      ],
       "title": "DialMCPToolSet",
       "type": "object"
     },
@@ -1106,8 +1217,11 @@
               "type": "null"
             }
           ],
-          "description": "Time awareness configuration.",
-          "x-preview": true
+          "description": "Time awareness configuration."
+        },
+        "file_loading": {
+          "$ref": "#/$defs/FileLoadingConfig",
+          "description": "File loader configuration (download size limits, etc.)."
         }
       },
       "title": "Features",
@@ -1147,6 +1261,26 @@
         "url"
       ],
       "title": "FileContextConfig",
+      "type": "object"
+    },
+    "FileLoadingConfig": {
+      "properties": {
+        "size_limit": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum size (in bytes) of a single file the agent will download. When unset, the env default `DEFAULT_FILE_LOADING_SIZE_LIMIT` is used (default 10 MiB).",
+          "title": "Size Limit"
+        }
+      },
+      "title": "FileLoadingConfig",
       "type": "object"
     },
     "FormattedParameterConfig": {
@@ -1249,6 +1383,21 @@
       },
       "title": "ForwardAuthTokenAuthorization",
       "type": "object"
+    },
+    "HookEvent": {
+      "enum": [
+        "on_request_start"
+      ],
+      "title": "HookEvent",
+      "type": "string"
+    },
+    "InjectionFrequency": {
+      "enum": [
+        "always",
+        "append_if_changed"
+      ],
+      "title": "InjectionFrequency",
+      "type": "string"
     },
     "InternalTool": {
       "properties": {
@@ -1957,6 +2106,20 @@
           "description": "Whether the tool is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [
@@ -1978,6 +2141,20 @@
           "description": "Name of the predefined template",
           "title": "Template Name",
           "type": "string"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [
@@ -2557,6 +2734,62 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "ToolCallHookConfig": {
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/HookEvent"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "toolset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolset Name"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "frequency": {
+          "$ref": "#/$defs/InjectionFrequency",
+          "default": "append_if_changed"
+        }
+      },
+      "required": [
+        "event",
+        "tool_name"
+      ],
+      "title": "ToolCallHookConfig",
+      "type": "object"
+    },
     "ToolCallTimestampConfig": {
       "properties": {
         "injection_strategy": {
@@ -2822,6 +3055,7 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "dial-app": "#/$defs/DialAppToolSet",
             "dial-deployment": "#/$defs/DeploymentToolSet",
             "dial-mcp": "#/$defs/DialMCPToolSet",
             "internal": "#/$defs/InternalToolSet",
@@ -2843,6 +3077,9 @@
           },
           {
             "$ref": "#/$defs/MCPToolSet"
+          },
+          {
+            "$ref": "#/$defs/DialAppToolSet"
           },
           {
             "$ref": "#/$defs/DialMCPToolSet"
@@ -2921,10 +3158,30 @@
       "default": null,
       "description": "Optional list of user-configured agent skills.",
       "title": "Skills",
-      "x-preview": true,
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 6
+      }
+    },
+    "hooks": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ToolCallHookConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Config-driven hooks fired at named orchestrator seams.",
+      "title": "Hooks",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
       }
     },
     "features": {
@@ -2939,7 +3196,7 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 7
+        "dial:propertyOrder": 8
       }
     },
     "tool_defaults": {
@@ -2965,7 +3222,7 @@
       "type": "object",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 8
+        "dial:propertyOrder": 9
       }
     }
   },
