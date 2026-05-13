@@ -370,7 +370,7 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Admin context content (`internal_attachments_get_content`)**: When registered, supplies a single admin-configured file
-  as a tool attachment after list-then-get-content; see `docs/designs/lazy_admin_context_attachment.md`.
+  as a tool attachment after list-then-get-content; see `docs/designs/pass_attachments_to_orchestrator.md`.
 
 ---
 
