@@ -64,9 +64,15 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Use only async version")
 
-    async def arun(self, tool_call_id: str, *args: Any, **kwargs: Any) -> ToolCallResult:
+    async def arun(
+        self,
+        tool_call_id: str,
+        *args: Any,
+        suppress_stage: bool = False,
+        **kwargs: Any,
+    ) -> ToolCallResult:
         display = self._tool_config.display
-        if display and display.stage and not display.stage.show:
+        if suppress_stage or (display and display.stage and not display.stage.show):
             return await self._run_in_stage_report_success(tool_call_id, None, *args, **kwargs)
 
         stage_wrapper = self.__stage_wrapper_builder.build(
