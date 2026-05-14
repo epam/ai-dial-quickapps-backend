@@ -1,6 +1,4 @@
-"""
-Prefetch orchestrator deployment metadata for each chat completion.
-"""
+"""Prefetch orchestrator deployment metadata for each chat completion."""
 
 import logging
 
@@ -45,7 +43,7 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
             )
         self._capabilities = OrchestratorCapabilities(deployment=model)
         logger.debug(
-            "Orchestrator deployment capabilities loaded for id=%s input_attachment_types=%s",
+            "Orchestrator deployment capabilities loaded id=%s input_attachment_types=%s",
             self._capabilities.deployment_id,
             self._capabilities.input_attachment_types,
         )

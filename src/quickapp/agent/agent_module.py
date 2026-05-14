@@ -97,7 +97,6 @@ class AgentModule(Module):
     def _provide_completion_initializers(
         self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
     ) -> list[CompletionInitializer]:
-        # Runs before Dial/MCP completion initializers (AgentModule is first in AppFactory).
         return [initializer_provider.get()]
 
     @provider

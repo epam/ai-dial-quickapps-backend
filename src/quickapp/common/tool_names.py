@@ -1,7 +1,7 @@
 """Canonical OpenAI function names for internal QuickApp tools (sent to the LLM).
 
-Keep this module free of heavy imports; other modules import names from here for
-identity checks, wiring, and drift-sensitive tooling (see ``dump_internal_tools.py``).
+Kept free of heavy imports so it can be cited from identity checks anywhere in the tree
+without pulling in DI or config.
 """
 
 # Attachment processing / lazy context
