@@ -2,12 +2,15 @@ import copy
 
 from aidial_sdk.chat_completion.request import StaticTool
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, multiprovider, provider, singleton, ProviderOf
+from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_initializer import _OrchestratorInitializer, _OrchestratorDefaultToolsContext
+from quickapp.agent._orchestrator_initializer import (
+    _OrchestratorDefaultToolsContext,
+    _OrchestratorInitializer,
+)
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
@@ -71,7 +74,11 @@ class AgentModule(Module):
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
         binder.bind(_OrchestratorInitializer, to=_OrchestratorInitializer, scope=request_scope)
-        binder.bind(_OrchestratorDefaultToolsContext, to=_OrchestratorDefaultToolsContext, scope=request_scope)
+        binder.bind(
+            _OrchestratorDefaultToolsContext,
+            to=_OrchestratorDefaultToolsContext,
+            scope=request_scope,
+        )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
 
@@ -99,7 +106,9 @@ class AgentModule(Module):
         return azure_client
 
     @multiprovider
-    def provide_openai_tools(self, tools: list[StagedBaseTool], default_tools: list[StaticTool]) -> list[OpenAiToolConfigDict]:
+    def provide_openai_tools(
+        self, tools: list[StagedBaseTool], default_tools: list[StaticTool]
+    ) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
             if issubclass(type(tool.tool_config), BaseOpenAITool):
@@ -110,12 +119,14 @@ class AgentModule(Module):
                 ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
-        for tool in default_tools:
-            openai_functions.append(tool.model_dump(mode="json", exclude_none=True))
+        for default_tool in default_tools:
+            openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
 
     @multiprovider
-    def provide_default_tools(self, orchestrator_default_tools_context: _OrchestratorDefaultToolsContext) -> list[StaticTool]:
+    def provide_default_tools(
+        self, orchestrator_default_tools_context: _OrchestratorDefaultToolsContext
+    ) -> list[StaticTool]:
         return orchestrator_default_tools_context.default_tools
 
     @staticmethod
@@ -168,6 +179,6 @@ class AgentModule(Module):
 
     @multiprovider
     def __provide_initializers(
-            self, initializer_provider: ProviderOf[_OrchestratorInitializer]
+        self, initializer_provider: ProviderOf[_OrchestratorInitializer]
     ) -> list[CompletionInitializer]:
         return [initializer_provider.get()]

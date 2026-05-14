@@ -3,7 +3,7 @@ import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Choice
-from aidial_sdk.chat_completion.request import Message, StaticTool
+from aidial_sdk.chat_completion.request import Message
 from injector import inject
 from openai import AsyncStream
 from openai.types.chat import ChatCompletionChunk

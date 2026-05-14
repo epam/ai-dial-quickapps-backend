@@ -8,6 +8,7 @@ from aidial_sdk.chat_completion.request import StaticTool
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
+from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
@@ -28,7 +29,6 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
-from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
@@ -70,8 +70,10 @@ class ToolConfigCoreService:
         return self.__dial_client_provider.get()
 
     @staticmethod
-    def _parse_default_tools_from_info(deployment: Deployment) -> list[StaticTool]:
-        """Extract and parse defaults.tools from deployment info into request-shape dicts.
+    def _parse_default_tools_from_info(
+        deployment: Deployment | Application,
+    ) -> list[StaticTool]:
+        """Extract and parse defaults.tools from deployment or application info.
 
         Supports type == "static_function"; other types are skipped with a debug log.
         Returns empty list if defaults or defaults.tools are missing.
@@ -109,17 +111,18 @@ class ToolConfigCoreService:
         dial_client = self._resolve_dial_client(None)
 
         async def loader(deployment_id: str) -> list[StaticTool] | None:
-            deployment_info = await self._fetch_deployment_or_application(dial_client, deployment_id)
+            deployment_info = await self._fetch_deployment_or_application(
+                dial_client, deployment_id
+            )
             default_tools = ToolConfigCoreService._parse_default_tools_from_info(deployment_info)
             return default_tools
-
 
         value = await self.__cache.get(deployment, loader, deployment)
         return value if value is not None else []
 
     @staticmethod
     async def _fetch_deployment_or_application(
-            dial_client: AsyncDial, deployment: str
+        dial_client: AsyncDial, deployment: str
     ) -> Deployment | Application:
         deployment_model: Deployment | None = None
         application_model: Application | None = None

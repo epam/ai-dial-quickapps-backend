@@ -23,6 +23,7 @@ from aidial_client.types.toolset import ToolsetInfo
 from injector import ProviderOf
 from pydantic import SecretStr
 
+from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
@@ -132,6 +133,7 @@ def _tool_config_service(client: AsyncDial) -> ToolConfigCoreService:
         dial_settings=_dial_settings(),
         dial_client_provider=_provider(client),
         timeout_resolver_provider=noop_timeout_resolver_provider(),
+        cache=OrchestratorDefaultToolsCacheService(),
     )
 
 
@@ -222,6 +224,7 @@ class TestToolConfigServiceHttpCalls:
             dial_settings=_dial_settings(),
             dial_client_provider=provider,
             timeout_resolver_provider=noop_timeout_resolver_provider(),
+            cache=OrchestratorDefaultToolsCacheService(),
         )
         result = await svc.get_basic_tool_config("test-model", api_key=SecretStr(API_KEY))
 

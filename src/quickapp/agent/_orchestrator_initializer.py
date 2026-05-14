@@ -1,5 +1,3 @@
-from typing import Any
-
 from aidial_sdk.chat_completion.request import StaticTool
 from injector import inject
 
@@ -17,6 +15,7 @@ class _OrchestratorDefaultToolsContext:
     def default_tools(self) -> list[StaticTool]:
         return self._default_tools
 
+
 @inject
 class _OrchestratorInitializer(CompletionInitializer):
     def __init__(
@@ -33,5 +32,6 @@ class _OrchestratorInitializer(CompletionInitializer):
 
     async def initialize(self) -> None:
         orchestrator = self.__app_config.orchestrator.deployment.deployment_id
-        self.__orchestrator_default_tools_context.default_tools.extend(await self.__tool_config_service.get_default_tools_for_deployment(orchestrator))
-
+        self.__orchestrator_default_tools_context.default_tools.extend(
+            await self.__tool_config_service.get_default_tools_for_deployment(orchestrator)
+        )

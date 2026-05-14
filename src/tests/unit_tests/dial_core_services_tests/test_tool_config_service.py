@@ -5,6 +5,7 @@ import pytest
 from aidial_client import DialException, ToolsetInfo
 from pydantic import SecretStr
 
+from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.dial_core_services.exceptions import (
@@ -51,6 +52,7 @@ def _make_service(dial_client: MagicMock) -> ToolConfigCoreService:
         dial_settings=_make_dial_settings(),
         dial_client_provider=provider,
         timeout_resolver_provider=noop_timeout_resolver_provider(),
+        cache=OrchestratorDefaultToolsCacheService(),
     )
 
 
@@ -129,6 +131,7 @@ class TestGetBasicToolConfig:
             dial_settings=_make_dial_settings(),
             dial_client_provider=provider,
             timeout_resolver_provider=noop_timeout_resolver_provider(),
+            cache=OrchestratorDefaultToolsCacheService(),
         )
 
         with patch(

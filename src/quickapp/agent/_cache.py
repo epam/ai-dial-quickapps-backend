@@ -1,12 +1,10 @@
-from typing import Any
+from aidial_sdk.chat_completion.request import StaticTool
 
-from aidial_client.types.deployment import Deployment
-
-from quickapp.common.cache import CacheService, LONG_CACHE_TTL
+from quickapp.common.cache import LONG_CACHE_TTL, CacheService
 
 
-class OrchestratorDefaultToolsCacheService(CacheService[list[dict[str, Deployment]]]):
-    """Cache for deployment default tools (list of request-shape dicts). Keyed by deployment name."""
+class OrchestratorDefaultToolsCacheService(CacheService[list[StaticTool]]):
+    """Cache for deployment default tools (parsed StaticTool list). Keyed by deployment name."""
 
     def __init__(self, ttl: float = LONG_CACHE_TTL) -> None:
         super().__init__(ttl=ttl)
