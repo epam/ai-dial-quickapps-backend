@@ -5,7 +5,7 @@ from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.common.staged_base_tool import StagedBaseTool, StageLevel
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
@@ -40,5 +40,5 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
             )
             return None
         arguments = await self.get_arguments()
-        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, suppress_stage=True, **arguments)
+        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=StageLevel.SYSTEM, **arguments)
         return result.content
