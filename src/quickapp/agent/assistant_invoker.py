@@ -24,7 +24,6 @@ class AssistantInvoker:
     def __init__(
         self,
         tools: list[OpenAiToolConfigDict],
-        default_tools: list[StaticTool],
         config: ApplicationConfig,
         messages: list[Message],
         choice: Choice,
@@ -40,7 +39,6 @@ class AssistantInvoker:
         self.__choice: Choice = choice
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
-        self.__default_tools: list[StaticTool] = default_tools
         self.__azure_client = azure_client
         self.__response_format = response_format
         self.__presentation_settings = presentation_settings
@@ -48,8 +46,7 @@ class AssistantInvoker:
         self.__forwarded_headers = forwarded_headers
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        merged_tools: list[OpenAiToolConfigDict | StaticTool] = self.__tools + self.__default_tools
-        completion_config = self.__prepare_chat_completion_config(tools=merged_tools)
+        completion_config = self.__prepare_chat_completion_config(tools=self.__tools)
         return await self.__create_chat_completion(completion_config)
 
     def __prepare_chat_completion_config(

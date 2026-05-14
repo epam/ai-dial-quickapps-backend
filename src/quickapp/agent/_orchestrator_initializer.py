@@ -32,6 +32,6 @@ class _OrchestratorInitializer(CompletionInitializer):
         self.__orchestrator_default_tools_context = orchestrator_default_tools_context
 
     async def initialize(self) -> None:
-        orchestrator = self.__app_config.orchestrator.deployment.name
+        orchestrator = self.__app_config.orchestrator.deployment.deployment_id
         self.__orchestrator_default_tools_context.default_tools.extend(await self.__tool_config_service.get_default_tools_for_deployment(orchestrator))
 

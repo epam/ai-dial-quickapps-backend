@@ -2,7 +2,7 @@ import copy
 
 from aidial_sdk.chat_completion.request import StaticTool
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, multiprovider, provider, singleton, ProviderOf
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
@@ -23,6 +23,7 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
@@ -98,7 +99,7 @@ class AgentModule(Module):
         return azure_client
 
     @multiprovider
-    def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
+    def provide_openai_tools(self, tools: list[StagedBaseTool], default_tools: list[StaticTool]) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
             if issubclass(type(tool.tool_config), BaseOpenAITool):
@@ -109,6 +110,8 @@ class AgentModule(Module):
                 ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
+        for tool in default_tools:
+            openai_functions.append(tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
 
     @multiprovider
@@ -162,3 +165,9 @@ class AgentModule(Module):
         config_prompt: ConfigBasedPromptProvider,
     ) -> list[PromptPartProvider]:
         return [config_prompt]
+
+    @multiprovider
+    def __provide_initializers(
+            self, initializer_provider: ProviderOf[_OrchestratorInitializer]
+    ) -> list[CompletionInitializer]:
+        return [initializer_provider.get()]
