@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Any
 from urllib.parse import unquote
 
@@ -14,6 +13,7 @@ from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
@@ -173,7 +173,7 @@ class _PyInterpreterTool(StagedBaseTool):
 
         # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
-            target_path = unquote(os.path.basename(file_name))
+            target_path = unquote(posix_path_last_segment(file_name))
 
             if target_path in loaded_file_names:
                 continue
@@ -210,7 +210,7 @@ class _PyInterpreterTool(StagedBaseTool):
             if not matched:
                 logger.warning("No matching attachment found for: %s", file_name)
                 errors.append(
-                    f"{unquote(os.path.basename(file_name))}: "
+                    f"{unquote(posix_path_last_segment(file_name))}: "
                     f"no matching attachment found in conversation"
                 )
 

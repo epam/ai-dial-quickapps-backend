@@ -1,3 +1,4 @@
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -10,7 +11,7 @@ from quickapp.config.tools.internal import InternalTool
 AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="internal_attachments_available_context",
+            name=INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
             description=(
                 "Returns metadata about admin-configured context files."
                 " **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
@@ -27,4 +28,4 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
 )
 
 # Tool name as sent to the LLM (sanitized, no hash)
-AVAILABLE_CONTEXT_TOOL_NAME = AVAILABLE_CONTEXT_TOOL_CONFIG.open_ai_tool.function.name
+AVAILABLE_CONTEXT_TOOL_NAME = INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME

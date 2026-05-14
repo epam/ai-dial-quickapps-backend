@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import AsyncIterable, AsyncIterator, Callable
 from typing import TypeAlias, TypeVar
 
