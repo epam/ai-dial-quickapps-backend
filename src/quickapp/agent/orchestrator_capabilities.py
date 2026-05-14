@@ -7,11 +7,9 @@ from quickapp.common.utils import matches_type
 class OrchestratorCapabilities:
     """Request-scoped DialCore metadata for the orchestrator deployment.
 
-    Constructed with a populated :class:`Deployment` or :class:`Application`;
-    production instances are built by
-    :class:`quickapp.agent._OrchestratorDeploymentInitializer` once per chat
-    completion and exposed via the ``provide_orchestrator_capabilities`` DI
-    provider in :class:`AgentModule`.
+    Wraps a populated :class:`Deployment` or :class:`Application`; production
+    instances are built once per chat completion and exposed via DI from
+    :class:`AgentModule`.
     """
 
     def __init__(self, deployment: Deployment | Application) -> None:

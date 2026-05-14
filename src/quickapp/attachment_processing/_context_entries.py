@@ -9,6 +9,7 @@ from quickapp.common.tool_names import (
     INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
     INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
 )
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.context import Context, FileContextConfig
 
 context_tool_names = frozenset(
@@ -62,7 +63,7 @@ def build_context_entries(
         if url in current_urls:
             continue
         current_urls.add(url)
-        title = url.rsplit("/", 1)[-1]
+        title = posix_path_last_segment(url)
         mime_type = mimetypes.guess_type(title)[0] or ""
         if url not in seen_entries:
             status = ContextEntryStatus.new

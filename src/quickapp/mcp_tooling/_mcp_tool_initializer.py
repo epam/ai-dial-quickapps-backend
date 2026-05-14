@@ -13,7 +13,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
-from quickapp.common.utils import sanitize_toolname
+from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -45,8 +45,7 @@ def _human_readable_dial_id(dial_id: str) -> str:
     E.g. 'toolsets/684f6.../TestMCP__0.0.1' or 'toolsets/TestMCP__0.0.1' -> 'TestMCP__0.0.1'.
     URL-decodes the result to convert %20 to spaces and other encoded characters.
     """
-    last_part = dial_id.split("/")[-1] if "/" in dial_id else dial_id
-    return unquote(last_part)
+    return unquote(posix_path_last_segment(dial_id))
 
 
 def _flatten_exceptions(exc: BaseException) -> list[BaseException]:
