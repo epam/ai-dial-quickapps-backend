@@ -74,13 +74,11 @@ class TestListFiles:
         entries = [
             FolderEntry(
                 url="files/appbucket/reports/summary.md",
-                name="summary.md",
                 is_folder=False,
                 size=1234,
             ),
             FolderEntry(
                 url="files/appbucket/reports/images/",
-                name="images",
                 is_folder=True,
                 size=None,
             ),
@@ -96,7 +94,6 @@ class TestListFiles:
         entries = [
             FolderEntry(
                 url="files/other/uploads/notes.txt",
-                name="notes.txt",
                 is_folder=False,
                 size=42,
             ),

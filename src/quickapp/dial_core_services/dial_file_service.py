@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 from typing import Literal
 
 from aidial_client import AsyncDial
-from aidial_client._exception import EtagMismatchError, ResourceNotFoundError
+from aidial_client._exception import ResourceNotFoundError
 from aidial_client._internal_types._http_request import FinalRequestOptions
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
@@ -20,7 +20,6 @@ class FolderEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     url: str
-    name: str
     is_folder: bool
     size: int | None
 
@@ -144,14 +143,12 @@ class DialFileService:
             items: list[FileItem] = metadata.items or []
             for item in items:
                 is_folder = item.node_type == "FOLDER"
-                item_name = item.name or ""
                 item_url = item.url
                 if is_folder and not item_url.endswith("/"):
                     item_url = item_url + "/"
                 results.append(
                     FolderEntry(
                         url=item_url,
-                        name=item_name,
                         is_folder=is_folder,
                         size=item.content_length,
                     )
@@ -161,6 +158,9 @@ class DialFileService:
         return results
 
     async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+        # TODO: replace with public aidial_client.ops.copy once exposed upstream.
+        # aidial_client has no public wrapper for /v1/ops/resource/copy yet, so
+        # we reach into the internal http client.
         await self.__dial_client._http_client.request(
             cast_to=type(None),
             options=FinalRequestOptions(
@@ -175,6 +175,9 @@ class DialFileService:
         )
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+        # TODO: replace with public aidial_client.ops.move once exposed upstream.
+        # aidial_client has no public wrapper for /v1/ops/resource/move yet, so
+        # we reach into the internal http client.
         await self.__dial_client._http_client.request(
             cast_to=type(None),
             options=FinalRequestOptions(
@@ -203,12 +206,3 @@ class DialFileService:
                 "Failed to grant permissions to the files %s", files_to_share, exc_info=True
             )
             raise e
-
-
-# Re-export for service consumers
-__all__ = [
-    "DialFileService",
-    "FolderEntry",
-    "EtagMismatchError",
-    "ResourceNotFoundError",
-]

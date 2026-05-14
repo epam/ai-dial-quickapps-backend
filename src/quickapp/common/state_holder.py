@@ -14,7 +14,7 @@ class StateHolder(BaseModel):
     tool_calls: list[ToolCall] = Field(default_factory=list)
     _state: dict[str, Any] = PrivateAttr(default_factory=dict)
     _file_data_dict: dict[str, bytes] = PrivateAttr(default_factory=dict)
-    _file_metadata_dict: dict[str, Any] = PrivateAttr(default_factory=dict)
+    _file_metadata_dict: dict[str, FileMetadata] = PrivateAttr(default_factory=dict)
 
     def add_state(self, key: str, value: Any) -> None:
         logger.debug(f"Added state [{key}]={value}")

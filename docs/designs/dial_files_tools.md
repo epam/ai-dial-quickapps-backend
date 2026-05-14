@@ -1,6 +1,6 @@
 # Design: DIAL Files Tools
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-05-11
 - **Owner:** Andrii Novikov
 - **Supersedes:** [file_tools.md](file_tools.md)
