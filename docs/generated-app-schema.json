@@ -1678,6 +1678,20 @@
       "title": "JsonSchemaSimpleType",
       "type": "object"
     },
+    "LazyOnDemandAttachmentStrategy": {
+      "description": "Orchestrator receives admin/user files only on explicit\n``internal_attachments_get_content`` tool calls (not as default-prompt\nattachments). MIME gating uses the orchestrator deployment's\n``input_attachment_types`` from DialCore.",
+      "properties": {
+        "type": {
+          "const": "lazy_on_demand",
+          "default": "lazy_on_demand",
+          "description": "Strategy discriminator.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "LazyOnDemandAttachmentStrategy",
+      "type": "object"
+    },
     "MCPApiKeyAuthorization": {
       "properties": {
         "type": {
@@ -3016,6 +3030,19 @@
           "description": "When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
           "title": "Propagate Stages",
           "type": "boolean"
+        },
+        "attachment_strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LazyOnDemandAttachmentStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only).",
+          "x-preview": true
         }
       },
       "required": [

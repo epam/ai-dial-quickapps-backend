@@ -5,6 +5,19 @@
     "properties": {}
   },
   {
+    "name": "internal_attachments_get_content",
+    "description": "Loads one allowed attachment by URL for use in this turn. Pass the exact `url` string from the `internal_attachments_available_context` tool result (`entries[].url`) or from user `<attachments>` metadata in messages. Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. ",
+    "properties": {
+      "attachment_url": {
+        "type": "string",
+        "description": "Exact file `url` from `internal_attachments_available_context.entries[].url` or from user `<attachments>` section (same string, including path). "
+      }
+    },
+    "required": [
+      "attachment_url"
+    ]
+  },
+  {
     "name": "internal_skills_read_skill",
     "description": "Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you.",
     "properties": {

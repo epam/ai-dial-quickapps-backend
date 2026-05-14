@@ -8,6 +8,7 @@ from pydantic import SecretStr
 from pydantic.type_adapter import TypeAdapter
 
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
+from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.toolsets.toolset import ToolSet
@@ -19,6 +20,7 @@ file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
     "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
+    "lazy_admin_context": [],
 }
 
 
@@ -54,7 +56,12 @@ class TestConfig:
     FAILURE_MESSAGE = "Rerun locally the test with REFRESH=True to renew cached LLM responses"
 
     @classmethod
-    def create_app_configuration(cls, toolsets: list[ToolSet], model) -> ApplicationConfig:
+    def create_app_configuration(
+        cls,
+        toolsets: list[ToolSet],
+        model: str,
+        contexts: list[Context] | None = None,
+    ) -> ApplicationConfig:
         temperature = 0
         if "gemini" in model:
             template = "gemini_prompt"
@@ -73,20 +80,26 @@ class TestConfig:
                 ),
                 system_prompt=PredefinedSystemPromptConfig(template=template),
             ),
-            contexts=[],
+            contexts=list(contexts or []),
             tool_sets=toolsets,
         )
 
     @classmethod
-    def load_tools_config(cls, port: int, config_file_set: str = "e2e") -> list[ToolSet]:
-        files_list = file_sets.get(config_file_set)
+    def load_tools_config(
+        cls,
+        port: int,
+        config_file_set: str = "e2e",
+        include_rest_toolset: bool = True,
+    ) -> list[ToolSet]:
+        files_list = file_sets.get(config_file_set) or []
         tool_set_list: list[ToolSet] = []
         for file in files_list:
             file_path = Path(__file__).parent / f"{file}.json"
             data = json.loads(file_path.read_text())
-            tool_set = TypeAdapter(ToolSet).validate_python(data)
+            tool_set: ToolSet = TypeAdapter(ToolSet).validate_python(data)
             tool_set_list.append(tool_set)
-        tool_set_list.append(TestToolSetRest.get_rest_toolset(port=port))
+        if include_rest_toolset:
+            tool_set_list.append(TestToolSetRest.get_rest_toolset(port=port))
         return tool_set_list
 
     @classmethod
