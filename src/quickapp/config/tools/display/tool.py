@@ -1,4 +1,8 @@
-from pydantic import BaseModel, Field
+import logging
+
+from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class ToolStageConfig(BaseModel):
@@ -12,8 +16,17 @@ class ToolStageConfig(BaseModel):
     )
     show: bool = Field(
         default=True,
-        description="Whether the tool stage should be shown in the chat.",
+        description="Whether the tool stage should be shown in the chat. Deprecated: use stage_level=StageLevel.SYSTEM at the call site instead.",
     )
+
+    @model_validator(mode="after")
+    def _warn_if_show_false(self) -> "ToolStageConfig":
+        if not self.show:
+            logger.warning(
+                "display.stage.show=false is deprecated and will be removed in a future version. "
+                "Mark background tool calls with stage_level=StageLevel.SYSTEM at the call site instead."
+            )
+        return self
 
 
 class ToolDisplayConfig(BaseModel):
