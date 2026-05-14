@@ -16,6 +16,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.context import Context
 from quickapp.config.tools.internal import InternalTool
 
@@ -30,6 +31,7 @@ class _AvailableContextTool(StagedBaseTool):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         messages_mixin: MessagesMixin,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -37,6 +39,7 @@ class _AvailableContextTool(StagedBaseTool):
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
             **kwargs,
         )

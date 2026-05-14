@@ -10,6 +10,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.config.application import StageDisplayLevel
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
@@ -42,6 +43,7 @@ class _MCPTool(StagedBaseTool):
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -51,6 +53,7 @@ class _MCPTool(StagedBaseTool):
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"

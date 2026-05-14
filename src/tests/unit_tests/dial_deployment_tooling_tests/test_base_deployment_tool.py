@@ -21,6 +21,7 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 
@@ -90,6 +91,7 @@ def _build_tool(
         messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
     )
 
 
@@ -384,6 +386,7 @@ def _build_tool_with_config(
         messages_mixin=_make_messages_mixin(messages or []),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
     )
 
 

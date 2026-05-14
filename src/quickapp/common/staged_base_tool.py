@@ -35,7 +35,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         perf_timer: PerformanceTimer,
         tool_config: _BaseToolConfig,
-        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
+        stage_display_level: StageDisplayLevel,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs,
     ):
