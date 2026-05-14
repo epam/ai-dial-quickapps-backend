@@ -138,11 +138,7 @@ class DialFileService:
         queue: deque[tuple[str, int]] = deque([(folder_url, 1)])
         while queue:
             current_url, depth = queue.popleft()
-            # TODO: update aidial-client lib after fix and remove this query hack
-            # aidial_client._http_client._prepare_url rstrips trailing '/' from
-            # the path, but DIAL Core needs it to distinguish folder from file.
-            # Appending a no-op query keeps the slash intact through rstrip.
-            metadata = await self.__dial_client.metadata.get("files", f"{current_url}?_=1")
+            metadata = await self.__dial_client.metadata.get("files", current_url)
             if metadata.node_type != "FOLDER":
                 raise ValueError(f"not a folder: {current_url}")
             items: list[FileItem] = metadata.items or []
