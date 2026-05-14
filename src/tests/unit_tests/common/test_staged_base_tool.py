@@ -8,6 +8,8 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.staged_base_tool import StageLevel
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
@@ -21,6 +23,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
         result_to_return: ToolCallResult | None = None,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,
@@ -28,6 +31,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
             name="Test Tool",
             description="A test tool",
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
         )
         self._result_to_return = result_to_return
 
@@ -35,6 +39,21 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         if self._result_to_return is not None:
             return self._result_to_return
         return ToolCallResult(content="response content", content_type="application/json")
+
+
+def _make_tool_config(show: bool | None = None) -> Mock:
+    """Create a tool config mock. show=None means display=None (unset)."""
+    mock_config = Mock(spec=AnyTool)
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    if show is None:
+        mock_config.display = None
+    else:
+        mock_stage = Mock()
+        mock_stage.show = show
+        mock_display = Mock()
+        mock_display.stage = mock_stage
+        mock_config.display = mock_display
+    return mock_config
 
 
 @pytest.fixture
@@ -229,3 +248,42 @@ async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
     # Propagation check uses the substituted type, which matches propagate_types_to_choice
     assert len(result.propagate_to_choice) == 1
     assert result.propagate_to_choice[0].type == "application/custom"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "display_level,call_level,show,expect_suppressed",
+    [
+        (StageDisplayLevel.ERRORS, StageLevel.ERROR, None, False),
+        (StageDisplayLevel.ERRORS, StageLevel.USER, None, True),
+        (StageDisplayLevel.ERRORS, StageLevel.SYSTEM, None, True),
+        (StageDisplayLevel.INFO, StageLevel.ERROR, None, False),
+        (StageDisplayLevel.INFO, StageLevel.USER, None, False),
+        (StageDisplayLevel.INFO, StageLevel.USER, False, True),
+        (StageDisplayLevel.INFO, StageLevel.SYSTEM, None, True),
+        (StageDisplayLevel.DEBUG, StageLevel.USER, False, False),
+    ],
+)
+async def test_suppression_truth_table(display_level, call_level, show, expect_suppressed):
+    mock_stage_wrapper = Mock(spec=BaseStageWrapper)
+    mock_stage_wrapper.name = "test_stage"
+    mock_stage_wrapper.add_parameters = Mock()
+    mock_stage_wrapper.__enter__ = Mock(return_value=mock_stage_wrapper)
+    mock_stage_wrapper.__exit__ = Mock(return_value=False)
+
+    factory = Mock()
+    factory.build = Mock(return_value=mock_stage_wrapper)
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=factory,
+        tool_config=_make_tool_config(show),
+        perf_timer=Mock(),
+        stage_display_level=display_level,
+    )
+
+    await tool.arun("call-id", stage_level=call_level)
+
+    if expect_suppressed:
+        factory.build.assert_not_called()
+    else:
+        factory.build.assert_called_once()
