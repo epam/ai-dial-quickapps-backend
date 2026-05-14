@@ -24,8 +24,7 @@ class ToolStageConfig(BaseModel):
     def _warn_if_show_false(self) -> "ToolStageConfig":
         if not self.show:
             logger.warning(
-                "display.stage.show=false is deprecated and will be removed in a future version. "
-                "Mark background tool calls with stage_level=StageLevel.SYSTEM at the call site instead."
+                "display.stage.show=false is deprecated and will be removed in a future version."
             )
         return self
 
