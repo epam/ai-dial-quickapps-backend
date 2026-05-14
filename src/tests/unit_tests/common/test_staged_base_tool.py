@@ -262,20 +262,13 @@ async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
         (StageDisplayLevel.INFO, StageLevel.USER, False, True),
         (StageDisplayLevel.INFO, StageLevel.SYSTEM, None, True),
         (StageDisplayLevel.DEBUG, StageLevel.USER, False, False),
+        (StageDisplayLevel.DEBUG, StageLevel.ERROR, None, False),
+        (StageDisplayLevel.DEBUG, StageLevel.SYSTEM, None, False),
     ],
 )
-async def test_suppression_truth_table(display_level, call_level, show, expect_suppressed):
-    mock_stage_wrapper = Mock(spec=BaseStageWrapper)
-    mock_stage_wrapper.name = "test_stage"
-    mock_stage_wrapper.add_parameters = Mock()
-    mock_stage_wrapper.__enter__ = Mock(return_value=mock_stage_wrapper)
-    mock_stage_wrapper.__exit__ = Mock(return_value=False)
-
-    factory = Mock()
-    factory.build = Mock(return_value=mock_stage_wrapper)
-
+async def test_suppression_truth_table(display_level, call_level, show, expect_suppressed, mock_stage_wrapper_factory):
     tool = CustomTestStagedBaseTool(
-        stage_wrapper_builder=factory,
+        stage_wrapper_builder=mock_stage_wrapper_factory,
         tool_config=_make_tool_config(show),
         perf_timer=Mock(),
         stage_display_level=display_level,
@@ -284,6 +277,6 @@ async def test_suppression_truth_table(display_level, call_level, show, expect_s
     await tool.arun("call-id", stage_level=call_level)
 
     if expect_suppressed:
-        factory.build.assert_not_called()
+        mock_stage_wrapper_factory.build.assert_not_called()
     else:
-        factory.build.assert_called_once()
+        mock_stage_wrapper_factory.build.assert_called_once()
