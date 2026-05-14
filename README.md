@@ -104,6 +104,26 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+### Stage display level
+
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
+
+| Value | Behavior |
+|---|---|
+| `errors` | Show stages only for failed tool calls |
+| `info` | Show stages for regular tool calls and errors (default) |
+| `debug` | Show stages for all tool calls, including internal/system ones |
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "debug"
+    }
+  }
+}
+```
+
 ### Environment Variables
 
 | Variable                                   | Default                    | Required | Description                                                                                                  |
