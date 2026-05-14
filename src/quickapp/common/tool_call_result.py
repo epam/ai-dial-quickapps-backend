@@ -1,4 +1,3 @@
-import json
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
@@ -33,15 +32,9 @@ class ToolCallResult(BaseModel):
 
 
 def _infer_content_type_from_tool_body(content: str) -> str:
-    stripped = content.strip()
-    if not stripped:
-        return "text/plain"
+    stripped = content.lstrip()
     if stripped[:1] in "{[":
-        try:
-            json.loads(stripped)
-            return "application/json"
-        except json.JSONDecodeError:
-            pass
+        return "application/json"
     return "text/plain"
 
 
