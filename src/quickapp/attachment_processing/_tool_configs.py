@@ -8,10 +8,12 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
+AVAILABLE_CONTEXT_TOOL_NAME = INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME
+
 AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+            name=AVAILABLE_CONTEXT_TOOL_NAME,
             description=(
                 "Returns metadata about admin-configured context files."
                 " **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
@@ -26,6 +28,3 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Available context")),
 )
-
-# Tool name as sent to the LLM (sanitized, no hash)
-AVAILABLE_CONTEXT_TOOL_NAME = INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME

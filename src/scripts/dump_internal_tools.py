@@ -8,8 +8,6 @@
 #   python dump_internal_tools.py docs/generated-internal-tools.json
 #   python dump_internal_tools.py docs/generated-internal-tools.json --check
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os
@@ -17,6 +15,7 @@ import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
 
 if __name__ == "__main__":
     from utils import add_src_to_system_path, load_env
@@ -30,18 +29,27 @@ from fastapi_injector import RequestScopeFactory, RequestScopeOptions, attach_in
 from injector import Injector
 from pydantic import SecretStr
 
+from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.app_factory import AppFactory
 from quickapp.application._request_context import _RequestContext
 from quickapp.common import StagedBaseTool
 from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
+from quickapp.config.tools.const import ALL_MIME_TYPES
+
+
+def _set_env_if_empty(name: str, value: str) -> None:
+    if not os.getenv(name):
+        os.environ[name] = value
 
 
 def build_dump_application_config() -> ApplicationConfig:
-    """Synthetic config so gated multiproviders (e.g. timestamp) materialize tools."""
+    """Synthetic config so gated multiproviders (e.g. timestamp, lazy_on_demand) materialize tools."""
     return ApplicationConfig(
         orchestrator=OrchestratorConfig(
             deployment=DialDeploymentConfig(
@@ -53,6 +61,7 @@ def build_dump_application_config() -> ApplicationConfig:
                 content="dump-internal-tools",
                 variables={},
             ),
+            attachment_strategy=LazyOnDemandAttachmentStrategy(),
         ),
         contexts=[
             FileContextConfig(
@@ -111,7 +120,10 @@ def _stable_manifest(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
     # Minimal DIAL URL so `DialSettings` and dependents validate without a real deployment.
-    os.environ.setdefault("DIAL_URL", "http://dump-internal-tools.invalid")
+    _set_env_if_empty("DIAL_URL", "http://dump-internal-tools.invalid")
+    # load_env can inject empty auth vars; set deterministic non-empty fallbacks.
+    _set_env_if_empty("OPENAI_API_KEY", "dump-internal-tools")
+    _set_env_if_empty("OPENAI_ADMIN_KEY", "dump-internal-tools")
 
     modules = AppFactory.build_di_modules()
     injector = Injector(modules)
@@ -127,6 +139,15 @@ async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
         ctx.application_config = build_dump_application_config()
         # Non-empty: ``MessagesMixin.messages`` treats ``[]`` as unset (falsy guard).
         ctx.messages = [Message(role=Role.USER, content="dump-internal-tools")]
+
+        # The manifest dump doesn't run completion initializers, so the orchestrator
+        # initializer never fetches real deployment metadata. Inject a stub Deployment
+        # so ``should_enable_get_content_tool`` can exercise MIME-gated registration.
+        stub_capabilities = OrchestratorCapabilities(
+            deployment=MagicMock(id="dump-internal-tools", input_attachment_types=[ALL_MIME_TYPES])
+        )
+        initializer = injector.get(_OrchestratorDeploymentInitializer)
+        initializer._capabilities = stub_capabilities
 
         for mod in modules:
             for provider in _iter_staged_tool_providers(mod):

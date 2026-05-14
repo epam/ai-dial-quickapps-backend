@@ -36,10 +36,10 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
 def posix_path_last_segment(path: str) -> str:
     """Return the final segment of a POSIX-style path (``/`` separators only).
 
-    For DIAL ``files/...`` URLs and similar strings; uses :class:`pathlib.PurePosixPath`
-    instead of :func:`os.path.basename` so behavior does not depend on OS path rules.
-    Trailing slashes are normalized away by ``pathlib`` (e.g. ``files/bucket/`` →
-    segment ``bucket``). If ``.name`` is empty, returns the stripped path as a fallback.
+    For DIAL ``files/...`` URLs and similar strings; uses :class:`pathlib.PurePosixPath` instead of
+    :func:`os.path.basename` so behavior does not depend on OS path rules. Trailing slashes are
+    normalized away by ``pathlib`` (e.g. ``files/bucket/`` → segment ``bucket``). If ``.name`` is
+    empty, returns the stripped path as a fallback.
     """
     stripped = path.strip()
     name = PurePosixPath(stripped).name

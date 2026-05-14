@@ -5,7 +5,7 @@ from typing import Any
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
-from openai import AsyncStream
+from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.agent.agent_settings import AgentSettings
@@ -13,7 +13,9 @@ from quickapp.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.common import ORCHESTRATOR_AZURE_CLIENT, RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -33,6 +35,8 @@ class AssistantInvoker:
         presentation_settings: PresentationSettings,
         agent_settings: AgentSettings,
         forwarded_headers: ForwardedHeaders,
+        chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy],
+        deferred_stage_close_registry: DeferredStageCloseRegistry,
     ) -> None:
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__messages: list[Message] = messages
@@ -44,6 +48,12 @@ class AssistantInvoker:
         self.__presentation_settings = presentation_settings
         self.__agent_settings = agent_settings
         self.__forwarded_headers = forwarded_headers
+        self.__chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy] = (
+            chat_completion_recovery_policies
+        )
+        self.__deferred_stage_close_registry: DeferredStageCloseRegistry = (
+            deferred_stage_close_registry
+        )
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
         completion_config = self.__prepare_chat_completion_config()
@@ -93,16 +103,36 @@ class AssistantInvoker:
         self, completion_config: dict[str, Any]
     ) -> AsyncStream[ChatCompletionChunk]:
         try:
-            chat_completion = await self.__azure_client.chat.completions.create(**completion_config)
+            return await self.__azure_client.chat.completions.create(**completion_config)
+        except (BadRequestError, APIError) as e:
+            recovered = False
+            for policy in self.__chat_completion_recovery_policies:
+                if policy.try_recover(self.__messages, e):
+                    recovered = True
+            if not recovered:
+                logger.exception(
+                    "Chat completion rejected with BadRequest/APIError; recovery did not apply"
+                )
+                raise
+            self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(
+                self.__messages
+            )
+            completion_config = self.__prepare_chat_completion_config()
+            try:
+                return await self.__azure_client.chat.completions.create(**completion_config)
+            except Exception:
+                logger.exception(
+                    "Error during chat completion after BadRequest/APIError recovery retry"
+                )
+                raise
         except Exception:
             logger.exception("Error during chat completion")
             raise
-        return chat_completion
 
     def _log_messages(self, messages: list[Message]):
         preview_len = self.__agent_settings.chat_message_log_length
         for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg.dict(), idx, preview_len=preview_len)
+            format_openai_message_pipe_tree(msg.model_dump(), idx, preview_len=preview_len)
 
     def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         transformed_messages = messages

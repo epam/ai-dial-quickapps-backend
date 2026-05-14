@@ -1,0 +1,62 @@
+from aidial_sdk.chat_completion import Attachment, Message, Role
+from injector import inject
+
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.attachment_processing_utils import (
+    collect_get_content_allowed_urls,
+    normalize_attachment_url_argument,
+)
+from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig
+
+
+@inject
+class _GetContentKeepPolicy(ToolAttachmentKeepPolicy):
+    """Keep an attachment when it belongs to an ``internal_attachments_get_content``
+    TOOL message and its URL/MIME pass the request-allowed admin/user gate."""
+
+    def __init__(
+        self,
+        app_config: ApplicationConfig,
+        orchestrator_capabilities: OrchestratorCapabilities,
+    ) -> None:
+        self.__app_config: ApplicationConfig = app_config
+        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__allowed_urls: set[str] = set()
+        self.__get_content_tool_indices: set[int] = set()
+
+    def prepare(self, messages: list[Message]) -> None:
+        self.__get_content_tool_indices = {
+            i
+            for i, msg in enumerate(messages)
+            if msg.role == Role.TOOL
+            and tool_function_name_for_tool_message(messages, i)
+            == INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+        }
+        if self.__get_content_tool_indices:
+            self.__allowed_urls = collect_get_content_allowed_urls(
+                contexts=self.__app_config.contexts,
+                messages=messages,
+                input_attachment_types=self.__orchestrator_capabilities.input_attachment_types,
+            )
+        else:
+            self.__allowed_urls = set()
+
+    def should_keep(
+        self,
+        messages: list[Message],
+        message_index: int,
+        attachment: Attachment,
+    ) -> bool:
+        if message_index not in self.__get_content_tool_indices:
+            return False
+        if not attachment.url or not str(attachment.url).strip().startswith("files/"):
+            return False
+        normalized = normalize_attachment_url_argument(str(attachment.url))
+        if normalized not in self.__allowed_urls:
+            return False
+        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(attachment.type):
+            return False
+        return True

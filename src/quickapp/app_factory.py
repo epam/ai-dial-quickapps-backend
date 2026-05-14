@@ -19,6 +19,9 @@ from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkil
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
+    LazyOnDemandStrategyModule,
+)
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.skills.skills_module import SkillsModule
@@ -47,6 +50,7 @@ class AppFactory:
             DialCoreServicesModule(),
             FileTransferModule(),
             AttachmentProcessingModule(),
+            LazyOnDemandStrategyModule(),
             SkillsModule(),
             DialPromptSkillsModule(),
             TimestampModule(),

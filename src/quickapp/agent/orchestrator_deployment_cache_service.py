@@ -5,9 +5,8 @@ from quickapp.common.cache import CacheService
 
 
 class OrchestratorDeploymentCacheService(CacheService[Deployment | Application]):
-    """Cache for orchestrator deployment metadata.
-
-    Held separately from :class:`DialDeploymentToolCacheService` so that orchestrator
-    capability lookups can evict independently of deployment-tool config caching, and
-    so neither path can starve the other on TTL renewal.
+    """
+    Cross-request cache for raw DialCore deployment/application models used by the
+    orchestrator path. Keys and instance are independent of
+    :class:`quickapp.dial_deployment_tooling._di_types.DialDeploymentToolCacheService`.
     """

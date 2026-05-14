@@ -8,9 +8,13 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
+    GET_CONTENT_TOOL_CONFIG,
+)
 
 
 class CustomTestStagedBaseTool(StagedBaseTool):
@@ -20,6 +24,7 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
+        deferred_stage_close_registry: DeferredStageCloseRegistry | None = None,
         result_to_return: ToolCallResult | None = None,
     ):
         super().__init__(
@@ -28,10 +33,15 @@ class CustomTestStagedBaseTool(StagedBaseTool):
             name="Test Tool",
             description="A test tool",
             perf_timer=perf_timer,
+            deferred_stage_close_registry=(
+                deferred_stage_close_registry or DeferredStageCloseRegistry()
+            ),
         )
         self._result_to_return = result_to_return
 
-    async def _run_in_stage_async(self, stage_wrapper, *args: Any, **kwargs: Any) -> ToolCallResult:
+    async def _run_in_stage_async(
+        self, stage_wrapper, tool_call_id: str | None, *args: Any, **kwargs: Any
+    ) -> ToolCallResult:
         if self._result_to_return is not None:
             return self._result_to_return
         return ToolCallResult(content="response content", content_type="application/json")
@@ -229,3 +239,22 @@ async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
     # Propagation check uses the substituted type, which matches propagate_types_to_choice
     assert len(result.propagate_to_choice) == 1
     assert result.propagate_to_choice[0].type == "application/custom"
+
+
+@pytest.mark.asyncio
+async def test_defer_stage_close_defers_exit_until_registry_flush(mock_stage_wrapper_factory):
+    mock_stage_wrapper = mock_stage_wrapper_factory.build()
+    registry = DeferredStageCloseRegistry()
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=GET_CONTENT_TOOL_CONFIG,
+        perf_timer=Mock(),
+        deferred_stage_close_registry=registry,
+    )
+
+    await tool.arun("call-1")
+
+    mock_stage_wrapper.__exit__.assert_not_called()
+    registry.flush()
+    mock_stage_wrapper.__exit__.assert_called_once()
