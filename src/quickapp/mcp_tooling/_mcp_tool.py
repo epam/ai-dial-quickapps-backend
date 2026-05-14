@@ -139,7 +139,6 @@ class _MCPTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        del tool_call_id  # Unused.
         logger.debug(f"MCP tool called with {kwargs}")
 
         timeout = self.__timeout_resolver.resolve()

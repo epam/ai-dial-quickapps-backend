@@ -6,7 +6,6 @@ import logging
 
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.orchestrator_deployment_capabilities import (
@@ -27,7 +26,6 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         capabilities: OrchestratorCapabilities,
         tool_config_service: ToolConfigCoreService,
         orchestrator_deployment_cache: OrchestratorDeploymentCacheService,
-        api_key: DIAL_API_KEY,
     ) -> None:
         self.__app_config: ApplicationConfig = app_config
         self.__capabilities: OrchestratorCapabilities = capabilities
@@ -35,7 +33,6 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
         self.__orchestrator_deployment_cache: OrchestratorDeploymentCacheService = (
             orchestrator_deployment_cache
         )
-        self.__api_key: DIAL_API_KEY = api_key
 
     async def initialize(self) -> None:
         deployment = self.__app_config.orchestrator.deployment.deployment_id
@@ -45,7 +42,6 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
             cache_key,
             self.__tool_config_service.get_deployment_metadata,
             deployment,
-            api_key=self.__api_key,
         )
         if model is None:
             raise RuntimeError(

@@ -93,7 +93,6 @@ class _PyInterpreterTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        del tool_call_id  # Unused.
         try:
             code: str = kwargs["code"]
             attachment_urls: list[str] | None = kwargs.get("attachment_urls")

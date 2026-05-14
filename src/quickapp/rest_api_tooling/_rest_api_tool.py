@@ -60,7 +60,6 @@ class _RestApiTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        del tool_call_id  # Unused.
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(self._tool_config.open_ai_tool.function.name, timeout):
             request_details = (
