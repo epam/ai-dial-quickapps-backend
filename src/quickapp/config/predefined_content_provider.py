@@ -66,6 +66,7 @@ class PredefinedContentProvider:
         self.__text_store: dict[ContentType, dict[str, str]] = {ct: {} for ct in ContentType}
         self.__json_store: dict[ContentType, dict[str, Any]] = {ct: {} for ct in ContentType}
         self.__layers_info: list[LayerInfo] = []
+        self.__default_configuration: dict[str, Any] = {}
 
         layers = self.__resolve_layers(settings)
         self.__load_all(layers)
@@ -107,6 +108,9 @@ class PredefinedContentProvider:
     def get_layers_info(self) -> list[LayerInfo]:
         """Return diagnostic info about all resolved layers."""
         return list(self.__layers_info)
+
+    def get_default_configuration(self) -> dict[str, Any]:
+        return self.__default_configuration
 
     # ------------------------------------------------------------------
     # Layer resolution
@@ -188,9 +192,39 @@ class PredefinedContentProvider:
                 if layer_overrides:
                     overrides[ct] = layer_overrides
 
+            self.__merge_default_configuration_from_layer(layer_path)
+
             self.__layers_info.append(
                 LayerInfo(path=layer_path, content_counts=counts, overrides=overrides)
             )
+
+    def __merge_default_configuration_from_layer(self, layer_path: Path) -> None:
+        """Load optional ``default_configuration.json`` at the layer root; shallow-merge into
+        ``__default_configuration``. Malformed files are logged and skipped (no startup failure).
+        """
+        path = layer_path / "default_configuration.json"
+        if not path.is_file():
+            return
+        try:
+            with path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.error(
+                "Failed to read default_configuration.json in layer %s: %s. "
+                "Treating this file as empty.",
+                layer_path,
+                e,
+            )
+            return
+        if not isinstance(data, dict):
+            logger.error(
+                "default_configuration.json in layer %s must be a JSON object, got %s. "
+                "Treating this file as empty.",
+                layer_path,
+                type(data).__name__,
+            )
+            return
+        self.__default_configuration.update(data)
 
     @staticmethod
     def __scan_entries(sub_dir: Path, ct: ContentType) -> list[tuple[str, Path]]:

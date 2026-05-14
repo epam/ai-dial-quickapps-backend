@@ -17,6 +17,7 @@ VALID_SKILL_CONTENT = (
 BASE_URL = "http://test"
 SKILLS_URL = "/v1/configuration-support/skills"
 VALIDATE_URL = "/v1/configuration-support/skills/validate"
+DEFAULT_CONFIGURATION_URL = "/v1/configuration-support/default-configuration"
 
 
 def _make_controller(
@@ -210,3 +211,27 @@ class TestValidateSkill:
             )
 
         assert response.status_code == 422
+
+
+class TestGetDefaultConfiguration:
+    @pytest.mark.asyncio
+    async def test_returns_resolver_payload(self):
+        resolver = MagicMock(spec=PredefinedConfigResolver)
+        resolver.get_default_configuration.return_value = {"starters": ["Hi"]}
+        dial_settings = MagicMock()
+        dial_settings.url = "https://dial.example.com"
+        dial_settings.api_version = "2025-01-01-preview"
+        controller = _Controller(
+            config_resolver=resolver,
+            service=MagicMock(spec=ToolConfigCoreService),
+            skills_provider=MagicMock(spec=AgentSkillsProvider),
+            dial_settings=dial_settings,
+        )
+        app = _make_app(controller)
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+            response = await client.get(DEFAULT_CONFIGURATION_URL)
+
+        assert response.status_code == 200
+        assert response.json() == {"starters": ["Hi"]}
+        resolver.get_default_configuration.assert_called_once_with()

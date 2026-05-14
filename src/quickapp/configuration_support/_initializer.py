@@ -4,7 +4,8 @@ from fastapi import FastAPI
 from injector import inject
 
 from quickapp.common.base_initializer import StartupInitializer
-from quickapp.configuration_support import _Controller
+
+from ._controller import _Controller
 
 logger = logging.getLogger(__name__)
 

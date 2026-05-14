@@ -3,7 +3,9 @@ import logging
 from injector import Binder, Module, ProviderOf, multiprovider, singleton
 
 from quickapp.common.base_initializer import StartupInitializer
-from quickapp.configuration_support import _Controller, _Initializer
+
+from ._controller import _Controller
+from ._initializer import _Initializer
 
 logger = logging.getLogger(__name__)
 

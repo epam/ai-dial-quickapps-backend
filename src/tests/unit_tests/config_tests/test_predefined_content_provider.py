@@ -42,6 +42,12 @@ class TestBuiltinLayer:
         names = builtin_provider.list_names(ContentType.SKILL)
         assert "tool-call-file-parameter-formatting" in names
 
+    def test_builtin_default_configuration_is_dict(
+        self, builtin_provider: PredefinedContentProvider
+    ):
+        cfg = builtin_provider.get_default_configuration()
+        assert isinstance(cfg, dict)
+
 
 class TestReadText:
     """Tests for read_text()."""
@@ -203,6 +209,47 @@ class TestExtraLayers:
 
         content = provider.read_text(ContentType.SKILL, "tool-call-file-parameter-formatting")
         assert content == "Overridden skill content"
+
+    def test_extra_layer_default_configuration_shallow_merge(self, tmp_path: Path):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"starters": ["Hello"], "contexts": []}', encoding="utf-8"
+        )
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        provider = PredefinedContentProvider(settings)
+        cfg = provider.get_default_configuration()
+        assert cfg["starters"] == ["Hello"]
+        assert cfg["contexts"] == []
+
+    def test_multiple_extra_layers_default_configuration_last_wins_top_level(self, tmp_path: Path):
+        layer1 = tmp_path / "layer1"
+        layer2 = tmp_path / "layer2"
+        layer1.mkdir()
+        layer2.mkdir()
+        (layer1 / "default_configuration.json").write_text('{"a": 1}', encoding="utf-8")
+        (layer2 / "default_configuration.json").write_text('{"a": 2, "b": 3}', encoding="utf-8")
+        settings = PredefinedSettings(extra_paths=[str(layer1), str(layer2)])
+        provider = PredefinedContentProvider(settings)
+        cfg = provider.get_default_configuration()
+        assert cfg["a"] == 2
+        assert cfg["b"] == 3
+
+    def test_malformed_default_configuration_json_does_not_fail(self, tmp_path: Path, caplog):
+        (tmp_path / "default_configuration.json").write_text("{not json", encoding="utf-8")
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        with caplog.at_level("ERROR"):
+            provider = PredefinedContentProvider(settings)
+        cfg = provider.get_default_configuration()
+        assert isinstance(cfg, dict)
+        assert any("default_configuration.json" in r.message for r in caplog.records)
+
+    def test_default_configuration_non_object_root_is_ignored(self, tmp_path: Path, caplog):
+        (tmp_path / "default_configuration.json").write_text("[1, 2]", encoding="utf-8")
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        with caplog.at_level("ERROR"):
+            provider = PredefinedContentProvider(settings)
+        cfg = provider.get_default_configuration()
+        assert isinstance(cfg, dict)
+        assert any("JSON object" in r.message for r in caplog.records)
 
 
 class TestLayersInfo:
