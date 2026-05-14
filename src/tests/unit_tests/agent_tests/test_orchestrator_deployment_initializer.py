@@ -5,12 +5,7 @@ import pytest
 
 from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
 from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-
-
-def _make_app_config(deployment_id: str = "gpt-4") -> MagicMock:
-    app_config = MagicMock()
-    app_config.orchestrator.deployment.deployment_id = deployment_id
-    return app_config
+from quickapp.common.exceptions import OrchestratorInitializationException
 
 
 def _make_deployment(
@@ -21,21 +16,26 @@ def _make_deployment(
 
 
 def _make_initializer(
+    *,
     deployment_id: str = "gpt-4",
-    cache_return_value: object = None,
+    fetch_metadata: AsyncMock | None = None,
 ) -> tuple[_OrchestratorDeploymentInitializer, AsyncMock, AsyncMock]:
+    app_config = MagicMock()
+    app_config.orchestrator.deployment.deployment_id = deployment_id
+
+    resolver = AsyncMock()
     tool_config_service = MagicMock()
-    tool_config_service.get_deployment_metadata = AsyncMock()
+    tool_config_service.get_deployment_metadata = resolver
 
     cache = MagicMock()
-    cache.get = AsyncMock(return_value=cache_return_value)
+    cache.fetch_metadata = fetch_metadata or AsyncMock()
 
     initializer = _OrchestratorDeploymentInitializer(
-        app_config=_make_app_config(deployment_id),
+        app_config=app_config,
         tool_config_service=tool_config_service,
         orchestrator_deployment_cache=cache,
     )
-    return initializer, tool_config_service.get_deployment_metadata, cache.get
+    return initializer, resolver, cache.fetch_metadata
 
 
 @pytest.mark.asyncio
@@ -44,8 +44,8 @@ async def test_initialize_populates_capabilities_from_cache():
         deployment_id="gpt-4",
         input_attachment_types=["application/pdf"],
     )
-    initializer, _resolver, _cache_get = _make_initializer(
-        deployment_id="gpt-4", cache_return_value=deployment
+    initializer, _resolver, _fetch_metadata = _make_initializer(
+        fetch_metadata=AsyncMock(return_value=deployment),
     )
 
     await initializer.initialize()
@@ -56,31 +56,34 @@ async def test_initialize_populates_capabilities_from_cache():
 
 
 @pytest.mark.asyncio
-async def test_initialize_raises_when_cache_returns_none():
-    initializer, _resolver, _cache_get = _make_initializer(cache_return_value=None)
+async def test_initialize_propagates_orchestrator_initialization_exception_from_cache():
+    initializer, _resolver, _fetch_metadata = _make_initializer(
+        fetch_metadata=AsyncMock(
+            side_effect=OrchestratorInitializationException(
+                message="No deployment metadata", deployment_id="gpt-4"
+            )
+        ),
+    )
 
-    with pytest.raises(RuntimeError, match="returned no model"):
+    with pytest.raises(OrchestratorInitializationException, match="No deployment metadata"):
         await initializer.initialize()
 
 
 def test_capabilities_property_raises_before_initialize():
-    initializer, _resolver, _cache_get = _make_initializer()
+    initializer, _resolver, _fetch_metadata = _make_initializer()
 
     with pytest.raises(RuntimeError, match="accessed before"):
         _ = initializer.capabilities
 
 
 @pytest.mark.asyncio
-async def test_cache_key_and_resolver_passed_to_cache_get():
+async def test_resolver_and_deployment_id_passed_to_fetch_metadata():
     deployment = _make_deployment(deployment_id="my-app")
-    initializer, resolver, cache_get = _make_initializer(
-        deployment_id="my-app", cache_return_value=deployment
+    initializer, resolver, fetch_metadata = _make_initializer(
+        deployment_id="my-app",
+        fetch_metadata=AsyncMock(return_value=deployment),
     )
 
     await initializer.initialize()
 
-    cache_get.assert_awaited_once_with(
-        "orchestrator_deployment_my-app",
-        resolver,
-        "my-app",
-    )
+    fetch_metadata.assert_awaited_once_with(resolver, "my-app")

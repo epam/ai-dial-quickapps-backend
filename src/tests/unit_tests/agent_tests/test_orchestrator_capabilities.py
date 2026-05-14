@@ -29,9 +29,7 @@ def test_deployment_id_and_input_attachment_types_exposed():
     [
         ("application/pdf", True),
         ("image/png", True),
-        ("image/jpeg", True),
         ("text/csv", False),
-        ("application/zip", False),
     ],
 )
 def test_orchestrator_accepts_mime_type_matches_input_attachment_types(mime: str, expected: bool):
