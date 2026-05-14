@@ -23,7 +23,7 @@ class _DeleteFileTool(_DialFileTool):
         display_path = await self._to_display_path(url)
 
         try:
-            await self._dial_client.files.delete(url)
+            await self._dial_file_service.delete(url)
         except ResourceNotFoundError as e:
             raise InvalidToolCallParameterException("path", f"file not found: {path}") from e
         except DialException as e:

@@ -25,6 +25,7 @@ from quickapp.dial_files_tooling._tool_configs import (
     MOVE_FILE_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
+    TOOL_NAME_PREFIX,
     WRITE_FILE_TOOL_CONFIG,
 )
 from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
@@ -83,6 +84,12 @@ class DialFilesToolingModule(Module):
             (move_builder, MOVE_FILE_TOOL_CONFIG),
         ]
 
+        def _is_enabled(config: InternalTool) -> bool:
+            if cfg.enabled_tools == "all":
+                return True
+            short_name = config.open_ai_tool.function.name.removeprefix(TOOL_NAME_PREFIX)
+            return short_name in cfg.enabled_tools
+
         return [
             builder.build(
                 tool_config=config,
@@ -90,5 +97,5 @@ class DialFilesToolingModule(Module):
                 description=config.open_ai_tool.function.description,
             )
             for builder, config in tools
-            if cfg.enabled_tools == "all" or config.open_ai_tool.function.name in cfg.enabled_tools
+            if _is_enabled(config)
         ]

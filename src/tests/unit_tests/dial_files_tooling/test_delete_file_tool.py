@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from aidial_client._exception import ResourceNotFoundError
@@ -6,19 +6,18 @@ from aidial_client._exception import ResourceNotFoundError
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.dial_files_tooling._tool_configs import DELETE_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(delete_side_effect: Exception | None = None) -> _DeleteFileTool:
-    client = make_dial_client()
+    service = make_service()
     if delete_side_effect:
-        client.files.delete = AsyncMock(side_effect=delete_side_effect)
+        service.delete.side_effect = delete_side_effect
     return _DeleteFileTool(
         stage_wrapper_builder=MagicMock(),
         tool_config=DELETE_FILE_TOOL_CONFIG,
         perf_timer=MagicMock(),
-        dial_file_service=make_service(),
-        dial_client=client,
+        dial_file_service=service,
         dial_files_config=make_config(),
     )
 
@@ -29,7 +28,7 @@ class TestDeleteFile:
         tool = _make_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, path="reports/old.md")
         assert result.content == "Deleted: reports/old.md"
-        tool._dial_client.files.delete.assert_awaited_once_with("files/appbucket/reports/old.md")
+        tool._dial_file_service.delete.assert_awaited_once_with("files/appbucket/reports/old.md")
 
     @pytest.mark.asyncio
     async def test_absolute_url_rejected(self):

@@ -21,12 +21,7 @@ class _MoveFileTool(_DialFileTool):
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
         self._reject_absolute_path("source", "move_file", source)
-        if destination.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                "destination",
-                "move_file destination must be a relative path under agent_home_dir; "
-                "do not pass an absolute files/... URL",
-            )
+        self._reject_absolute_path("destination", "move_file", destination)
 
         source_url = await self._resolve_appdata_url(source)
         dest_url = await self._resolve_appdata_url(destination)
@@ -44,14 +39,8 @@ class _MoveFileTool(_DialFileTool):
                 f"destination already exists: {dest_display}; pass overwrite=True to replace",
             ) from e
         except DialException as e:
-            if e.status_code == 403:
-                raise InvalidToolCallParameterException(
-                    "source", f"access denied: {source_url}"
-                ) from e
+            self._check_permission_denied(e, source_url, parameter_name="source")
             raise
-
-        self._dial_file_service.invalidate_cache(source_url)
-        self._dial_file_service.invalidate_cache(dest_url)
 
         result = ToolCallResult(content=f"Moved to: {dest_display}", content_type="text/plain")
         if stage_wrapper:

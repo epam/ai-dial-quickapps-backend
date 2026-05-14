@@ -6,7 +6,7 @@ from aidial_client._exception import EtagMismatchError, ResourceNotFoundError
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._tool_configs import MOVE_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(side_effect: Exception | None = None) -> _MoveFileTool:
@@ -18,7 +18,6 @@ def _make_tool(side_effect: Exception | None = None) -> _MoveFileTool:
         tool_config=MOVE_FILE_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 
@@ -36,12 +35,6 @@ class TestMoveFile:
             overwrite=False,
         )
         assert result.content == "Moved to: final/r.md"
-        # both caches invalidated
-        invalidated = {c.args[0] for c in tool._dial_file_service.invalidate_cache.call_args_list}
-        assert invalidated == {
-            "files/appbucket/drafts/r-v1.md",
-            "files/appbucket/final/r.md",
-        }
 
     @pytest.mark.asyncio
     async def test_absolute_source_rejected(self):

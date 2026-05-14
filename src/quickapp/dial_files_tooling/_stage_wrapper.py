@@ -9,6 +9,12 @@ from quickapp.common.tool_call_result import ToolCallResult
 @inject
 class _FileStageWrapper(TimedStageWrapper):
 
+    def _get_stage_title_from_params(self, parameters: dict[str, Any]) -> str:
+        title = super()._get_stage_title_from_params(parameters)
+        if not title:
+            return ""
+        return f" `{title}`"
+
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         stage_params = "> #### Request:\n\r"
         for param_name, param_value in parameters.items():

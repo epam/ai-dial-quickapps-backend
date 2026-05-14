@@ -9,6 +9,13 @@
     "description": "Copy a file server-side in DIAL storage. Source can be relative (agent's home dir) or absolute files/... URL. Destination must be relative. No bytes downloaded.",
     "properties": {
       "source": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'. The file to copy."
       },
@@ -31,6 +38,13 @@
     "description": "Delete a file from DIAL storage. Hard delete; no undo.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir (e.g. 'reports/old.md'). Absolute files/... URLs are rejected."
       }
@@ -44,6 +58,13 @@
     "description": "Replace a unique substring in an existing UTF-8 text file. old_string must occur exactly once. Fails if the file changed concurrently.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'). Absolute files/... URLs are rejected."
       },
@@ -67,6 +88,13 @@
     "description": "List entries (files and folders) under a folder in DIAL storage. Depth-bounded recursion.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative folder path under the agent's home dir (e.g. 'reports/'), or absolute DIAL folder URL starting with 'files/' (e.g. 'files/{bucket}/uploads/'). Folder paths end with '/'."
       },
@@ -84,6 +112,13 @@
     "description": "Move (rename) a file within the agent's home dir in DIAL storage. Both source and destination must be relative paths. The original file is removed by DIAL Core.",
     "properties": {
       "source": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."
       },
@@ -103,9 +138,16 @@
   },
   {
     "name": "internal_file_read_lines",
-    "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice.",
+    "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. Prefer small initial windows (around 20 lines); widen on subsequent calls only if more context is needed.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."
       },
@@ -115,7 +157,7 @@
       },
       "end_line": {
         "type": "integer",
-        "description": "First line to exclude (0-indexed). Like Python slice end."
+        "description": "First line to exclude (0-indexed, like a Python slice end). Start with at most ~20 lines on the first call; widen later if more context is needed."
       }
     },
     "required": [
@@ -129,6 +171,13 @@
     "description": "Search for a substring in a file stored in DIAL. Returns matching lines with optional surrounding context.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."
       },
@@ -155,6 +204,13 @@
     "description": "Create or overwrite a UTF-8 text file under the agent's home dir. Relative path only (absolute files/... URLs are rejected). Nested paths allowed; '..' rejected. Default content_type is text/plain. overwrite=False fails on collision; overwrite=True replaces with ETag guard.",
     "properties": {
       "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
         "type": "string",
         "description": "Relative path under the agent's home dir. Forward slashes for nesting. Rejected: leading '/', '..' segments, '../' substring, empty segments, absolute 'files/...' URLs."
       },

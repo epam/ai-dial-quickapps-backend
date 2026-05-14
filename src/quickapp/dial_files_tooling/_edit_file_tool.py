@@ -44,7 +44,7 @@ class _EditFileTool(_DialFileTool):
         new_content = content.replace(old_string, new_string, 1)
 
         try:
-            await self._dial_file_service.upload_text(url=url, content=new_content, if_match=etag)
+            await self._dial_file_service.write_file(url=url, content=new_content, if_match=etag)
         except EtagMismatchError as e:
             raise InvalidToolCallParameterException(
                 "path", "file changed concurrently; re-read and retry"
@@ -52,8 +52,6 @@ class _EditFileTool(_DialFileTool):
         except DialException as e:
             self._check_permission_denied(e, display_path)
             raise
-
-        self._dial_file_service.invalidate_cache(url)
 
         result = ToolCallResult(content=f"Edited: {display_path}", content_type="text/plain")
         if stage_wrapper:

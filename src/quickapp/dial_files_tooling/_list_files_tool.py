@@ -5,9 +5,35 @@ from aidial_client._exception import DialException, ResourceNotFoundError
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
 
 _MAX_DEPTH = 10
+
+
+def _format_size(size: int | None) -> str:
+    if size is None:
+        return "-"
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    if size < 1024 * 1024 * 1024:
+        return f"{size / (1024 * 1024):.1f} MB"
+    return f"{size / (1024 * 1024 * 1024):.1f} GB"
+
+
+def _render_listing(entries: list[tuple[str, FolderEntry]]) -> str:
+    if not entries:
+        return "(empty folder)"
+    name_w = max(len(display) for display, _ in entries)
+    name_w = max(name_w, len("NAME"))
+    header = f"{'NAME':<{name_w}}  SIZE"
+    rows = [header]
+    for display, entry in entries:
+        size_col = "-" if entry.is_folder else _format_size(entry.size)
+        rows.append(f"{display:<{name_w}}  {size_col}")
+    return "```\n" + "\n".join(rows) + "\n```"
 
 
 class _ListFilesTool(_DialFileTool):
@@ -42,13 +68,9 @@ class _ListFilesTool(_DialFileTool):
             self._check_permission_denied(e, path)
             raise
 
-        lines: list[str] = []
-        for entry in entries:
-            size_col = "-" if entry.is_folder else str(entry.size or 0)
-            display = await self._to_display_path(entry.url)
-            lines.append(f"{size_col}  {display}")
+        rendered_entries = [(await self._to_display_path(entry.url), entry) for entry in entries]
+        content = _render_listing(rendered_entries)
 
-        content = "\n".join(lines) if lines else "(empty)"
         result = ToolCallResult(content=content, content_type="text/plain")
         if stage_wrapper:
             stage_wrapper.add_result(result)

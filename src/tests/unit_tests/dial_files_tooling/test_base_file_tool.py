@@ -6,16 +6,16 @@ from aidial_client._exception import DialException
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
-def _tool(agent_home_dir: str = "files/{appdata}/", appdata: str | None = "appbucket"):
+def _tool(agent_home_dir: str = "", appdata: str | None = "appbucket"):
+    service = make_service(appdata=appdata)
     return _ReadFileLinesTool(
         stage_wrapper_builder=MagicMock(),
         tool_config=READ_FILE_LINES_TOOL_CONFIG,
         perf_timer=MagicMock(),
-        dial_file_service=make_service(),
-        dial_client=make_dial_client(appdata=appdata),
+        dial_file_service=service,
         dial_files_config=make_config(agent_home_dir),
     )
 
@@ -28,13 +28,26 @@ class TestResolveAppdataUrl:
         assert url == "files/appbucket/reports/summary.md"
 
     @pytest.mark.asyncio
+    async def test_subdir_home_prepended(self):
+        tool = _tool(agent_home_dir="workspace/")
+        url = await tool._resolve_appdata_url("reports/summary.md")
+        assert url == "files/appbucket/workspace/reports/summary.md"
+
+    @pytest.mark.asyncio
     async def test_absolute_url_passes_through(self):
         tool = _tool()
         url = await tool._resolve_appdata_url("files/otherbucket/uploads/notes.txt")
         assert url == "files/otherbucket/uploads/notes.txt"
 
     @pytest.mark.asyncio
-    async def test_absolute_url_with_newline_rejected(self):
+    async def test_newline_in_relative_path_rejected(self):
+        tool = _tool()
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._resolve_appdata_url("foo\nbar")
+        assert exc.value.parameter_name == "path"
+
+    @pytest.mark.asyncio
+    async def test_newline_in_absolute_url_rejected(self):
         tool = _tool()
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._resolve_appdata_url("files/x/foo\nbar")
@@ -77,14 +90,7 @@ class TestResolveAppdataUrl:
             await tool._resolve_appdata_url("notes.md ")
 
     @pytest.mark.asyncio
-    async def test_static_home_dir_does_not_call_my_appdata_home(self):
-        tool = _tool(agent_home_dir="files/shared/admin/", appdata=None)
-        url = await tool._resolve_appdata_url("reports/summary.md")
-        assert url == "files/shared/admin/reports/summary.md"
-        tool._dial_client.my_appdata_home.assert_not_awaited()
-
-    @pytest.mark.asyncio
-    async def test_appdata_template_without_appdata_raises(self):
+    async def test_no_appdata_raises(self):
         tool = _tool(appdata=None)
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._resolve_appdata_url("notes.md")
@@ -101,7 +107,6 @@ class TestToDisplayPath:
     @pytest.mark.asyncio
     async def test_home_url_becomes_relative(self):
         tool = _tool()
-        # populate cache
         await tool._resolve_appdata_url("x.md")
         display = await tool._to_display_path("files/appbucket/reports/summary.md")
         assert display == "reports/summary.md"
@@ -137,7 +142,6 @@ class TestPermissionDeniedWrapper:
             tool_config=LIST_FILES_TOOL_CONFIG,
             perf_timer=MagicMock(),
             dial_file_service=service,
-            dial_client=make_dial_client(),
             dial_files_config=make_config(),
         )
         with pytest.raises(InvalidToolCallParameterException) as exc:
@@ -160,7 +164,6 @@ class TestPermissionDeniedWrapper:
             tool_config=LIST_FILES_TOOL_CONFIG,
             perf_timer=MagicMock(),
             dial_file_service=service,
-            dial_client=make_dial_client(),
             dial_files_config=make_config(),
         )
         with pytest.raises(DialException):

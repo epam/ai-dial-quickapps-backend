@@ -1051,14 +1051,14 @@
             {
               "items": {
                 "enum": [
-                  "internal_file_list",
-                  "internal_file_read_lines",
-                  "internal_file_search",
-                  "internal_file_write",
-                  "internal_file_edit",
-                  "internal_file_delete",
-                  "internal_file_copy",
-                  "internal_file_move"
+                  "list",
+                  "read_lines",
+                  "search",
+                  "write",
+                  "edit",
+                  "delete",
+                  "copy",
+                  "move"
                 ],
                 "type": "string"
               },
@@ -1066,12 +1066,12 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['internal_file_read_lines', 'internal_file_search']).",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {
-          "default": "files/{appdata}/",
-          "description": "Base directory for relative path resolution. Must start with 'files/' and end with '/'. Supports the {appdata} template variable, resolved at request time via my_appdata_home(). Examples: 'files/{appdata}/' (default), 'files/shared-bucket/admin/', 'files/{appdata}/workspace/'.",
+          "default": "",
+          "description": "Optional sub-directory inside the agent's appdata folder used as the root for relative paths. Empty (default) means the appdata root. Must be a relative path; absolute 'files/...' URLs, leading '/', and '..' segments are rejected. Example: 'workspace/'.",
           "title": "Agent Home Dir",
           "type": "string"
         }

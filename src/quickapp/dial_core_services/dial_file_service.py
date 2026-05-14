@@ -1,8 +1,10 @@
 import logging
 from collections import deque
+from pathlib import PurePosixPath
 from typing import Literal
 
 from aidial_client import AsyncDial
+from aidial_client._exception import EtagMismatchError, ResourceNotFoundError
 from aidial_client._internal_types._http_request import FinalRequestOptions
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
@@ -36,6 +38,9 @@ class DialFileService:
         self.__state_holder: StateHolder = state_holder
         self.__content_size_limit: int = size_limit_resolver.resolve()
 
+    async def my_appdata_home(self) -> PurePosixPath | None:
+        return await self.__dial_client.my_appdata_home()
+
     async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
         logger.debug(f"File url to download url:{file_url}")
         file_data = self.__state_holder.get_file_data(url=file_url)
@@ -56,12 +61,53 @@ class DialFileService:
             raise e
         return file_data, metadata
 
-    async def upload_text(
+    async def write_file(
         self,
         url: str,
         content: str,
         *,
         content_type: str = "text/plain",
+        overwrite: bool = False,
+        if_match: str | None = None,
+    ) -> str:
+        """Create or overwrite a file with ETag-aware semantics.
+
+        Behaviour:
+          * `if_match` given: upload with `If-Match` (caller-driven concurrency
+            check, used by the edit tool which already has the etag).
+          * `overwrite=False`: upload with `If-None-Match: *` (fail if the file
+            exists).
+          * `overwrite=True`: fetch current metadata; if the file exists, upload
+            with `If-Match: <etag>`; otherwise upload with `If-None-Match: *`.
+
+        Raises `EtagMismatchError` on `If-None-Match`/`If-Match` failure; other
+        DIAL errors propagate unchanged. Cache is invalidated on success.
+        """
+        if if_match is not None:
+            uploaded_url = await self._upload_text(url, content, content_type, if_match=if_match)
+        elif not overwrite:
+            uploaded_url = await self._upload_text(url, content, content_type, if_none_match="*")
+        else:
+            try:
+                metadata = await self.__dial_client.files.get_metadata(url)
+                etag: str | None = metadata.etag
+            except ResourceNotFoundError:
+                etag = None
+            if etag is None:
+                uploaded_url = await self._upload_text(
+                    url, content, content_type, if_none_match="*"
+                )
+            else:
+                uploaded_url = await self._upload_text(url, content, content_type, if_match=etag)
+        self.invalidate_cache(url)
+        return uploaded_url
+
+    async def _upload_text(
+        self,
+        url: str,
+        content: str,
+        content_type: str,
+        *,
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
     ) -> str:
@@ -74,6 +120,10 @@ class DialFileService:
             etag_if_match=if_match,
         )
         return metadata.url
+
+    async def delete(self, file_url: str) -> None:
+        await self.__dial_client.files.delete(file_url)
+        self.invalidate_cache(file_url)
 
     def invalidate_cache(self, file_url: str) -> None:
         self.__state_holder.invalidate_file_data(file_url)
@@ -121,8 +171,8 @@ class DialFileService:
                 method="POST",
                 url="/v1/ops/resource/copy",
                 json_data={
-                    "sourceUrl": f"/v1/{source_url}",
-                    "destinationUrl": f"/v1/{destination_url}",
+                    "sourceUrl": source_url,
+                    "destinationUrl": destination_url,
                     "overwrite": overwrite,
                 },
             ),
@@ -135,12 +185,13 @@ class DialFileService:
                 method="POST",
                 url="/v1/ops/resource/move",
                 json_data={
-                    "sourceUrl": f"/v1/{source_url}",
-                    "destinationUrl": f"/v1/{destination_url}",
+                    "sourceUrl": source_url,
+                    "destinationUrl": destination_url,
                     "overwrite": overwrite,
                 },
             ),
         )
+        self.invalidate_cache(source_url)
 
     async def grant_permissions_to_files(
         self, files_to_share: list[str], dial_toolset_id: str
@@ -156,3 +207,12 @@ class DialFileService:
                 "Failed to grant permissions to the files %s", files_to_share, exc_info=True
             )
             raise e
+
+
+# Re-export for service consumers
+__all__ = [
+    "DialFileService",
+    "FolderEntry",
+    "EtagMismatchError",
+    "ResourceNotFoundError",
+]

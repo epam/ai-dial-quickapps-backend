@@ -113,16 +113,15 @@ class TestDownloadFile:
             await svc.download_file("files/medium.bin")
 
 
-class TestUploadText:
+class TestWriteFile:
     @pytest.mark.asyncio
     async def test_create_only_passes_if_none_match(self):
         mock_client = _make_mock_dial_client(upload_url="files/b/generated-files/f.txt")
         svc = _make_service(dial_client=mock_client)
 
-        result = await svc.upload_text(
+        result = await svc.write_file(
             url="files/b/generated-files/f.txt",
             content="hello",
-            if_none_match="*",
         )
 
         assert result == "files/b/generated-files/f.txt"
@@ -132,11 +131,11 @@ class TestUploadText:
         assert call_kwargs.kwargs.get("etag_if_match") is None
 
     @pytest.mark.asyncio
-    async def test_update_passes_if_match(self):
+    async def test_if_match_passes_if_match(self):
         mock_client = _make_mock_dial_client(upload_url="files/b/generated-files/f.txt")
         svc = _make_service(dial_client=mock_client)
 
-        await svc.upload_text(
+        await svc.write_file(
             url="files/b/generated-files/f.txt",
             content="new content",
             if_match="etag-xyz",
@@ -153,14 +152,14 @@ class TestUploadText:
         svc = _make_service(dial_client=mock_client)
 
         with pytest.raises(EtagMismatchError):
-            await svc.upload_text(url="files/b/f.txt", content="x", if_none_match="*")
+            await svc.write_file(url="files/b/f.txt", content="x")
 
     @pytest.mark.asyncio
     async def test_returns_confirmed_url(self):
         mock_client = _make_mock_dial_client(upload_url="files/b/generated-files/notes.md")
         svc = _make_service(dial_client=mock_client)
 
-        result = await svc.upload_text(
+        result = await svc.write_file(
             url="files/b/generated-files/notes.md",
             content="# Notes\n",
         )

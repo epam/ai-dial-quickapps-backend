@@ -5,10 +5,19 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
+from quickapp.config.tools.display.paramenter import (
+    FormattedParameterConfig,
+    ParameterDisplayConfig,
+)
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
 TOOL_NAME_PREFIX = "internal_file_"
+
+_PATH_IN_TITLE = ParameterDisplayConfig(
+    stage=FormattedParameterConfig(show_value_in_stage_title=True)
+)
+
 
 LIST_FILES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
@@ -28,6 +37,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
                             "(e.g. 'reports/'), or absolute DIAL folder URL starting with "
                             "'files/' (e.g. 'files/{bucket}/uploads/'). Folder paths end with '/'."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "max_depth": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.integer,
@@ -50,7 +60,9 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
             name=f"{TOOL_NAME_PREFIX}read_lines",
             description=(
                 "Read a range of lines from a file stored in DIAL. "
-                "Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice."
+                "Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. "
+                "Prefer small initial windows (around 20 lines); widen on subsequent calls "
+                "only if more context is needed."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -62,6 +74,7 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
                             "(e.g. 'reports/summary.md'), or absolute DIAL file URL "
                             "starting with 'files/' (for shared or user-uploaded files)."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "start_line": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.integer,
@@ -69,7 +82,11 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
                     ),
                     "end_line": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.integer,
-                        description="First line to exclude (0-indexed). Like Python slice end.",
+                        description=(
+                            "First line to exclude (0-indexed, like a Python slice end). "
+                            "Start with at most ~20 lines on the first call; widen later "
+                            "if more context is needed."
+                        ),
                     ),
                 },
                 required=["path", "start_line", "end_line"],
@@ -96,6 +113,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                             "Relative path under the agent's home dir, or absolute "
                             "DIAL file URL starting with 'files/'."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "pattern": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -137,6 +155,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
                             "for nesting. Rejected: leading '/', '..' segments, '../' "
                             "substring, empty segments, absolute 'files/...' URLs."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "content": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -178,6 +197,7 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
                             "Relative path under the agent's home dir "
                             "(e.g. 'reports/summary.md'). Absolute files/... URLs are rejected."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "old_string": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -212,6 +232,7 @@ DELETE_FILE_TOOL_CONFIG = InternalTool(
                             "Relative path under the agent's home dir "
                             "(e.g. 'reports/old.md'). Absolute files/... URLs are rejected."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                 },
                 required=["path"],
@@ -239,6 +260,7 @@ COPY_FILE_TOOL_CONFIG = InternalTool(
                             "Relative path under the agent's home dir, or absolute "
                             "DIAL file URL starting with 'files/'. The file to copy."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "destination": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -277,6 +299,7 @@ MOVE_FILE_TOOL_CONFIG = InternalTool(
                             "Relative path under the agent's home dir. "
                             "Absolute files/... URLs are rejected."
                         ),
+                        display=_PATH_IN_TITLE,
                     ),
                     "destination": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,

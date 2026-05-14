@@ -2,7 +2,6 @@ import logging
 from abc import ABC
 from typing import Any
 
-from aidial_client import AsyncDial
 from aidial_client._exception import DialException
 from aidial_client.types.metadata import FileMetadata
 from injector import AssistedBuilder, inject
@@ -18,8 +17,6 @@ from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 
 logger = logging.getLogger(__name__)
 
-_APPDATA_PLACEHOLDER = "{appdata}"
-
 
 @inject
 class _DialFileTool(StagedBaseTool, ABC):
@@ -30,7 +27,6 @@ class _DialFileTool(StagedBaseTool, ABC):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         dial_file_service: DialFileService,
-        dial_client: AsyncDial,
         dial_files_config: DialFilesConfig,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -43,7 +39,6 @@ class _DialFileTool(StagedBaseTool, ABC):
             **kwargs,
         )
         self._dial_file_service = dial_file_service
-        self._dial_client = dial_client
         self._dial_files_config = dial_files_config
         self._resolved_home: str | None = None
 
@@ -62,14 +57,12 @@ class _DialFileTool(StagedBaseTool, ABC):
     async def _resolve_appdata_url(self, path: str) -> str:
         if not isinstance(path, str) or path == "":
             raise InvalidToolCallParameterException("path", "path must be a non-empty string")
-
+        if "\n" in path or "\r" in path:
+            raise InvalidToolCallParameterException(
+                "path", "path must not contain newline characters"
+            )
         if path.startswith("files/"):
-            if "\n" in path or "\r" in path:
-                raise InvalidToolCallParameterException(
-                    "path", "absolute URL must not contain newline characters"
-                )
             return path
-
         self._validate_relative_path(path)
         home = await self._resolve_home_dir()
         return f"{home}{path}"
@@ -77,20 +70,15 @@ class _DialFileTool(StagedBaseTool, ABC):
     async def _resolve_home_dir(self) -> str:
         if self._resolved_home is not None:
             return self._resolved_home
-        template = self._dial_files_config.agent_home_dir
-        if _APPDATA_PLACEHOLDER in template:
-            appdata = await self._dial_client.my_appdata_home()
-            if appdata is None:
-                raise InvalidToolCallParameterException(
-                    "path",
-                    "appdata namespace is not available; "
-                    "agent_home_dir uses {appdata} but no appdata was found",
-                )
-            resolved = template.replace(_APPDATA_PLACEHOLDER, str(appdata))
-        else:
-            resolved = template
-        self._resolved_home = resolved
-        return resolved
+        appdata = await self._dial_file_service.my_appdata_home()
+        if appdata is None:
+            raise InvalidToolCallParameterException(
+                "path",
+                "appdata namespace is not available; cannot resolve agent home directory",
+            )
+        subdir = self._dial_files_config.agent_home_dir
+        self._resolved_home = f"files/{appdata}/{subdir}"
+        return self._resolved_home
 
     async def _to_display_path(self, url: str) -> str:
         """Inverse of _resolve_appdata_url.
@@ -114,17 +102,12 @@ class _DialFileTool(StagedBaseTool, ABC):
             )
         if path.startswith("/"):
             raise InvalidToolCallParameterException("path", "path must not start with '/'")
-        if "../" in path or path.endswith("/..") or path == "..":
-            raise InvalidToolCallParameterException("path", "path must not contain '..'")
         segments = path.split("/")
-        # Allow a trailing '' (caused by trailing '/') to represent a folder URL.
-        for i, segment in enumerate(segments):
-            if segment == "..":
-                raise InvalidToolCallParameterException("path", "path must not contain '..'")
-            if segment == "" and i != len(segments) - 1:
-                raise InvalidToolCallParameterException(
-                    "path", "path must not contain empty segments"
-                )
+        if ".." in segments:
+            raise InvalidToolCallParameterException("path", "path must not contain '..'")
+        # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
+        if "" in segments[:-1]:
+            raise InvalidToolCallParameterException("path", "path must not contain empty segments")
 
     @staticmethod
     def _reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
@@ -136,6 +119,10 @@ class _DialFileTool(StagedBaseTool, ABC):
             )
 
     @staticmethod
-    def _check_permission_denied(exc: DialException, url: str) -> None:
+    def _check_permission_denied(
+        exc: DialException, url: str, parameter_name: str = "path"
+    ) -> None:
         if exc.status_code == 403:
-            raise InvalidToolCallParameterException("path", f"access denied: {url}") from exc
+            raise InvalidToolCallParameterException(
+                parameter_name, f"access denied: {url}"
+            ) from exc

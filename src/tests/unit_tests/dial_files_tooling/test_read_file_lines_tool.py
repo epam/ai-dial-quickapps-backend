@@ -5,7 +5,7 @@ import pytest
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(content: bytes = b"a\nb\nc\nd\ne") -> _ReadFileLinesTool:
@@ -16,7 +16,6 @@ def _make_tool(content: bytes = b"a\nb\nc\nd\ne") -> _ReadFileLinesTool:
         tool_config=READ_FILE_LINES_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 

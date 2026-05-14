@@ -4,7 +4,7 @@ import pytest
 
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(content: str) -> _SearchInFileTool:
@@ -15,7 +15,6 @@ def _make_tool(content: str) -> _SearchInFileTool:
         tool_config=SEARCH_IN_FILE_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 

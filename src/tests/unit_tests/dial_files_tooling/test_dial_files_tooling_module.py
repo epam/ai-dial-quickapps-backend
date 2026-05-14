@@ -41,7 +41,7 @@ class TestDialFilesToolingModule:
     def test_enabled_subset_filters_tools(self):
         module = DialFilesToolingModule()
         app_config = MagicMock()
-        app_config.features.dial_files = DialFilesConfig(enabled_tools=["internal_file_read_lines"])
+        app_config.features.dial_files = DialFilesConfig(enabled_tools=["read_lines"])
         builders = _make_builders()
         result = module._provide_dial_files_tools(app_config, *builders)
         assert len(result) == 1

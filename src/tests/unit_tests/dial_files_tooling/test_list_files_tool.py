@@ -7,7 +7,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._tool_configs import LIST_FILES_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(entries: list[FolderEntry] | None = None, side_effect: Exception | None = None):
@@ -21,7 +21,6 @@ def _make_tool(entries: list[FolderEntry] | None = None, side_effect: Exception 
         tool_config=LIST_FILES_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 
@@ -88,8 +87,9 @@ class TestListFiles:
         ]
         tool = _make_tool(entries=entries)
         result = await tool._run_in_stage_async(stage_wrapper=None, path="reports/")
-        assert "1234  reports/summary.md" in result.content
-        assert "-  reports/images/" in result.content
+        assert "reports/summary.md" in result.content
+        assert "1.2 KB" in result.content
+        assert "reports/images/" in result.content
 
     @pytest.mark.asyncio
     async def test_listing_outside_home_uses_absolute_paths(self):
@@ -103,10 +103,11 @@ class TestListFiles:
         ]
         tool = _make_tool(entries=entries)
         result = await tool._run_in_stage_async(stage_wrapper=None, path="files/other/uploads/")
-        assert "42  files/other/uploads/notes.txt" in result.content
+        assert "files/other/uploads/notes.txt" in result.content
+        assert "42 B" in result.content
 
     @pytest.mark.asyncio
     async def test_empty_folder(self):
         tool = _make_tool(entries=[])
         result = await tool._run_in_stage_async(stage_wrapper=None, path="reports/")
-        assert result.content == "(empty)"
+        assert result.content == "(empty folder)"

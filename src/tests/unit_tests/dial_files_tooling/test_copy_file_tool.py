@@ -6,7 +6,7 @@ from aidial_client._exception import DialException, EtagMismatchError, ResourceN
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._tool_configs import COPY_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(side_effect: Exception | None = None) -> _CopyFileTool:
@@ -18,7 +18,6 @@ def _make_tool(side_effect: Exception | None = None) -> _CopyFileTool:
         tool_config=COPY_FILE_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 
@@ -36,9 +35,7 @@ class TestCopyFile:
             overwrite=False,
         )
         assert result.content == "Copied to: final/a.md"
-        tool._dial_file_service.invalidate_cache.assert_called_once_with(
-            "files/appbucket/final/a.md"
-        )
+        tool._dial_file_service.invalidate_cache.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_absolute_source_happy(self):

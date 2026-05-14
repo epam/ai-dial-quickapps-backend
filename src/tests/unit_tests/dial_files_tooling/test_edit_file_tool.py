@@ -6,7 +6,7 @@ from aidial_client._exception import EtagMismatchError
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
 from quickapp.dial_files_tooling._tool_configs import EDIT_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_dial_client, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_tool(
@@ -17,15 +17,14 @@ def _make_tool(
     service = make_service()
     service.download_file.return_value = (content.encode("utf-8"), MagicMock(etag=etag))
     if upload_side_effect:
-        service.upload_text.side_effect = upload_side_effect
+        service.write_file.side_effect = upload_side_effect
     else:
-        service.upload_text.return_value = "files/appbucket/r.md"
+        service.write_file.return_value = "files/appbucket/r.md"
     return _EditFileTool(
         stage_wrapper_builder=MagicMock(),
         tool_config=EDIT_FILE_TOOL_CONFIG,
         perf_timer=MagicMock(),
         dial_file_service=service,
-        dial_client=make_dial_client(),
         dial_files_config=make_config(),
     )
 
@@ -77,14 +76,6 @@ class TestEditFile:
             )
         assert exc.value.parameter_name == "path"
         assert "concurrently" in exc.value.message
-
-    @pytest.mark.asyncio
-    async def test_invalidate_cache_after_success(self):
-        tool = _make_tool()
-        await tool._run_in_stage_async(
-            stage_wrapper=None, path="r.md", old_string="bar", new_string="qux"
-        )
-        tool._dial_file_service.invalidate_cache.assert_called_once_with("files/appbucket/r.md")
 
     @pytest.mark.asyncio
     async def test_success_message_uses_relative_path(self):
