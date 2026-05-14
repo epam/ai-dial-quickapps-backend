@@ -23,7 +23,10 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
@@ -175,6 +178,18 @@ class AgentModule(Module):
         attachment_filter: _AttachmentFilter,
     ) -> list[PreInvocationTransformer]:
         return [attachment_filter]
+
+    @multiprovider
+    def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_tool_execution_history_policies(self) -> list[ToolExecutionHistoryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_tool_attachment_keep_policies(self) -> list[ToolAttachmentKeepPolicy]:
+        return []
 
     @multiprovider
     def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:
