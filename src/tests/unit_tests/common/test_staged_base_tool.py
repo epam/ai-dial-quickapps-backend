@@ -10,11 +10,9 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.tools.base import AttachmentConfig
+from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
-from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
-    GET_CONTENT_TOOL_CONFIG,
-)
 
 
 class CustomTestStagedBaseTool(StagedBaseTool):
@@ -246,9 +244,13 @@ async def test_defer_stage_close_defers_exit_until_registry_flush(mock_stage_wra
     mock_stage_wrapper = mock_stage_wrapper_factory.build()
     registry = DeferredStageCloseRegistry()
 
+    deferred_config = Mock(spec=AnyTool)
+    deferred_config.display = ToolDisplayConfig(stage=ToolStageConfig(defer_close=True))
+    deferred_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+
     tool = CustomTestStagedBaseTool(
         stage_wrapper_builder=mock_stage_wrapper_factory,
-        tool_config=GET_CONTENT_TOOL_CONFIG,
+        tool_config=deferred_config,
         perf_timer=Mock(),
         deferred_stage_close_registry=registry,
     )

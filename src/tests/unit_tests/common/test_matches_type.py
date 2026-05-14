@@ -1,4 +1,4 @@
-from quickapp.common.utils import matches_type, posix_path_last_segment
+from quickapp.common.utils import matches_type
 
 
 class TestMatchesType:
@@ -36,17 +36,3 @@ class TestMatchesType:
         assert matches_type("image/png", allowed) is True
         assert matches_type("application/pdf", allowed) is True
         assert matches_type("text/plain", allowed) is False
-
-
-class TestPosixPathLastSegment:
-    def test_nested_files_url(self):
-        assert posix_path_last_segment("files/bucket/report.pdf") == "report.pdf"
-
-    def test_strips_whitespace(self):
-        assert posix_path_last_segment("  files/a.pdf  ") == "a.pdf"
-
-    def test_trailing_slash_normalized_to_last_segment(self):
-        assert posix_path_last_segment("files/bucket/") == "bucket"
-
-    def test_single_segment(self):
-        assert posix_path_last_segment("report.pdf") == "report.pdf"

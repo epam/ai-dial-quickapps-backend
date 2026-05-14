@@ -3,12 +3,10 @@ from unittest.mock import Mock
 from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.get_content_recovery_payload import get_content_recovery_tool_call_result
 from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
     ImmediateStageCloseRegistry,
 )
-from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 
 
 def test_deferred_flush_runs_registered_ui_hooks_before_exit():
@@ -69,6 +67,7 @@ def test_sync_rewrites_keyed_hook_so_flush_adds_recovery_result():
     registry.register_stage_ui_before_close(wrapper, success_hook, tool_call_id="tc-sync")
     registry.defer_close(wrapper)
 
+    rewritten_content = '{"status": "rewritten"}'
     messages = [
         Message(role=Role.USER, content="hi"),
         Message(
@@ -78,16 +77,13 @@ def test_sync_rewrites_keyed_hook_so_flush_adds_recovery_result():
                 ToolCall(
                     id="tc-sync",
                     type="function",
-                    function=FunctionCall(
-                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
-                        arguments="{}",
-                    ),
+                    function=FunctionCall(name="my_tool", arguments="{}"),
                 )
             ],
         ),
         Message(
             role=Role.TOOL,
-            content=get_content_recovery_tool_call_result().content,
+            content=rewritten_content,
             tool_call_id="tc-sync",
         ),
     ]
@@ -97,6 +93,6 @@ def test_sync_rewrites_keyed_hook_so_flush_adds_recovery_result():
     assert success_called["n"] == 0
     wrapper.add_result.assert_called_once()
     called = wrapper.add_result.call_args[0][0]
-    assert called.content == get_content_recovery_tool_call_result().content
+    assert called.content == rewritten_content
     assert called.content_type == "application/json"
     assert called.attachments == []
