@@ -40,5 +40,7 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
             )
             return None
         arguments = await self.get_arguments()
-        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=StageLevel.SYSTEM, **arguments)
+        result = await tool.arun(
+            _ARUN_SYNTHETIC_CALL_ID, stage_level=StageLevel.SYSTEM, **arguments
+        )
         return result.content

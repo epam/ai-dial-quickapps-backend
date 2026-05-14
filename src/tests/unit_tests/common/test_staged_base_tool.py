@@ -266,7 +266,9 @@ async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
         (StageDisplayLevel.DEBUG, StageLevel.SYSTEM, None, False),
     ],
 )
-async def test_suppression_truth_table(display_level, call_level, show, expect_suppressed, mock_stage_wrapper_factory):
+async def test_suppression_truth_table(
+    display_level, call_level, show, expect_suppressed, mock_stage_wrapper_factory
+):
     tool = CustomTestStagedBaseTool(
         stage_wrapper_builder=mock_stage_wrapper_factory,
         tool_config=_make_tool_config(show),
