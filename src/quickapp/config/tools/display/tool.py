@@ -16,7 +16,8 @@ class ToolStageConfig(BaseModel):
     )
     show: bool = Field(
         default=True,
-        description="Whether the tool stage should be shown in the chat. Deprecated: use stage_level=StageLevel.SYSTEM at the call site instead.",
+        description="Whether the tool stage should be shown in the chat.",
+        deprecated="use stage_level=StageLevel.SYSTEM at the call site instead.",
     )
 
     @model_validator(mode="after")

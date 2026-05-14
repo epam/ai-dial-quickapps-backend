@@ -2932,7 +2932,8 @@
         },
         "show": {
           "default": true,
-          "description": "Whether the tool stage should be shown in the chat. Deprecated: use stage_level=StageLevel.SYSTEM at the call site instead.",
+          "deprecated": true,
+          "description": "Whether the tool stage should be shown in the chat.",
           "title": "Show",
           "type": "boolean"
         }
