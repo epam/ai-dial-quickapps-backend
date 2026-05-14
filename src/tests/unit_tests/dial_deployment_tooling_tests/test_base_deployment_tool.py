@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, Tool
 from pydantic import StrictStr
 
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
     DialDeploymentConfig,
@@ -21,7 +22,6 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 

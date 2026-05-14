@@ -13,8 +13,8 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.config.application import StageDisplayLevel
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
