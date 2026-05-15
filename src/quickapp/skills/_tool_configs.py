@@ -1,3 +1,4 @@
+from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -12,8 +13,6 @@ from quickapp.config.tools.display.paramenter import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
-SKILL_READER_TOOL_NAME_PREFIX = "internal_skills_read_skill"
-
 SKILL_READER_TOOL_CONFIG = InternalTool(
     enabled=True,
     display=ToolDisplayConfig(
@@ -25,7 +24,7 @@ SKILL_READER_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         type="function",
         function=OpenAiToolFunction(
-            name=SKILL_READER_TOOL_NAME_PREFIX,
+            name=INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
             description="Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -47,4 +46,4 @@ SKILL_READER_TOOL_CONFIG = InternalTool(
     ),
 )
 
-SKILL_READER_TOOL_NAME = SKILL_READER_TOOL_CONFIG.open_ai_tool.function.name
+SKILL_READER_TOOL_NAME = INTERNAL_SKILLS_READ_SKILL_TOOL_NAME

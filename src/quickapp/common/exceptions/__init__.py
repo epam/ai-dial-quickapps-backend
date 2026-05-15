@@ -2,6 +2,7 @@ from .config_resolution import ConfigResolutionException
 from .initialization import InitializationException
 from .invalid_tool_call_parameter import InvalidToolCallParameterException
 from .orchestrator_exceed_max_iterations import OrchestratorExceedMaxIterationsException
+from .orchestrator_initialization import OrchestratorInitializationException
 from .skill_initialization import (
     SkillCatastrophicInitializationException,
     SkillInitializationException,
@@ -15,6 +16,7 @@ __all__ = [
     "InitializationException",
     "InvalidToolCallParameterException",
     "OrchestratorExceedMaxIterationsException",
+    "OrchestratorInitializationException",
     "SkillCatastrophicInitializationException",
     "SkillInitializationException",
     "ToolInitializationException",
