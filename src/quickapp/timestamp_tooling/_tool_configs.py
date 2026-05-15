@@ -1,3 +1,4 @@
+from quickapp.common.tool_names import INTERNAL_TIMEAWARENESS_CURRENT_TIMESTAMP_TOOL_NAME
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -13,7 +14,7 @@ SYNTHETIC_TIMESTAMP_CALL_PREFIX = "call_synthetic_timestamp_"
 CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name="internal_timeawareness_current_timestamp",
+            name=INTERNAL_TIMEAWARENESS_CURRENT_TIMESTAMP_TOOL_NAME,
             description="Returns the current date and time. Optionally converts to a specific timezone.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -30,4 +31,4 @@ CURRENT_TIMESTAMP_TOOL_CONFIG = InternalTool(
 )
 
 # Tool name as sent to the LLM (sanitized, no hash)
-CURRENT_TIMESTAMP_TOOL_NAME = CURRENT_TIMESTAMP_TOOL_CONFIG.open_ai_tool.function.name
+CURRENT_TIMESTAMP_TOOL_NAME = INTERNAL_TIMEAWARENESS_CURRENT_TIMESTAMP_TOOL_NAME

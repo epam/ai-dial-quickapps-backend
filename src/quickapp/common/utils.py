@@ -2,6 +2,7 @@ import logging
 import mimetypes
 import re
 from datetime import datetime
+from pathlib import PurePosixPath
 from typing import Any
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
@@ -30,6 +31,19 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
         elif mime_type == mt:
             return True
     return False
+
+
+def posix_path_last_segment(path: str) -> str:
+    """Return the final segment of a POSIX-style path (``/`` separators only).
+
+    For DIAL ``files/...`` URLs and similar strings; uses :class:`pathlib.PurePosixPath`
+    instead of :func:`os.path.basename` so behavior does not depend on OS path rules.
+    Trailing slashes are normalized away by ``pathlib`` (e.g. ``files/bucket/`` →
+    segment ``bucket``). If ``.name`` is empty, returns the stripped path as a fallback.
+    """
+    stripped = path.strip()
+    name = PurePosixPath(stripped).name
+    return name if name else stripped
 
 
 def substitute_media_type(
