@@ -7,15 +7,17 @@ from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_initializer import (
-    _OrchestratorDefaultToolsContext,
-    _OrchestratorInitializer,
+from quickapp.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDeploymentInitializer,
+    _OrchestratorDefaultToolsContext
 )
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -73,14 +75,30 @@ class AgentModule(Module):
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
-        binder.bind(_OrchestratorInitializer, to=_OrchestratorInitializer, scope=request_scope)
-        binder.bind(
-            _OrchestratorDefaultToolsContext,
-            to=_OrchestratorDefaultToolsContext,
-            scope=request_scope,
-        )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
+        binder.bind(
+            OrchestratorDeploymentCacheService,
+            to=OrchestratorDeploymentCacheService,
+            scope=singleton,
+        )
+        binder.bind(
+            _OrchestratorDeploymentInitializer,
+            to=_OrchestratorDeploymentInitializer,
+            scope=request_scope,
+        )
+
+    @multiprovider
+    def _provide_completion_initializers(
+        self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
+    ) -> list[CompletionInitializer]:
+        return [initializer_provider.get()]
+
+    @provider
+    def provide_orchestrator_capabilities(
+        self, initializer: _OrchestratorDeploymentInitializer
+    ) -> OrchestratorCapabilities:
+        return initializer.capabilities
 
     @provider
     def provide_openai_client(
@@ -176,9 +194,3 @@ class AgentModule(Module):
         config_prompt: ConfigBasedPromptProvider,
     ) -> list[PromptPartProvider]:
         return [config_prompt]
-
-    @multiprovider
-    def __provide_initializers(
-        self, initializer_provider: ProviderOf[_OrchestratorInitializer]
-    ) -> list[CompletionInitializer]:
-        return [initializer_provider.get()]
