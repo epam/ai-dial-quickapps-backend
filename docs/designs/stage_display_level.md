@@ -140,9 +140,10 @@ def __provide_stage_display_level(
 
 ### 4. `StagedBaseTool` — constructor and `arun()` changes
 
-**Constructor:** Add `stage_display_level: StageDisplayLevel` as an injected dependency:
+**Constructor:** `StagedBaseTool` accepts `stage_display_level: StageDisplayLevel` as a plain constructor parameter (no default). Because the `injector` library only injects into the top-level instantiated class, the DI binding cannot be placed on `StagedBaseTool` directly. Instead, each concrete subclass declares `stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO` in its own `__init__` (where `@inject` applies) and forwards it to `super().__init__()`:
 
 ```python
+# StagedBaseTool — receives the value, does not inject it
 def __init__(
     self,
     stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
@@ -154,7 +155,23 @@ def __init__(
 ):
     ...
     self.__stage_display_level = stage_display_level
+
+
+# Concrete tool (e.g. RestApiTool) — injected here, forwarded to super
+def __init__(
+    self,
+    ...,
+    stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
+    argument_transformers: list[ToolArgumentTransformer] | None = None,
+):
+    super().__init__(
+        ...,
+        stage_display_level=stage_display_level,
+        argument_transformers=argument_transformers,
+    )
 ```
+
+Affected subclasses: `RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`.
 
 **`arun()` signature:** Replace `suppress_stage: bool = False` with `stage_level: StageLevel = StageLevel.USER`.
 
@@ -316,6 +333,7 @@ None. `suppress_stage` is an internal `arun()` parameter, not part of the public
 |---|---|
 | `src/quickapp/config/application.py` | Add `StageDisplayLevel` enum; add `StageDisplayConfig` class; add `stage_display: StageDisplayConfig` field to `Features` |
 | `src/quickapp/application/app_module.py` | Add `@provider @request` for `StageDisplayLevel` |
-| `src/quickapp/common/staged_base_tool.py` | Add `StageLevel` enum; inject `stage_display_level`; replace `suppress_stage: bool` with `stage_level: StageLevel` on `arun()`; rewrite suppression condition |
+| `src/quickapp/common/staged_base_tool.py` | Add `StageLevel` enum; accept `stage_display_level` as a constructor param (not injected — see note in §4); replace `suppress_stage: bool` with `stage_level: StageLevel` on `arun()`; rewrite suppression condition |
+| Each concrete tool subclass (`RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`) | Add `stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO` to `__init__` (DI entry point); forward to `super().__init__()` |
 | `src/quickapp/common/synthetic_injection/staged_tool_synthetic_injector.py` | Replace `suppress_stage=True` with `stage_level=StageLevel.SYSTEM` |
 | Initializer error paths | Pass `stage_level=StageLevel.ERROR` when emitting failure stages |
