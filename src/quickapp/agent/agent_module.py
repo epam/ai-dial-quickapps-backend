@@ -87,6 +87,11 @@ class AgentModule(Module):
             to=_OrchestratorDeploymentInitializer,
             scope=request_scope,
         )
+        binder.bind(
+            _OrchestratorDefaultToolsContext,
+            to=_OrchestratorDefaultToolsContext,
+            scope=request_scope,
+        )
 
     @multiprovider
     def _provide_completion_initializers(

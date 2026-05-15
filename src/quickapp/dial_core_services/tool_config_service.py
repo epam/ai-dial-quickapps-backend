@@ -70,7 +70,7 @@ class ToolConfigCoreService:
         return self.__dial_client_provider.get()
 
     @staticmethod
-    def _parse_default_tools_from_info(
+    def parse_default_tools_from_info(
         deployment: Deployment | Application,
     ) -> list[StaticTool]:
         """Extract and parse defaults.tools from deployment or application info.
@@ -105,20 +105,6 @@ class ToolConfigCoreService:
                     tool_type,
                 )
         return result
-
-    async def get_default_tools_for_deployment(self, deployment: str) -> list[StaticTool]:
-        """Return default tools for the deployment (cached). Empty list on failure or missing."""
-        dial_client = self._resolve_dial_client(None)
-
-        async def loader(deployment_id: str) -> list[StaticTool] | None:
-            deployment_info = await self._fetch_deployment_or_application(
-                dial_client, deployment_id
-            )
-            default_tools = ToolConfigCoreService._parse_default_tools_from_info(deployment_info)
-            return default_tools
-
-        value = await self.__cache.get(deployment, loader, deployment)
-        return value if value is not None else []
 
     @staticmethod
     async def _fetch_deployment_or_application(
