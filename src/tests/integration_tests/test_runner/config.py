@@ -33,7 +33,8 @@ class SimilarityThreshold(Enum):
 class TestDialCoreConfig:
     APP_NAME: str = os.getenv("DIAL_APP_NAME", "quick_app_2")  # used for telemetry
     APP_DEPLOYMENT_V2_NAME: str = os.getenv("APP_DEPLOYMENT_NAME", "quick_app_2")
-    REMOTE_DIAL_URL: str = os.getenv("REMOTE_DIAL_URL", "http://localhost:8090")
+    REMOTE_DIAL_URL: str = os.getenv("DIAL_URL", "http://localhost:8090")
+    REMOTE_DIAL_API_KEY: str = os.getenv("DIAL_API_KEY", "dial_api_key")
     LOG_LEVEL: str = os.getenv("DIAL_LOG_LEVEL", "INFO")
     MAX_MODEL_RETRIES: int = int(os.getenv("MAX_MODEL_RETRIES", 3))
 
