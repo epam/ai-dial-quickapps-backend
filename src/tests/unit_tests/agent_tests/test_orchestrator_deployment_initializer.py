@@ -35,13 +35,13 @@ def _make_initializer(
     cache = MagicMock()
     cache.fetch_metadata = fetch_metadata or AsyncMock()
 
-    default_tools_context = MagicMock()
+    static_tools_context = MagicMock()
 
     initializer = _OrchestratorDeploymentInitializer(
         app_config=app_config,
         tool_config_service=tool_config_service,
         orchestrator_deployment_cache=cache,
-        default_tools_context=default_tools_context,
+        static_tools_context=static_tools_context,
     )
     return initializer, resolver, cache.fetch_metadata
 

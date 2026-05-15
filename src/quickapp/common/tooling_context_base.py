@@ -12,7 +12,7 @@ class ToolingContextBase:
 
     def __init__(self):
         self._tools: list[StagedBaseTool] = []
-        self._default_tools: list[StaticTool] = []
+        self._static_tools: list[StaticTool] = []
         self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
 
@@ -26,19 +26,19 @@ class ToolingContextBase:
 
     def append_default_tool(self, tool: StaticTool) -> None:
         with self._lock:
-            self._default_tools.append(tool)
+            self._static_tools.append(tool)
 
-    def extend_default_tools(self, tools: list[StaticTool]) -> None:
+    def extend_static_tools(self, tools: list[StaticTool]) -> None:
         with self._lock:
-            self._default_tools.extend(tools)
+            self._static_tools.extend(tools)
 
     @property
     def tools(self) -> list[StagedBaseTool]:
         return self._tools
 
     @property
-    def default_tools(self) -> list[StaticTool]:
-        return self._default_tools
+    def static_tools(self) -> list[StaticTool]:
+        return self._static_tools
 
     @property
     def exceptions(self) -> list[InitializationException]:

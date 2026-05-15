@@ -8,8 +8,8 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent._orchestrator_deployment_initializer import (
-    _OrchestratorDefaultToolsContext,
     _OrchestratorDeploymentInitializer,
+    _OrchestratorStaticToolsContext,
 )
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
@@ -88,8 +88,8 @@ class AgentModule(Module):
             scope=request_scope,
         )
         binder.bind(
-            _OrchestratorDefaultToolsContext,
-            to=_OrchestratorDefaultToolsContext,
+            _OrchestratorStaticToolsContext,
+            to=_OrchestratorStaticToolsContext,
             scope=request_scope,
         )
 
@@ -130,7 +130,7 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_openai_tools(
-        self, tools: list[StagedBaseTool], default_tools: list[StaticTool]
+        self, tools: list[StagedBaseTool], static_tools: list[StaticTool]
     ) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
@@ -142,15 +142,15 @@ class AgentModule(Module):
                 ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
-        for default_tool in default_tools:
+        for default_tool in static_tools:
             openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
 
     @multiprovider
-    def provide_default_tools(
-        self, orchestrator_default_tools_context: _OrchestratorDefaultToolsContext
+    def provide_static_tools(
+        self, orchestrator_static_tools_context: _OrchestratorStaticToolsContext
     ) -> list[StaticTool]:
-        return orchestrator_default_tools_context.default_tools
+        return orchestrator_static_tools_context.static_tools
 
     @staticmethod
     def _remove_const_params(open_ai_tool):

@@ -67,7 +67,7 @@ class ToolConfigCoreService:
         return self.__dial_client_provider.get()
 
     @staticmethod
-    def parse_default_tools_from_info(
+    def parse_static_tools_from_info(
         deployment: Deployment | Application,
     ) -> list[StaticTool]:
         """Extract and parse defaults.tools from deployment or application info.
