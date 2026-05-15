@@ -32,7 +32,6 @@ class ToolingContextBase:
         with self._lock:
             self._default_tools.extend(tools)
 
-
     @property
     def tools(self) -> list[StagedBaseTool]:
         return self._tools

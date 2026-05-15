@@ -1,5 +1,5 @@
 """Prefetch orchestrator deployment metadata for each chat completion."""
-from aidial_sdk.chat_completion.request import StaticTool
+
 from injector import inject
 
 from quickapp.agent._orchestrator_default_tools_context import _OrchestratorDefaultToolsContext
@@ -34,8 +34,9 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
             deployment,
         )
         self._capabilities = OrchestratorCapabilities(deployment=model)
-        self._default_tools_context.extend_default_tools(ToolConfigCoreService.parse_default_tools_from_info(model))
-
+        self._default_tools_context.extend_default_tools(
+            ToolConfigCoreService.parse_default_tools_from_info(model)
+        )
 
     @property
     def capabilities(self) -> OrchestratorCapabilities:

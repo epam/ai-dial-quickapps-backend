@@ -8,8 +8,8 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDefaultToolsContext,
     _OrchestratorDeploymentInitializer,
-    _OrchestratorDefaultToolsContext
 )
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
