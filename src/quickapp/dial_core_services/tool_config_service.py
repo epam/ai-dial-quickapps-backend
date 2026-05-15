@@ -8,7 +8,6 @@ from aidial_sdk.chat_completion.request import StaticTool
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
-from quickapp.agent._cache import OrchestratorDefaultToolsCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
@@ -49,14 +48,12 @@ class ToolConfigCoreService:
         dial_settings: DialSettings,
         dial_client_provider: ProviderOf[AsyncDial],
         timeout_resolver_provider: ProviderOf[ToolTimeoutResolver],
-        cache: OrchestratorDefaultToolsCacheService,
     ):
         self.__dial_settings: DialSettings = dial_settings
         self.__dial_client_provider: ProviderOf[AsyncDial] = dial_client_provider
         self.__timeout_resolver_provider: ProviderOf[ToolTimeoutResolver] = (
             timeout_resolver_provider
         )
-        self.__cache = cache
 
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
