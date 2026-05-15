@@ -1,6 +1,7 @@
 # Design: Stage Display Level
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-05-15
 - **Dependencies:**
   - None
 
@@ -37,7 +38,7 @@ Both mechanisms are blunt: they are binary (show/hide), encode no semantic reaso
 ### UC-2: Triage mode — only errors
 
 **Trigger:** A manifest author sets `features.stage_display.level: errors` to reduce noise and see only failures.
-**Behavior:** User-facing tool call stages are suppressed. Only stages emitted with `stage_level=StageLevel.ERROR` (tool failures, initializer errors) are rendered.
+**Behavior:** User-facing tool call stages are suppressed. Only stages emitted with `stage_level=StageLevel.ERROR` (tool failures) are rendered.
 **Outcome:** The user sees only error stages, making failures immediately visible without noise from successful calls.
 
 ### UC-3: Debugging internal tool calls (`debug` mode)
@@ -51,12 +52,6 @@ Both mechanisms are blunt: they are binary (show/hide), encode no semantic reaso
 **Trigger:** Same as UC-3, but one tool has `display.stage.show: false` in its config.
 **Behavior:** `debug` level overrides `display.stage.show`. The stage is shown anyway.
 **Outcome:** The manifest author sees all stages. `debug` truly overrides all suppression, including the deprecated flag.
-
-### UC-5: Initializer error surfaces in `errors` mode
-
-**Trigger:** A toolset fails to initialize (e.g., MCP server unreachable). `features.stage_display.level` is `errors`.
-**Behavior:** The initializer emits a stage with `stage_level=StageLevel.ERROR`. The threshold allows it through.
-**Outcome:** The user sees the initialization failure stage even though all other stages are suppressed.
 
 ---
 
@@ -250,17 +245,6 @@ result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, suppress_stage=True, **argumen
 result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=StageLevel.SYSTEM, **arguments)
 ```
 
-**Initializer error stages** — wherever initializers currently emit error stages (or will emit them), pass `stage_level=StageLevel.ERROR`:
-
-```python
-# Example: toolset initializer reporting a failure
-await tool.arun(
-    _ARUN_ERROR_CALL_ID,
-    stage_level=StageLevel.ERROR,
-    **error_arguments,
-)
-```
-
 ---
 
 ### 6. Deprecation of `display.stage.show`
@@ -279,6 +263,7 @@ A deprecation warning should be logged when `display.stage.show = false` is enco
 - **Additional levels beyond three** (`trace`, `warn`, etc.): not needed now. The three-level model covers all current use cases.
 - **Per-tool-set `stage_display_level`**: granularity within a single quickapp is not a current requirement. Top-level `features` config is sufficient.
 - **Env-variable override**: a global env var was considered but rejected — per-quickapp config gives manifest authors finer control without requiring ops involvement.
+- **Initializer error stages**: toolset initializers write failure stages directly to a raw `Stage` object, bypassing `StagedBaseTool.arun()` entirely. These stages are unconditionally shown and are not gated by the `StageDisplayLevel` threshold.
 
 ---
 
@@ -336,4 +321,3 @@ None. `suppress_stage` is an internal `arun()` parameter, not part of the public
 | `src/quickapp/common/staged_base_tool.py` | Add `StageLevel` enum; accept `stage_display_level` as a constructor param (not injected — see note in §4); replace `suppress_stage: bool` with `stage_level: StageLevel` on `arun()`; rewrite suppression condition |
 | Each concrete tool subclass (`RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`) | Add `stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO` to `__init__` (DI entry point); forward to `super().__init__()` |
 | `src/quickapp/common/synthetic_injection/staged_tool_synthetic_injector.py` | Replace `suppress_stage=True` with `stage_level=StageLevel.SYSTEM` |
-| Initializer error paths | Pass `stage_level=StageLevel.ERROR` when emitting failure stages |
