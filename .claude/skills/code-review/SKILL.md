@@ -1,28 +1,13 @@
 ---
 name: code-review
 description: Use before creating a PR or claiming a change is ready (or on explicit user invocation). Self-reviews the current diff against the patterns this team's reviewers consistently flag.
+allowed-tools: Read Grep Glob LSP Bash(git diff:*) Bash(git log:*) Bash(git show:*) Bash(git status:*) Bash(git rev-parse:*) Bash(date:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(gh pr list:*) Write(docs/reviews/*) Bash(mkdir -p docs/reviews)
 argument-hint: "[pr|uncommitted]"
 arguments: scope
 model: opus
 effort: xhigh
 context: fork
 agent: general-purpose
-allowed-tools:
-  - Read
-  - Grep
-  - Glob
-  - LSP
-  - Bash(git diff:*)
-  - Bash(git log:*)
-  - Bash(git show:*)
-  - Bash(git status:*)
-  - Bash(git rev-parse:*)
-  - Bash(date:*)
-  - Bash(gh pr view:*)
-  - Bash(gh pr diff:*)
-  - Bash(gh pr list:*)
-  - Write(docs/reviews/*)
-  - Bash(mkdir -p docs/reviews)
 ---
 
 # code-review
@@ -184,7 +169,7 @@ This checklist drifts as conventions evolve. At the start of every review run, c
 git log -1 --since='7 days ago' --format=%h -- .claude/skills/code-review/SKILL.md
 ```
 
-- **Non-empty output** → fresh. Skip; don't load `REFRESHING.md`.
-- **Empty output** → stale. Tell the user "the review checklist hasn't been refreshed in over a week; refresh recommended" and offer to run it. Load [REFRESHING.md](REFRESHING.md) **only** if the user agrees.
+- **Non-empty output** → fresh. Skip; don't load `references/REFRESHING.md`.
+- **Empty output** → stale. Tell the user "the review checklist hasn't been refreshed in over a week; refresh recommended" and offer to run it. Load [references/REFRESHING.md](references/REFRESHING.md) **only** if the user agrees.
 
 Refresh is always separate from the review run — never block reviewing on a stale checklist.
