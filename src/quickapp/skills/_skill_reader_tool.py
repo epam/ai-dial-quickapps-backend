@@ -42,6 +42,7 @@ class _SkillReaderTool(StagedBaseTool):
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None = None,
+        tool_call_id: str | None = None,
         skill_name: str | None = None,
         *args: Any,
         **kwargs: Any,

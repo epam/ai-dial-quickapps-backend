@@ -57,7 +57,11 @@ class _RestApiTool(StagedBaseTool):
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
 
     async def _run_in_stage_async(
-        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ToolCallResult:
         timeout = self.__timeout_resolver.resolve()
         async with translate_timeout(self._tool_config.open_ai_tool.function.name, timeout):

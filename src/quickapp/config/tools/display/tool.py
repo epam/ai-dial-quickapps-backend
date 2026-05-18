@@ -19,6 +19,14 @@ class ToolStageConfig(BaseModel):
         description="Whether the tool stage should be shown in the chat.",
         deprecated="use stage_level=StageLevel.SYSTEM at the call site instead.",
     )
+    defer_close: bool = Field(
+        default=False,
+        description=(
+            "When True, the stage stays open until parallel tool execution finishes "
+            "rather than closing when this tool returns. Useful when a later "
+            "recovery step may rewrite the tool's result."
+        ),
+    )
 
     @model_validator(mode="after")
     def _warn_if_show_false(self) -> "ToolStageConfig":

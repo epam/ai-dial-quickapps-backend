@@ -1,4 +1,5 @@
 import logging
+import sys
 from abc import ABC, abstractmethod
 from enum import Enum
 from typing import Any
@@ -8,6 +9,10 @@ from pydantic import BaseModel, Field
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.stage_close_registry import (
+    DeferredStageCloseRegistry,
+    ImmediateStageCloseRegistry,
+)
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
@@ -36,6 +41,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         perf_timer: PerformanceTimer,
         tool_config: _BaseToolConfig,
         stage_display_level: StageDisplayLevel,
+        deferred_stage_close_registry: (
+            DeferredStageCloseRegistry | ImmediateStageCloseRegistry | None
+        ) = None,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs,
     ):
@@ -43,6 +51,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         self.__stage_wrapper_builder: AssistedBuilder[BaseStageWrapper] = stage_wrapper_builder
         self._tool_config: _BaseToolConfig = tool_config
         self.__perf_timer: PerformanceTimer = perf_timer
+        self.__deferred_stage_close_registry: (
+            DeferredStageCloseRegistry | ImmediateStageCloseRegistry
+        ) = (deferred_stage_close_registry or ImmediateStageCloseRegistry())
         self.__argument_transformers: list[ToolArgumentTransformer] = argument_transformers or []
         self.__stage_display_level: StageDisplayLevel = stage_display_level
 
@@ -52,7 +63,11 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
-        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ToolCallResult: ...
 
     def _run(self, *args: Any, **kwargs: Any) -> Any:
@@ -95,33 +110,50 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             tool_config=self._tool_config,
             stage_name=self.stage_name_component,
         )
-        with stage_wrapper:
+        defer_close = bool(display and display.stage and display.stage.defer_close)
+
+        if defer_close:
+            stage_wrapper.__enter__()
             try:
-                return await self._run_in_stage_report_success(
-                    tool_call_id, stage_wrapper, *args, **kwargs
-                )
-            except InvalidToolCallParameterException as e:
-                logger.exception("Invalid parameter detected while running tool")
-                stage_wrapper.add_exception(e)
-                return FallbackProcessor.process_fallback(
-                    [
-                        RetryStrategyModel(
-                            instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
-                        )
-                    ],
-                    tool_call_id,
-                    e,
-                )
-            except Exception as e:
-                logger.exception("Error occurred while running tool")
-                fallback = self._tool_config.fallback_configuration
-                if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
-                    stage_wrapper.add_exception(e)
-                else:
-                    stage_wrapper.add_exception(
-                        Exception("An error occurred while executing the tool.")
+                result = await self.__run_tool_body(tool_call_id, stage_wrapper, *args, **kwargs)
+                self.__deferred_stage_close_registry.defer_close(stage_wrapper)
+                return result
+            except BaseException:
+                stage_wrapper.__exit__(*sys.exc_info())
+                raise
+        else:
+            with stage_wrapper:
+                return await self.__run_tool_body(tool_call_id, stage_wrapper, *args, **kwargs)
+
+    async def __run_tool_body(
+        self, tool_call_id: str, stage_wrapper: BaseStageWrapper, *args: Any, **kwargs: Any
+    ) -> ToolCallResult:
+        try:
+            return await self._run_in_stage_report_success(
+                tool_call_id, stage_wrapper, *args, **kwargs
+            )
+        except InvalidToolCallParameterException as e:
+            logger.exception("Invalid parameter detected while running tool")
+            stage_wrapper.add_exception(e)
+            return FallbackProcessor.process_fallback(
+                [
+                    RetryStrategyModel(
+                        instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
                     )
-                return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
+                ],
+                tool_call_id,
+                e,
+            )
+        except Exception as e:
+            logger.exception("Error occurred while running tool")
+            fallback = self._tool_config.fallback_configuration
+            if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
+                stage_wrapper.add_exception(e)
+            else:
+                stage_wrapper.add_exception(
+                    Exception("An error occurred while executing the tool.")
+                )
+            return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         for transformer in self.__argument_transformers:
@@ -143,7 +175,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             timer_name = f"tool_{stage_wrapper.name}_{tool_call_id}"
         try:
             self.__perf_timer.start_period(timer_name, 3)
-            result: ToolCallResult = await self._run_in_stage_async(stage_wrapper, *args, **params)
+            result: ToolCallResult = await self._run_in_stage_async(
+                stage_wrapper, tool_call_id, *args, **params
+            )
             result.tool_call_id = tool_call_id
             if result.attachments:
                 attachment_cfg = self._tool_config.attachment
