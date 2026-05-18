@@ -1,16 +1,19 @@
 import copy
 
 from fastapi_injector import request_scope
-from injector import Binder, Module, NoScope, multiprovider, provider, singleton
+from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import OpenAiToolConfigDict
 from quickapp.agent.orchestrator import Orchestrator
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -21,8 +24,10 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -61,6 +66,11 @@ class AgentModule(Module):
         # FIXME: mypy warning:
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(
+            DeferredStageCloseRegistry,
+            to=DeferredStageCloseRegistry,
+            scope=request_scope,
+        )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -69,6 +79,28 @@ class AgentModule(Module):
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
+        binder.bind(
+            OrchestratorDeploymentCacheService,
+            to=OrchestratorDeploymentCacheService,
+            scope=singleton,
+        )
+        binder.bind(
+            _OrchestratorDeploymentInitializer,
+            to=_OrchestratorDeploymentInitializer,
+            scope=request_scope,
+        )
+
+    @multiprovider
+    def _provide_completion_initializers(
+        self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
+    ) -> list[CompletionInitializer]:
+        return [initializer_provider.get()]
+
+    @provider
+    def provide_orchestrator_capabilities(
+        self, initializer: _OrchestratorDeploymentInitializer
+    ) -> OrchestratorCapabilities:
+        return initializer.capabilities
 
     @provider
     def provide_openai_client(

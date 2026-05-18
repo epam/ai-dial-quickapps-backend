@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from aidial_sdk.chat_completion import FunctionCall, ToolCall
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 

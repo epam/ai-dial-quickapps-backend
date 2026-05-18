@@ -133,9 +133,12 @@ class _MCPTool(StagedBaseTool):
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
-        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ToolCallResult:
-
         logger.debug(f"MCP tool called with {kwargs}")
 
         timeout = self.__timeout_resolver.resolve()

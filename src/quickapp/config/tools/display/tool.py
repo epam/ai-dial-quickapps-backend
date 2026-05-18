@@ -14,6 +14,14 @@ class ToolStageConfig(BaseModel):
         default=True,
         description="Whether the tool stage should be shown in the chat.",
     )
+    defer_close: bool = Field(
+        default=False,
+        description=(
+            "When True, the stage stays open until parallel tool execution finishes "
+            "rather than closing when this tool returns. Useful when a later "
+            "recovery step may rewrite the tool's result."
+        ),
+    )
 
 
 class ToolDisplayConfig(BaseModel):
