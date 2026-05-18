@@ -49,9 +49,8 @@ class AssistantInvoker:
         completion_config = self.__prepare_chat_completion_config()
         return await self.__create_chat_completion(completion_config)
 
-    def __prepare_chat_completion_config(
-        self,
-    ) -> dict[str, Any]:
+    def __prepare_chat_completion_config(self) -> dict[str, Any]:
+
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
