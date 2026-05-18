@@ -25,14 +25,27 @@ class TestHandleBase64:
     async def test_normal_bytes(self, mock_file_service):
         raw = b"hello world"
         mock_file_service.load.return_value = raw
-        result = await FilePrefixHandlers.handle_base64("files/test.bin", mock_file_service)
+        result = await FilePrefixHandlers.handle_base64(
+            "files/test.bin", mock_file_service, parameter_name="input"
+        )
         assert result == base64.b64encode(raw).decode()
 
     @pytest.mark.asyncio
-    async def test_non_bytes_raises_exception(self, mock_file_service):
+    async def test_non_bytes_raises_exception_with_parameter_name(self, mock_file_service):
         mock_file_service.load.return_value = object()
-        with pytest.raises(InvalidToolCallParameterException):
-            await FilePrefixHandlers.handle_base64("files/test.bin", mock_file_service)
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await FilePrefixHandlers.handle_base64(
+                "files/test.bin", mock_file_service, parameter_name="input"
+            )
+        assert excinfo.value.parameter_name == "input"
+
+    @pytest.mark.asyncio
+    async def test_parameter_name_threaded_to_file_service(self, mock_file_service):
+        mock_file_service.load.return_value = b"data"
+        await FilePrefixHandlers.handle_base64(
+            "files/test.bin", mock_file_service, parameter_name="input"
+        )
+        mock_file_service.load.assert_awaited_once_with("files/test.bin", parameter_name="input")
 
 
 # ---------------------------------------------------------------------------

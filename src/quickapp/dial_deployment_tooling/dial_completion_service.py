@@ -200,12 +200,19 @@ class DialCompletionService:
     ) -> list[AttachmentParam]:
         if not relative_attachment_urls:
             return []
-        return await asyncio.gather(
+        results = await asyncio.gather(
             *(
                 self._resolve_attachment(url, supports_url_attachments)
                 for url in relative_attachment_urls
-            )
+            ),
+            return_exceptions=True,
         )
+        resolved: list[AttachmentParam] = []
+        for result in results:
+            if isinstance(result, BaseException):
+                raise result
+            resolved.append(result)
+        return resolved
 
     async def _resolve_attachment(
         self, file_relative_url: str, supports_url_attachments: bool

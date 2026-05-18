@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -116,6 +117,57 @@ async def test_upload_failure_propagates():
     promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
     with pytest.raises(RuntimeError, match="upload boom"):
         await promoter.promote("https://example.com/x.txt")
+
+
+@pytest.mark.asyncio
+async def test_concurrent_promote_same_url_dedupes_fetch_and_upload():
+    fetch_started = asyncio.Event()
+    release_fetch = asyncio.Event()
+
+    async def slow_fetch(_url: str) -> FetchedBytes:
+        fetch_started.set()
+        await release_fetch.wait()
+        return FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt")
+
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock(side_effect=slow_fetch)
+    attachments = MagicMock(spec=AttachmentService)
+    attachments.upload_bytes = AsyncMock(return_value=_make_metadata())
+
+    promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
+
+    first_call = asyncio.create_task(promoter.promote("https://example.com/x.txt"))
+    await fetch_started.wait()
+    second_call = asyncio.create_task(promoter.promote("https://example.com/x.txt"))
+    await asyncio.sleep(0)
+    release_fetch.set()
+    first, second = await asyncio.gather(first_call, second_call)
+
+    assert first is second
+    fetcher.fetch.assert_awaited_once()
+    attachments.upload_bytes.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_promote_allows_retry():
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock(
+        side_effect=[
+            ExternalFetchError(reason="transport", url="https://example.com/x"),
+            FetchedBytes(data=b"x", content_type="text/plain", filename="x.txt"),
+        ]
+    )
+    attachments = MagicMock(spec=AttachmentService)
+    attachments.upload_bytes = AsyncMock(return_value=_make_metadata())
+
+    promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
+
+    with pytest.raises(InvalidToolCallParameterException):
+        await promoter.promote("https://example.com/x")
+
+    result = await promoter.promote("https://example.com/x")
+    assert result is not None
+    assert fetcher.fetch.await_count == 2
 
 
 @pytest.mark.asyncio

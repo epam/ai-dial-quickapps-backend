@@ -126,9 +126,7 @@ class ToolConfigCoreService:
         )
 
         supports_url_attachments = (
-            bool(getattr(deployment.features, "url_attachments", None))
-            if deployment.features
-            else False
+            bool(deployment.features.url_attachments) if deployment.features else False
         )
 
         output_tool = DialDeploymentTool(

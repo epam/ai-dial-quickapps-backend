@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -102,6 +103,47 @@ async def test_dial_absolute_url_classified_as_dial_branch():
     assert result == b"dial"
     dial_dl.fetch.assert_awaited_once()
     fetcher.fetch.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_load_same_url_dedupes_fetch():
+    fetch_started = asyncio.Event()
+    release_fetch = asyncio.Event()
+
+    async def slow_fetch(_url: str) -> bytes:
+        fetch_started.set()
+        await release_fetch.wait()
+        return b"dial-bytes"
+
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(side_effect=slow_fetch)
+
+    loader = _make_loader(dial_downloader=dial_dl)
+
+    first_call = asyncio.create_task(loader.load("files/x.pdf"))
+    await fetch_started.wait()
+    second_call = asyncio.create_task(loader.load("files/x.pdf"))
+    await asyncio.sleep(0)
+    release_fetch.set()
+    first, second = await asyncio.gather(first_call, second_call)
+
+    assert first == second == b"dial-bytes"
+    dial_dl.fetch.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_failed_load_allows_retry():
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(side_effect=[RuntimeError("boom"), b"second"])
+
+    loader = _make_loader(dial_downloader=dial_dl)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await loader.load("files/x.pdf")
+
+    second = await loader.load("files/x.pdf")
+    assert second == b"second"
+    assert dial_dl.fetch.await_count == 2
 
 
 @pytest.mark.asyncio

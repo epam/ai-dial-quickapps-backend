@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from injector import inject
@@ -37,12 +38,25 @@ class FileLoaderService:
         self.__external_fetcher = external_fetcher
         self.__state_holder = state_holder
         self.__dial_url = dial_settings.url
+        self.__inflight: dict[str, asyncio.Task[bytes]] = {}
 
     async def load(self, url: str, parameter_name: str = "<unknown>") -> bytes:
         cached = self.__state_holder.get_file_data(url=url)
         if cached is not None:
             return cached
 
+        inflight = self.__inflight.get(url)
+        if inflight is not None:
+            return await inflight
+
+        task = asyncio.create_task(self.__do_load(url, parameter_name))
+        self.__inflight[url] = task
+        try:
+            return await task
+        finally:
+            self.__inflight.pop(url, None)
+
+    async def __do_load(self, url: str, parameter_name: str) -> bytes:
         scheme = classify_url(url, self.__dial_url)
         if scheme == UrlScheme.DIAL:
             data = await self.__dial_downloader.fetch(url)

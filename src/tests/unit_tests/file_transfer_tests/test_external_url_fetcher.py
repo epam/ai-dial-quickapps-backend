@@ -112,6 +112,28 @@ async def test_transport_redirect_hop_runs_host_check():
 
 
 @pytest.mark.asyncio
+async def test_no_dial_credentials_leak_to_external_host():
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, content=b"ok", headers={"content-type": "text/plain"})
+
+    mock_transport = httpx.MockTransport(handler)
+    with patch(
+        "quickapp.file_transfer._external_url_fetcher._SsrfGuardTransport",
+        return_value=mock_transport,
+    ):
+        await _fetcher(size=_size(1024)).fetch("https://example.com/file")
+
+    assert len(captured) == 1
+    sent_headers = {h.lower() for h in captured[0].headers.keys()}
+    forbidden = {"authorization", "api-key", "x-forwarded-for", "x-real-ip"}
+    leaked = forbidden & sent_headers
+    assert not leaked, f"forbidden headers reached external host: {leaked}"
+
+
+@pytest.mark.asyncio
 async def test_happy_path_returns_fetched_bytes():
     fetcher = _fetcher(size=_size(1024))
 

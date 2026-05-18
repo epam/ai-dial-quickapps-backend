@@ -6,14 +6,13 @@ from urllib.parse import unquote
 from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
-from quickapp.common import DIAL_API_KEY, StagedBaseTool, ToolCallResult
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.tools.internal import InternalTool
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
@@ -62,10 +61,8 @@ class _PyInterpreterTool(StagedBaseTool):
         session_manager: SessionManager,
         display_content_processor: DisplayContentProcessor,
         dial_settings: DialSettings,
-        dial_api_key: DIAL_API_KEY,
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        timeout_resolver: ToolTimeoutResolver,
         input_file_handler: InputFileHandler,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -84,8 +81,6 @@ class _PyInterpreterTool(StagedBaseTool):
         self.__session_manager: SessionManager = session_manager
         self.__display_content_processor: DisplayContentProcessor = display_content_processor
         self.__dial_settings: DialSettings = dial_settings
-        self.__dial_api_key: DIAL_API_KEY = dial_api_key
-        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__input_file_handler: InputFileHandler = input_file_handler
         self.stage_name_component = "Calling Python Code Interpreter"
 
@@ -230,10 +225,8 @@ class _PyInterpreterTool(StagedBaseTool):
     ) -> None:
         url = await self.__input_file_handler.get_attachment_url(
             settings=self.__py_interpreter_settings,
-            dial_api_key=self.__dial_api_key,
             attachment_url=attachment_url,
             attachment=attachment,
-            timeout=self.__timeout_resolver.resolve(),
         )
         await client.transfer_input_file(
             InputFileTransferDto(

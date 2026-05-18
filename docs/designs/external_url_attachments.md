@@ -1,6 +1,6 @@
 # Design: External URLs as First-Class File References
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-05-08
 - **Dependencies:**
   - None

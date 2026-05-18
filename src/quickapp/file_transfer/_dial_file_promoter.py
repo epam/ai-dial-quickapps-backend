@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from aidial_client import AsyncDial
@@ -40,30 +41,35 @@ class DialFilePromoter:
         self.__external_fetcher = external_fetcher
         self.__attachment_service = attachment_service
         self.__dial_url = dial_settings.url
-        self.__cache: dict[str, FileMetadata] = {}
+        self.__cache: dict[str, asyncio.Task[FileMetadata]] = {}
 
     async def promote(self, url: str, parameter_name: str = "<unknown>") -> FileMetadata:
-        cached = self.__cache.get(url)
-        if cached is not None:
-            return cached
+        task = self.__cache.get(url)
+        if task is not None:
+            return await task
 
+        task = asyncio.create_task(self.__do_promote(url, parameter_name))
+        self.__cache[url] = task
+        try:
+            return await task
+        except BaseException:
+            self.__cache.pop(url, None)
+            raise
+
+    async def __do_promote(self, url: str, parameter_name: str) -> FileMetadata:
         scheme = classify_url(url, self.__dial_url)
         if scheme == UrlScheme.DIAL:
-            metadata = await self.__dial_client.files.get_metadata(strip_file_prefix(url))
-        elif scheme == UrlScheme.EXTERNAL:
+            return await self.__dial_client.files.get_metadata(strip_file_prefix(url))
+        if scheme == UrlScheme.EXTERNAL:
             try:
                 fetched = await self.__external_fetcher.fetch(url)
             except (ExternalFetchError, ExternalFetchDisabledError) as exc:
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name, message=str(exc)
                 ) from exc
-            metadata = await self.__attachment_service.upload_bytes(
+            return await self.__attachment_service.upload_bytes(
                 data=fetched.data,
                 content_type=fetched.content_type,
                 filename=fetched.filename,
             )
-        else:
-            raise unsupported_scheme_error(url, parameter_name)
-
-        self.__cache[url] = metadata
-        return metadata
+        raise unsupported_scheme_error(url, parameter_name)

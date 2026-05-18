@@ -81,9 +81,7 @@ class TestPreProcessParams:
 
         result = await tool._pre_process_params(image="file:base64::files/photo.png")
 
-        file_loader.load.assert_awaited_once_with(
-            "files/photo.png", parameter_name="files/photo.png"
-        )
+        file_loader.load.assert_awaited_once_with("files/photo.png", parameter_name="image")
         assert result["image"] == base64.b64encode(raw).decode()
 
     @pytest.mark.asyncio

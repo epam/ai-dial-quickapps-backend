@@ -62,7 +62,9 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
                 key,
                 file_url_part,
             )
-            return await FilePrefixHandlers.handle_base64(file_url_part, self.__file_service)
+            return await FilePrefixHandlers.handle_base64(
+                file_url_part, self.__file_service, parameter_name=key
+            )
         elif detected_prefix == "url":
             logger.debug(
                 "Detected 'url' prefix for key %s (url: %s) - placeholder handling",

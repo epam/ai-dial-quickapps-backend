@@ -13,6 +13,7 @@ from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings i
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.input_file_handler import (
     InputFileHandler,
 )
+from tests.unit_tests.common.common import noop_timeout_resolver
 
 DIAL_URL = "https://dial.example.com"
 
@@ -23,7 +24,12 @@ def _make_handler(promoter: MagicMock | None = None) -> InputFileHandler:
     if promoter is None:
         promoter = MagicMock(spec=DialFilePromoter)
         promoter.promote = AsyncMock()
-    return InputFileHandler(promoter=promoter, dial_settings=settings)
+    return InputFileHandler(
+        promoter=promoter,
+        dial_settings=settings,
+        dial_api_key=SecretStr("host-key"),
+        timeout_resolver=noop_timeout_resolver(value=10.0),
+    )
 
 
 def _settings_no_dev_dial() -> MagicMock:
@@ -48,10 +54,8 @@ async def test_dial_url_passes_through_when_no_dev_dial():
 
     url = await handler.get_attachment_url(
         settings=_settings_no_dev_dial(),
-        dial_api_key=SecretStr("k"),
         attachment_url="files/bucket/x.csv",
         attachment=Attachment(type="text/csv", url="files/bucket/x.csv"),
-        timeout=10.0,
     )
 
     assert url == "files/bucket/x.csv"
@@ -68,10 +72,8 @@ async def test_external_url_promoted_then_returned():
 
     url = await handler.get_attachment_url(
         settings=_settings_no_dev_dial(),
-        dial_api_key=SecretStr("k"),
         attachment_url="https://example.com/data.csv",
         attachment=Attachment(type="text/csv", url="https://example.com/data.csv"),
-        timeout=10.0,
     )
 
     assert url == "files/bucket/external.csv"
@@ -86,10 +88,8 @@ async def test_unsupported_url_raises():
     with pytest.raises(InvalidToolCallParameterException):
         await handler.get_attachment_url(
             settings=_settings_no_dev_dial(),
-            dial_api_key=SecretStr("k"),
             attachment_url="ftp://example.com/x",
             attachment=Attachment(type="text/csv", url="ftp://example.com/x"),
-            timeout=10.0,
         )
 
 
@@ -116,10 +116,8 @@ async def test_dial_url_with_dev_dial_uploads_to_dev():
     ):
         url = await handler.get_attachment_url(
             settings=_settings_with_dev_dial(),
-            dial_api_key=SecretStr("host-key"),
             attachment_url="files/bucket/x.csv",
             attachment=Attachment(type="text/csv", url="files/bucket/x.csv"),
-            timeout=10.0,
         )
 
     assert url == "files/dev-bucket/x.csv"
@@ -151,10 +149,8 @@ async def test_external_url_with_dev_dial_promotes_then_uploads_to_dev():
     ):
         url = await handler.get_attachment_url(
             settings=_settings_with_dev_dial(),
-            dial_api_key=SecretStr("host-key"),
             attachment_url="https://example.com/x.csv",
             attachment=Attachment(type="text/csv", url="https://example.com/x.csv"),
-            timeout=10.0,
         )
 
     assert url == "files/dev/promoted.csv"

@@ -391,7 +391,7 @@ The application is composed of 15 specialized DI modules:
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
-    `_DialDownloader` for DIAL file bytes)
+    `DialDownloader` for DIAL file bytes)
 11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction
     injection. Owns the loader/fetcher/promoter trio: `FileLoaderService` (scheme-aware bytes loader),
     `ExternalUrlFetcher` (single egress for external URLs with the SSRF / size / redirect / timeout envelope), and

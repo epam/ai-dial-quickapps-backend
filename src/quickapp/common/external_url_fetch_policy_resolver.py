@@ -8,6 +8,7 @@ from quickapp.config.application import ApplicationConfig
 
 PolicyReason = Literal["admin", "builder", "allowed"]
 HostReason = Literal["admin_allowlist", "builder_allowlist", "allowed"]
+DisabledReason = Literal["admin", "builder", "admin_allowlist", "builder_allowlist"]
 
 
 @inject

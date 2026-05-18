@@ -19,15 +19,17 @@ class FilePrefixHandlers:
     """Static handlers for file:{prefix}::{file_url} processing."""
 
     @staticmethod
-    async def handle_base64(file_url: str, file_service: FileLoaderService) -> str:
-        content = await file_service.load(file_url, parameter_name=file_url)
+    async def handle_base64(
+        file_url: str, file_service: FileLoaderService, parameter_name: str = "<unknown>"
+    ) -> str:
+        content = await file_service.load(file_url, parameter_name=parameter_name)
         if not isinstance(content, (bytes, bytearray)):
             try:
                 content = bytes(content)
             except Exception:
                 logger.exception("Failed to coerce downloaded content to bytes for %s", file_url)
                 raise InvalidToolCallParameterException(
-                    parameter_name=file_url,
+                    parameter_name=parameter_name,
                     message="Downloaded content is not bytes and cannot be converted to base64.",
                 )
         return base64.b64encode(content).decode()

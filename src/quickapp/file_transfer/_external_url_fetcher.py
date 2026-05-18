@@ -11,7 +11,10 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_url_fetch_policy_resolver import ExternalUrlFetchPolicyResolver
+from quickapp.common.external_url_fetch_policy_resolver import (
+    DisabledReason,
+    ExternalUrlFetchPolicyResolver,
+)
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import filename_from_url_path
@@ -28,7 +31,6 @@ class FetchedBytes(BaseModel):
 
 
 _FetchErrorReason = Literal["ssrf_block", "size_limit", "redirect_cap", "timeout", "transport"]
-_DisabledReason = Literal["admin", "builder", "admin_allowlist", "builder_allowlist"]
 
 
 class ExternalFetchError(Exception):
@@ -58,7 +60,7 @@ class ExternalFetchError(Exception):
         return f"{base} {self.detail}".strip()
 
 
-_DISABLED_DETAIL: dict[_DisabledReason, str] = {
+_DISABLED_DETAIL: dict[DisabledReason, str] = {
     "admin": "External URL fetching is disabled by operator policy (ALLOW_EXTERNAL_URL_FETCH).",
     "builder": (
         "External URL fetching is disabled by this app "
@@ -82,8 +84,8 @@ class ExternalFetchDisabledError(Exception):
     (``admin_allowlist``, ``builder_allowlist``).
     """
 
-    def __init__(self, reason: _DisabledReason, url: str) -> None:
-        self.reason: _DisabledReason = reason
+    def __init__(self, reason: DisabledReason, url: str) -> None:
+        self.reason: DisabledReason = reason
         self.url = url
         super().__init__(
             f"{_DISABLED_DETAIL[reason]} Upload the file to DIAL and pass `files/...` instead, "
@@ -255,11 +257,6 @@ class ExternalUrlFetcher:
         reason = self.__policy.resolve_reason()
         if reason != "allowed":
             raise ExternalFetchDisabledError(reason=reason, url=url)
-
-        host = httpx.URL(url).host
-        host_reason = self.__policy.resolve_host(host)
-        if host_reason != "allowed":
-            raise ExternalFetchDisabledError(reason=host_reason, url=url)
 
         tool_timeout = self.__timeout_resolver.resolve()
         timeout = httpx.Timeout(
