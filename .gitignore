@@ -26,3 +26,4 @@ venv
 /docker_compose_files/core/configuration/generated/
 /.editorconfig
 /docs/superpowers
+/docs/reviews
