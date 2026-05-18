@@ -3,14 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import openai
 import pytest
-from aidial_sdk.chat_completion.request import (
-    Attachment,
-    CustomContent,
-    FunctionCall,
-    Message,
-    Role,
-    ToolCall,
-)
+from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
 
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
@@ -18,8 +11,6 @@ from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from tests.unit_tests.stream_test_doubles import SpyChoice
-
-GET_CONTENT_TOOL_NAME = "internal_attachments_get_content"
 
 
 def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:

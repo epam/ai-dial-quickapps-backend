@@ -13,7 +13,7 @@ from quickapp.attachment_processing._legacy_user_image_keep_policy import _Legac
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ class AttachmentProcessingModule(Module):
             to=_AttachmentNotificationInjector,
             scope=request_scope,
         )
+
         logger.debug("AttachmentProcessingModule module configuration completed")
 
     @multiprovider
@@ -37,6 +38,7 @@ class AttachmentProcessingModule(Module):
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
+
         if should_activate_context_tool(app_config.contexts, messages):
             tools.append(
                 ac_builder.build(
@@ -46,6 +48,7 @@ class AttachmentProcessingModule(Module):
                     contexts=list(app_config.contexts),
                 )
             )
+
         return tools
 
     @multiprovider
@@ -56,5 +59,5 @@ class AttachmentProcessingModule(Module):
         return [attachment_notification_injector]
 
     @multiprovider
-    def provide_tool_attachment_keep_policies(self) -> list[ToolAttachmentKeepPolicy]:
+    def provide_tool_attachment_keep_policies(self) -> list[AttachmentKeepPolicy]:
         return [_LegacyUserImageKeepPolicy()]

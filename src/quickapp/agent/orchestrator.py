@@ -156,7 +156,7 @@ class Orchestrator:
                 )
             )
         self.__perf_timer.add_milestone(period, "assistant_response_received")
-        logger.debug(f"Message from agent: {self.__messages_context.messages}")
+        logger.debug("Message from agent: %s", self.__messages_context.messages)
 
         if not tool_calls:
             self.__deferred_stage_close_registry.flush()

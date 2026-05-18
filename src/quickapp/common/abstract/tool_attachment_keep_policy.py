@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from aidial_sdk.chat_completion import Attachment, Message
 
 
-class ToolAttachmentKeepPolicy(ABC):
+class AttachmentKeepPolicy(ABC):
     """Decides whether a single attachment on a TOOL message should survive
     pre-invocation filtering.
 

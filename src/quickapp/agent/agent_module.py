@@ -28,7 +28,7 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
@@ -207,7 +207,7 @@ class AgentModule(Module):
         return []
 
     @multiprovider
-    def provide_tool_attachment_keep_policies(self) -> list[ToolAttachmentKeepPolicy]:
+    def provide_tool_attachment_keep_policies(self) -> list[AttachmentKeepPolicy]:
         return []
 
     @multiprovider

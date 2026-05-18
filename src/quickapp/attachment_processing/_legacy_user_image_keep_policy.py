@@ -1,10 +1,10 @@
 from aidial_sdk.chat_completion import Attachment, Message, Role
 
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.utils import matches_type
 
 
-class _LegacyUserImageKeepPolicy(ToolAttachmentKeepPolicy):
+class _LegacyUserImageKeepPolicy(AttachmentKeepPolicy):
     """Keep ``image/*`` attachments on USER messages — the default behaviour
     inherited from `development` before policy-driven filtering replaced the
     inline `_AttachmentFilter` rule.

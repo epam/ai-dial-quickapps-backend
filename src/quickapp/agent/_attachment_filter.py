@@ -6,7 +6,7 @@ from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import inject
 
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 class _AttachmentFilter(PreInvocationTransformer):
     def __init__(
         self,
-        tool_attachment_keep_policies: list[ToolAttachmentKeepPolicy],
+        tool_attachment_keep_policies: list[AttachmentKeepPolicy],
     ) -> None:
-        self.__tool_attachment_keep_policies: list[ToolAttachmentKeepPolicy] = (
+        self.__tool_attachment_keep_policies: list[AttachmentKeepPolicy] = (
             tool_attachment_keep_policies
         )
 
