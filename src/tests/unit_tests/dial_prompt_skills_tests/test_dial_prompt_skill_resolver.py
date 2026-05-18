@@ -163,3 +163,43 @@ class TestDialPromptSkillResolver:
         output = await resolver.resolve([])
         assert output.resolved == []
         assert output.exceptions == []
+
+    @pytest.mark.asyncio
+    async def test_long_name_resolves_with_warning(self):
+        """A name >64 chars used to be a per-URL failure; now it resolves."""
+        long_name = "a" * 65
+        content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
+        prompt = _make_prompt(content=content)
+        resolver = _make_resolver(prompts_get_return=prompt)
+
+        output = await resolver.resolve([_make_config()])
+
+        assert len(output.resolved) == 1
+        assert output.resolved[0].metadata.name == long_name
+        assert output.exceptions == []
+
+    @pytest.mark.asyncio
+    async def test_bom_prefixed_content_resolves(self):
+        """Content stored with a leading BOM (common after copy/paste) now parses."""
+        content = "﻿" + VALID_SKILL_CONTENT
+        prompt = _make_prompt(content=content)
+        resolver = _make_resolver(prompts_get_return=prompt)
+
+        output = await resolver.resolve([_make_config()])
+
+        assert len(output.resolved) == 1
+        assert output.resolved[0].metadata.name == "my-skill"
+        assert output.exceptions == []
+
+    @pytest.mark.asyncio
+    async def test_closing_fence_at_eof_resolves(self):
+        """Content with no trailing newline after the closing fence now parses."""
+        content = "---\nname: my-skill\ndescription: desc\n---"
+        prompt = _make_prompt(content=content)
+        resolver = _make_resolver(prompts_get_return=prompt)
+
+        output = await resolver.resolve([_make_config()])
+
+        assert len(output.resolved) == 1
+        assert output.resolved[0].metadata.name == "my-skill"
+        assert output.exceptions == []

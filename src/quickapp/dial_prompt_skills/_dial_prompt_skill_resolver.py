@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from aidial_client import AsyncDial
 from injector import inject
@@ -9,6 +10,8 @@ from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._skill_metadata import SkillMetadata
+
+logger = logging.getLogger(__name__)
 
 
 class ResolvedDialPromptSkill(BaseModel):
@@ -41,8 +44,10 @@ async def fetch_and_validate_dial_prompt_skill(
     prompt = await client.prompts.get(url)
     if prompt.content is None or not prompt.content.strip():
         raise SkillValidationError(url, "DIAL prompt has no content")
-    metadata = parse_frontmatter(prompt.content, url)
-    return metadata, prompt.content
+    parsed = parse_frontmatter(prompt.content, url)
+    for warning in parsed.warnings:
+        logger.warning("DIAL prompt skill '%s': %s", url, warning)
+    return parsed.metadata, prompt.content
 
 
 @inject
