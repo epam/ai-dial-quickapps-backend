@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
@@ -21,10 +22,25 @@ def get_max_iterations() -> int:
     return AgentSettings().default_agent_max_iterations
 
 
-class OrchestratorConfig(BaseModel):
-    deployment: DialDeploymentConfig = Field(
-        description="The configuration for the orchestrator DIAL deployment."
+def _orchestrator_deployment_field() -> Any:
+    description = "The configuration for the orchestrator DIAL deployment."
+    env_id = AgentSettings().default_orchestrator_deployment_id
+    if env_id is None:
+        return Field(description=description)
+    # `default_factory` produces a fresh instance per validation; `json_schema_extra`
+    # injects the minimal `{"deployment_id": ...}` default into the JSON schema so DIAL
+    # Core's manifest UI can pre-fill the orchestrator field. Without the extra, pydantic
+    # would auto-dump the whole DialDeploymentConfig instance (including nullable
+    # parameters) into the schema's default.
+    return Field(
+        default_factory=lambda: DialDeploymentConfig(deployment_id=env_id),
+        json_schema_extra={"default": {"deployment_id": env_id}},
+        description=description,
     )
+
+
+class OrchestratorConfig(BaseModel):
+    deployment: DialDeploymentConfig = _orchestrator_deployment_field()
     system_prompt: AgentSystemPromptConfig = Field(
         description="The configuration for the system prompt."
     )
