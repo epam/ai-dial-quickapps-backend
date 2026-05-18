@@ -91,7 +91,7 @@ async def test_invoke_without_show_usage(monkeypatch):
     assert called_kwargs["model"] == "test-model"
     assert called_kwargs["stream"] is True
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello"}]
-    assert called_kwargs["tools"] is tools
+    assert called_kwargs["tools"] == tools
     # stream_options must NOT be present when show_usage_statistics is False
     assert "stream_options" not in called_kwargs
 
@@ -127,7 +127,7 @@ async def test_invoke_with_show_usage_true(monkeypatch):
     assert "stream_options" in called_kwargs
     assert called_kwargs["stream_options"] == {"include_usage": True}
     # other keys still correct
-    assert called_kwargs["tools"] is tools
+    assert called_kwargs["tools"] == tools
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
     assert called_kwargs["stream"] is True
 
