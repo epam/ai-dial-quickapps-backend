@@ -102,7 +102,7 @@ class DIALModel(DIALDeploymentBase):
     limits: DIALLimits | None = Field(None, description="The model limits")
     features: DIALModelFeatures = Field(description="The model features")
     pricing: DIALModelPricing | None = Field(None, description="The model pricing")
-    defaults: dict[str, Any] | None = Field(description="The model defaults")
+    defaults: dict[str, Any] | None = Field(None, description="The model defaults")
 
 
 class DIALApplication(DIALDeploymentBase):

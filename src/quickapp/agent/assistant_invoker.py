@@ -46,14 +46,12 @@ class AssistantInvoker:
         self.__forwarded_headers = forwarded_headers
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        completion_config = self.__prepare_chat_completion_config(tools=self.__tools)
+        completion_config = self.__prepare_chat_completion_config()
         return await self.__create_chat_completion(completion_config)
 
     def __prepare_chat_completion_config(
         self,
-        tools: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
-        tools_to_use = tools if tools is not None else self.__tools
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
@@ -62,7 +60,7 @@ class AssistantInvoker:
             "messages": prepared_messages,
             "stream": True,
             "model": self.__config.orchestrator.deployment.deployment_id,
-            "tools": tools_to_use,
+            "tools": self.__tools,
         }
 
         if self.__response_format:

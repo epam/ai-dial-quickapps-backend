@@ -24,10 +24,6 @@ class ToolingContextBase:
         with self._lock:
             self._tools.extend(tools)
 
-    def append_default_tool(self, tool: StaticTool) -> None:
-        with self._lock:
-            self._static_tools.append(tool)
-
     def extend_static_tools(self, tools: list[StaticTool]) -> None:
         with self._lock:
             self._static_tools.extend(tools)
