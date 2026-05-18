@@ -6,6 +6,7 @@ from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provide
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -79,6 +80,7 @@ class AgentModule(Module):
             scope=request_scope,
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
+        binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
