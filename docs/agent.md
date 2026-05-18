@@ -151,6 +151,27 @@ calls or the maximum iteration limit is reached.
 
 ---
 
+## Orchestrator Static Tools
+
+Some orchestrator deployments ship **model-owned default tools** in DIAL Core metadata (`defaults.tools` on the deployment or application). Examples include grounding helpers exposed as `static_function` entries (e.g. Google Search on Gemini deployments). QuickApps does not configure or execute these tools; the orchestrator model consumes them directly.
+
+### Loading
+
+During **completion initialization**, `_OrchestratorDeploymentInitializer` fetches orchestrator deployment metadata (via `OrchestratorDeploymentCacheService` and `ToolConfigCoreService.get_deployment_metadata`). `ToolConfigCoreService.parse_static_tools_from_info` reads `defaults.tools`, keeps entries with `type == "static_function"`, validates them as `aidial_sdk.chat_completion.request.StaticTool`, and appends them to the request-scoped `_OrchestratorStaticToolsContext`. Invalid or unsupported entries are skipped (debug log only). The same metadata fetch also builds `OrchestratorCapabilities` (e.g. accepted attachment MIME types).
+
+This runs in the completion-initializer phase **before** message preprocessing and orchestrator invocation (see [Request Lifecycle](#5-completion-initialization)).
+
+### Passing to the LLM
+
+`AgentModule.provide_openai_tools` builds the chat completion `tools` list in two passes:
+
+1. **App-configured tools** — OpenAI-function schemas from resolved `StagedBaseTool` instances (REST, deployment, MCP, internal).
+2. **Static tools** — serialized `StaticTool` dicts from `provide_static_tools`, which reads `_OrchestratorStaticToolsContext.static_tools`.
+
+`AssistantInvoker` receives this merged list via DI and sends it unchanged on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
+
+---
+
 ## Tool System
 
 The tool system provides a unified abstraction for executing different types of tools while maintaining consistent
