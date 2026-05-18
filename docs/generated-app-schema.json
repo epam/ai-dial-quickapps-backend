@@ -2911,6 +2911,12 @@
           "description": "Whether the tool stage should be shown in the chat.",
           "title": "Show",
           "type": "boolean"
+        },
+        "defer_close": {
+          "default": false,
+          "description": "When True, the stage stays open until parallel tool execution finishes rather than closing when this tool returns. Useful when a later recovery step may rewrite the tool's result.",
+          "title": "Defer Close",
+          "type": "boolean"
         }
       },
       "title": "ToolStageConfig",

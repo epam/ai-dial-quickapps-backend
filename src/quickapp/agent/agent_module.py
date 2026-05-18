@@ -31,6 +31,7 @@ from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnr
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -69,6 +70,11 @@ class AgentModule(Module):
         # FIXME: mypy warning:
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
+        binder.bind(
+            DeferredStageCloseRegistry,
+            to=DeferredStageCloseRegistry,
+            scope=request_scope,
+        )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
