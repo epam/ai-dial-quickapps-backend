@@ -110,6 +110,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             tool_config=self._tool_config,
             stage_name=self.stage_name_component,
         )
+        display = self._tool_config.display
         defer_close = bool(display and display.stage and display.stage.defer_close)
 
         if defer_close:

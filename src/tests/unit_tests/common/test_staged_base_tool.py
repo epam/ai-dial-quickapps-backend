@@ -8,9 +8,9 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.staged_base_tool import StageLevel
 from quickapp.config.application import StageDisplayLevel
-from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool import AnyTool
