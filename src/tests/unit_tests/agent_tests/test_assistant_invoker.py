@@ -6,6 +6,8 @@ import pytest
 
 from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 
 
@@ -67,6 +69,21 @@ def _make_config_builder(
     )
 
 
+def _make_recovery_service(
+    messages,
+    *,
+    policies=None,
+    deferred_stage_close_registry=None,
+) -> ChatCompletionRecoveryService:
+    messages_mixin = Mock(spec=MessagesMixin)
+    messages_mixin.messages = messages
+    return ChatCompletionRecoveryService(
+        messages_mixin,
+        policies or [],
+        deferred_stage_close_registry or DeferredStageCloseRegistry(),
+    )
+
+
 def _make_invoker(
     *,
     messages,
@@ -75,6 +92,7 @@ def _make_invoker(
     show_usage: bool = False,
     chat_completion_recovery_policies=None,
     deferred_stage_close_registry=None,
+    chat_completion_recovery: ChatCompletionRecoveryService | None = None,
     config_builder: _ChatCompletionConfigBuilder | None = None,
 ) -> AssistantInvoker:
     return AssistantInvoker(
@@ -82,8 +100,12 @@ def _make_invoker(
         azure_client=azure_client,
         chat_completion_config_builder=config_builder
         or _make_config_builder(tools=tools, show_usage=show_usage),
-        chat_completion_recovery_policies=chat_completion_recovery_policies or [],
-        deferred_stage_close_registry=deferred_stage_close_registry or DeferredStageCloseRegistry(),
+        chat_completion_recovery=chat_completion_recovery
+        or _make_recovery_service(
+            messages,
+            policies=chat_completion_recovery_policies,
+            deferred_stage_close_registry=deferred_stage_close_registry,
+        ),
     )
 
 

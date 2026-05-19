@@ -12,8 +12,11 @@ from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
-from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
+from quickapp.common.chat_completion_recovery import (
+    STREAM_ACCUMULATION_RETRY_SCOPE,
+    ChatCompletionRecoveryService,
+)
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
@@ -49,7 +52,7 @@ class Orchestrator:
         app_config: ApplicationConfig,
         perf_timer: PerformanceTimer,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
-        chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy],
+        chat_completion_recovery: ChatCompletionRecoveryService,
         tool_execution_history_policies: list[ToolExecutionHistoryPolicy],
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
@@ -70,9 +73,7 @@ class Orchestrator:
         self.__deferred_stage_close_registry: DeferredStageCloseRegistry = (
             deferred_stage_close_registry
         )
-        self.__chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy] = (
-            chat_completion_recovery_policies
-        )
+        self.__chat_completion_recovery = chat_completion_recovery
         self.__tool_execution_history_policies: list[ToolExecutionHistoryPolicy] = (
             tool_execution_history_policies
         )
@@ -182,32 +183,14 @@ class Orchestrator:
 
     async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
         """Invoke assistant and consume stream; on APIError/BadRequest during stream, run recovery once."""
-        recovery_retry_used = False
         while True:
             assistant_invoker = self.__assistant_invoker_provider.get()
             chat_completion_stream = await assistant_invoker.invoke()
             try:
                 return await self.accumulate_stream(chat_completion_stream)
-            except (APIError, BadRequestError) as e:
-                recovered = False
-                for policy in self.__chat_completion_recovery_policies:
-                    if policy.try_recover(self.__messages_context.messages, e):
-                        recovered = True
-                if not recovered:
-                    raise
-                self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(
-                    self.__messages_context.messages
-                )
-                if recovery_retry_used:
-                    logger.exception(
-                        "Chat completion stream failed again after message recovery retry"
-                    )
-                    raise
-                recovery_retry_used = True
-                logger.warning(
-                    "Chat completion stream failed with %s; message recovery applied, "
-                    "retrying assistant invoke once",
-                    type(e).__name__,
+            except (BadRequestError, APIError) as e:
+                self.__chat_completion_recovery.apply_message_recovery(
+                    e, retry_scope=STREAM_ACCUMULATION_RETRY_SCOPE
                 )
 
     async def accumulate_stream(

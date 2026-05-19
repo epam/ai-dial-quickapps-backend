@@ -33,6 +33,7 @@ from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepP
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -77,6 +78,11 @@ class AgentModule(Module):
         binder.bind(
             DeferredStageCloseRegistry,
             to=DeferredStageCloseRegistry,
+            scope=request_scope,
+        )
+        binder.bind(
+            ChatCompletionRecoveryService,
+            to=ChatCompletionRecoveryService,
             scope=request_scope,
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)

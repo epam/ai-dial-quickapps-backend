@@ -8,9 +8,9 @@ class ChatCompletionRecoveryPolicy(ABC):
 
     Each feature module owns a policy for the errors it knows how to recover from.
     Policies are invoked in registration order; **every** policy's ``try_recover`` is
-    called. The caller retries the failed operation at most once if **any** policy
-    returns ``True``. Return ``False`` if this policy cannot handle ``error``; the
-    original error is re-raised if no policy recovers.
+    called. ``ChatCompletionRecoveryService`` retries the failed operation at most once per
+    request if **any** policy returns ``True``. Return ``False`` if this policy cannot
+    handle ``error``; the original error is re-raised if no policy recovers.
     """
 
     @abstractmethod
