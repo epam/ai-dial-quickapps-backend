@@ -72,12 +72,16 @@ def _dump_schema_in_subprocess(env: dict[str, str]) -> dict:
     default at import time, so the only reliable way to assert "schema under env X"
     is a fresh process.
     """
+    # `quickapp.common` is imported before `quickapp.config.application` to load the
+    # common package init first — `application.py` and `quickapp.common.staged_base_tool`
+    # form a circular import that resolves only when common's __init__ has fully run.
     script = textwrap.dedent("""
         import json
         import sys
 
         sys.path.insert(0, sys.argv[1])
 
+        import quickapp.common  # noqa: F401  -- order-sensitive
         from quickapp.config.application import ApplicationConfig
 
         json.dump(ApplicationConfig.model_json_schema(include_dial_fields=False), sys.stdout)

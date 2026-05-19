@@ -1,8 +1,8 @@
 import logging
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.fields import FieldInfo
 
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
@@ -38,7 +38,7 @@ def get_max_iterations() -> int:
     return AgentSettings().default_agent_max_iterations
 
 
-def _orchestrator_deployment_field() -> Any:
+def _orchestrator_deployment_field() -> FieldInfo:
     description = "The configuration for the orchestrator DIAL deployment."
     env_id = AgentSettings().default_orchestrator_deployment_id
     if env_id is None:
@@ -48,7 +48,7 @@ def _orchestrator_deployment_field() -> Any:
     # Core's manifest UI can pre-fill the orchestrator field. Without the extra, pydantic
     # would auto-dump the whole DialDeploymentConfig instance (including nullable
     # parameters) into the schema's default.
-    return Field(
+    return Field(  # type: ignore[return-value]
         default_factory=lambda: DialDeploymentConfig(deployment_id=env_id),
         json_schema_extra={"default": {"deployment_id": env_id}},
         description=description,
@@ -56,7 +56,7 @@ def _orchestrator_deployment_field() -> Any:
 
 
 class OrchestratorConfig(BaseModel):
-    deployment: DialDeploymentConfig = _orchestrator_deployment_field()
+    deployment: DialDeploymentConfig = _orchestrator_deployment_field()  # type: ignore[assignment]
     system_prompt: AgentSystemPromptConfig = Field(
         description="The configuration for the system prompt."
     )
