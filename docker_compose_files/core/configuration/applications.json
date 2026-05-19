@@ -1,5 +1,80 @@
 {
   "applications": {
+    "dial-file-tools-qa": {
+      "name": "DIAL-Files-Tools-QA",
+      "display_name": "DIAL Files Tools QA",
+      "display_version": "0.0.1",
+      "description": "QA app for the eight DIAL files tools (preview).",
+      "max_retry_attempts": 1,
+      "application_properties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "anthropic.claude-sonnet-4-6",
+            "parameters": {
+              "temperature": 0.2
+            }
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are a file-tools QA assistant. Use ONLY the internal_file_* tools (list, read_lines, search, write, edit, delete, copy, move) to satisfy the user's requests. When the user gives a relative path, treat it as relative to the agent's home directory. When the user gives a path starting with 'files/', pass it through as an absolute DIAL URL. After each tool call, briefly state in plain text what the tool returned (success line, error, or listing) so the user can verify. Do not invent paths the user did not provide."
+          },
+          "max_iterations": 6
+        },
+        "contexts": [],
+        "tool_sets": [],
+        "features": {
+          "dial_files": {}
+        }
+      },
+      "application_type_schema_id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "routes": {}
+    },
+    "files-app": {
+      "name": "Files-fetch-app",
+      "display_name": "Files application(fetch, context, files)",
+      "display_version": "0.0.1",
+      "icon_url": "",
+      "description": "",
+      "max_retry_attempts": 1,
+      "application_properties": {
+        "orchestrator": {
+          "deployment": {
+            "name": "anthropic.claude-sonnet-4-6",
+            "parameters": {
+              "temperature": 0.5
+            }
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "Use fetch with row=false and without limit"
+          }
+        },
+        "contexts": [
+          {
+            "url": "files/684f6Lz7ubje66aoCRsa5c/ai-chat-stage.txt",
+            "type": "file"
+          },
+          {
+            "url": "files/684f6Lz7ubje66aoCRsa5c/_ai-dial-quickapps-backend-core-1_logs.txt",
+            "type": "file"
+          }
+        ],
+        "tool_sets": [
+          {
+            "name": "dial-deployment-tool-set",
+            "type": "dial-deployment",
+            "tools": []
+          }
+        ],
+        "features": {
+          "dial_files": {}
+        }
+      },
+      "application_type_schema_id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "routes": {}
+    },
     "quick_app_2": {
       "displayName": "Quick App 2",
       "description": "The sample of Quick App v2",
