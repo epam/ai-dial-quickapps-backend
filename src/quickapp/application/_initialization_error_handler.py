@@ -62,8 +62,11 @@ class _InitializationErrorHandler:
             elif isinstance(exc, SkillCatastrophicInitializationException):
                 catastrophic_lines.append(f"- {exc.reason}")
             elif isinstance(exc, SkillInitializationException) and exc.url is not None:
-                bucket = per_url_warning_lines if exc.severity == "warning" else per_url_error_lines
-                bucket.append(f"- **{exc.url}**: {exc.reason}")
+                line = f"- **{exc.url}**: {exc.reason}"
+                if exc.severity == "warning":
+                    per_url_warning_lines.append(line)
+                else:
+                    per_url_error_lines.append(line)
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",
