@@ -26,3 +26,10 @@ class SkillCatastrophicInitializationException(SkillInitializationException):
 
     def __init__(self, reason: str):
         super().__init__(reason, url=None)
+
+
+class SkillInitializationWarning(SkillInitializationException):
+    """Non-fatal skill loading diagnostic — e.g. a cosmetic frontmatter
+    violation. Soft like its parent; the renderer distinguishes by class
+    rather than severity flag.
+    """

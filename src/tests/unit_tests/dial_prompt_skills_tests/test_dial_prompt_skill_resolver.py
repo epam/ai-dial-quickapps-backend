@@ -2,6 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from quickapp.common.exceptions import SkillInitializationException, SkillInitializationWarning
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolver
 
@@ -166,17 +167,70 @@ class TestDialPromptSkillResolver:
 
     @pytest.mark.asyncio
     async def test_long_name_resolves_with_warning(self):
-        """A name >64 chars used to be a per-URL failure; now it resolves."""
+        """A name >64 chars resolves and emits a SkillInitializationWarning."""
         long_name = "a" * 65
         content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
         prompt = _make_prompt(content=content)
         resolver = _make_resolver(prompts_get_return=prompt)
 
-        output = await resolver.resolve([_make_config()])
+        output = await resolver.resolve([_make_config("prompts/bucket/long")])
 
         assert len(output.resolved) == 1
         assert output.resolved[0].metadata.name == long_name
-        assert output.exceptions == []
+        assert len(output.exceptions) == 1
+        warning = output.exceptions[0]
+        assert isinstance(warning, SkillInitializationWarning)
+        assert warning.url == "prompts/bucket/long"
+        assert "exceeds 64 characters" in warning.reason
+
+    @pytest.mark.asyncio
+    async def test_multiple_warnings_per_skill(self):
+        """A skill with both a length and a format violation emits two warnings."""
+        bad_name = "-" + "a" * 64  # 65 chars, leading hyphen → both warnings fire
+        content = f"---\nname: {bad_name}\ndescription: desc\n---\nBody\n"
+        prompt = _make_prompt(content=content)
+        resolver = _make_resolver(prompts_get_return=prompt)
+
+        output = await resolver.resolve([_make_config("prompts/bucket/iffy")])
+
+        assert len(output.resolved) == 1
+        warnings = [e for e in output.exceptions if isinstance(e, SkillInitializationWarning)]
+        assert len(warnings) == 2
+        reasons = " | ".join(w.reason for w in warnings)
+        assert "exceeds 64 characters" in reasons
+        assert "does not match recommended format" in reasons
+
+    @pytest.mark.asyncio
+    async def test_warning_and_failure_coexist(self):
+        """One URL resolves with a warning; another fails — both reported."""
+        long_name = "a" * 65
+        ok_with_warning = _make_prompt(
+            content=f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
+        )
+        broken = _make_prompt(content="no frontmatter here")
+
+        dial_client = MagicMock()
+        dial_client.prompts = MagicMock()
+        dial_client.prompts.get = AsyncMock(side_effect=[ok_with_warning, broken])
+        resolver = DialPromptSkillResolver(dial_client=dial_client)
+
+        output = await resolver.resolve(
+            [_make_config("prompts/bucket/ok"), _make_config("prompts/bucket/broken")]
+        )
+
+        assert len(output.resolved) == 1
+        assert output.resolved[0].url == "prompts/bucket/ok"
+        warnings = [e for e in output.exceptions if isinstance(e, SkillInitializationWarning)]
+        errors = [
+            e
+            for e in output.exceptions
+            if isinstance(e, SkillInitializationException)
+            and not isinstance(e, SkillInitializationWarning)
+        ]
+        assert len(warnings) == 1
+        assert warnings[0].url == "prompts/bucket/ok"
+        assert len(errors) == 1
+        assert errors[0].url == "prompts/bucket/broken"
 
     @pytest.mark.asyncio
     async def test_bom_prefixed_content_resolves(self):

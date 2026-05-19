@@ -1,17 +1,14 @@
 import asyncio
-import logging
 
 from aidial_client import AsyncDial
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.exceptions import SkillInitializationException
+from quickapp.common.exceptions import SkillInitializationException, SkillInitializationWarning
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._skill_metadata import SkillMetadata
-
-logger = logging.getLogger(__name__)
 
 
 class ResolvedDialPromptSkill(BaseModel):
@@ -35,19 +32,18 @@ class DialPromptSkillResolverOutput(BaseModel):
 
 async def fetch_and_validate_dial_prompt_skill(
     client: AsyncDial, url: str
-) -> tuple[SkillMetadata, str]:
+) -> tuple[SkillMetadata, str, list[str]]:
     """Fetch a DIAL prompt by URL and validate it as a skill.
 
-    Raises ``DialException`` if the fetch fails and ``SkillValidationError``
-    if the prompt is empty or its frontmatter is invalid.
+    Returns ``(metadata, content, warnings)``. Raises ``DialException`` if the
+    fetch fails and ``SkillValidationError`` if the prompt is empty or its
+    frontmatter is invalid.
     """
     prompt = await client.prompts.get(url)
     if prompt.content is None or not prompt.content.strip():
         raise SkillValidationError(url, "DIAL prompt has no content")
     parsed = parse_frontmatter(prompt.content, url)
-    for warning in parsed.warnings:
-        logger.warning("DIAL prompt skill '%s': %s", url, warning)
-    return parsed.metadata, prompt.content
+    return parsed.metadata, prompt.content, parsed.warnings
 
 
 @inject
@@ -66,8 +62,10 @@ class DialPromptSkillResolver:
         - Deduplicates by URL before fetching.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
         - Deduplicates by skill name after fetching (first configured wins).
-        - Every per-URL failure becomes a ``SkillInitializationException`` in
-          the ``exceptions`` list — per the unified initialization-issues flow.
+        - Per-URL failures become ``SkillInitializationException`` entries;
+          non-fatal parser warnings become ``SkillInitializationWarning``
+          entries. Both ride the same ``exceptions`` list to the unified
+          initialization-issues flow.
         """
         seen_urls: set[str] = set()
         unique_configs: list[DialPromptSkillConfig] = []
@@ -94,28 +92,33 @@ class DialPromptSkillResolver:
                 exceptions.append(SkillInitializationException(url=url, reason=str(result)))
                 continue
 
-            if result.metadata.name in seen_names:
+            skill, warnings = result
+            for warning in warnings:
+                exceptions.append(SkillInitializationWarning(url=url, reason=warning))
+
+            if skill.metadata.name in seen_names:
                 exceptions.append(
                     SkillInitializationException(
                         url=url,
                         reason=(
-                            f"Duplicate skill name '{result.metadata.name}';"
+                            f"Duplicate skill name '{skill.metadata.name}';"
                             " keeping first occurrence"
                         ),
                     )
                 )
                 continue
 
-            seen_names.add(result.metadata.name)
-            resolved.append(result)
+            seen_names.add(skill.metadata.name)
+            resolved.append(skill)
 
         return DialPromptSkillResolverOutput(resolved=resolved, exceptions=exceptions)
 
     async def _fetch_one(
         self,
         config: DialPromptSkillConfig,
-    ) -> ResolvedDialPromptSkill:
-        metadata, content = await fetch_and_validate_dial_prompt_skill(
+    ) -> tuple[ResolvedDialPromptSkill, list[str]]:
+        metadata, content, warnings = await fetch_and_validate_dial_prompt_skill(
             self._dial_client, config.url
         )
-        return ResolvedDialPromptSkill(url=config.url, metadata=metadata, content=content)
+        skill = ResolvedDialPromptSkill(url=config.url, metadata=metadata, content=content)
+        return skill, warnings
