@@ -1,8 +1,3 @@
-import json
-import logging
-from typing import Any
-
-from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 from openai import APIError, AsyncStream, BadRequestError
@@ -17,143 +12,40 @@ from quickapp.common.abstract.chat_completion_recovery_policy import ChatComplet
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import ApplicationConfig
-
+from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.common import ORCHESTRATOR_AZURE_CLIENT
+from quickapp.common.chat_completion_recovery import (
+    CHAT_COMPLETION_CREATE_RETRY_SCOPE,
+    ChatCompletionRecoveryService,
+)
 logger = logging.getLogger(__name__)
+
 
 
 @inject
 class AssistantInvoker:
+
     def __init__(
         self,
-        tools: list[OpenAiToolConfigDict],
-        config: ApplicationConfig,
         messages: list[Message],
-        choice: Choice,
         azure_client: ORCHESTRATOR_AZURE_CLIENT,
-        response_format: RESPONSE_FORMAT,
-        pre_invocation_transformers: list[PreInvocationTransformer],
-        presentation_settings: PresentationSettings,
-        agent_settings: AgentSettings,
-        forwarded_headers: ForwardedHeaders,
-        chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy],
-        deferred_stage_close_registry: DeferredStageCloseRegistry,
+        chat_completion_config_builder: _ChatCompletionConfigBuilder,
+        chat_completion_recovery: ChatCompletionRecoveryService,
     ) -> None:
-        self.__pre_invocation_transformers = pre_invocation_transformers
         self.__messages: list[Message] = messages
-        self.__choice: Choice = choice
-        self.__config: ApplicationConfig = config
-        self.__tools: list[OpenAiToolConfigDict] = tools
         self.__azure_client = azure_client
-        self.__response_format = response_format
-        self.__presentation_settings = presentation_settings
-        self.__agent_settings = agent_settings
-        self.__forwarded_headers = forwarded_headers
-        self.__chat_completion_recovery_policies: list[ChatCompletionRecoveryPolicy] = (
-            chat_completion_recovery_policies
+        self.__chat_completion_config_builder: _ChatCompletionConfigBuilder = (
+            chat_completion_config_builder
         )
-        self.__deferred_stage_close_registry: DeferredStageCloseRegistry = (
-            deferred_stage_close_registry
-        )
+        self.__chat_completion_recovery = chat_completion_recovery
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        completion_config = self.__prepare_chat_completion_config()
-        return await self.__create_chat_completion(completion_config)
-
-    def __prepare_chat_completion_config(self) -> dict[str, Any]:
-
-        chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
-            exclude_none=True
-        )
-        prepared_messages = self.__prepare_messages(self.__messages)
-        payload: dict[str, Any] = {
-            "messages": prepared_messages,
-            "stream": True,
-            "model": self.__config.orchestrator.deployment.deployment_id,
-            "tools": self.__tools,
-        }
-
-        if self.__response_format:
-            logger.debug("Setting response format: %s", self.__response_format)
-            if hasattr(self.__response_format, "model_dump"):
-                payload["response_format"] = self.__response_format.model_dump(
-                    exclude_none=True, mode="json"
-                )
-            elif isinstance(self.__response_format, dict):
-                payload["response_format"] = self.__response_format
-            else:
-                logger.error(
-                    "Unsupported response format type: %s. The response format will not be applied.",
-                    type(self.__response_format),
-                )
-
-        if self.__presentation_settings.show_usage_statistics:
-            payload["stream_options"] = {"include_usage": True}
-
-        if self.__forwarded_headers:
-            payload["extra_headers"] = self.__forwarded_headers
-
-        chat_completion_config.update(payload)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(
-                "Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False)
-            )
-        return chat_completion_config
-
-    async def __create_chat_completion(
-        self, completion_config: dict[str, Any]
-    ) -> AsyncStream[ChatCompletionChunk]:
-        try:
-            return await self.__azure_client.chat.completions.create(**completion_config)
-        except (BadRequestError, APIError) as e:
-            recovered = False
-            for policy in self.__chat_completion_recovery_policies:
-                if policy.try_recover(self.__messages, e):
-                    recovered = True
-            if not recovered:
-                logger.exception(
-                    "Chat completion rejected with BadRequest/APIError; recovery did not apply"
-                )
-                raise
-            self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(
-                self.__messages
-            )
-            completion_config = self.__prepare_chat_completion_config()
+        """Create chat completion; on APIError/BadRequest, run message recovery once and retry."""
+        while True:
+            completion_config = self.__chat_completion_config_builder.build(self.__messages)
             try:
                 return await self.__azure_client.chat.completions.create(**completion_config)
-            except Exception:
-                logger.exception(
-                    "Error during chat completion after BadRequest/APIError recovery retry"
+            except (BadRequestError, APIError) as e:
+                self.__chat_completion_recovery.apply_message_recovery(
+                    e, retry_scope=CHAT_COMPLETION_CREATE_RETRY_SCOPE
                 )
-                raise
-        except Exception:
-            logger.exception("Error during chat completion")
-            raise
-
-    def _log_messages(self, messages: list[Message]):
-        preview_len = self.__agent_settings.chat_message_log_length
-        for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg.model_dump(), idx, preview_len=preview_len)
-
-    def __prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
-        transformed_messages = messages
-        for transformer in self.__pre_invocation_transformers:
-            transformed_messages = transformer.transform(transformed_messages)
-        result: list[dict[str, Any]] = []
-        for message in transformed_messages:
-            msg_dict = message.model_dump(exclude_none=True, mode="json")
-            self.__promote_orchestrator_state_to_top_level(msg_dict)
-            result.append(msg_dict)
-        return result
-
-    @staticmethod
-    def __promote_orchestrator_state_to_top_level(msg_dict: dict[str, Any]) -> None:
-        """Before calling the model, promote state.orchestrator to top-level state."""
-        custom = msg_dict.get("custom_content")
-        if not isinstance(custom, dict):
-            return
-        state = custom.get("state")
-        if not isinstance(state, dict) or STATE_KEY_ORCHESTRATOR not in state:
-            return
-        orch = state.pop(STATE_KEY_ORCHESTRATOR, None)
-        if isinstance(orch, dict):
-            state.update(orch)

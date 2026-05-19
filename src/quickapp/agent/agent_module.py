@@ -1,12 +1,17 @@
 import copy
 
+from aidial_sdk.chat_completion.request import StaticTool
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
+from quickapp.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDeploymentInitializer,
+    _OrchestratorStaticToolsContext,
+)
 from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.agent.assistant_invoker import AssistantInvoker
@@ -24,10 +29,11 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -74,7 +80,13 @@ class AgentModule(Module):
             to=DeferredStageCloseRegistry,
             scope=request_scope,
         )
+        binder.bind(
+            ChatCompletionRecoveryService,
+            to=ChatCompletionRecoveryService,
+            scope=request_scope,
+        )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
+        binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
@@ -90,6 +102,11 @@ class AgentModule(Module):
         binder.bind(
             _OrchestratorDeploymentInitializer,
             to=_OrchestratorDeploymentInitializer,
+            scope=request_scope,
+        )
+        binder.bind(
+            _OrchestratorStaticToolsContext,
+            to=_OrchestratorStaticToolsContext,
             scope=request_scope,
         )
 
@@ -129,7 +146,9 @@ class AgentModule(Module):
         return azure_client
 
     @multiprovider
-    def provide_openai_tools(self, tools: list[StagedBaseTool]) -> list[OpenAiToolConfigDict]:
+    def provide_openai_tools(
+        self, tools: list[StagedBaseTool], static_tools: list[StaticTool]
+    ) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
             if issubclass(type(tool.tool_config), BaseOpenAITool):
@@ -140,7 +159,15 @@ class AgentModule(Module):
                 ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
+        for default_tool in static_tools:
+            openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))
         return openai_functions
+
+    @multiprovider
+    def provide_static_tools(
+        self, orchestrator_static_tools_context: _OrchestratorStaticToolsContext
+    ) -> list[StaticTool]:
+        return orchestrator_static_tools_context.static_tools
 
     @staticmethod
     def _remove_const_params(open_ai_tool):
@@ -188,7 +215,7 @@ class AgentModule(Module):
         return []
 
     @multiprovider
-    def provide_tool_attachment_keep_policies(self) -> list[ToolAttachmentKeepPolicy]:
+    def provide_tool_attachment_keep_policies(self) -> list[AttachmentKeepPolicy]:
         return []
 
     @multiprovider

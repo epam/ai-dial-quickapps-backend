@@ -11,8 +11,13 @@ from quickapp.common.exceptions import OrchestratorInitializationException
 def _make_deployment(
     deployment_id: str = "gpt-4",
     input_attachment_types: list[str] | None = None,
+    defaults: dict | None = None,
 ) -> SimpleNamespace:
-    return SimpleNamespace(id=deployment_id, input_attachment_types=input_attachment_types)
+    return SimpleNamespace(
+        id=deployment_id,
+        input_attachment_types=input_attachment_types,
+        defaults=defaults,
+    )
 
 
 def _make_initializer(
@@ -30,10 +35,13 @@ def _make_initializer(
     cache = MagicMock()
     cache.fetch_metadata = fetch_metadata or AsyncMock()
 
+    static_tools_context = MagicMock()
+
     initializer = _OrchestratorDeploymentInitializer(
         app_config=app_config,
         tool_config_service=tool_config_service,
         orchestrator_deployment_cache=cache,
+        static_tools_context=static_tools_context,
     )
     return initializer, resolver, cache.fetch_metadata
 

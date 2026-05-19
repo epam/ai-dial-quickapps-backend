@@ -15,13 +15,28 @@ from aidial_sdk.chat_completion.request import (
 from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
+
+
+def _recovery_service(
+    messages_context: MessagesMixin,
+    *,
+    policies: list | None = None,
+    deferred_stage_close_registry: DeferredStageCloseRegistry | None = None,
+) -> ChatCompletionRecoveryService:
+    return ChatCompletionRecoveryService(
+        messages_context,
+        policies or [],
+        deferred_stage_close_registry or DeferredStageCloseRegistry(),
+    )
 
 
 def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
@@ -90,7 +105,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         app_config=app_config,
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
     )
 
@@ -162,7 +177,11 @@ async def test_stream_phase_api_error_retries_after_recovery():
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=deferred_registry,
-        chat_completion_recovery_policies=[recovery_policy],
+        chat_completion_recovery=_recovery_service(
+            messages_context,
+            policies=[recovery_policy],
+            deferred_stage_close_registry=deferred_registry,
+        ),
         tool_execution_history_policies=[],
     )
 
@@ -219,7 +238,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[recovery_policy],
+        chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
         tool_execution_history_policies=[],
     )
 
@@ -313,7 +332,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         app_config=app_config,
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
     )
 
@@ -392,7 +411,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
     )
 
@@ -476,7 +495,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         app_config=app_config,
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
     )
 
@@ -518,7 +537,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
     )
 
