@@ -4,11 +4,7 @@ from unittest.mock import MagicMock
 from aidial_sdk.chat_completion import Stage, Status
 
 from quickapp.application._initialization_error_handler import _InitializationErrorHandler
-from quickapp.common.exceptions import (
-    ConfigResolutionException,
-    SkillInitializationException,
-    SkillInitializationWarning,
-)
+from quickapp.common.exceptions import ConfigResolutionException, SkillInitializationException
 
 
 def _make_handler(stage: MagicMock, exceptions: list) -> _InitializationErrorHandler:
@@ -68,8 +64,10 @@ class TestConfigResolutionExceptionRendering:
 class TestSkillInitializationWarningRendering:
     def test_warning_renders_under_warnings_subheader_and_keeps_completed(self):
         stage = MagicMock(spec=Stage)
-        warning = SkillInitializationWarning(
-            reason="exceeds 64 characters", url="prompts/bucket/long-name"
+        warning = SkillInitializationException(
+            reason="exceeds 64 characters",
+            url="prompts/bucket/long-name",
+            severity="warning",
         )
         handler = _make_handler(stage, [warning])
 
@@ -85,7 +83,9 @@ class TestSkillInitializationWarningRendering:
     def test_error_and_warning_render_in_separate_subheaders(self):
         stage = MagicMock(spec=Stage)
         error = SkillInitializationException(reason="boom", url="prompts/bucket/broken")
-        warning = SkillInitializationWarning(reason="bad format", url="prompts/bucket/iffy")
+        warning = SkillInitializationException(
+            reason="bad format", url="prompts/bucket/iffy", severity="warning"
+        )
         handler = _make_handler(stage, [error, warning])
 
         handler.handle_initialization_issues()

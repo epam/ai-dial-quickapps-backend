@@ -6,7 +6,6 @@ from .orchestrator_initialization import OrchestratorInitializationException
 from .skill_initialization import (
     SkillCatastrophicInitializationException,
     SkillInitializationException,
-    SkillInitializationWarning,
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
@@ -20,7 +19,6 @@ __all__ = [
     "OrchestratorInitializationException",
     "SkillCatastrophicInitializationException",
     "SkillInitializationException",
-    "SkillInitializationWarning",
     "ToolInitializationException",
     "ToolTimeoutError",
 ]

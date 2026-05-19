@@ -8,7 +8,6 @@ from quickapp.common.exceptions import (
     InitializationException,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
-    SkillInitializationWarning,
     ToolInitializationException,
 )
 
@@ -62,10 +61,9 @@ class _InitializationErrorHandler:
                     tool_lines.append(f"```\n{exc.details}\n```")
             elif isinstance(exc, SkillCatastrophicInitializationException):
                 catastrophic_lines.append(f"- {exc.reason}")
-            elif isinstance(exc, SkillInitializationWarning) and exc.url is not None:
-                per_url_warning_lines.append(f"- **{exc.url}**: {exc.reason}")
             elif isinstance(exc, SkillInitializationException) and exc.url is not None:
-                per_url_error_lines.append(f"- **{exc.url}**: {exc.reason}")
+                bucket = per_url_warning_lines if exc.severity == "warning" else per_url_error_lines
+                bucket.append(f"- **{exc.url}**: {exc.reason}")
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",

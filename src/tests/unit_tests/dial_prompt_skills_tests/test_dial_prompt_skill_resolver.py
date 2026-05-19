@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.common.exceptions import SkillInitializationException, SkillInitializationWarning
+from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolver
 
@@ -179,7 +179,8 @@ class TestDialPromptSkillResolver:
         assert output.resolved[0].metadata.name == long_name
         assert len(output.exceptions) == 1
         warning = output.exceptions[0]
-        assert isinstance(warning, SkillInitializationWarning)
+        assert isinstance(warning, SkillInitializationException)
+        assert warning.severity == "warning"
         assert warning.url == "prompts/bucket/long"
         assert "exceeds 64 characters" in warning.reason
 
@@ -194,7 +195,7 @@ class TestDialPromptSkillResolver:
         output = await resolver.resolve([_make_config("prompts/bucket/iffy")])
 
         assert len(output.resolved) == 1
-        warnings = [e for e in output.exceptions if isinstance(e, SkillInitializationWarning)]
+        warnings = [e for e in output.exceptions if e.severity == "warning"]
         assert len(warnings) == 2
         reasons = " | ".join(w.reason for w in warnings)
         assert "exceeds 64 characters" in reasons
@@ -220,13 +221,8 @@ class TestDialPromptSkillResolver:
 
         assert len(output.resolved) == 1
         assert output.resolved[0].url == "prompts/bucket/ok"
-        warnings = [e for e in output.exceptions if isinstance(e, SkillInitializationWarning)]
-        errors = [
-            e
-            for e in output.exceptions
-            if isinstance(e, SkillInitializationException)
-            and not isinstance(e, SkillInitializationWarning)
-        ]
+        warnings = [e for e in output.exceptions if e.severity == "warning"]
+        errors = [e for e in output.exceptions if e.severity == "error"]
         assert len(warnings) == 1
         assert warnings[0].url == "prompts/bucket/ok"
         assert len(errors) == 1

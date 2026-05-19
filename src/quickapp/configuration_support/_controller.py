@@ -107,12 +107,10 @@ class _Controller:
         )
 
         try:
-            metadata, _, warnings = await fetch_and_validate_dial_prompt_skill(
-                dial_client, config.url
-            )
-            for warning in warnings:
+            parsed, _ = await fetch_and_validate_dial_prompt_skill(dial_client, config.url)
+            for warning in parsed.warnings:
                 logger.warning("Skill validation '%s': %s", config.url, warning)
-            return metadata
+            return parsed.metadata
         except DialException as e:
             if e.status_code == 401:
                 raise HTTPException(
