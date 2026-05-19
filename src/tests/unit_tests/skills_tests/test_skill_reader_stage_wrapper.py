@@ -25,6 +25,16 @@ def wrapper(mock_stage):
     )
 
 
+def test_get_formatted_parameters_ends_with_blank_line(wrapper):
+    output = wrapper._get_formatted_parameters({"skill_name": "demo-skill"})
+
+    assert output == "Skill: demo-skill\n\n"
+
+
+def test_get_formatted_parameters_returns_empty_when_no_skill_name(wrapper):
+    assert wrapper._get_formatted_parameters({}) == ""
+
+
 def test_build_debug_info_from_result_wraps_content_in_code_fence(wrapper):
     skill_content = "# Heading\n## Subheading\nbody text"
     result = ToolCallResult(content=skill_content, content_type="text/markdown")
