@@ -1,5 +1,8 @@
-from quickapp.config.application import Features
+import logging
+
+from quickapp.config.application import Features, StageDisplayConfig, StageDisplayLevel
 from quickapp.config.timestamp import ToolCallTimestampConfig
+from quickapp.config.tools.display.tool import ToolStageConfig
 
 
 class TestFeaturesConfig:
@@ -20,3 +23,48 @@ class TestFeaturesConfig:
     def test_empty_dict_creates_default(self):
         features = Features.model_validate({})
         assert features.timestamp is not None
+
+
+class TestStageDisplayConfig:
+    def test_default_level_is_info(self):
+        cfg = StageDisplayConfig()
+        assert cfg.level == StageDisplayLevel.INFO
+
+    def test_explicit_error_level(self):
+        cfg = StageDisplayConfig(level=StageDisplayLevel.ERROR)
+        assert cfg.level == StageDisplayLevel.ERROR
+
+    def test_explicit_debug_level(self):
+        cfg = StageDisplayConfig(level=StageDisplayLevel.DEBUG)
+        assert cfg.level == StageDisplayLevel.DEBUG
+
+
+class TestFeaturesStageDisplay:
+    def test_default_stage_display_level_is_info(self):
+        features = Features()
+        assert features.stage_display.level == StageDisplayLevel.INFO
+
+    def test_stage_display_from_manifest_error(self):
+        features = Features.model_validate({"stage_display": {"level": "error"}})
+        assert features.stage_display.level == StageDisplayLevel.ERROR
+
+    def test_stage_display_from_manifest_debug(self):
+        features = Features.model_validate({"stage_display": {"level": "debug"}})
+        assert features.stage_display.level == StageDisplayLevel.DEBUG
+
+
+class TestToolStageDeprecationWarning:
+    def test_show_false_logs_deprecation_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.display.tool"):
+            ToolStageConfig(show=False)
+        assert any("deprecated" in record.message.lower() for record in caplog.records)
+
+    def test_show_true_no_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.display.tool"):
+            ToolStageConfig(show=True)
+        assert not any("deprecated" in record.message.lower() for record in caplog.records)
+
+    def test_show_default_no_warning(self, caplog):
+        with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.display.tool"):
+            ToolStageConfig()
+        assert not any("deprecated" in record.message.lower() for record in caplog.records)

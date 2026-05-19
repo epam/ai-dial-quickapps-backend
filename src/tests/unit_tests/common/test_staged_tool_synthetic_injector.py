@@ -9,6 +9,7 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
 )
+from quickapp.config.application import StageDisplayLevel
 from tests.unit_tests.common.common import make_provider
 
 
@@ -76,6 +77,17 @@ class TestStagedToolSyntheticInjector:
 
         _, kwargs = tool.arun.call_args
         assert kwargs.get("key") == "value"
+
+    @pytest.mark.asyncio
+    async def test_passes_stage_level_system(self):
+        tool = _make_staged_tool("my_tool", "result")
+        injector = _ConcreteInjector([tool], "my_tool")
+
+        messages = [Message(role=Role.USER, content="hi")]
+        await injector.transform(messages)
+
+        _, kwargs = tool.arun.call_args
+        assert kwargs.get("stage_level") == StageDisplayLevel.DEBUG
 
     @pytest.mark.asyncio
     async def test_multiple_tools_correct_one_selected(self):
