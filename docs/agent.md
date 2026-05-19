@@ -68,6 +68,10 @@ definitions from the predefined configuration files. Predefined references with 
 operator-supplied JSON Merge Patch (RFC 7396) applied to the loaded template body before pydantic validation; merge
 or validation failures surface as `ConfigResolutionException` and render in the *Initialization issues* stage.
 
+`orchestrator.deployment` is required by default, but operators can set `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID` to make
+that field optional: manifests omitting it fall back to the env value, and the configuration-support schema endpoint
+advertises the env value as the JSON-schema `default` so DIAL Core can pre-fill new manifests.
+
 ### 5. Completion Initialization
 
 Completion initializers are invoked to prepare the request for orchestration. Initializers run
