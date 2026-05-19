@@ -14,6 +14,7 @@ from quickapp.common.message_metadata import (
 )
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.time_provider import TimeProvider
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.timestamp_tooling._current_timestamp_stage_wrapper import (
     _CurrentTimestampStageWrapper,
@@ -29,6 +30,7 @@ class _CurrentTimestampTool(StagedBaseTool):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         time_provider: TimeProvider,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -36,6 +38,7 @@ class _CurrentTimestampTool(StagedBaseTool):
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
             **kwargs,
         )

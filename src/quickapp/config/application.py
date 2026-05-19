@@ -1,7 +1,8 @@
 import logging
+from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
@@ -16,6 +17,21 @@ from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 
 logger = logging.getLogger(__name__)
+
+
+class StageDisplayLevel(str, Enum):
+    ERROR = "error"
+    INFO = "info"
+    DEBUG = "debug"
+
+
+class StageDisplayConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: StageDisplayLevel = Field(
+        default=StageDisplayLevel.INFO,
+        description="Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all.",
+    )
 
 
 def get_max_iterations() -> int:
@@ -93,6 +109,10 @@ class Features(BaseModel):
     file_loading: FileLoadingConfig = Field(
         default_factory=FileLoadingConfig,
         description="File loader configuration (download size limits, etc.).",
+    )
+    stage_display: StageDisplayConfig = Field(
+        default_factory=StageDisplayConfig,
+        description="Controls which stage levels are rendered to the user.",
     )
 
 

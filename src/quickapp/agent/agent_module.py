@@ -6,6 +6,7 @@ from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provide
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -27,8 +28,12 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
+from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -75,7 +80,13 @@ class AgentModule(Module):
             to=DeferredStageCloseRegistry,
             scope=request_scope,
         )
+        binder.bind(
+            ChatCompletionRecoveryService,
+            to=ChatCompletionRecoveryService,
+            scope=request_scope,
+        )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
+        binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
@@ -194,6 +205,18 @@ class AgentModule(Module):
         attachment_filter: _AttachmentFilter,
     ) -> list[PreInvocationTransformer]:
         return [attachment_filter]
+
+    @multiprovider
+    def provide_chat_completion_recovery_policies(self) -> list[ChatCompletionRecoveryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_tool_execution_history_policies(self) -> list[ToolExecutionHistoryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_tool_attachment_keep_policies(self) -> list[AttachmentKeepPolicy]:
+        return []
 
     @multiprovider
     def provide_tool_call_result_enrichers(self) -> list[ToolCallResultEnricher]:

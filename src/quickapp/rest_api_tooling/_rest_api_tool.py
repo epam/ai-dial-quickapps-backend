@@ -12,6 +12,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import Authorization
 from quickapp.dial_core_services.attachment_service import AttachmentService
@@ -35,6 +36,7 @@ class _RestApiTool(StagedBaseTool):
         perf_timer: PerformanceTimer,
         forwarded_headers: ForwardedHeaders,
         timeout_resolver: ToolTimeoutResolver,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -43,6 +45,7 @@ class _RestApiTool(StagedBaseTool):
             name=tool_config.open_ai_tool.function.name,
             description=tool_config.open_ai_tool.function.description,
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )
         self.__request_details_builder: _RequestDetailsBuilder = request_details_builder

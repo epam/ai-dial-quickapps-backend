@@ -300,7 +300,10 @@ The setup pipeline runs the following steps in order:
 
 Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
 
-1. **Attachment Filter** (`_AttachmentFilter`): Filters unsupported attachment types and injects attachment XML metadata.
+1. **Attachment Filter** (`_AttachmentFilter`): Injects attachment XML metadata and decides which
+   attachments remain inline in `custom_content` via pluggable **`AttachmentKeepPolicy`** implementations
+   (merged from all DI modules). An attachment is kept if any policy votes to keep it; the default
+   `_LegacyUserImageKeepPolicy` retains USER `image/*` for vision models.
 2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`): Appends human-readable
    `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
@@ -325,10 +328,12 @@ The processor builds an aggregated result containing all accumulated data for th
 The system uses two separate mechanisms to inform the agent about available files:
 
 - **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
-  (`<attachments>`) to USER and TOOL message content. Each attachment is represented as an `<attachment>`
-  element with `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements. ASSISTANT
-  messages are exempt: those attachments originated from the model's own prior output, and re-presenting
-  them as XML conditions the model to mimic the format in its responses.
+  (`<attachments>`) to USER and TOOL message content for every attachment on the message, while only
+  attachments approved by an `AttachmentKeepPolicy` stay in `custom_content`. Each attachment is
+  represented as an `<attachment>` element with `<title>`, `<type>`, `<url>`, and optionally
+  `<reference_url>` sub-elements. ASSISTANT messages are exempt from XML injection: those attachments
+  originated from the model's own prior output, and re-presenting them as XML conditions the model to
+  mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
   `available_context` internal tool. This provides structured metadata without modifying user messages.
 
@@ -385,9 +390,10 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to USER and TOOL messages for all attachments and keeps only
-  supported types inline in `custom_content` for vision model support. ASSISTANT messages are skipped to
-  avoid conditioning the model to emit the metadata format. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: Appends XML metadata to USER and TOOL messages for all attachments; inline bytes
+  in `custom_content` are governed by `AttachmentKeepPolicy` plugins (default: USER `image/*` only).
+  ASSISTANT messages skip XML injection to avoid conditioning the model to emit the metadata format.
+  Runs inside `AssistantInvoker` as a `PreInvocationTransformer`, not as a message-history pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
 - **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
