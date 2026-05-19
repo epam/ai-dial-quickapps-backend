@@ -2,7 +2,7 @@ from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import inject
 
 from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.attachment_processing_utils import (
     collect_get_content_allowed_urls,
     normalize_attachment_url_argument,
@@ -13,7 +13,7 @@ from quickapp.config.application import ApplicationConfig
 
 
 @inject
-class _GetContentKeepPolicy(ToolAttachmentKeepPolicy):
+class _GetContentKeepPolicy(AttachmentKeepPolicy):
     """Keep an attachment when it belongs to an ``internal_attachments_get_content``
     TOOL message and its URL/MIME pass the request-allowed admin/user gate."""
 

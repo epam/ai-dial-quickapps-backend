@@ -802,7 +802,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
     )
 
@@ -894,7 +894,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         ),
         perf_timer=Mock(),
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery_policies=[],
+        chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
     )
 

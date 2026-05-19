@@ -8,7 +8,7 @@ from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.abstract.tool_attachment_keep_policy import ToolAttachmentKeepPolicy
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
@@ -99,7 +99,7 @@ class LazyOnDemandStrategyModule(Module):
         self,
         app_config: ApplicationConfig,
         get_content_keep_policy: _GetContentKeepPolicy,
-    ) -> list[ToolAttachmentKeepPolicy]:
+    ) -> list[AttachmentKeepPolicy]:
         if not _is_active(app_config):
             return []
         return [get_content_keep_policy]

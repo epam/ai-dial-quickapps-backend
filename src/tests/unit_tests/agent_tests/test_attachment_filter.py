@@ -4,11 +4,27 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import FileContextConfig
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
+    _GetContentKeepPolicy,
+)
 
 
-def _make_filter() -> _AttachmentFilter:
-    return _AttachmentFilter(tool_attachment_keep_policies=[_LegacyUserImageKeepPolicy()])
+def _make_filter(
+    contexts: list | None = None, input_attachment_types: list[str] | None = None
+) -> _AttachmentFilter:
+    app = MagicMock(spec=ApplicationConfig)
+    app.contexts = contexts if contexts is not None else []
+    patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
+    caps = OrchestratorCapabilities(
+        deployment=MagicMock(id="orch", input_attachment_types=patterns)
+    )
+    keep_policy = _GetContentKeepPolicy(app_config=app, orchestrator_capabilities=caps)
+    return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 
 def _msg(
@@ -248,9 +264,7 @@ class Test_AttachmentFilter:
     def test_fetch_tool_pdf_retained_when_whitelisted(self):
         url = "files/bucket/report.pdf"
         contexts = [FileContextConfig(url=url)]
-        transformer = _attachment_filter(
-            contexts=contexts, input_attachment_types=["application/pdf"]
-        )
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -280,9 +294,7 @@ class Test_AttachmentFilter:
     def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
         url = "files/bucket/report.pdf"
         contexts = [FileContextConfig(url=url)]
-        transformer = _attachment_filter(
-            contexts=contexts, input_attachment_types=["application/pdf"]
-        )
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -307,7 +319,7 @@ class Test_AttachmentFilter:
 
     def test_fetch_tool_pdf_stripped_when_url_not_in_config(self):
         url = "files/bucket/report.pdf"
-        transformer = _attachment_filter(contexts=[], input_attachment_types=["application/pdf"])
+        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -335,7 +347,7 @@ class Test_AttachmentFilter:
 
     def test_fetch_tool_pdf_kept_when_url_matches_user_attachment(self):
         url = "files/bucket/user-report.pdf"
-        transformer = _attachment_filter(contexts=[], input_attachment_types=["application/pdf"])
+        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
         user_msg = _user_msg(
             "please use my report",
             [_attachment("user-report.pdf", url, "application/pdf")],
