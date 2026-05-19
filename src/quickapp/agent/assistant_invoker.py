@@ -1,5 +1,3 @@
-import logging
-
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 from openai import APIError, AsyncStream, BadRequestError
@@ -11,8 +9,6 @@ from quickapp.common.chat_completion_recovery import (
     CHAT_COMPLETION_CREATE_RETRY_SCOPE,
     ChatCompletionRecoveryService,
 )
-
-logger = logging.getLogger(__name__)
 
 
 @inject

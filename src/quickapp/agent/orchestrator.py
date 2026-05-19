@@ -163,12 +163,12 @@ class Orchestrator:
             self.__deferred_stage_close_registry.flush()
             return False
 
-        logger.debug(f"Agent requests tool calls: {tool_calls}")
+        logger.debug("Agent requests tool calls: %s", tool_calls)
         tool_call_results = await self.__tool_executor.execute(tool_calls)
         if not tool_call_results:
             raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
 
-        logger.debug(f"Tool call results: {tool_call_results}")
+        logger.debug("Tool call results: %s", tool_call_results)
         for tool_call_result in tool_call_results:
             tool_call_result_message = tool_call_result.to_tool_message()
             self.__messages_context.append_message(tool_call_result_message)
@@ -178,7 +178,7 @@ class Orchestrator:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
 
         self.__perf_timer.stop_period(period)
-        logger.debug(f"Message from context: {self.__messages_context.messages}")
+        logger.debug("Message from context: %s", self.__messages_context.messages)
         return True
 
     async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:

@@ -68,8 +68,8 @@ class _GetContentTool(StagedBaseTool):
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
-            tool_config=tool_config,
             perf_timer=perf_timer,
+            tool_config=tool_config,
             deferred_stage_close_registry=deferred_stage_close_registry,
             argument_transformers=argument_transformers,
             **kwargs,

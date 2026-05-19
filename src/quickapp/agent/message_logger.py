@@ -46,13 +46,13 @@ def format_openai_message_pipe_tree(
     header += f": {content_preview}"
     if was_truncated:
         header += f" ({preview_len})"
-    logger.info(header)
+    logger.debug(header)
 
     # Attachments
     if include_attachments:
         atts = _extract_attachments(msg)
         if atts:
-            logger.info("|--- attachments:")
+            logger.debug("|--- attachments:")
             for i, att in enumerate(atts, start=1):
                 name = att.get("name") or att.get("filename") or "-"
                 mime = att.get("mime") or att.get("type") or "-"
@@ -76,27 +76,27 @@ def format_openai_message_pipe_tree(
                     parts.append(f"data={data_desc}")
                 if ref:
                     parts.append(f"ref_url={ref}")
-                logger.info("|------ " + " ".join(parts))
+                logger.debug("|------ " + " ".join(parts))
 
     # Stages (optional)
     if include_stages:
         stages = _extract_stages(msg)
         if stages:
-            logger.info("|--- stages:")
+            logger.debug("|--- stages:")
             for i, st in enumerate(stages, start=1):
                 title = st.get("title") or "-"
                 cprev, trunc = _preview_text(_flatten_content(st.get("content")), preview_len)
                 suffix = f" ({preview_len})" if trunc else ""
-                logger.info(f"|------ [{i}] title={title} content={cprev}{suffix}")
+                logger.debug(f"|------ [{i}] title={title} content={cprev}{suffix}")
 
     # Tool calls (assistant)
     if include_tools and role == "assistant":
         tool_lines = _extract_tool_previews(msg, preview_len)
         if tool_lines:
-            logger.info("|--- tools:")
+            logger.debug("|--- tools:")
             for i, (fname, argprev, trunc) in enumerate(tool_lines, start=1):
                 suffix = f" ({preview_len})" if trunc else ""
-                logger.info(f"|------ [{i}] function={fname} args={argprev}{suffix}")
+                logger.debug(f"|------ [{i}] function={fname} args={argprev}{suffix}")
 
 
 def _flatten_content(content: object) -> str:
