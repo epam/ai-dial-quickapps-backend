@@ -15,9 +15,7 @@ class _SkillReaderStageWrapper(TimedStageWrapper):
         return ""
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
-        """Build debug information from an exception."""
-        return f"### Error:\n{exception}\n"
+        return f"Error:\n```\n{exception}\n```\n"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
-        """Build debug information from the result."""
-        return f"### Skill Content:\n{result.content}\n"
+        return f"Skill Content:\n```\n{result.content}\n```\n"
