@@ -32,13 +32,13 @@ Both mechanisms are blunt: they are binary (show/hide), encode no semantic reaso
 ### UC-1: Normal operation (default `info` mode)
 
 **Trigger:** A quickapp with no `features.stage_display.level` set processes a user message. The agent calls a REST tool (user-facing) and a hook fires a synthetic tool call in the background.
-**Behavior:** The REST tool renders its stage. The synthetic call is made with `stage_level=StageLevel.SYSTEM` and no stage is created.
+**Behavior:** The REST tool renders its stage. The synthetic call is made with `stage_level=StageDisplayLevel.DEBUG` and no stage is created.
 **Outcome:** The user sees only the REST tool stage. Identical to current behavior.
 
 ### UC-2: Triage mode — only errors
 
-**Trigger:** A manifest author sets `features.stage_display.level: errors` to reduce noise and see only failures.
-**Behavior:** User-facing tool call stages are suppressed. Only stages emitted with `stage_level=StageLevel.ERROR` (tool failures) are rendered.
+**Trigger:** A manifest author sets `features.stage_display.level: error` to reduce noise and see only failures.
+**Behavior:** User-facing tool call stages are suppressed. Only stages emitted with `stage_level=StageDisplayLevel.ERROR` (tool failures) are rendered.
 **Outcome:** The user sees only error stages, making failures immediately visible without noise from successful calls.
 
 ### UC-3: Debugging internal tool calls (`debug` mode)
@@ -63,7 +63,7 @@ New types added to `src/quickapp/config/application.py`:
 
 ```python
 class StageDisplayLevel(str, Enum):
-    ERRORS = "errors"
+    ERROR = "error"
     INFO = "info"
     DEBUG = "debug"
 
@@ -77,8 +77,8 @@ class StageDisplayConfig(BaseModel):
 **What:** Per-quickapp display threshold. Manifest-facing (serializable to JSON).
 **Owner:** `Features` (existing top-level config class).
 **Semantics:**
-- `errors` — only `ERROR`-level stages shown.
-- `info` — `ERROR` and `USER`-level stages shown; `SYSTEM` hidden. *(default)*
+- `error` — only `ERROR`-level stages shown.
+- `info` — `ERROR` and `INFO`-level stages shown; `DEBUG` hidden. *(default)*
 - `debug` — all stages shown; all suppression bypassed.
 
 **Change:** New field on the existing `Features` class:
@@ -95,20 +95,17 @@ class Features(BaseModel):
 
 ---
 
-### 2. `StageLevel` enum (internal call-site marker)
+### 2. `StageDisplayLevel` as call-site marker
 
-A new string enum in `src/quickapp/common/staged_base_tool.py`:
+`StageDisplayLevel` doubles as the call-site marker passed to `arun()`. There is no separate call-site enum.
 
-```python
-class StageLevel(str, Enum):
-    ERROR = "error"   # tool failure or initializer error — shown at all display levels
-    USER = "user"     # normal user-facing tool call — shown at info and debug
-    SYSTEM = "system" # background/synthetic call (hooks, synthetic injections) — shown at debug only
-```
+**What:** Each `arun()` call passes a `stage_level: StageDisplayLevel` that describes this invocation's visibility tier.
+**Semantics:**
+- `StageDisplayLevel.ERROR` — tool failure or initializer error — shown at all display levels
+- `StageDisplayLevel.INFO` — normal user-facing call — shown at `info` and `debug` thresholds *(default)*
+- `StageDisplayLevel.DEBUG` — background/synthetic call (hooks, synthetic injections) — shown at `debug` only
 
-**What:** Call-site marker for individual `arun()` invocations (and error-emitting paths).
 **Owner:** Callers of `StagedBaseTool.arun()` and error-reporting code in initializers.
-**Semantics:** `USER` is the default. `SYSTEM` marks background calls. `ERROR` marks failure stages that should surface regardless of noise level.
 **Change:** Never appears in the manifest — purely internal.
 
 ---
@@ -168,7 +165,7 @@ def __init__(
 
 Affected subclasses: `RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`.
 
-**`arun()` signature:** Replace `suppress_stage: bool = False` with `stage_level: StageLevel = StageLevel.USER`.
+**`arun()` signature:** Replace `suppress_stage: bool = False` with `stage_level: StageDisplayLevel = StageDisplayLevel.INFO`.
 
 **`arun()` suppression logic:**
 
@@ -177,7 +174,7 @@ async def arun(
     self,
     tool_call_id: str,
     *args: Any,
-    stage_level: StageLevel = StageLevel.USER,
+    stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
     **kwargs: Any,
 ) -> ToolCallResult:
     suppress = self.__should_suppress(stage_level)
@@ -192,20 +189,20 @@ async def arun(
     ...
 
 
-def __should_suppress(self, stage_level: StageLevel) -> bool:
+def __should_suppress(self, stage_level: StageDisplayLevel) -> bool:
     level = self.__stage_display_level
 
     if level == StageDisplayLevel.DEBUG:
         return False
 
-    if stage_level == StageLevel.ERROR:
+    if stage_level == StageDisplayLevel.ERROR:
         return False
 
-    if stage_level == StageLevel.SYSTEM:
+    if stage_level == StageDisplayLevel.DEBUG:
         return True
 
-    # USER stage_level from here
-    if level == StageDisplayLevel.ERRORS:
+    # INFO stage_level from here
+    if level == StageDisplayLevel.ERROR:
         return True
 
     # INFO level: also check deprecated display.stage.show
@@ -220,13 +217,13 @@ def __should_suppress(self, stage_level: StageLevel) -> bool:
 
 | `stage_display_level` | `stage_level` | `display.stage.show` | Result |
 |---|---|---|---|
-| `errors` | `ERROR` | any | shown |
-| `errors` | `USER` | any | suppressed |
-| `errors` | `SYSTEM` | any | suppressed |
+| `error` | `ERROR` | any | shown |
+| `error` | `INFO` | any | suppressed |
+| `error` | `DEBUG` | any | suppressed |
 | `info` | `ERROR` | any | shown |
-| `info` | `USER` | `True` / unset | shown |
-| `info` | `USER` | `False` (deprecated) | suppressed |
-| `info` | `SYSTEM` | any | suppressed |
+| `info` | `INFO` | `True` / unset | shown |
+| `info` | `INFO` | `False` (deprecated) | suppressed |
+| `info` | `DEBUG` | any | suppressed |
 | `debug` | any | any | shown |
 
 ---
@@ -242,7 +239,7 @@ def __should_suppress(self, stage_level: StageLevel) -> bool:
 result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, suppress_stage=True, **arguments)
 
 # After
-result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=StageLevel.SYSTEM, **arguments)
+result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **arguments)
 ```
 
 ---
@@ -282,7 +279,7 @@ System stages hidden; user stages shown. Identical to current behavior.
 {
   "orchestrator": { ... },
   "features": {
-    "stage_display": { "level": "errors" }
+    "stage_display": { "level": "error" }
   }
 }
 ```
@@ -318,6 +315,6 @@ None. `suppress_stage` is an internal `arun()` parameter, not part of the public
 |---|---|
 | `src/quickapp/config/application.py` | Add `StageDisplayLevel` enum; add `StageDisplayConfig` class; add `stage_display: StageDisplayConfig` field to `Features` |
 | `src/quickapp/application/app_module.py` | Add `@provider @request` for `StageDisplayLevel` |
-| `src/quickapp/common/staged_base_tool.py` | Add `StageLevel` enum; accept `stage_display_level` as a constructor param (not injected — see note in §4); replace `suppress_stage: bool` with `stage_level: StageLevel` on `arun()`; rewrite suppression condition |
+| `src/quickapp/common/staged_base_tool.py` | Accept `stage_display_level` as a constructor param (not injected — see note in §4); replace `suppress_stage: bool` with `stage_level: StageDisplayLevel` on `arun()`; rewrite suppression condition |
 | Each concrete tool subclass (`RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`) | Add `stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO` to `__init__` (DI entry point); forward to `super().__init__()` |
-| `src/quickapp/common/synthetic_injection/staged_tool_synthetic_injector.py` | Replace `suppress_stage=True` with `stage_level=StageLevel.SYSTEM` |
+| `src/quickapp/common/synthetic_injection/staged_tool_synthetic_injector.py` | Replace `suppress_stage=True` with `stage_level=StageDisplayLevel.DEBUG` |

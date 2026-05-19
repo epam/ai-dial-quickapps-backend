@@ -1,7 +1,12 @@
 from unittest.mock import MagicMock
 
 from quickapp.application.app_module import AppModule
-from quickapp.config.application import ApplicationConfig, Features, StageDisplayConfig, StageDisplayLevel
+from quickapp.config.application import (
+    ApplicationConfig,
+    Features,
+    StageDisplayConfig,
+    StageDisplayLevel,
+)
 
 
 def _make_config(level: StageDisplayLevel | None = None) -> ApplicationConfig:

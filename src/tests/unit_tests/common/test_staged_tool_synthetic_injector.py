@@ -5,11 +5,11 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common import ToolCallResult
-from quickapp.config.application import StageDisplayLevel
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
 )
+from quickapp.config.application import StageDisplayLevel
 from tests.unit_tests.common.common import make_provider
 
 

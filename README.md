@@ -110,7 +110,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
 | Value | Behavior |
 |---|---|
-| `errors` | Show stages only for failed tool calls |
+| `error` | Show stages only for failed tool calls |
 | `info` | Show stages for regular tool calls and errors (default) |
 | `debug` | Show stages for all tool calls, including internal/system ones |
 

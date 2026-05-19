@@ -5,11 +5,11 @@ from aidial_sdk.chat_completion import Message
 from injector import ProviderOf, inject
 
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.config.application import StageDisplayLevel
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
+from quickapp.config.application import StageDisplayLevel
 
 logger = logging.getLogger(__name__)
 
