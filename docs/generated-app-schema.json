@@ -789,6 +789,7 @@
         "name": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
@@ -1128,6 +1129,7 @@
         "dial_id": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
