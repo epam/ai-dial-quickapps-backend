@@ -1,7 +1,6 @@
 import logging
 import sys
 from abc import ABC, abstractmethod
-from enum import Enum
 from typing import Any
 
 from injector import AssistedBuilder
@@ -24,12 +23,6 @@ from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type, substitute_media_type
 
 logger = logging.getLogger(__name__)
-
-
-class StageLevel(str, Enum):
-    ERROR = "error"  # tool failure or initializer error — shown at all display levels
-    USER = "user"  # normal user-facing tool call — shown at info and debug
-    SYSTEM = "system"  # background/synthetic call — shown at debug only
 
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
@@ -73,20 +66,20 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Use only async version")
 
-    def __should_suppress(self, stage_level: StageLevel) -> bool:
+    def __should_suppress(self, stage_level: StageDisplayLevel) -> bool:
         level = self.__stage_display_level
 
         if level == StageDisplayLevel.DEBUG:
             return False
 
-        if stage_level == StageLevel.ERROR:
+        if stage_level == StageDisplayLevel.ERROR:
             return False
 
-        if stage_level == StageLevel.SYSTEM:
+        if stage_level == StageDisplayLevel.DEBUG:
             return True
 
-        # USER stage_level from here
-        if level == StageDisplayLevel.ERRORS:
+        # INFO stage_level from here
+        if level == StageDisplayLevel.ERROR:
             return True
 
         # INFO level: also honour deprecated display.stage.show=false
@@ -100,7 +93,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         self,
         tool_call_id: str,
         *args: Any,
-        stage_level: StageLevel = StageLevel.USER,
+        stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
         **kwargs: Any,
     ) -> ToolCallResult:
         if self.__should_suppress(stage_level):

@@ -9,7 +9,6 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
-from quickapp.common.staged_base_tool import StageLevel
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
@@ -285,16 +284,16 @@ async def test_defer_stage_close_defers_exit_until_registry_flush(mock_stage_wra
 @pytest.mark.parametrize(
     "display_level,call_level,show,expect_suppressed",
     [
-        (StageDisplayLevel.ERRORS, StageLevel.ERROR, None, False),
-        (StageDisplayLevel.ERRORS, StageLevel.USER, None, True),
-        (StageDisplayLevel.ERRORS, StageLevel.SYSTEM, None, True),
-        (StageDisplayLevel.INFO, StageLevel.ERROR, None, False),
-        (StageDisplayLevel.INFO, StageLevel.USER, None, False),
-        (StageDisplayLevel.INFO, StageLevel.USER, False, True),
-        (StageDisplayLevel.INFO, StageLevel.SYSTEM, None, True),
-        (StageDisplayLevel.DEBUG, StageLevel.USER, False, False),
-        (StageDisplayLevel.DEBUG, StageLevel.ERROR, None, False),
-        (StageDisplayLevel.DEBUG, StageLevel.SYSTEM, None, False),
+        (StageDisplayLevel.ERROR, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.ERROR, StageDisplayLevel.INFO, None, True),
+        (StageDisplayLevel.ERROR, StageDisplayLevel.DEBUG, None, True),
+        (StageDisplayLevel.INFO, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.INFO, StageDisplayLevel.INFO, None, False),
+        (StageDisplayLevel.INFO, StageDisplayLevel.INFO, False, True),
+        (StageDisplayLevel.INFO, StageDisplayLevel.DEBUG, None, True),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.INFO, False, False),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.DEBUG, None, False),
     ],
 )
 async def test_suppression_truth_table(

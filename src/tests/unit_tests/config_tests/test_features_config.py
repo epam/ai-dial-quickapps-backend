@@ -30,9 +30,9 @@ class TestStageDisplayConfig:
         cfg = StageDisplayConfig()
         assert cfg.level == StageDisplayLevel.INFO
 
-    def test_explicit_errors_level(self):
-        cfg = StageDisplayConfig(level=StageDisplayLevel.ERRORS)
-        assert cfg.level == StageDisplayLevel.ERRORS
+    def test_explicit_error_level(self):
+        cfg = StageDisplayConfig(level=StageDisplayLevel.ERROR)
+        assert cfg.level == StageDisplayLevel.ERROR
 
     def test_explicit_debug_level(self):
         cfg = StageDisplayConfig(level=StageDisplayLevel.DEBUG)
@@ -44,9 +44,9 @@ class TestFeaturesStageDisplay:
         features = Features()
         assert features.stage_display.level == StageDisplayLevel.INFO
 
-    def test_stage_display_from_manifest_errors(self):
-        features = Features.model_validate({"stage_display": {"level": "errors"}})
-        assert features.stage_display.level == StageDisplayLevel.ERRORS
+    def test_stage_display_from_manifest_error(self):
+        features = Features.model_validate({"stage_display": {"level": "error"}})
+        assert features.stage_display.level == StageDisplayLevel.ERROR
 
     def test_stage_display_from_manifest_debug(self):
         features = Features.model_validate({"stage_display": {"level": "debug"}})

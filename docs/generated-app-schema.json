@@ -2726,7 +2726,7 @@
     },
     "StageDisplayLevel": {
       "enum": [
-        "errors",
+        "error",
         "info",
         "debug"
       ],

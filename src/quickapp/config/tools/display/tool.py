@@ -17,7 +17,7 @@ class ToolStageConfig(BaseModel):
     show: bool = Field(
         default=True,
         description="Whether the tool stage should be shown in the chat.",
-        deprecated="use stage_level=StageLevel.SYSTEM at the call site instead.",
+        deprecated="use stage_level=StageDisplayLevel.DEBUG at the call site instead.",
     )
     defer_close: bool = Field(
         default=False,

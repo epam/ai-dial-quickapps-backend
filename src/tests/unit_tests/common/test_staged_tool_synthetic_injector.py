@@ -5,7 +5,7 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common import ToolCallResult
-from quickapp.common.staged_base_tool import StageLevel
+from quickapp.config.application import StageDisplayLevel
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
@@ -87,7 +87,7 @@ class TestStagedToolSyntheticInjector:
         await injector.transform(messages)
 
         _, kwargs = tool.arun.call_args
-        assert kwargs.get("stage_level") == StageLevel.SYSTEM
+        assert kwargs.get("stage_level") == StageDisplayLevel.DEBUG
 
     @pytest.mark.asyncio
     async def test_multiple_tools_correct_one_selected(self):

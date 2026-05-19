@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class StageDisplayLevel(str, Enum):
-    ERRORS = "errors"
+    ERROR = "error"
     INFO = "info"
     DEBUG = "debug"
 

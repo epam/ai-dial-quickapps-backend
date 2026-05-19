@@ -1,12 +1,7 @@
 from unittest.mock import MagicMock
 
 from quickapp.application.app_module import AppModule
-from quickapp.config.application import (
-    ApplicationConfig,
-    Features,
-    StageDisplayConfig,
-    StageDisplayLevel,
-)
+from quickapp.config.application import ApplicationConfig, Features, StageDisplayConfig, StageDisplayLevel
 
 
 def _make_config(level: StageDisplayLevel | None = None) -> ApplicationConfig:
@@ -32,9 +27,9 @@ class TestProvideStageDisplayLevel:
         result = self._call(_make_config())
         assert result == StageDisplayLevel.INFO
 
-    def test_errors_level_from_config(self):
-        result = self._call(_make_config(level=StageDisplayLevel.ERRORS))
-        assert result == StageDisplayLevel.ERRORS
+    def test_error_level_from_config(self):
+        result = self._call(_make_config(level=StageDisplayLevel.ERROR))
+        assert result == StageDisplayLevel.ERROR
 
     def test_debug_level_from_config(self):
         result = self._call(_make_config(level=StageDisplayLevel.DEBUG))
