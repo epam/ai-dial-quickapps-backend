@@ -19,6 +19,8 @@ _SKILL_SECTION = "#### Skill loading"
 _CATASTROPHIC_HEADER = (
     "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
 )
+_PER_URL_ERRORS_HEADER = "> Errors:"
+_PER_URL_WARNINGS_HEADER = "> Warnings:"
 
 
 @inject
@@ -46,7 +48,8 @@ class _InitializationErrorHandler:
 
         tool_lines: list[str] = []
         catastrophic_lines: list[str] = []
-        per_url_lines: list[str] = []
+        per_url_error_lines: list[str] = []
+        per_url_warning_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, ToolInitializationException):
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
@@ -59,7 +62,11 @@ class _InitializationErrorHandler:
             elif isinstance(exc, SkillCatastrophicInitializationException):
                 catastrophic_lines.append(f"- {exc.reason}")
             elif isinstance(exc, SkillInitializationException) and exc.url is not None:
-                per_url_lines.append(f"- **{exc.url}**: {exc.reason}")
+                line = f"- **{exc.url}**: {exc.reason}"
+                if exc.severity == "warning":
+                    per_url_warning_lines.append(line)
+                else:
+                    per_url_error_lines.append(line)
             else:
                 logger.warning(
                     "Unhandled InitializationException subclass %s; not rendered to stage",
@@ -69,12 +76,17 @@ class _InitializationErrorHandler:
         sections: list[list[str]] = []
         if tool_lines:
             sections.append([_TOOL_SECTION, *tool_lines])
-        if catastrophic_lines or per_url_lines:
+        if catastrophic_lines or per_url_error_lines or per_url_warning_lines:
             skill_section = [_SKILL_SECTION]
             if catastrophic_lines:
                 skill_section.append(_CATASTROPHIC_HEADER)
                 skill_section.extend(catastrophic_lines)
-            skill_section.extend(per_url_lines)
+            if per_url_error_lines:
+                skill_section.append(_PER_URL_ERRORS_HEADER)
+                skill_section.extend(per_url_error_lines)
+            if per_url_warning_lines:
+                skill_section.append(_PER_URL_WARNINGS_HEADER)
+                skill_section.extend(per_url_warning_lines)
             sections.append(skill_section)
 
         status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED

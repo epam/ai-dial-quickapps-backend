@@ -2,13 +2,13 @@ import asyncio
 
 from aidial_client import AsyncDial
 from injector import inject
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
 
 
 class ResolvedDialPromptSkill(BaseModel):
@@ -19,6 +19,7 @@ class ResolvedDialPromptSkill(BaseModel):
     url: str
     metadata: SkillMetadata
     content: str
+    warnings: list[str] = Field(default_factory=list)
 
 
 class DialPromptSkillResolverOutput(BaseModel):
@@ -32,17 +33,17 @@ class DialPromptSkillResolverOutput(BaseModel):
 
 async def fetch_and_validate_dial_prompt_skill(
     client: AsyncDial, url: str
-) -> tuple[SkillMetadata, str]:
+) -> tuple[ParsedSkill, str]:
     """Fetch a DIAL prompt by URL and validate it as a skill.
 
-    Raises ``DialException`` if the fetch fails and ``SkillValidationError``
-    if the prompt is empty or its frontmatter is invalid.
+    Returns ``(parsed, content)``. Raises ``DialException`` if the fetch
+    fails and ``SkillValidationError`` if the prompt is empty or its
+    frontmatter is invalid.
     """
     prompt = await client.prompts.get(url)
     if prompt.content is None or not prompt.content.strip():
         raise SkillValidationError(url, "DIAL prompt has no content")
-    metadata = parse_frontmatter(prompt.content, url)
-    return metadata, prompt.content
+    return parse_frontmatter(prompt.content, url), prompt.content
 
 
 @inject
@@ -61,8 +62,10 @@ class DialPromptSkillResolver:
         - Deduplicates by URL before fetching.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
         - Deduplicates by skill name after fetching (first configured wins).
-        - Every per-URL failure becomes a ``SkillInitializationException`` in
-          the ``exceptions`` list — per the unified initialization-issues flow.
+        - Per-URL failures and non-fatal parser warnings both become
+          ``SkillInitializationException`` entries in the ``exceptions`` list,
+          distinguished by ``severity``. Both ride the unified
+          initialization-issues flow.
         """
         seen_urls: set[str] = set()
         unique_configs: list[DialPromptSkillConfig] = []
@@ -89,6 +92,11 @@ class DialPromptSkillResolver:
                 exceptions.append(SkillInitializationException(url=url, reason=str(result)))
                 continue
 
+            for warning in result.warnings:
+                exceptions.append(
+                    SkillInitializationException(url=url, reason=warning, severity="warning")
+                )
+
             if result.metadata.name in seen_names:
                 exceptions.append(
                     SkillInitializationException(
@@ -110,7 +118,10 @@ class DialPromptSkillResolver:
         self,
         config: DialPromptSkillConfig,
     ) -> ResolvedDialPromptSkill:
-        metadata, content = await fetch_and_validate_dial_prompt_skill(
-            self._dial_client, config.url
+        parsed, content = await fetch_and_validate_dial_prompt_skill(self._dial_client, config.url)
+        return ResolvedDialPromptSkill(
+            url=config.url,
+            metadata=parsed.metadata,
+            content=content,
+            warnings=parsed.warnings,
         )
-        return ResolvedDialPromptSkill(url=config.url, metadata=metadata, content=content)
