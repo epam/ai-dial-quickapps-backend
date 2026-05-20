@@ -12,6 +12,7 @@ from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
     ImmediateStageCloseRegistry,
 )
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
@@ -32,6 +33,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         perf_timer: PerformanceTimer,
         tool_config: _BaseToolConfig,
+        stage_display_level: StageDisplayLevel,
         deferred_stage_close_registry: (
             DeferredStageCloseRegistry | ImmediateStageCloseRegistry | None
         ) = None,
@@ -46,6 +48,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             DeferredStageCloseRegistry | ImmediateStageCloseRegistry
         ) = (deferred_stage_close_registry or ImmediateStageCloseRegistry())
         self.__argument_transformers: list[ToolArgumentTransformer] = argument_transformers or []
+        self.__stage_display_level: StageDisplayLevel = stage_display_level
 
     @property
     def tool_config(self):
@@ -63,21 +66,44 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     def _run(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError("Use only async version")
 
+    def __should_suppress(self, stage_level: StageDisplayLevel) -> bool:
+        level = self.__stage_display_level
+
+        if level == StageDisplayLevel.DEBUG:
+            return False
+
+        if stage_level == StageDisplayLevel.ERROR:
+            return False
+
+        if stage_level == StageDisplayLevel.DEBUG:
+            return True
+
+        # INFO stage_level from here
+        if level == StageDisplayLevel.ERROR:
+            return True
+
+        # INFO level: also honour deprecated display.stage.show=false
+        display = self._tool_config.display
+        if display and display.stage and not display.stage.show:
+            return True
+
+        return False
+
     async def arun(
         self,
         tool_call_id: str,
         *args: Any,
-        suppress_stage: bool = False,
+        stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
         **kwargs: Any,
     ) -> ToolCallResult:
-        display = self._tool_config.display
-        if suppress_stage or (display and display.stage and not display.stage.show):
+        if self.__should_suppress(stage_level):
             return await self._run_in_stage_report_success(tool_call_id, None, *args, **kwargs)
 
         stage_wrapper = self.__stage_wrapper_builder.build(
             tool_config=self._tool_config,
             stage_name=self.stage_name_component,
         )
+        display = self._tool_config.display
         defer_close = bool(display and display.stage and display.stage.defer_close)
 
         if defer_close:
