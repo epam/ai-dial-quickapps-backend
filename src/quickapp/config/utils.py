@@ -1,7 +1,7 @@
 import logging
 import os
 from collections.abc import Callable
-from typing import Any, TypeAlias, cast
+from typing import Any, TypeAlias
 
 from pydantic import TypeAdapter
 
@@ -23,7 +23,8 @@ HOSTING_TOOLSET_TYPES: tuple[type[HostingToolSet], ...] = (
     InternalToolSet,
 )
 
-_TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
+TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
+TOOL_SETS_LIST_ADAPTER: TypeAdapter[list[ToolSet]] = TypeAdapter(list[ToolSet])
 
 
 def bool_env_var(param: str, default: bool) -> bool:
@@ -65,5 +66,5 @@ def validate_toolset_dict_and_expand(
     expand_fn: Callable[[ToolSet], ToolSet],
 ) -> ToolSet:
     """Parse ``raw`` as a ``ToolSet`` then apply ``expand_fn`` (typically ``resolve_toolset``)."""
-    validated = _TOOLSET_ADAPTER.validate_python(raw)
+    validated = TOOLSET_ADAPTER.validate_python(raw)
     return expand_fn(validated)

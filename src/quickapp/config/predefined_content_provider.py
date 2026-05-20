@@ -110,7 +110,7 @@ class PredefinedContentProvider:
         return list(self.__layers_info)
 
     def get_default_configuration(self) -> dict[str, Any]:
-        return self.__default_configuration
+        return dict(self.__default_configuration)
 
     # ------------------------------------------------------------------
     # Layer resolution

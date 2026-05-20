@@ -444,6 +444,21 @@ class TestGetDefaultConfigurationResolved:
         assert cfg["tool_sets"] == "broken"
         assert cfg["contexts"] == []
 
+    def test_does_not_mutate_provider_cache(self, tmp_path):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"tool_sets": [{"type": "predefined", "template_name": "weather"}]}',
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        provider = resolver._provider
+        raw_tool_sets = provider.get_default_configuration()["tool_sets"]
+        assert raw_tool_sets[0]["type"] == "predefined"
+
+        resolver.get_default_configuration()
+        resolver.get_default_configuration()
+
+        assert provider.get_default_configuration()["tool_sets"] == raw_tool_sets
+
     def test_skips_unknown_predefined_toolset(self, tmp_path, caplog):
         (tmp_path / "default_configuration.json").write_text(
             '{"tool_sets": [{"type": "predefined", "template_name": "no_such_toolset"}]}',

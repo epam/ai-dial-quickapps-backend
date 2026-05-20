@@ -16,12 +16,10 @@ from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
-from quickapp.config.utils import expand_predefined_tools
+from quickapp.config.utils import TOOL_SETS_LIST_ADAPTER, TOOLSET_ADAPTER, expand_predefined_tools
 from quickapp.predefined_tooling._predefined_tooling_context import _PredefinedToolingContext
 
 _TOOL_ADAPTER: TypeAdapter[AnyTool] = TypeAdapter(AnyTool)
-_TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
-_TOOL_SETS_LIST_ADAPTER: TypeAdapter[list[ToolSet]] = TypeAdapter(list[ToolSet])
 
 logger = logging.getLogger(__name__)
 
@@ -179,12 +177,12 @@ class PredefinedConfigResolver(ConfigResolver):
         Predefined toolsets and ``predefined-tool`` entries inside hosting toolsets
         are expanded to validated tool models (same as runtime resolution).
         """
-        cfg = self._provider.get_default_configuration()
+        cfg = dict(self._provider.get_default_configuration())
         raw_tool_sets = cfg.get("tool_sets")
         if not isinstance(raw_tool_sets, list):
             return cfg
         try:
-            tool_sets = _TOOL_SETS_LIST_ADAPTER.validate_python(raw_tool_sets)
+            tool_sets = TOOL_SETS_LIST_ADAPTER.validate_python(raw_tool_sets)
         except ValidationError as e:
             logger.warning(
                 "Invalid tool_sets in default_configuration; leaving tool_sets unchanged: %s",
@@ -192,7 +190,7 @@ class PredefinedConfigResolver(ConfigResolver):
             )
             return cfg
         resolved = self._resolve_tool_sets(tool_sets, log_only=True)
-        cfg["tool_sets"] = _TOOL_SETS_LIST_ADAPTER.dump_python(resolved, mode="json")
+        cfg["tool_sets"] = TOOL_SETS_LIST_ADAPTER.dump_python(resolved, mode="json")
         return cfg
 
     def read_template_content(
@@ -265,7 +263,7 @@ class PredefinedConfigResolver(ConfigResolver):
             tool_set.template_name,
             template_content,
             tool_set.override,
-            _TOOLSET_ADAPTER,
+            TOOLSET_ADAPTER,
         )
         return self.resolve_toolset(actual_tool_set)
 
