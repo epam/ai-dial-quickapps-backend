@@ -30,6 +30,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.utils import posix_path_last_segment
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_stage_wrapper import (
@@ -70,6 +71,7 @@ class _GetContentTool(StagedBaseTool):
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
             tool_config=tool_config,
+            stage_display_level=StageDisplayLevel.INFO,
             deferred_stage_close_registry=deferred_stage_close_registry,
             argument_transformers=argument_transformers,
             **kwargs,
