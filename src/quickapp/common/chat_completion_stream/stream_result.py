@@ -1,7 +1,5 @@
 """Mutable accumulator for OpenAI-style chat completion streams (orchestrator + deployment)."""
 
-from __future__ import annotations
-
 import logging
 from typing import Any
 

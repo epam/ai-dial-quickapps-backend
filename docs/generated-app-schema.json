@@ -789,6 +789,7 @@
         "name": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
@@ -1128,6 +1129,7 @@
         "dial_id": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
@@ -1222,6 +1224,10 @@
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",
           "description": "File loader configuration (download size limits, etc.)."
+        },
+        "stage_display": {
+          "$ref": "#/$defs/StageDisplayConfig",
+          "description": "Controls which stage levels are rendered to the user."
         }
       },
       "title": "Features",
@@ -2709,6 +2715,26 @@
       "title": "RetryStrategyModel",
       "type": "object"
     },
+    "StageDisplayConfig": {
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/StageDisplayLevel",
+          "default": "info",
+          "description": "Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all."
+        }
+      },
+      "title": "StageDisplayConfig",
+      "type": "object"
+    },
+    "StageDisplayLevel": {
+      "enum": [
+        "error",
+        "info",
+        "debug"
+      ],
+      "title": "StageDisplayLevel",
+      "type": "string"
+    },
     "StopStrategyModel": {
       "properties": {
         "trigger_on": {
@@ -2908,8 +2934,15 @@
         },
         "show": {
           "default": true,
+          "deprecated": true,
           "description": "Whether the tool stage should be shown in the chat.",
           "title": "Show",
+          "type": "boolean"
+        },
+        "defer_close": {
+          "default": false,
+          "description": "When True, the stage stays open until parallel tool execution finishes rather than closing when this tool returns. Useful when a later recovery step may rewrite the tool's result.",
+          "title": "Defer Close",
           "type": "boolean"
         }
       },

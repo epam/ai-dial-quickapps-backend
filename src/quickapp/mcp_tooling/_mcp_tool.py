@@ -14,6 +14,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
@@ -42,6 +43,7 @@ class _MCPTool(StagedBaseTool):
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -51,6 +53,7 @@ class _MCPTool(StagedBaseTool):
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"
@@ -133,9 +136,12 @@ class _MCPTool(StagedBaseTool):
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
-        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ToolCallResult:
-
         logger.debug(f"MCP tool called with {kwargs}")
 
         timeout = self.__timeout_resolver.resolve()

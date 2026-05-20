@@ -104,6 +104,26 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+### Stage display level
+
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
+
+| Value | Behavior |
+|---|---|
+| `error` | Show stages only for failed tool calls |
+| `info` | Show stages for regular tool calls and errors (default) |
+| `debug` | Show stages for all tool calls, including internal/system ones |
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "debug"
+    }
+  }
+}
+```
+
 ### Environment Variables
 
 | Variable                                   | Default                    | Required | Description                                                                                                  |
@@ -119,6 +139,7 @@ your gateways or downstream services expect.
 | `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
 | `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
