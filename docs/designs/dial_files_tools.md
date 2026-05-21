@@ -3,24 +3,22 @@
 - **Status:** Implemented
 - **Approved:** 2026-05-11
 - **Owner:** Andrii Novikov
-- **Supersedes:** [file_tools.md](file_tools.md)
 
 ## Problem Statement
 
-The previous iteration ([`file_tools.md`](file_tools.md), Status: Implemented) shipped five **text-only** tools (`read_file_lines`, `search_in_file`, `write_file`, `edit_file`, `delete_file`) anchored to a hard-coded `generated-files/` subdirectory under the bucket. Real-world testing surfaced two gaps:
+QuickApps agents need DIAL file storage as a real working surface — a place to read, write, and organize files across a conversation. Two capabilities are required:
 
-- **No discovery.** Agents can read/edit files only when they already know the URL. There is no `ls` primitive, so workflows that need to find an existing artifact (a previously written report, a user-uploaded folder) are impossible. The agent can write a file, lose track of the URL, and have no way to recover it.
-- **Write surface is too narrow.** The `generated-files/` constraint, the lack of nested paths, and the single hard-coded `text/plain` content type mean agents can only produce flat-namespace plain-text files. They cannot organize their working surface into folders or write files of other text types (`text/markdown`, `text/csv`, `application/json`) that downstream consumers (renderers, parsers) rely on for correct handling.
+- **Discovery.** Without an `ls` primitive, agents can read/edit files only when they already know the URL. Workflows that need to find an existing artifact (a previously written report, a user-uploaded folder) are impossible: the agent can write a file, lose track of the URL, and have no way to recover it.
+- **A rich write surface.** Agents need to organize their working surface into folders and write files of various text types (`text/plain`, `text/markdown`, `text/csv`, `application/json`) so downstream consumers (renderers, parsers) handle them correctly.
 
-Both gaps prevent agents from using DIAL file storage as a real working surface. This design generalizes the toolkit: agents get a discovery primitive, can organize files into nested directories, can pick the content type, and can explicitly opt into overwriting an existing file.
+This design provides a toolkit covering both: agents get a discovery primitive, can organize files into nested directories, can pick the content type, and can explicitly opt into overwriting an existing file.
 
 ## Design Goals
 
 - Expose a small, orthogonal set of **DIAL files tools** to the LLM: list a folder, read a slice, search for a substring, edit by string replacement, write a new (or overwrite an existing) text file, delete a file.
-- Treat appdata isolation as the safety boundary. The previous design layered `generated-files/` on top of the bucket as redundant safety; with appdata always populated in our deployments, the subdir is unnecessary and obscures the more powerful surface.
+- Treat appdata isolation as the safety boundary. With appdata always populated in our deployments, additional subdirectory layering is unnecessary and obscures the more powerful surface.
 - Allow nested paths and caller-chosen content types so agents can produce structured outputs (folders of CSVs, a report set, a JSON manifest plus its assets).
 - Default to safe behavior (`overwrite=False`) but make the destructive path explicit and reachable.
-- Keep the read/search/edit contracts byte-identical to the previous design — there is no reason to churn them.
 - Be preview-gated. No footprint when the feature flag is off.
 - Path-traversal-restrict every appdata-anchored operation. The agent cannot escape its appdata namespace via constructed `..` paths.
 
@@ -61,7 +59,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 ### UC-6: Agent reads a line range from a file in its home dir
 
 **Trigger:** `read_file_lines(path="reports/summary.md", start_line=0, end_line=50)`.\
-**Behavior:** The relative `path` resolves under the agent's home dir. Read contract is otherwise unchanged from the previous design.\
+**Behavior:** The relative `path` resolves under the agent's home dir. The tool downloads the file via `DialFileService` (cached per request), splits on `\n`, and slices `[start_line, end_line)`.\
 **Outcome:** Lines `[start_line, end_line)` are returned.
 
 ### UC-6b: Agent reads a non-home file (user upload or shared artifact)
@@ -73,12 +71,14 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 ### UC-7: Agent searches for a substring
 
 **Trigger:** `search_in_file(path="reports/summary.md", pattern="ERROR", context_lines=2, case_insensitive=True)`.\
-**Behavior / Outcome:** Unchanged from the previous design. `path` accepts the same dual form (relative under home dir, or absolute `files/...`).
+**Behavior:** Downloads the file (cached), finds every line containing `pattern` (lower-cased if `case_insensitive`), expands each match by ±`context_lines`, merges overlapping windows, and returns the lines with 1-indexed line numbers. Non-adjacent windows are separated by `--`. `path` accepts both forms (relative under home dir, or absolute `files/...`).\
+**Outcome:** The LLM gets a focused, grep-style snippet with enough surrounding context to act on it.
 
 ### UC-8: Agent edits an existing file
 
 **Trigger:** `edit_file(path="reports/summary.md", old_string="foo", new_string="bar")`.\
-**Behavior / Outcome:** Unchanged from the previous design (unique-match string replacement, ETag-guarded upload, post-edit cache invalidation). `path` is relative-only (same rule as `write_file`).
+**Behavior:** Unique-match string replacement with ETag-guarded upload and post-edit cache invalidation. `path` is relative-only (same rule as `write_file`).\
+**Outcome:** The file at the same URL contains the edit; subsequent same-turn reads see it.
 
 ### UC-9: Agent deletes a file under its home dir
 
@@ -95,7 +95,7 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
 ### UC-11: Repeated reads of the same file in one request
 
 **Trigger:** Multiple `read_file_lines` / `search_in_file` calls against the same `path`.\
-**Behavior / Outcome:** Unchanged — `DialFileService` caches the download per request.
+**Behavior / Outcome:** `DialFileService` caches the download per request (keyed by URL via `StateHolder`, with a configurable per-file size limit from `FileLoadingSizeLimitResolver`), so subsequent calls hit the cache.
 
 ### UC-12: Agent copies a user-uploaded file into its workspace
 
@@ -131,10 +131,9 @@ Both gaps prevent agents from using DIAL file storage as a real working surface.
      - If the template contains `{appdata}`: call `await dial_client.my_appdata_home()`. If it returns `None`, raise `InvalidToolCallParameterException("path", "appdata namespace is not available; agent_home_dir uses {appdata} but no appdata was found")`. Substitute the returned path string. `my_appdata_home()` caches the bucket response internally, so repeated calls within a request do not incur extra HTTP round-trips.
      - If the template contains no `{appdata}`: use as-is; no SDK call is needed (read/search/list tools therefore work even when appdata is unavailable, provided the operator pointed `agent_home_dir` at a non-appdata bucket).
   5. Returns `f"{resolved_home}{path}"`. `agent_home_dir` always ends with `/`, so the joined URL is well-formed. **Trailing slash on `path` is preserved as-is**: a trailing `/` on the input means a folder URL (used by `list_files`); no trailing `/` means a file URL (used by `write_file`). The helper does not add or strip slashes — the caller controls the shape.
-- Provides an inverse helper `_to_display_path(url: str) -> str` used by tool result messages: if `url` is prefixed by the resolved `agent_home_dir`, return the trailing relative portion; otherwise return `url` unchanged. Used by `write_file` / `delete_file` success lines and `list_files` row formatting to keep returned paths in the form the agent uses to address them.
-- The previous design's `GENERATED_FILES_ROOT` constant is removed.
+- Provides an inverse helper `async _to_display_path(url: str) -> str` used by tool result messages: if `url` is prefixed by the resolved `agent_home_dir`, return the trailing relative portion; otherwise return `url` unchanged. It is `async` because home-dir resolution may need `my_appdata_home()` on first call (subsequent calls return from cache). Used by `write_file` / `delete_file` success lines and `list_files` row formatting to keep returned paths in the form the agent uses to address them.
 
-`AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.upload_text`.
+`AttachmentService` is **not** a base-class dependency — `write_file` constructs its `Attachment` directly from the URL returned by `DialFileService.write_file`.
 
 #### Path conventions
 
@@ -190,9 +189,23 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 ### Component 3: `read_file_lines`
 
-**What:** Read a line range from a UTF-8 text file. Unchanged from the previous design except for the parameter rename below.
+**What:** Read a line range from a UTF-8 text file.
 
-**Parameter rename:** `file_url` → `path`. The `path` parameter accepts both shapes per *Path conventions*: a relative path under the agent's home dir, or an absolute `files/...` URL for non-home targets. Resolution goes through `_resolve_appdata_url(path)`; the rest of the algorithm (download via `DialFileService`, slice `[start_line, end_line)`, return text) is unchanged. See [`file_tools.md`](file_tools.md) Component 2.
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | string | yes | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. |
+| `start_line` | integer | yes | First line (0-indexed, inclusive). |
+| `end_line` | integer | yes | First line to exclude (0-indexed, like a Python slice end). |
+
+**Algorithm:**
+
+1. Validate `start_line >= 0` and `end_line >= start_line` — else raise `InvalidToolCallParameterException`.
+2. Resolve `url = await _resolve_appdata_url(path)`.
+3. Decode the file via the base-class helper `text, _ = await self._download_text(url, display_path=path)` (wraps `DialFileService.download_file(url) -> tuple[bytes, FileMetadata | None]`, decodes UTF-8, and surfaces DIAL errors as `InvalidToolCallParameterException`). Download is cached per request.
+4. Split on `\n` via `splitlines()`.
+5. Return `"\n".join(lines[start_line:end_line])` as `ToolCallResult(content=..., content_type="text/plain")`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_read_file_lines_tool.py`
 
@@ -200,11 +213,33 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 ### Component 4: `search_in_file`
 
-**What:** Substring search with optional case-insensitivity and context lines. Unchanged from the previous design except for the parameter rename below.
+**What:** Substring search with optional case-insensitivity and context lines.
 
-**Parameter rename:** `file_url` → `path`. Accepts both shapes per *Path conventions*. Resolution goes through `_resolve_appdata_url(path)`; the rest of the algorithm is unchanged. See [`file_tools.md`](file_tools.md) Component 3.
+**Parameters:**
+
+| Name | Type | Required | Default | Description |
+|------|------|----------|---------|-------------|
+| `path` | string | yes | — | Relative path under the agent's home dir, or absolute DIAL URL starting with `files/`. |
+| `pattern` | string | yes | — | Substring to search for. |
+| `context_lines` | integer | no | `0` | Lines of context around each match. |
+| `case_insensitive` | boolean | no | `false` | If true, compare lower-cased. |
+
+**Algorithm:**
+
+1. Resolve `url = await _resolve_appdata_url(path)`.
+2. Download and decode UTF-8 text (cached per request).
+3. Split into lines via `splitlines()`.
+4. For each line index, test `pattern in line` (lower-casing both if `case_insensitive`).
+5. If no matches → return `ToolCallResult(content="No matches found.", content_type="text/plain")`.
+6. Build the union of `[i - context_lines, i + context_lines]` windows around each match (clamped to file bounds), deduplicate, sort.
+7. Emit each included line as `"{i+1}:{line}"` (1-indexed). Insert a `--` separator between non-adjacent windows.
+8. Return joined lines as `ToolCallResult(content=..., content_type="text/plain")`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_search_in_file_tool.py`
+
+**Design notes:**
+- Substring only. Regex is out of scope (see *Out of Scope*).
+- Output line numbers are **1-indexed**. `read_file_lines` inputs are **0-indexed** to match Python slice semantics — this asymmetry is intentional and documented in each tool's description.
 
 ---
 
@@ -225,42 +260,60 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "write_file requires a relative path under agent_home_dir; do not pass an absolute files/... URL")`. All mutating tools share this restriction (see *Path conventions* and the design note below).
 2. Resolve `url = await _resolve_appdata_url(path)`. (Path-traversal validation + `agent_home_dir` resolution happen here; failures raise before any IO.)
-3. Branch on `overwrite`:
-   - `overwrite == false`: call `DialFileService.upload_text(url=url, content=content, content_type=content_type, if_none_match="*")`. On `EtagMismatchError` (HTTP 412) → `InvalidToolCallParameterException("path", "file already exists: {url}; pass overwrite=True to replace")`.
-   - `overwrite == true`:
-     - Try `dial_client.files.get_metadata(url)` to read the current ETag.
-       - On `ResourceNotFoundError` (HTTP 404, no prior file): call `upload_text(..., if_none_match="*")` — clean create. (Falls through; not an error.)
-       - On success: call `upload_text(url=url, content=content, content_type=content_type, if_match=etag)`.
-         - On `EtagMismatchError` (HTTP 412): `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
-     - On a successful overwrite, call `DialFileService.invalidate_cache(url)` so same-turn reads see the new bytes.
+3. Call `DialFileService.write_file(url=url, content=content, content_type=content_type, overwrite=overwrite)`. The service encapsulates the conditional-header branching: with `overwrite=False` it sends `If-None-Match: *`; with `overwrite=True` it fetches the current ETag (falling through to create on `ResourceNotFoundError`) and uploads with `If-Match: <etag>`. The cache is invalidated on success. On `EtagMismatchError` (HTTP 412) the tool surfaces a precise message: when `overwrite=False` → `InvalidToolCallParameterException("path", "file already exists: {display_path}; pass overwrite=True to replace")`; when `overwrite=True` → `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
 4. Build an `Attachment` pointing at `url` (so the DIAL UI shows the file; attachment URLs are always absolute — the UI needs the resolved form).
-5. Return `ToolCallResult(content=f"File written: {_to_display_path(url)}", content_type="text/plain", attachments=[attachment])`. Since `write_file` only accepts relative paths (see Suggestion #1 in Round 5 — resolved here), the displayed form is always the relative path the agent passed in.
+5. Return `ToolCallResult(content=f"File written: {_to_display_path(url)}", content_type="text/plain", attachments=[attachment])`. Since `write_file` only accepts relative paths, the displayed form is always the relative path the agent passed in.
 
 **Owner:** `src/quickapp/dial_files_tooling/_write_file_tool.py`
 
 **Design notes:**
 
 - **Relative-only `path`.** All three mutating tools (`write_file`, `edit_file`, `delete_file`) accept only relative paths under `agent_home_dir`. Read-only tools (`list_files`, `read_file_lines`, `search_in_file`) accept either form. The agent authors and mutates files only in its own home; cross-namespace mutations are out of scope until a use case appears (see *Out of Scope*). An absolute `files/...` URL passed to a mutating tool is caught at Algorithm step 1 and rejected before any IO.
-- **Overwrite is opt-in.** Default safety net (`If-None-Match: *`) preserved from the previous design. The `overwrite=True` path is the explicit, ETag-guarded escape hatch — no silent clobber.
+- **Overwrite is opt-in.** Default safety net is `If-None-Match: *`. The `overwrite=True` path is the explicit, ETag-guarded escape hatch — no silent clobber.
 - **Why one tool, not two.** A separate `overwrite_file` tool was considered. Folding the toggle into a parameter keeps the surface small; the LLM sees one tool with a clearly named optional flag.
-- **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default `text/plain` matches the previous behavior exactly. Client-side validation is intentionally minimal — there is no MIME-type allowlist (the set is open-ended) — but the value is rejected if it contains `\n` or `\r` to prevent header-injection-style abuse before the string reaches DIAL's HTTP layer.
+- **`content_type` is caller-controlled.** Sniffing was rejected: the agent already knows what it is producing, and sniffing risks misclassification (e.g., a JSON file beginning with `<` due to embedded HTML). Default is `text/plain`. Client-side validation is intentionally minimal — there is no MIME-type allowlist (the set is open-ended) — but the value is rejected if it contains `\n` or `\r` to prevent header-injection-style abuse before the string reaches DIAL's HTTP layer.
 - **Path-traversal validation runs first.** No partial work — invalid path → no IO, no cache mutation. Validation errors are precise so the LLM can retry without guessing.
 - **`appdata` is required.** The base-class helper raises a descriptive error when the bucket response has no appdata. In our supported deployments this never fires; if it does, the agent gets a clear signal rather than silently writing into the user's personal bucket.
 - **`edit_file` still exists.** `write_file(overwrite=True)` is for full rewrites; `edit_file` is for surgical patches with concurrency safety. The two are complementary, not redundant.
 - **`get_metadata` does double duty.** In the `overwrite=True` branch the metadata fetch serves two purposes: (a) obtain the ETag for the conditional upload, and (b) detect "no prior file" via the 404 so the call falls through to a clean create. There is no separate existence probe — both signals come from the same call.
-- **Alternative considered: try-create-then-retry.** A simpler shape would be: always call `upload_text(if_none_match="*")` first; on 412, call `get_metadata` for the ETag and retry with `if_match=etag`. That removes the metadata round-trip on the common new-file path. Rejected for v1 because the typical `overwrite=True` call is an explicit replacement (the agent expects the file to exist), so the optimistic-create path adds complexity that pays off only for edge cases. Worth revisiting if profiling shows the metadata call dominates write latency.
+- **Alternative considered: try-create-then-retry.** A simpler shape would be: always upload with `If-None-Match: *` first; on 412, fetch the ETag and retry with `If-Match: <etag>`. That removes the metadata round-trip on the common new-file path. Rejected for v1 because the typical `overwrite=True` call is an explicit replacement (the agent expects the file to exist), so the optimistic-create path adds complexity that pays off only for edge cases. Worth revisiting if profiling shows the metadata call dominates write latency.
 
-**`DialFileService.upload_text` extension.** The existing method is extended with a `content_type` keyword (default `"text/plain"`, so existing callers — `_EditFileTool` — are unaffected). The MIME is propagated to the underlying `dial_client.files.upload(file=(name, bytes, mime))` call.
+**`DialFileService.write_file`.** Signature: `async write_file(url, content, *, content_type="text/plain", overwrite=False, if_match=None) -> str`. Encapsulates the `If-Match` / `If-None-Match` branching described above; raises `EtagMismatchError` on conditional failure; invalidates the request-scoped cache for `url` on success. The MIME is propagated to the underlying `dial_client.files.upload(file=(name, bytes, mime))` call.
 
 ---
 
 ### Component 6: `edit_file`
 
-**What:** Unique-substring replacement with ETag-guarded upload. Unchanged from the previous design except for the parameter rename below.
+**What:** Applies a single string-replacement edit to an existing UTF-8 text file, guarded by the file's ETag to prevent lost updates. Accepts **relative paths only** under `agent_home_dir` (absolute `files/...` URLs are rejected — same rule as `write_file`).
 
-**Parameter rename:** `file_url` → `path`. Accepts **relative paths only** under `agent_home_dir` (absolute `files/...` URLs are rejected — same rule as `write_file`). Resolution goes through `_resolve_appdata_url(path)` (relative branch). The rest of the algorithm (download, replace, conditional upload, cache invalidation) is unchanged. See [`file_tools.md`](file_tools.md) Component 5.
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|----------|-------------|
+| `path` | string | yes | Relative path under the agent's home dir. Absolute `files/...` URLs are rejected. |
+| `old_string` | string | yes | Exact substring to replace. Must occur **exactly once** in the file. |
+| `new_string` | string | yes | Replacement text. May be empty (deletes the `old_string` occurrence). |
+
+**Algorithm:**
+
+1. **Reject the absolute form.** If `path` starts with `files/`, raise `InvalidToolCallParameterException("path", "...")` before any IO.
+2. Resolve `url = await _resolve_appdata_url(path)` (relative branch — path-traversal validation + `agent_home_dir` resolution).
+3. Obtain the file's text and metadata via the base-class helper `content, metadata = await self._download_text(url, display_path=path)` (which wraps `DialFileService.download_file(url) -> tuple[bytes, FileMetadata | None]` and decodes UTF-8). Read `etag = metadata.etag if metadata else None`.
+4. If `old_string == new_string` → raise `InvalidToolCallParameterException("new_string", "new_string must differ from old_string")`.
+5. `count = content.count(old_string)`. If `count == 0` → raise `"old_string not found in file"`. If `count > 1` → raise `"old_string found {count} times; provide more surrounding context to disambiguate"`.
+6. `new_content = content.replace(old_string, new_string, 1)` (explicit `count=1` for safety even though uniqueness is verified).
+7. Re-upload via `DialFileService.write_file(url=url, content=new_content, if_match=etag)`. The service invalidates the cache for `url` on success, so subsequent same-turn `read_file_lines`/`search_in_file` calls see the updated content.
+8. On `EtagMismatchError` (HTTP 412) → raise `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`.
+9. On success → return `ToolCallResult(content=f"Edited: {_to_display_path(url)}", content_type="text/plain")`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_edit_file_tool.py`
+
+**Design notes:**
+- **Unique-match requirement** is the most reliable primitive for LLMs: it forces the model to include enough surrounding context to disambiguate.
+- **Why string replacement over line-range replacement.** Line numbers drift after any prior edit in the same conversation; anchoring on substring content keeps edits locally consistent.
+- **ETag optimistic concurrency.** `If-Match: <etag>` catches the narrow case where two tool calls modify the same file in parallel.
+- **No partial-update primitive is available.** DIAL's file API has no PATCH; the download+upload shape is the only option.
+- **No attachment in response.** Returns only a confirmation string; the URL is unchanged, the LLM already has it, and emitting an attachment on every edit would clutter the UI for workflows that make multiple edits to the same file.
 
 ---
 
@@ -287,7 +340,7 @@ Path handling follows a single rule: **read-only tools accept both forms; mutati
 
 **Design notes:**
 
-- **No client-side validation.** Appdata isolation is the safety boundary; an LLM running in app context cannot delete files outside its own appdata namespace. The previous `generated-files/` guard, and an earlier draft's `..`-substring check, are both removed: the substring check would have rejected legitimate filenames containing `..` (e.g. `v1.2..3/log.txt`) and was redundant with appdata isolation, not a real safety layer (it could not prevent escape, only block one syntactic form).
+- **Appdata isolation is the safety boundary.** An LLM running in app context cannot delete files outside its own appdata namespace, so no additional client-side path-allowlist is needed. A `..`-substring check was considered and rejected: it would have falsely rejected legitimate filenames containing `..` (e.g. `v1.2..3/log.txt`) and only blocked one syntactic form of escape rather than preventing escape at all.
 - **No ETag guard.** Delete is unconditional within the appdata scope; the concurrency window for delete is rarely meaningful.
 - **No soft delete.** DIAL's `files.delete` is a hard delete. No undo.
 
@@ -398,8 +451,8 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 **What:** `injector.Module` that:
 
 - Binds `_FileStageWrapper`, `_ListFilesTool`, `_ReadFileLinesTool`, `_SearchInFileTool`, `_WriteFileTool`, `_EditFileTool`, `_DeleteFileTool`, `_CopyFileTool`, `_MoveFileTool` in `request_scope`.
-- Contributes all eight tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as the prior `TextFileToolingModule`).
-- Tools are gated per app via `app_config.features.dial_files`. The resolution logic is unchanged from the previous design — `enabled_tools="all"` returns every tool; a list returns only the matching subset.
+- Contributes all eight tools to the shared `list[StagedBaseTool]` multiprovider via its own `@multiprovider`-decorated provider method (same pattern as `InternalToolModule._provide_internal_tools`).
+- Tools are gated per app via `app_config.features.dial_files`: `enabled_tools="all"` returns every tool; a list returns only the matching subset.
 - Is **preview-feature-gated** via `@preview_module` — when `ENABLE_PREVIEW_FEATURES=false`, nothing is bound and the tools are invisible to the LLM.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`
@@ -413,7 +466,7 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 **What:** `OpenAiToolConfig` definitions with JSON-schema parameters, plus `ToolDisplayConfig` for the DIAL stage UI.
 
 **Highlights:**
-- Tool prefix renamed from `internal_text_file_` to `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`, `internal_file_copy`, `internal_file_move`.
+- Tool name prefix: `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`, `internal_file_copy`, `internal_file_move`.
 - Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
 - The `path` parameter renders in the stage as `**File:** {basename}` (last path segment of the display path, computed via `_to_display_path`) so the UI stays compact.
 
@@ -423,7 +476,7 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 
 ### Component 10: Per-app config (`features.dial_files`)
 
-**What:** A new `DialFilesConfig` field on the existing `Features` container in `src/quickapp/config/application.py`. Replaces the prior `text_file_tools` field of the same shape.
+**What:** A `DialFilesConfig` field on the existing `Features` container in `src/quickapp/config/application.py`. Lets app authors restrict which file tools are exposed and repoint the agent's home directory.
 
 **Schema:**
 
@@ -470,7 +523,7 @@ class DialFilesConfig(BaseModel):
 
 A `pydantic.ValidationError` is raised on startup if any of these rules is violated.
 
-**`agent_home_dir` resolution (at request time)** — performed inside `_resolve_appdata_url` as described in *Component 1*. Default `"files/{appdata}/"` resolves identically to the previous `f"files/{home}/"` from `my_appdata_home()`, so there is no behavioral change for existing deployments.
+**`agent_home_dir` resolution (at request time)** — performed inside `_resolve_appdata_url` as described in *Component 1*. The default `"files/{appdata}/"` resolves via `dial_client.my_appdata_home()` to `files/{home}/`.
 
 **Wiring on `Features`:**
 
@@ -485,7 +538,7 @@ class Features(BaseModel):
     )
 ```
 
-**Resolution in `DialFilesToolingModule`:** Same shape as the previous design's resolver, but reads `app_config.features.dial_files` and matches against `DialFilesToolName`.
+**Resolution in `DialFilesToolingModule`:** Reads `app_config.features.dial_files` and matches each tool's name against `DialFilesToolName`, returning the matching subset (or every tool when `enabled_tools == "all"`).
 
 **Design notes:**
 
@@ -512,7 +565,7 @@ class Features(BaseModel):
 | `write_file(overwrite=True)` concurrent modification (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
 | `write_file` `content_type` contains `\n` or `\r` | `InvalidToolCallParameterException("content_type", "must not contain newline characters")` — client-side, before any IO. |
 | `write_file` otherwise-invalid `content_type` (e.g. malformed `type/subtype`) | Passed through to DIAL; surface DIAL's response if any. No client-side allowlist (the set of valid MIME types is open-ended). |
-| `edit_file` `old_string` not found / matches multiple places / equals `new_string` | Unchanged from previous design. |
+| `edit_file` `old_string` not found / matches multiple places / equals `new_string` | `InvalidToolCallParameterException` with a precise message: "not found", "found N times; provide more surrounding context to disambiguate", or "new_string must differ from old_string". |
 | `edit_file` conditional upload fails (`EtagMismatchError`, HTTP 412) | `InvalidToolCallParameterException("path", "file changed concurrently; re-read and retry")`. |
 | `list_files` target is not a folder | `InvalidToolCallParameterException("path", "not a folder: {url}")` if DIAL response shape indicates a file. |
 | `list_files` target not found (`ResourceNotFoundError`, HTTP 404) | `InvalidToolCallParameterException("path", "folder not found: {url}")`. |
@@ -796,31 +849,6 @@ Moved to: final/report.md
 
 ---
 
-## Migration
-
-### Breaking changes
-
-- **Module rename:** `src/quickapp/text_file_tooling/` → `src/quickapp/dial_files_tooling/`. See *Summary of Changes / New files*.
-- **Config-field rename:** `features.text_file_tools` → `features.dial_files`. Any in-flight manifest using the old key must be updated. No back-compat shim.
-- **Tool-prefix rename:** `internal_text_file_*` → `internal_file_*`. Any saved chat history or manifest referencing the old names will not match. See *Summary of Changes / New tools exposed*.
-- **`write_file` parameter rename and additions:** `filename` → `path`; `content_type` and `overwrite` added.
-- **`read_file_lines` / `search_in_file` / `edit_file` / `delete_file` parameter rename:** `file_url` → `path`. For read-only tools (`read_file_lines`, `search_in_file`), the new parameter accepts both relative paths (resolved under `agent_home_dir`) and absolute `files/...` URLs (passed through unchanged). For mutating tools (`edit_file`, `delete_file`), the new parameter accepts relative paths only — absolute URLs are rejected (same rule as `write_file`). Any existing manifest or saved chat history referencing `file_url` will not match.
-- **`delete_file` no longer enforces `generated-files/`.** Any caller relying on this guard for safety must migrate to the appdata isolation model.
-- **Appdata is now required for write/delete.** `_WriteFileTool` (and the previous design) used `bucket = bucket_resp.appdata or bucket_resp.bucket`, silently falling back to the user's personal bucket when DIAL Core did not populate `appdata`. The new `_resolve_appdata_url` calls `dial_client.my_appdata_home()` and raises `InvalidToolCallParameterException` if it returns `None`. In our deployments QuickApps is always invoked as a DIAL application, so `appdata` is always populated; the breaking case is a deployment that calls QuickApps directly as a user (no app context). In that case, write/delete tools refuse to operate (read/search/list are unaffected). This is intentional — the old fallback could have written agent output into the user's personal upload bucket. If a future deployment needs the old fallback, add it as a `DialFilesConfig` opt-in.
-
-The above bullets are acceptable because the feature is preview-gated and not GA.
-
-### Non-breaking changes
-
-- `DialFileService.upload_text` gains a `content_type` keyword (default `"text/plain"`, so existing `_EditFileTool` continues to work).
-- `DialFileService` gains `list_folder` — additive.
-- `AttachmentService` is unchanged.
-- `DialFilesConfig` gains `agent_home_dir` (default `"files/{appdata}/"`) — existing manifests that omit the field are unaffected; relative paths continue to resolve under appdata.
-- `_resolve_appdata_url` now accepts both relative and absolute (`files/...`) inputs. Existing call sites that previously passed only relative paths continue to work; new read-only call sites (`list_files`, `read_file_lines`, `search_in_file`) rely on the absolute pass-through. Mutating tools (`write_file`, `edit_file`, `delete_file`) reject absolute inputs before calling `_resolve_appdata_url`. This is a contract expansion for read tools, not a break.
-- Two new tools — `internal_file_copy`, `internal_file_move` — are exposed when `dial_files.enabled_tools` is `"all"` (default) or includes the new tool names. Existing manifests that rely on `"all"` will surface the new tools automatically. To keep the previous six-tool surface, switch to an explicit `enabled_tools` list.
-
----
-
 ## Summary of Changes
 
 ### New files
@@ -829,15 +857,15 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 |------|---------|
 | `dial_files_tooling/_base_file_tool.py` | `_DialFileTool` base class with `DialFileService` wiring; provides `_resolve_appdata_url(path)` with path-traversal validation. |
 | `dial_files_tooling/_list_files_tool.py` | `list_files` implementation. |
-| `dial_files_tooling/_read_file_lines_tool.py` | `read_file_lines` implementation (carried over). |
-| `dial_files_tooling/_search_in_file_tool.py` | `search_in_file` implementation (carried over). |
+| `dial_files_tooling/_read_file_lines_tool.py` | `read_file_lines` implementation. |
+| `dial_files_tooling/_search_in_file_tool.py` | `search_in_file` implementation. |
 | `dial_files_tooling/_write_file_tool.py` | `write_file` implementation: nested `path`, `content_type`, `overwrite`. |
-| `dial_files_tooling/_edit_file_tool.py` | `edit_file` implementation (carried over). |
-| `dial_files_tooling/_delete_file_tool.py` | `delete_file` implementation (path guard removed; no client-side validation — appdata isolation is the safety boundary). |
+| `dial_files_tooling/_edit_file_tool.py` | `edit_file` implementation. |
+| `dial_files_tooling/_delete_file_tool.py` | `delete_file` implementation — no client-side path validation; appdata isolation is the safety boundary. |
 | `dial_files_tooling/_copy_file_tool.py` | `copy_file` implementation — server-side copy via `/v1/ops/resource/copy`. |
 | `dial_files_tooling/_move_file_tool.py` | `move_file` implementation — server-side move via `/v1/ops/resource/move`. |
-| `dial_files_tooling/_stage_wrapper.py` | Stage wrapper (carried over). |
-| `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all eight tools; renamed prefix. |
+| `dial_files_tooling/_stage_wrapper.py` | Stage wrapper for the DIAL UI display. |
+| `dial_files_tooling/_tool_configs.py` | `OpenAiToolConfig` + `ToolDisplayConfig` for all eight tools. |
 | `dial_files_tooling/dial_files_tooling_module.py` | Preview-gated DI module; contributes tools; reads `app_config.features.dial_files`. |
 | `config/dial_files.py` | `DialFilesConfig` model — `enabled_tools: Literal["all"] \| list[DialFilesToolName]`. |
 
@@ -845,25 +873,25 @@ The above bullets are acceptable because the feature is preview-gated and not GA
 
 | File | Change |
 |------|--------|
-| `dial_core_services/dial_file_service.py` | Add `list_folder(folder_url, max_depth=1)` (wraps `dial_client.metadata.get("files", folder_url)` with depth-bounded recursion). Extend `upload_text(...)` with `content_type` keyword (default `"text/plain"`); add `copy` and `move` methods (via private `_http_client` transport). |
+| `dial_core_services/dial_file_service.py` | Add `list_folder(folder_url, max_depth=1)` (wraps `dial_client.metadata.get("files", folder_url)` with depth-bounded recursion). Add `write_file(url, content, *, content_type="text/plain", overwrite=False, if_match=None) -> str` (encapsulates `If-Match` / `If-None-Match` branching; invalidates cache on success). Add `invalidate_cache(url)`. Add `copy` and `move` methods (via private `_http_client` transport). The existing `download_file(url)` already returns `tuple[bytes, FileMetadata | None]`, so `edit_file` can recover the ETag via the metadata side of that tuple — no new method needed. |
 | `dial_core_services/attachment_service.py` | No changes. |
-| `app_factory.py` | Register `DialFilesToolingModule` (replaces `TextFileToolingModule`). |
-| `config/application.py` | Replace `text_file_tools: TextFileToolsConfig \| None` with `dial_files: DialFilesConfig \| None` as a `PreviewField` on `Features`. |
+| `app_factory.py` | Register `DialFilesToolingModule`. |
+| `config/application.py` | Add `dial_files: DialFilesConfig \| None` as a `PreviewField` on `Features`. |
 
 ### New tools exposed to the LLM
 
 - `internal_file_list(path, max_depth=1)`
-- `internal_file_read_lines(path, start_line, end_line)` (parameter rename: `file_url` → `path`)
-- `internal_file_search(path, pattern, context_lines=0, case_insensitive=False)` (parameter rename)
+- `internal_file_read_lines(path, start_line, end_line)`
+- `internal_file_search(path, pattern, context_lines=0, case_insensitive=False)`
 - `internal_file_write(path, content, content_type="text/plain", overwrite=False)`
-- `internal_file_edit(path, old_string, new_string)` (parameter rename; relative-only)
-- `internal_file_delete(path)` (parameter rename; relative-only)
+- `internal_file_edit(path, old_string, new_string)` (relative-only)
+- `internal_file_delete(path)` (relative-only)
 - `internal_file_copy(source, destination, overwrite=False)`
 - `internal_file_move(source, destination, overwrite=False)`
 
 ### Tests
 
-- Unit: `src/tests/unit_tests/dial_files_tooling/` — all carried-over coverage from the previous design plus:
+- Unit: `src/tests/unit_tests/dial_files_tooling/`:
   - `_resolve_appdata_url`: relative path resolves to `agent_home_dir + path`; absolute `files/...` passes through unchanged; absolute URL with `\n` rejected; path traversal applied to relative branch only; `agent_home_dir` template with `{appdata}` resolved via `my_appdata_home()`; `agent_home_dir` without `{appdata}` does not call `my_appdata_home()` (read/search/list usable when appdata missing); appdata-missing with `{appdata}` template → descriptive error.
   - `DialFilesConfig` field validator: rejects missing `files/` prefix, missing trailing `/`, unknown `{...}` token, `..` segment — all raise `pydantic.ValidationError` at config-load time.
   - `_to_display_path`: home-dir URL → relative; non-home URL → unchanged; edge case `agent_home_dir` itself → empty relative ("").
@@ -872,7 +900,7 @@ The above bullets are acceptable because the feature is preview-gated and not GA
   - `read_file_lines` / `search_in_file`: accept relative `path` (resolves through `agent_home_dir`), accept absolute `files/...` URL (pass-through), parameter rename from `file_url` to `path` reflected end-to-end.
   - `edit_file`: accept relative `path` (resolves through `agent_home_dir`), absolute `files/...` URL rejected with `InvalidToolCallParameterException`, parameter rename from `file_url` to `path` reflected end-to-end.
   - `delete_file`: success on relative path under home dir (success line shows relative form), absolute `files/...` URL rejected with `InvalidToolCallParameterException`, `ResourceNotFoundError` (404) → `InvalidToolCallParameterException("path", ...)`.
-  - `DialFileService.upload_text`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`.
+  - `DialFileService.write_file`: `content_type` defaults to `"text/plain"`, custom content type forwarded to `dial_client.files.upload`; `overwrite=False` sends `If-None-Match: *`; `overwrite=True` falls through to create on `ResourceNotFoundError` and otherwise uploads with `If-Match: <etag>`; cache invalidated on success.
   - `DialFileService.list_folder`: flat folder, recursion respects `max_depth`, depth-bound folders listed but not expanded.
   - `copy_file`: happy path (relative source), happy path (absolute source), collision with `overwrite=False` (EtagMismatchError → InvalidToolCallParameterException), overwrite with `overwrite=True`, source-missing 404 → InvalidToolCallParameterException("source", ...), absolute destination rejected, 403 → InvalidToolCallParameterException. Verify destination cache invalidated after success.
   - `move_file`: happy path (relative→relative rename), collision with `overwrite=False`, overwrite with `overwrite=True`, source-missing 404, absolute source rejected, absolute destination rejected, 403 → InvalidToolCallParameterException. Verify source AND destination cache invalidated after success.
