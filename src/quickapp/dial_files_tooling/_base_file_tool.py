@@ -10,6 +10,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -28,6 +29,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         perf_timer: PerformanceTimer,
         dial_file_service: DialFileService,
         dial_files_config: DialFilesConfig,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -35,6 +37,7 @@ class _DialFileTool(StagedBaseTool, ABC):
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             tool_config=tool_config,
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
             **kwargs,
         )
