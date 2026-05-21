@@ -5,7 +5,6 @@ from typing import Literal
 
 from aidial_client import AsyncDial
 from aidial_client._exception import ResourceNotFoundError
-from aidial_client._internal_types._http_request import FinalRequestOptions
 from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
 from pydantic import BaseModel, ConfigDict
@@ -158,37 +157,17 @@ class DialFileService:
         return results
 
     async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
-        # TODO: replace with public aidial_client.ops.copy once exposed upstream.
-        # aidial_client has no public wrapper for /v1/ops/resource/copy yet, so
-        # we reach into the internal http client.
-        await self.__dial_client._http_client.request(
-            cast_to=type(None),
-            options=FinalRequestOptions(
-                method="POST",
-                url="/v1/ops/resource/copy",
-                json_data={
-                    "sourceUrl": source_url,
-                    "destinationUrl": destination_url,
-                    "overwrite": overwrite,
-                },
-            ),
+        await self.__dial_client.files.copy_to(
+            source=source_url,
+            destination=destination_url,
+            overwrite=overwrite,
         )
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
-        # TODO: replace with public aidial_client.ops.move once exposed upstream.
-        # aidial_client has no public wrapper for /v1/ops/resource/move yet, so
-        # we reach into the internal http client.
-        await self.__dial_client._http_client.request(
-            cast_to=type(None),
-            options=FinalRequestOptions(
-                method="POST",
-                url="/v1/ops/resource/move",
-                json_data={
-                    "sourceUrl": source_url,
-                    "destinationUrl": destination_url,
-                    "overwrite": overwrite,
-                },
-            ),
+        await self.__dial_client.files.move_to(
+            source=source_url,
+            destination=destination_url,
+            overwrite=overwrite,
         )
         self.invalidate_cache(source_url)
 
