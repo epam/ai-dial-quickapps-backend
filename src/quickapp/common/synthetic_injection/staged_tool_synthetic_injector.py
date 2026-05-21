@@ -9,6 +9,7 @@ from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
     SyntheticToolCallInjector,
 )
+from quickapp.config.application import StageDisplayLevel
 
 logger = logging.getLogger(__name__)
 
@@ -40,5 +41,7 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
             )
             return None
         arguments = await self.get_arguments()
-        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, suppress_stage=True, **arguments)
+        result = await tool.arun(
+            _ARUN_SYNTHETIC_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **arguments
+        )
         return result.content

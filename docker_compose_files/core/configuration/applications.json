@@ -22,6 +22,11 @@
           "Hello",
           "Goodbye"
         ],
+        "features": {
+          "stage_display": {
+            "level": "info"
+          }
+        },
         "contexts": [],
         "tool_sets": [
           {

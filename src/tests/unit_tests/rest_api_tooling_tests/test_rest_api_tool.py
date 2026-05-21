@@ -12,7 +12,7 @@ from starlette.testclient import TestClient
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.config.application import ApplicationConfig
+from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import (
     BaseOpenAITool,
     OpenAiToolConfig,
@@ -116,6 +116,7 @@ async def test_web_api_tool_2_make_correct_http_call(mock_async_client, request_
         binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -198,6 +199,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -262,6 +264,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -317,6 +320,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -367,6 +371,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -409,6 +414,7 @@ def test_openai_tools_names():
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
         binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 

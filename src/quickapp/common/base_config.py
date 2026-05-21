@@ -14,6 +14,16 @@ _DIAL_ID_PREFIX = "https://mydial.epam.com/custom_application_schemas/"
 
 _PREVIEW_MARKER = "x-preview"
 
+# Field-level schema keys carried over from a canonical field to its LegacyAlias.
+# DIAL Core's schema-driven tooling (e.g. resource discovery / auto-share) keys
+# off these markers; an alias must mirror them or manifests stored under the
+# legacy key become invisible to those collectors.
+_LEGACY_ALIAS_PROPAGATED_KEYS: tuple[str, ...] = (
+    DialJSONSchemaExtensions.RESOURCE,
+    DialJSONSchemaExtensions.FILE,
+    "format",
+)
+
 
 def _collect_defs_references(schema: Any) -> set[str]:
     """Return the set of $defs keys referenced in *schema*."""
@@ -271,11 +281,16 @@ class LegacyAliasModel(BaseModel):
         required = json_schema.get("required") or []
         any_of = json_schema.setdefault("anyOf", [])
         for canonical, legacy in cls._legacy_alias_pairs:
-            properties[legacy.name] = {
+            canonical_schema = properties.get(canonical, {})
+            alias_schema: dict[str, Any] = {
                 "type": "string",
                 "description": legacy.description or f"DEPRECATED. Legacy alias for `{canonical}`.",
                 "deprecated": True,
             }
+            for key in _LEGACY_ALIAS_PROPAGATED_KEYS:
+                if key in canonical_schema:
+                    alias_schema[key] = canonical_schema[key]
+            properties[legacy.name] = alias_schema
             if canonical in required:
                 required.remove(canonical)
             any_of.extend([{"required": [canonical]}, {"required": [legacy.name]}])

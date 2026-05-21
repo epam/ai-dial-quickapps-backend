@@ -4,6 +4,7 @@ from typing import Any
 from aidial_client import AsyncDial, DialException, ToolsetInfo
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
+from aidial_sdk.chat_completion.request import StaticTool
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
@@ -34,6 +35,10 @@ from quickapp.dial_core_services.exceptions import (
 
 logger = logging.getLogger(__name__)
 
+STATIC_FUNCTION_TYPE = "static_function"
+TOOLS_KEY = "tools"
+TYPE_KEY = "type"
+
 
 @inject
 class ToolConfigCoreService:
@@ -60,6 +65,43 @@ class ToolConfigCoreService:
                 timeout=build_async_dial_timeout(self.__timeout_resolver_provider.get().resolve()),
             )
         return self.__dial_client_provider.get()
+
+    @staticmethod
+    def parse_static_tools_from_info(
+        deployment: Deployment | Application,
+    ) -> list[StaticTool]:
+        """Extract and parse defaults.tools from deployment or application info.
+
+        Supports type == "static_function"; other types are skipped with a debug log.
+        Returns empty list if defaults or defaults.tools are missing.
+        """
+        defaults = deployment.defaults
+        if not isinstance(defaults, dict):
+            return []
+        raw_tools = defaults.get(TOOLS_KEY)
+        if not isinstance(raw_tools, list):
+            return []
+        result: list[StaticTool] = []
+        for entry in raw_tools:
+            if not isinstance(entry, dict):
+                continue
+            tool_type = entry.get(TYPE_KEY)
+            if tool_type == STATIC_FUNCTION_TYPE:
+                try:
+                    static_tool = StaticTool.model_validate(entry)
+                    result.append(static_tool)
+                except Exception:
+                    logger.debug(
+                        "Skipping invalid static_function entry in defaults.tools: %s",
+                        entry,
+                        exc_info=True,
+                    )
+            else:
+                logger.debug(
+                    "Skipping unsupported default tool type: %s (deployment defaults.tools)",
+                    tool_type,
+                )
+        return result
 
     @staticmethod
     async def _fetch_deployment_or_application(
