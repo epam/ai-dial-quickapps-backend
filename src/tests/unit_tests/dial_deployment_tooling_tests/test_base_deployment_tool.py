@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, Tool
 from pydantic import StrictStr
 
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
     DialDeploymentConfig,
@@ -90,6 +91,7 @@ def _build_tool(
         messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
     )
 
 
@@ -384,6 +386,7 @@ def _build_tool_with_config(
         messages_mixin=_make_messages_mixin(messages or []),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
     )
 
 

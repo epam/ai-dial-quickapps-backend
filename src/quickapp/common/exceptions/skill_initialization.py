@@ -1,20 +1,29 @@
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from .initialization import InitializationException
 
+SkillIssueSeverity = Literal["error", "warning"]
+
 
 class SkillInitializationException(InitializationException):
-    """Per-URL skill-loading failure — fetch error, invalid frontmatter,
-    duplicate name, or predefined-vs-external name collision. Soft by default:
-    the request proceeds with whatever skills did resolve.
+    """Per-URL skill-loading issue — fetch error, invalid frontmatter,
+    duplicate name, predefined-vs-external name collision, or a non-fatal
+    parser warning. Soft by default: the request proceeds with whatever
+    skills did resolve. ``severity`` drives the renderer's section split.
     """
 
     is_hard: ClassVar[bool] = False
 
-    def __init__(self, reason: str, url: str | None = None):
+    def __init__(
+        self,
+        reason: str,
+        url: str | None = None,
+        severity: SkillIssueSeverity = "error",
+    ):
         super().__init__(reason if url is None else f"{url}: {reason}")
         self.reason = reason
         self.url = url
+        self.severity: SkillIssueSeverity = severity
 
 
 class SkillCatastrophicInitializationException(SkillInitializationException):

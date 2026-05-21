@@ -8,7 +8,7 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -36,13 +36,16 @@ class TestParseFrontmatter:
             "Body content\n"
         )
         result = parse_frontmatter(content, "my-skill")
-        assert isinstance(result, SkillMetadata)
-        assert result.name == "my-skill"
-        assert result.description == "A test skill"
-        assert result.license == "MIT"
-        assert result.compatibility == ">=1.0"
-        assert result.metadata == {"version": "1.0"}
-        assert result.allowed_tools == ["tool_a", "tool_b"]
+        assert isinstance(result, ParsedSkill)
+        assert result.warnings == []
+        meta = result.metadata
+        assert isinstance(meta, SkillMetadata)
+        assert meta.name == "my-skill"
+        assert meta.description == "A test skill"
+        assert meta.license == "MIT"
+        assert meta.compatibility == ">=1.0"
+        assert meta.metadata == {"version": "1.0"}
+        assert meta.allowed_tools == ["tool_a", "tool_b"]
 
     def test_missing_name_raises(self):
         content = "---\ndescription: A skill without name\n---\nBody\n"
@@ -54,26 +57,30 @@ class TestParseFrontmatter:
         with pytest.raises(SkillValidationError):
             parse_frontmatter(content, "test")
 
-    def test_name_exceeds_64_chars_raises(self):
+    def test_name_exceeds_64_chars_warns(self):
         long_name = "a" * 65
         content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
-        with pytest.raises(SkillValidationError):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == long_name
+        assert any("exceeds 64 characters" in w for w in result.warnings)
 
-    def test_consecutive_hyphens_raises(self):
+    def test_consecutive_hyphens_warns(self):
         content = "---\nname: my--skill\ndescription: desc\n---\nBody\n"
-        with pytest.raises(SkillValidationError):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my--skill"
+        assert any("does not match recommended format" in w for w in result.warnings)
 
-    def test_leading_hyphen_raises(self):
+    def test_leading_hyphen_warns(self):
         content = "---\nname: -my-skill\ndescription: desc\n---\nBody\n"
-        with pytest.raises(SkillValidationError):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "-my-skill"
+        assert any("does not match recommended format" in w for w in result.warnings)
 
-    def test_trailing_hyphen_raises(self):
+    def test_trailing_hyphen_warns(self):
         content = "---\nname: my-skill-\ndescription: desc\n---\nBody\n"
-        with pytest.raises(SkillValidationError):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill-"
+        assert any("does not match recommended format" in w for w in result.warnings)
 
     def test_invalid_yaml_raises(self):
         content = "---\n: [invalid yaml\n---\nBody\n"
@@ -88,7 +95,7 @@ class TestParseFrontmatter:
     def test_allowed_tools_as_string_normalized_to_list(self):
         content = "---\nname: my-skill\ndescription: desc\nallowed-tools: tool1 tool2\n---\nBody\n"
         result = parse_frontmatter(content, "test")
-        assert result.allowed_tools == ["tool1", "tool2"]
+        assert result.metadata.allowed_tools == ["tool1", "tool2"]
 
     def test_allowed_tools_as_list_kept(self):
         content = (
@@ -96,21 +103,23 @@ class TestParseFrontmatter:
             "allowed-tools:\n  - tool1\n  - tool2\n---\nBody\n"
         )
         result = parse_frontmatter(content, "test")
-        assert result.allowed_tools == ["tool1", "tool2"]
+        assert result.metadata.allowed_tools == ["tool1", "tool2"]
 
-    def test_description_exceeds_1024_chars_raises(self):
+    def test_description_exceeds_1024_chars_warns(self):
         long_desc = "x" * 1025
         content = f"---\nname: my-skill\ndescription: {long_desc}\n---\nBody\n"
-        with pytest.raises(SkillValidationError):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.description == long_desc
+        assert any("Description exceeds 1024" in w for w in result.warnings)
 
-    def test_compatibility_exceeds_500_chars_raises(self):
+    def test_compatibility_exceeds_500_chars_warns(self):
         long_compat = "x" * 501
         content = (
             f"---\nname: my-skill\ndescription: desc\n" f"compatibility: {long_compat}\n---\nBody\n"
         )
-        with pytest.raises(SkillValidationError, match="Compatibility exceeds 500"):
-            parse_frontmatter(content, "test")
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.compatibility == long_compat
+        assert any("Compatibility exceeds 500" in w for w in result.warnings)
 
     def test_no_frontmatter_raises(self):
         content = "Just some text without frontmatter"
@@ -123,6 +132,54 @@ class TestParseFrontmatter:
             parse_frontmatter(content, "my-source")
         assert exc_info.value.source_id == "my-source"
         assert "No YAML frontmatter found" in exc_info.value.reason
+
+    # ---- lenient regex cases --------------------------------------------
+
+    def test_bom_prefixed_parses(self):
+        content = "﻿---\nname: my-skill\ndescription: desc\n---\nBody\n"
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill"
+
+    def test_leading_whitespace_parses(self):
+        content = "   \n---\nname: my-skill\ndescription: desc\n---\nBody\n"
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill"
+
+    def test_leading_blank_line_parses(self):
+        content = "\n---\nname: my-skill\ndescription: desc\n---\nBody\n"
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill"
+
+    def test_closing_fence_at_eof_parses(self):
+        content = "---\nname: my-skill\ndescription: desc\n---"
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill"
+
+    def test_crlf_line_endings_parse(self):
+        content = "---\r\nname: my-skill\r\ndescription: desc\r\n---\r\nBody\r\n"
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.name == "my-skill"
+
+    # ---- YAML quote-retry ----------------------------------------------
+
+    def test_unquoted_colon_in_description_recovered(self):
+        content = (
+            "---\n"
+            "name: my-skill\n"
+            "description: Use when: the user asks about PDFs\n"
+            "---\n"
+            "Body\n"
+        )
+        result = parse_frontmatter(content, "test")
+        assert result.metadata.description == "Use when: the user asks about PDFs"
+        assert any("YAML repaired" in w for w in result.warnings)
+
+    def test_unrecoverable_yaml_still_raises(self):
+        # `description: With: colon` triggers the quote-repair, but `: [broken`
+        # is still broken after the repair — the second parse fails too.
+        content = "---\nname: x\ndescription: With: colon\n: [broken\n---\nBody\n"
+        with pytest.raises(SkillValidationError, match="Failed to parse YAML frontmatter"):
+            parse_frontmatter(content, "test")
 
 
 # ---------------------------------------------------------------------------
@@ -188,7 +245,7 @@ class TestAgentSkillsProviderIntegration:
         skills = asp.get_all_skills()
         assert any(s.name == "my-valid-skill" for s in skills)
 
-    def test_name_mismatch_skips_skill(self, tmp_path: Path):
+    def test_name_mismatch_loads_anyway(self, tmp_path: Path):
         skill_dir = tmp_path / "skills" / "dir-name"
         skill_dir.mkdir(parents=True)
         (skill_dir / "SKILL.md").write_text(
@@ -200,8 +257,7 @@ class TestAgentSkillsProviderIntegration:
         asp = AgentSkillsProvider(provider)
 
         skill_names = [s.name for s in asp.get_all_skills()]
-        assert "different-name" not in skill_names
-        assert "dir-name" not in skill_names
+        assert "different-name" in skill_names
 
     def test_mixed_valid_invalid_skills(self, tmp_path: Path):
         # Valid skill

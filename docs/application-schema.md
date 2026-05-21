@@ -33,12 +33,44 @@ configuration, replacing `<quickapps_base_url>` with actual base URL where Quick
       "dial:applicationTypeCompletionEndpoint": "<quickapps_base_url>/openai/deployments/quick_apps2/chat/completions",
       "dial:applicationTypeConfigurationEndpoint": "<quickapps_base_url>/openai/deployments/quick_apps2/configuration",
       "dial:applicationTypeSchemaEndpoint": "<quickapps_base_url>/v1/configuration-support/application-schema",
+      "dial:applicationTypeRoutes": {
+        "configuration_support_read": {
+          "dial:paths": ["/v1/configuration-support(/[^/]+)*$"],
+          "dial:methods": ["GET"],
+          "dial:rewritePath": true,
+          "dial:permissions": ["WRITE"],
+          "dial:upstreams": [
+            {"dial:endpoint": "<quickapps_base_url>"}
+          ]
+        },
+        "configuration_support_skill_validate": {
+          "dial:paths": ["/v1/configuration-support/skills/validate$"],
+          "dial:methods": ["POST"],
+          "dial:rewritePath": true,
+          "dial:permissions": ["WRITE"],
+          "dial:upstreams": [
+            {"dial:endpoint": "<quickapps_base_url>"}
+          ],
+          "dial:attachmentPaths": {
+            "dial:requestBody": ["@.url"]
+          }
+        }
+      },
       "$id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
       "$schema": "https://dial.epam.com/application_type_schemas/schema#"
     }
   ]
 }
 ```
+
+`dial:applicationTypeRoutes` exposes the QuickApps configuration-support endpoints
+(`/v1/configuration-support/*`) — used by the application editor to list predefined
+skills, prompts, toolsets and tools — to DIAL clients through DIAL Core. The two
+entries split the surface by HTTP method: a GET catch-all and a POST for skill
+validation. Both are `WRITE`-gated, since configuration-support is only useful to
+callers with edit access to the application. The POST entry additionally declares
+`dial:attachmentPaths` so DIAL Core enforces access control on the DIAL prompt URL
+carried in the request body before the request reaches QuickApps.
 
 
 ### Define a full application schema

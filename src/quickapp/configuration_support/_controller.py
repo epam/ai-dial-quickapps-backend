@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from aidial_client import AsyncDial, DialException
@@ -19,6 +20,8 @@ from quickapp.predefined_tooling import PredefinedConfigResolver
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+
+logger = logging.getLogger(__name__)
 
 CONFIG_SUPPORT_URI = "/v1/configuration-support"
 
@@ -104,8 +107,10 @@ class _Controller:
         )
 
         try:
-            metadata, _ = await fetch_and_validate_dial_prompt_skill(dial_client, config.url)
-            return metadata
+            parsed, _ = await fetch_and_validate_dial_prompt_skill(dial_client, config.url)
+            for warning in parsed.warnings:
+                logger.warning("Skill validation '%s': %s", config.url, warning)
+            return parsed.metadata
         except DialException as e:
             if e.status_code == 401:
                 raise HTTPException(
