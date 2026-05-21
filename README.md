@@ -264,6 +264,22 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
       docker compose up -d
       ```
 
+    - Optional — DIAL Admin (UI + backend API, embedded H2 database):
+
+      ```bash
+      docker compose --profile admin up -d
+      ```
+
+      Or uncomment `COMPOSE_PROFILES=admin` in `.env` and run `docker compose up -d` as usual.
+
+      Startup order: `redis` → `core` (healthy) → `admin-backend` (healthy, may bootstrap-import Core JSON) → `admin-frontend`.
+
+      - Admin UI: http://localhost:3020 (unauthenticated — only `DIAL_ADMIN_API_URL` + `NEXTAUTH_SECRET`; do not set `NEXTAUTH_URL` or any `AUTH_*` vars)
+      - Admin API: http://localhost:8092
+      - Backend uses H2 with dev encryption keys; Core access via `dial_api_key`. Not production-equivalent.
+      - On first start (empty H2), Admin **imports** Core JSON from `docker_compose_files/core/configuration/` (`ENABLE_CONFIG_AUTO_IMPORT_ON_BOOTSTRAP`). Run `make generate_dial_config` first so `generated/models.json` exists. Admin and Core stay separate stores — editing in Admin does not change Core until you export/sync from the Admin UI.
+      - To re-run bootstrap import, remove the `admin-backend-data` volume and recreate `admin-backend`.
+
     - Notes:
         - If you want to run Quick Apps in Docker instead of on the host, update
           [application-schemas.json](docker_compose_files/core/configuration/application-schemas.json) and change the Quick
