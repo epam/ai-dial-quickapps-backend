@@ -24,7 +24,7 @@
         ],
         "features": {
           "stage_display": {
-            "level": "info"
+            "level": "debug"
           }
         },
         "contexts": [],
@@ -61,14 +61,27 @@
             "template_name": "py_interpreter"
           },
           {
-            "name": "mcp-toolset",
-            "description": "Fetch MCP tool",
-            "type": "mcp",
-            "mcp_server_info": {
-              "url": "https://remote.mcpservers.org/fetch/mcp",
-              "protocol": "streamable_http",
-              "authorization": null
-            }
+            "name": "Memory",
+            "description": "Memory MCP tools",
+            "type": "dial-app",
+            "deployment_id": "memory",
+            "transport": "mcp"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "memory_skill_hook",
+            "event": "on_request_start",
+            "kind": "tool_call",
+            "toolset_name": "Memory",
+            "tool_name": "get_skill"
+          },
+          {
+            "name": "prime_memory_hook",
+            "event": "on_request_start",
+            "kind": "tool_call",
+            "toolset_name": "Memory",
+            "tool_name": "prime_memories"
           }
         ]
       },
@@ -255,6 +268,15 @@
             }
           ]
         }
+      }
+    },
+    "memory": {
+      "displayName": "Memory",
+      "description": "Memory MCP server",
+      "mcp": {
+        "endpoint": "http://memory:8000/mcp/",
+        "transport": "http",
+        "forwardPerRequestKey": true
       }
     }
   }

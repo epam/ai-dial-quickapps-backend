@@ -9,6 +9,16 @@
           "endpoint": "http://docker.host.internal:5000/v1"
         }
       ]
+    },
+    "memory": {
+      "paths": ["/v1(/memory.*)$"],
+      "rewritePath": true,
+      "methods": ["GET", "DELETE"],
+      "upstreams": [
+        {
+          "endpoint": "http://memory:8000"
+        }
+      ]
     }
   }
 }
