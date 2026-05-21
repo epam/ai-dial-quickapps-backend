@@ -151,10 +151,13 @@ class PredefinedConfigResolver(ConfigResolver):
 
     @cached_property
     def template_map(self) -> dict[str, list[str]]:
-        """Read-only map of template type → names, excluding SKILL. Cached: the
+        """Read-only map of template type → names, excluding SKILL and default config.
+        Cached: the
         provider loads templates once at startup, so the result is stable."""
         return {
-            ct.value: self._provider.list_names(ct) for ct in ContentType if ct != ContentType.SKILL
+            ct.value: self._provider.list_names(ct)
+            for ct in ContentType
+            if ct not in (ContentType.SKILL, ContentType.DEFAULT_CONFIGURATION)
         }
 
     def get_prompts(self) -> list[PromptConfigResponse]:

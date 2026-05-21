@@ -262,6 +262,7 @@ class TestLayersInfo:
         assert ContentType.TOOL in layers[0].content_counts
         assert ContentType.TOOLSET in layers[0].content_counts
         assert ContentType.SKILL in layers[0].content_counts
+        assert layers[0].content_counts.get(ContentType.DEFAULT_CONFIGURATION) == 1
 
     def test_extra_layer_shows_overrides(self, tmp_path: Path):
         prompt_dir = tmp_path / "prompt"
@@ -276,6 +277,39 @@ class TestLayersInfo:
         extra_layer = layers[1]
         assert extra_layer.content_counts.get(ContentType.PROMPT, 0) == 1
         assert "gpt_prompt" in extra_layer.overrides.get(ContentType.PROMPT, [])
+
+
+class TestLogSummary:
+    """Startup log includes default_configuration like other content types."""
+
+    def test_log_summary_includes_default_configuration(self, tmp_path: Path, caplog):
+        (tmp_path / "default_configuration.json").write_text('{"starters": []}', encoding="utf-8")
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        with caplog.at_level("INFO"):
+            PredefinedContentProvider(settings)
+        merged = [r.message for r in caplog.records if "Merged predefined content" in r.message]
+        assert merged
+        assert "default_configuration" in merged[0]
+
+    def test_extra_layer_default_configuration_shows_override_in_layer_log(
+        self, tmp_path: Path, caplog
+    ):
+        layer1 = tmp_path / "layer1"
+        layer2 = tmp_path / "layer2"
+        layer1.mkdir()
+        layer2.mkdir()
+        (layer1 / "default_configuration.json").write_text('{"a": 1}', encoding="utf-8")
+        (layer2 / "default_configuration.json").write_text('{"a": 2}', encoding="utf-8")
+        settings = PredefinedSettings(extra_paths=[str(layer1), str(layer2)])
+        with caplog.at_level("INFO"):
+            provider = PredefinedContentProvider(settings)
+        layers = provider.get_layers_info()
+        assert layers[2].content_counts.get(ContentType.DEFAULT_CONFIGURATION) == 1
+        assert "default_configuration" in layers[2].overrides.get(
+            ContentType.DEFAULT_CONFIGURATION, []
+        )
+        layer_logs = [r.message for r in caplog.records if "Layer " in r.message]
+        assert any("default_configuration" in msg and "override" in msg for msg in layer_logs)
 
 
 class TestDeprecatedBasePath:
@@ -312,3 +346,4 @@ class TestContentType:
         assert ContentType.SKILL.is_text is True
         assert ContentType.TOOL.is_text is False
         assert ContentType.TOOLSET.is_text is False
+        assert ContentType.DEFAULT_CONFIGURATION.is_text is False
