@@ -26,6 +26,16 @@ services:
     command: >
       redis-server --maxmemory 2000mb --maxmemory-policy volatile-lfu --save "" --appendonly no --loglevel warning
 
+  admin-export-init:
+    image: busybox:1.37
+    volumes:
+      - ./docker_compose_files/core/admin-export:/export
+    command: >
+      sh -c "mkdir -p /export
+      && (test -f /export/out.json || echo '{}' > /export/out.json)
+      && chmod -R 777 /export"
+    restart: "no"
+
   core:
     ports:
       - "8090:8080"
@@ -50,13 +60,18 @@ services:
           "/opt/configuration/chathub/anthropic.json",
           "/opt/configuration/chathub/gemini.json",
           "/opt/configuration/chathub/openai.json",
-          "/opt/configuration/toolsets.json"
+          "/opt/configuration/toolsets.json",
+          "/opt/admin-export/out.json"
         ]
       'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
     depends_on:
-      - redis
+      admin-export-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
     volumes:
       - ./docker_compose_files/core/configuration:/opt/configuration
+      - ./docker_compose_files/core/admin-export:/opt/admin-export:ro
       - ./docker_compose_files/core/logs/:/app/log
       - ./docker_compose_files/core/data/:/app/data
 
@@ -94,8 +109,8 @@ services:
       start_period: 120s
     volumes:
       - admin-backend-data:/app/data
-      # Core JSON configs (read-only) — imported into Admin H2 on first startup when DB is empty
-      - ./docker_compose_files/core/configuration:/opt/core-config:ro
+      # Exported Core config (read/write) — shared with core service at /opt/admin-export/out.json
+      - ./docker_compose_files/core/admin-export:/app/data/export
     environment:
       CONFIG_REST_SECURITY_MODE: "none"
       DISABLE_SWAGGER_AUTHORIZATION: "true"
@@ -104,12 +119,10 @@ services:
       ENABLE_CORE_CONFIG_VERSION_AUTO_DETECT: "true"
       CORE_AUTH_METHOD: "api-key"
       CORE_AUTH_API_KEY_VALUE: "dial_api_key"
-      ENABLE_CONFIG_AUTO_IMPORT_ON_BOOTSTRAP: "true"
-      IMPORT_AUTO_BOOTSTRAP_FILE_PATHS: "/opt/core-config/applications.json,/opt/core-config/application-schemas.json,/opt/core-config/toolsets.json,/opt/core-config/chathub/anthropic.json,/opt/core-config/chathub/gemini.json,/opt/core-config/chathub/openai.json,/opt/core-config/generated/models.json"
-      IMPORT_AUTO_BOOTSTRAP_STRATEGY: "MERGE_JSON"
+      CONFIG_EXPORT_ENABLED: "true"
       CONFIG_EXPORT_STORAGETYPE: "LOCAL_FILE"
       CONFIG_EXPORT_OUTPUTFILE_PATH: "data/export/out.json"
-      ENABLE_CONFIG_RELOAD: "false"
+      ENABLE_CONFIG_RELOAD: "true"
       OTEL_SDK_DISABLED: "true"
       METRICS_ENABLED: "false"
       H2_FILE: "./data/testdb"
@@ -136,7 +149,7 @@ services:
       # With no AUTH_* providers that yields an empty /api/auth/signin page.
       THEMES_CONFIG_URL: "http://themes:8080"
       DIAL_LINK: "http://localhost:3010"
-      DEPLOYMENTS_ENABLED: "false"
+      DEPLOYMENTS_ENABLED: "true"
       MCP_REGISTRY_ENABLED: "false"
       NIM_ENABLED: "false"
       HF_ENABLED: "false"
