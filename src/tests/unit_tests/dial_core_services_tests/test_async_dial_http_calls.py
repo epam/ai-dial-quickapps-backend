@@ -25,6 +25,7 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -329,7 +330,11 @@ class TestDialFileServiceHttpCalls:
             status_code=200,
         )
 
-        svc = DialFileService(dial_client=_dial_client())
+        svc = DialFileService(
+            dial_client=_dial_client(),
+            state_holder=StateHolder(),
+            size_limit_resolver=_file_loading_size_limit_resolver(),
+        )
         await svc.grant_permissions_to_files(
             ["files/my-bucket/a.txt", "files/my-bucket/b.txt"],
             "my-toolset",

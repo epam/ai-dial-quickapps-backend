@@ -36,6 +36,7 @@ from quickapp.common import StagedBaseTool
 from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 
@@ -60,7 +61,7 @@ def build_dump_application_config() -> ApplicationConfig:
             ),
         ],
         tool_sets=[],
-        features=Features(timestamp=ToolCallTimestampConfig()),
+        features=Features(timestamp=ToolCallTimestampConfig(), dial_files=DialFilesConfig()),
     )
 
 
