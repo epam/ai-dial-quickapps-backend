@@ -1,6 +1,3 @@
-from __future__ import annotations
-
-
 class ChatStreamHandlerError(Exception):
     """Base class for chat stream handler failures."""
 

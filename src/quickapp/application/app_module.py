@@ -20,7 +20,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_settings import ToolSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
-from quickapp.config.application import ApplicationConfig
+from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
@@ -119,6 +119,11 @@ class AppModule(Module):
     @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:
         return context
+
+    @provider
+    def __provide_stage_display_level(self, app_config: ApplicationConfig) -> StageDisplayLevel:
+        features = app_config.features
+        return features.stage_display.level if features else StageDisplayLevel.INFO
 
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:

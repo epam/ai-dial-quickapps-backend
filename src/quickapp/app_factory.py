@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from injector import Injector, Module
 
 from quickapp.agent.agent_module import AgentModule
+from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
 from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.feature_settings import FeatureSettings
@@ -14,6 +15,7 @@ from quickapp.configuration_support import ConfigurationSupportApiModule
 from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
+from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
@@ -49,6 +51,8 @@ class AppFactory:
             SkillsModule(),
             DialPromptSkillsModule(),
             TimestampModule(),
+            AgentHooksModule(),
+            DialFilesToolingModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(

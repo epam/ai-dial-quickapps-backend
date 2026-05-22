@@ -789,6 +789,7 @@
         "name": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
@@ -1039,6 +1040,45 @@
       "title": "DialDeploymentTool",
       "type": "object"
     },
+    "DialFilesConfig": {
+      "properties": {
+        "enabled_tools": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "list",
+                  "read_lines",
+                  "search",
+                  "write",
+                  "edit",
+                  "delete",
+                  "copy",
+                  "move"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "all",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
+          "title": "Enabled Tools"
+        },
+        "agent_home_dir": {
+          "default": "",
+          "description": "Optional sub-directory inside the agent's appdata folder used as the root for relative paths. Empty (default) means the appdata root. Must be a relative path; absolute 'files/...' URLs, leading '/', and '..' segments are rejected. Example: 'workspace/'.",
+          "title": "Agent Home Dir",
+          "type": "string"
+        }
+      },
+      "title": "DialFilesConfig",
+      "type": "object"
+    },
     "DialMCPToolSet": {
       "anyOf": [
         {
@@ -1128,6 +1168,7 @@
         "dial_id": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
           "type": "string"
         }
       },
@@ -1222,6 +1263,23 @@
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",
           "description": "File loader configuration (download size limits, etc.)."
+        },
+        "stage_display": {
+          "$ref": "#/$defs/StageDisplayConfig",
+          "description": "Controls which stage levels are rendered to the user."
+        },
+        "dial_files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DialFilesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+          "x-preview": true
         }
       },
       "title": "Features",
@@ -1383,6 +1441,21 @@
       },
       "title": "ForwardAuthTokenAuthorization",
       "type": "object"
+    },
+    "HookEvent": {
+      "enum": [
+        "on_request_start"
+      ],
+      "title": "HookEvent",
+      "type": "string"
+    },
+    "InjectionFrequency": {
+      "enum": [
+        "always",
+        "append_if_changed"
+      ],
+      "title": "InjectionFrequency",
+      "type": "string"
     },
     "InternalTool": {
       "properties": {
@@ -2694,6 +2767,26 @@
       "title": "RetryStrategyModel",
       "type": "object"
     },
+    "StageDisplayConfig": {
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/StageDisplayLevel",
+          "default": "info",
+          "description": "Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all."
+        }
+      },
+      "title": "StageDisplayConfig",
+      "type": "object"
+    },
+    "StageDisplayLevel": {
+      "enum": [
+        "error",
+        "info",
+        "debug"
+      ],
+      "title": "StageDisplayLevel",
+      "type": "string"
+    },
     "StopStrategyModel": {
       "properties": {
         "trigger_on": {
@@ -2717,6 +2810,62 @@
         }
       },
       "title": "StopStrategyModel",
+      "type": "object"
+    },
+    "ToolCallHookConfig": {
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/HookEvent"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "toolset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolset Name"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "frequency": {
+          "$ref": "#/$defs/InjectionFrequency",
+          "default": "append_if_changed"
+        }
+      },
+      "required": [
+        "event",
+        "tool_name"
+      ],
+      "title": "ToolCallHookConfig",
       "type": "object"
     },
     "ToolCallTimestampConfig": {
@@ -2837,8 +2986,15 @@
         },
         "show": {
           "default": true,
+          "deprecated": true,
           "description": "Whether the tool stage should be shown in the chat.",
           "title": "Show",
+          "type": "boolean"
+        },
+        "defer_close": {
+          "default": false,
+          "description": "When True, the stage stays open until parallel tool execution finishes rather than closing when this tool returns. Useful when a later recovery step may rewrite the tool's result.",
+          "title": "Defer Close",
           "type": "boolean"
         }
       },
@@ -3092,6 +3248,27 @@
         "dial:propertyOrder": 6
       }
     },
+    "hooks": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ToolCallHookConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Config-driven hooks fired at named orchestrator seams.",
+      "title": "Hooks",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
+      }
+    },
     "features": {
       "anyOf": [
         {
@@ -3104,7 +3281,7 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 7
+        "dial:propertyOrder": 8
       }
     },
     "tool_defaults": {
@@ -3130,7 +3307,7 @@
       "type": "object",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 8
+        "dial:propertyOrder": 9
       }
     }
   },

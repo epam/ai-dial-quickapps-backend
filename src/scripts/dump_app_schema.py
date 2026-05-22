@@ -4,10 +4,16 @@
 # python dump_app_schema.py output_schema.json --check
 
 if __name__ == '__main__':
+    import os
+
     from utils import add_src_to_system_path, load_env
 
     add_src_to_system_path()
     load_env()
+    # Keep the committed schema baseline independent of a developer's local default.
+    # The env value is a per-deployment operator choice; it must not bake into the
+    # checked-in schema that `make lint` validates against.
+    os.environ.pop("DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID", None)
 
 import json
 

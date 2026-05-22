@@ -40,6 +40,7 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
 - [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
+- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -56,6 +57,40 @@ file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
+### Hooks `[Preview]`
+
+Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code. Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
+
+Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app manifest:
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "memory_server",
+      "tool_name": "get_memories",
+      "arguments": { "user_id": "123" },
+      "frequency": "always"
+    }
+  ]
+}
+```
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `kind` | Hook type. Only `"tool_call"` is supported today. |
+| `event` | Orchestrator seam. Only `"on_request_start"` is wired today. |
+| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools. |
+| `tool_name` | Tool name within the toolset, or the exact function name when `toolset_name` is omitted. |
+| `arguments` | Arguments forwarded to the tool call. |
+| `frequency` | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
+
+See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
+
 ### Forwarding headers
 
 Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound
@@ -68,6 +103,26 @@ calls made during that chat completion. No configuration is required.
 
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
+
+### Stage display level
+
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
+
+| Value | Behavior |
+|---|---|
+| `error` | Show stages only for failed tool calls |
+| `info` | Show stages for regular tool calls and errors (default) |
+| `debug` | Show stages for all tool calls, including internal/system ones |
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "debug"
+    }
+  }
+}
+```
 
 ### Environment Variables
 
@@ -84,6 +139,7 @@ your gateways or downstream services expect.
 | `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
 | `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |

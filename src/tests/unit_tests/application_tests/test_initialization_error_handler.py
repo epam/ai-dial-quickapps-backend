@@ -4,7 +4,7 @@ from unittest.mock import MagicMock
 from aidial_sdk.chat_completion import Stage, Status
 
 from quickapp.application._initialization_error_handler import _InitializationErrorHandler
-from quickapp.common.exceptions import ConfigResolutionException
+from quickapp.common.exceptions import ConfigResolutionException, SkillInitializationException
 
 
 def _make_handler(stage: MagicMock, exceptions: list) -> _InitializationErrorHandler:
@@ -59,3 +59,42 @@ class TestConfigResolutionExceptionRendering:
         )
         handler.handle_initialization_issues()
         stage.open.assert_not_called()
+
+
+class TestSkillInitializationWarningRendering:
+    def test_warning_renders_under_warnings_subheader_and_keeps_completed(self):
+        stage = MagicMock(spec=Stage)
+        warning = SkillInitializationException(
+            reason="exceeds 64 characters",
+            url="prompts/bucket/long-name",
+            severity="warning",
+        )
+        handler = _make_handler(stage, [warning])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "Warnings:" in rendered
+        assert "prompts/bucket/long-name" in rendered
+        assert "exceeds 64 characters" in rendered
+        assert "Errors:" not in rendered
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+    def test_error_and_warning_render_in_separate_subheaders(self):
+        stage = MagicMock(spec=Stage)
+        error = SkillInitializationException(reason="boom", url="prompts/bucket/broken")
+        warning = SkillInitializationException(
+            reason="bad format", url="prompts/bucket/iffy", severity="warning"
+        )
+        handler = _make_handler(stage, [error, warning])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "Errors:" in rendered
+        assert "Warnings:" in rendered
+        assert rendered.index("Errors:") < rendered.index("Warnings:")
+        assert "prompts/bucket/broken" in rendered
+        assert "prompts/bucket/iffy" in rendered
+        # Both entries have is_hard=False — status stays COMPLETED.
+        stage.close.assert_called_once_with(Status.COMPLETED)

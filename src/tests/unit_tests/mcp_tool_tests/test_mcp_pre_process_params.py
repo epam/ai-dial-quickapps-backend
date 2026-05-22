@@ -67,7 +67,7 @@ class TestPreProcessParams:
     async def test_base64_prefix(self):
         tool, file_service = _make_tool()
         raw = b"binary data"
-        file_service.download_file.return_value = raw
+        file_service.download_file.return_value = (raw, None)
 
         result = await tool._pre_process_params(image="file:base64::files/photo.png")
 
@@ -77,7 +77,7 @@ class TestPreProcessParams:
     @pytest.mark.asyncio
     async def test_text_prefix(self):
         tool, file_service = _make_tool()
-        file_service.download_file.return_value = b"decoded text"
+        file_service.download_file.return_value = (b"decoded text", None)
 
         result = await tool._pre_process_params(content="file:text::files/doc.txt")
 
@@ -133,7 +133,7 @@ class TestPreProcessParams:
     @pytest.mark.asyncio
     async def test_case_insensitive_prefix(self):
         tool, file_service = _make_tool()
-        file_service.download_file.return_value = b"encoded"
+        file_service.download_file.return_value = (b"encoded", None)
 
         result = await tool._pre_process_params(image="file:BASE64::files/photo.png")
 

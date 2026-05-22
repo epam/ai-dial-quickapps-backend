@@ -1,12 +1,16 @@
 import logging
+from enum import Enum
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic.fields import FieldInfo
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, has_preview_marker
+from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.hooks import HookConfig
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
@@ -16,14 +20,44 @@ from quickapp.config.toolsets.toolset import ToolSet
 logger = logging.getLogger(__name__)
 
 
+class StageDisplayLevel(str, Enum):
+    ERROR = "error"
+    INFO = "info"
+    DEBUG = "debug"
+
+
+class StageDisplayConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    level: StageDisplayLevel = Field(
+        default=StageDisplayLevel.INFO,
+        description="Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all.",
+    )
+
+
 def get_max_iterations() -> int:
     return AgentSettings().default_agent_max_iterations
 
 
-class OrchestratorConfig(BaseModel):
-    deployment: DialDeploymentConfig = Field(
-        description="The configuration for the orchestrator DIAL deployment."
+def _orchestrator_deployment_field() -> FieldInfo:
+    description = "The configuration for the orchestrator DIAL deployment."
+    env_id = AgentSettings().default_orchestrator_deployment_id
+    if env_id is None:
+        return Field(description=description)
+    # `default_factory` produces a fresh instance per validation; `json_schema_extra`
+    # injects the minimal `{"deployment_id": ...}` default into the JSON schema so DIAL
+    # Core's manifest UI can pre-fill the orchestrator field. Without the extra, pydantic
+    # would auto-dump the whole DialDeploymentConfig instance (including nullable
+    # parameters) into the schema's default.
+    return Field(  # type: ignore[return-value]
+        default_factory=lambda: DialDeploymentConfig(deployment_id=env_id),
+        json_schema_extra={"default": {"deployment_id": env_id}},
+        description=description,
     )
+
+
+class OrchestratorConfig(BaseModel):
+    deployment: DialDeploymentConfig = _orchestrator_deployment_field()  # type: ignore[assignment]
     system_prompt: AgentSystemPromptConfig = Field(
         description="The configuration for the system prompt."
     )
@@ -77,6 +111,14 @@ class Features(BaseModel):
         default_factory=FileLoadingConfig,
         description="File loader configuration (download size limits, etc.).",
     )
+    stage_display: StageDisplayConfig = Field(
+        default_factory=StageDisplayConfig,
+        description="Controls which stage levels are rendered to the user.",
+    )
+    dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+    )
 
 
 class ToolDefaults(BaseModel):
@@ -118,6 +160,10 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     skills: list[SkillConfig] | None = Field(
         default=None,
         description="Optional list of user-configured agent skills.",
+    )
+    hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Config-driven hooks fired at named orchestrator seams.",
     )
     features: Features | None = Field(
         default_factory=Features,

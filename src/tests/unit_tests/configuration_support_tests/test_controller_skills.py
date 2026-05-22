@@ -210,3 +210,27 @@ class TestValidateSkill:
             )
 
         assert response.status_code == 422
+
+    @pytest.mark.asyncio
+    @patch("quickapp.configuration_support._controller.AsyncDial")
+    async def test_long_name_returns_200(self, mock_dial_cls):
+        """A name >64 chars no longer rejects the skill — it returns 200 with metadata."""
+        long_name = "a" * 65
+        prompt = MagicMock()
+        prompt.content = f"---\nname: {long_name}\ndescription: desc\n---\nBody\n"
+        mock_client = MagicMock()
+        mock_client.prompts = MagicMock()
+        mock_client.prompts.get = AsyncMock(return_value=prompt)
+        mock_dial_cls.return_value = mock_client
+
+        app = _make_app(_make_controller())
+
+        async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+            response = await client.post(
+                VALIDATE_URL,
+                json={"type": "dial-prompt", "url": "prompts/bucket/long-name"},
+                headers={"api-key": "test-key"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["name"] == long_name

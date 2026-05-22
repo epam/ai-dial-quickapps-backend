@@ -4,7 +4,10 @@ from aidial_sdk.exceptions import ContextLengthExceededError, DeploymentNotFound
 from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from aidial_sdk.exceptions import InvalidRequestError, RequestValidationError, ResourceNotFoundError
 
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.exceptions import (
+    OrchestratorExceedMaxIterationsException,
+    OrchestratorInitializationException,
+)
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
@@ -137,6 +140,8 @@ def _resolve_aidial_error(e: AiDialHTTPException) -> str:
 def _resolve_internal_error(e: Exception) -> str:
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return str(e)
+    if isinstance(e, OrchestratorInitializationException):
+        return _MSG_AI_MODEL_NOT_FOUND
     if isinstance(e, ToolsetNotFoundException):
         return "A required toolset could not be found. Please contact your administrator."
     if isinstance(e, ToolsetForbiddenException):

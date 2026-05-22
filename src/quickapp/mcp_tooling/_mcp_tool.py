@@ -14,6 +14,7 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
@@ -21,6 +22,7 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
+from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
@@ -42,6 +44,7 @@ class _MCPTool(StagedBaseTool):
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
         super().__init__(
@@ -51,6 +54,7 @@ class _MCPTool(StagedBaseTool):
             args_schema=tool.inputSchema,
             stage_wrapper_builder=stage_wrapper_builder,  # type: ignore[arg-type]
             perf_timer=perf_timer,
+            stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )
         self.stage_name_component = f"Calling {tool.name} via MCP"
@@ -133,9 +137,12 @@ class _MCPTool(StagedBaseTool):
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
     async def _run_in_stage_async(
-        self, stage_wrapper: BaseStageWrapper | None, *args: Any, **kwargs: Any
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None = None,
+        *args: Any,
+        **kwargs: Any,
     ) -> ToolCallResult:
-
         logger.debug(f"MCP tool called with {kwargs}")
 
         timeout = self.__timeout_resolver.resolve()
@@ -155,13 +162,6 @@ class _MCPTool(StagedBaseTool):
                 tool_call_result = await self.__connection_manager.call_mcp_tool(
                     self.__tool.name, **kwargs
                 )
-            # Handle error flag if present
-            if getattr(tool_call_result, "isError", False):
-                logger.error(
-                    "MCP tool call returned isError=True; structuredContent: %s",
-                    getattr(tool_call_result, "structuredContent", None),
-                )
-
             contents = getattr(tool_call_result, "content", []) or []
             # Separate text blocks from non-text blocks
             text_parts: list[str] = []
@@ -180,6 +180,16 @@ class _MCPTool(StagedBaseTool):
                     non_text_contents.append(block)
 
             tool_content = "\n\n".join(filter(None, text_parts))
+
+            # Raise on error flag so fallback strategies can apply
+            if getattr(tool_call_result, "isError", False):
+                logger.error(
+                    "MCP tool '%s' returned isError=True; error: %s; structuredContent: %s",
+                    self.__tool.name,
+                    tool_content,
+                    getattr(tool_call_result, "structuredContent", None),
+                )
+                raise MCPToolErrorException(self.__tool.name, tool_content)
 
             logger.debug(
                 "Tool returned text length %d and %d non-text content blocks",
