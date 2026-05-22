@@ -9,6 +9,7 @@ from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField,
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import AgentSystemPromptConfig
@@ -123,6 +124,10 @@ class Features(BaseModel):
     stage_display: StageDisplayConfig = Field(
         default_factory=StageDisplayConfig,
         description="Controls which stage levels are rendered to the user.",
+    )
+    dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
 
 

@@ -1040,6 +1040,45 @@
       "title": "DialDeploymentTool",
       "type": "object"
     },
+    "DialFilesConfig": {
+      "properties": {
+        "enabled_tools": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "list",
+                  "read_lines",
+                  "search",
+                  "write",
+                  "edit",
+                  "delete",
+                  "copy",
+                  "move"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "all",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
+          "title": "Enabled Tools"
+        },
+        "agent_home_dir": {
+          "default": "",
+          "description": "Optional sub-directory inside the agent's appdata folder used as the root for relative paths. Empty (default) means the appdata root. Must be a relative path; absolute 'files/...' URLs, leading '/', and '..' segments are rejected. Example: 'workspace/'.",
+          "title": "Agent Home Dir",
+          "type": "string"
+        }
+      },
+      "title": "DialFilesConfig",
+      "type": "object"
+    },
     "DialMCPToolSet": {
       "anyOf": [
         {
@@ -1228,6 +1267,19 @@
         "stage_display": {
           "$ref": "#/$defs/StageDisplayConfig",
           "description": "Controls which stage levels are rendered to the user."
+        },
+        "dial_files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DialFilesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+          "x-preview": true
         }
       },
       "title": "Features",
