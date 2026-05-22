@@ -24,20 +24,21 @@ def _make_controller(
     skills: list[SkillMetadata] | None = None,
     *,
     default_configuration: dict | None = None,
+    config_resolver: MagicMock | None = None,
 ) -> _Controller:
     skills_provider = MagicMock(spec=AgentSkillsProvider)
     skills_provider.get_all_skills.return_value = skills or []
 
-    config_resolver = MagicMock(spec=PredefinedConfigResolver)
+    resolver = config_resolver or MagicMock(spec=PredefinedConfigResolver)
     if default_configuration is not None:
-        config_resolver.get_default_configuration.return_value = default_configuration
+        resolver.get_default_configuration.return_value = default_configuration
 
     dial_settings = MagicMock()
     dial_settings.url = "https://dial.example.com"
     dial_settings.api_version = "2025-01-01-preview"
 
     return _Controller(
-        config_resolver=config_resolver,
+        config_resolver=resolver,
         service=MagicMock(spec=ToolConfigCoreService),
         skills_provider=skills_provider,
         dial_settings=dial_settings,

@@ -242,6 +242,15 @@ class TestExtraLayers:
         assert isinstance(cfg, dict)
         assert any("default_configuration.json" in r.message for r in caplog.records)
 
+    def test_invalid_utf8_default_configuration_does_not_fail(self, tmp_path: Path, caplog):
+        (tmp_path / "default_configuration.json").write_bytes(b"\xff\xfe")
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        with caplog.at_level("ERROR"):
+            provider = PredefinedContentProvider(settings)
+        cfg = provider.get_default_configuration()
+        assert isinstance(cfg, dict)
+        assert any("default_configuration.json" in r.message for r in caplog.records)
+
     def test_default_configuration_non_object_root_is_ignored(self, tmp_path: Path, caplog):
         (tmp_path / "default_configuration.json").write_text("[1, 2]", encoding="utf-8")
         settings = PredefinedSettings(extra_paths=[str(tmp_path)])

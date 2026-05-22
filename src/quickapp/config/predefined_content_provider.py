@@ -219,7 +219,7 @@ class PredefinedContentProvider:
         try:
             with file_path.open("r", encoding="utf-8") as f:
                 data = json.load(f)
-        except (OSError, json.JSONDecodeError) as e:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
             logger.error(
                 "Failed to read default_configuration.json in layer %s: %s. "
                 "Treating this file as empty.",
