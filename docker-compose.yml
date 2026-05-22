@@ -109,6 +109,8 @@ services:
       start_period: 120s
     volumes:
       - admin-backend-data:/app/data
+      # Core JSON configs (read-only) — imported into Admin H2 on first startup when DB is empty
+      - ./docker_compose_files/core/configuration:/opt/core-config:ro
       # Exported Core config (read/write) — shared with core service at /opt/admin-export/out.json
       - ./docker_compose_files/core/admin-export:/app/data/export
     environment:
@@ -119,6 +121,9 @@ services:
       ENABLE_CORE_CONFIG_VERSION_AUTO_DETECT: "true"
       CORE_AUTH_METHOD: "api-key"
       CORE_AUTH_API_KEY_VALUE: "dial_api_key"
+      ENABLE_CONFIG_AUTO_IMPORT_ON_BOOTSTRAP: "true"
+      IMPORT_AUTO_BOOTSTRAP_FILE_PATHS: "/opt/core-config/applications.json,/opt/core-config/application-schemas.json,/opt/core-config/toolsets.json,/opt/core-config/chathub/anthropic.json,/opt/core-config/chathub/gemini.json,/opt/core-config/chathub/openai.json,/opt/core-config/generated/models.json"
+      IMPORT_AUTO_BOOTSTRAP_STRATEGY: "MERGE_JSON"
       CONFIG_EXPORT_ENABLED: "true"
       CONFIG_EXPORT_STORAGETYPE: "LOCAL_FILE"
       CONFIG_EXPORT_OUTPUTFILE_PATH: "data/export/out.json"
