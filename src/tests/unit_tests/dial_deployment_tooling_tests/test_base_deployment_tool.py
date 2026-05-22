@@ -72,10 +72,13 @@ def _make_tool_result(
 def _build_tool(
     messages: list[Message],
     dial_completion_service: Any = None,
+    attachment_resolver: Any = None,
 ) -> BaseDeploymentTool:
     """Build a BaseDeploymentTool with minimal mocks for testing _extract_tool_history."""
     if dial_completion_service is None:
         dial_completion_service = MagicMock()
+    if attachment_resolver is None:
+        attachment_resolver = MagicMock()
     tool_config = MagicMock()
     tool_config.display = None
     tool_config.attachment = MagicMock()
@@ -88,6 +91,7 @@ def _build_tool(
         tool_config=tool_config,
         content_propagation=None,
         dial_completion_service=dial_completion_service,
+        attachment_resolver=attachment_resolver,
         messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
@@ -307,8 +311,8 @@ async def test_extract_preserves_response_state():
 @pytest.mark.asyncio
 async def test_extract_resolves_request_attachments():
     """Tool call args with attachment_urls → UserMessageParam has resolved attachments."""
-    mock_service = MagicMock()
-    mock_service.resolve_attachment_urls = AsyncMock(
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_attachment_urls = AsyncMock(
         return_value=[
             {"type": "application/pdf", "title": "doc.pdf", "url": "files/xyz/doc.pdf"},
         ]
@@ -326,7 +330,7 @@ async def test_extract_resolves_request_attachments():
         _make_tool_result("tc1", "Summary of the doc"),
     ]
 
-    tool = _build_tool(messages, dial_completion_service=mock_service)
+    tool = _build_tool(messages, attachment_resolver=mock_resolver)
     history = await tool._extract_tool_history("my_tool")
 
     assert len(history) == 2
@@ -338,8 +342,8 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["type"] == "application/pdf"
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
-    mock_service.resolve_attachment_urls.assert_awaited_once()
-    awaited_args, awaited_kwargs = mock_service.resolve_attachment_urls.await_args
+    mock_resolver.resolve_attachment_urls.assert_awaited_once()
+    awaited_args, awaited_kwargs = mock_resolver.resolve_attachment_urls.await_args
     assert awaited_args[0] == ["files/xyz/doc.pdf"]
     assert "supports_url_attachments" in awaited_kwargs
 
@@ -386,6 +390,7 @@ def _build_tool_with_config(
         tool_config=tool_config,
         content_propagation=None,
         dial_completion_service=MagicMock(),
+        attachment_resolver=MagicMock(),
         messages_mixin=_make_messages_mixin(messages or []),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),

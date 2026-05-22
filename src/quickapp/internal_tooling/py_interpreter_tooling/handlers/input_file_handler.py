@@ -11,7 +11,7 @@ from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
 from quickapp.common.utils import posix_path_last_segment
-from quickapp.file_transfer._dial_file_promoter import DialFilePromoter
+from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )

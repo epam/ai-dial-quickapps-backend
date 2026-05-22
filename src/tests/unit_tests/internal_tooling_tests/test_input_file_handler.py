@@ -6,7 +6,7 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.file_transfer._dial_file_promoter import DialFilePromoter
+from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings import (
     _PyInterpreterSettings,
 )

@@ -7,13 +7,11 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from pydantic import SecretStr
 
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
-from quickapp.common.file_reference_pattern import strip_file_prefix
+from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
-from quickapp.file_transfer._dial_file_promoter import DialFilePromoter
 from tests.unit_tests.common.common import noop_timeout_resolver
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper
 
@@ -39,25 +37,20 @@ def azure_client():
 
 
 @pytest.fixture
-def file_promoter():
-    promoter = MagicMock(spec=DialFilePromoter)
-    promoter.promote = AsyncMock()
-    return promoter
+def attachment_resolver():
+    resolver = MagicMock(spec=AttachmentResolver)
+    resolver.resolve_attachment_urls = AsyncMock(return_value=[])
+    return resolver
 
 
 @pytest.fixture
-def completion_service(azure_client, file_promoter):
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    api_key = SecretStr("test-key")
+def completion_service(azure_client, attachment_resolver):
     return DialCompletionService(
         azure_client,
-        dial_settings,
-        api_key,
-        dial_client=None,
         forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler(),
         timeout_resolver=noop_timeout_resolver(),
-        file_promoter=file_promoter,
+        attachment_resolver=attachment_resolver,
     )
 
 
@@ -290,167 +283,17 @@ async def test_history_with_custom_content_passed_through(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "file_relative_url",
-    [
-        "file:base64::files/images/chart.png",
-        "files/images/chart.png",
-    ],
-)
-async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url):
-    """``_resolve_attachment`` calls ``dial_client.metadata.get('files', stripped_path)``."""
-    fileinfo = MagicMock()
-    fileinfo.content_type = "image/png"
-    fileinfo.name = "photo.png"
-    fileinfo.url = "files/resolved.png"
-
-    metadata = MagicMock()
-    metadata.get = AsyncMock(return_value=fileinfo)
-
-    dial_client = MagicMock()
-    dial_client.metadata = metadata
-
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    promoter = MagicMock(spec=DialFilePromoter)
-    promoter.promote = AsyncMock()
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=dial_client,
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-        file_promoter=promoter,
-    )
-    result = await service._resolve_attachment(file_relative_url, supports_url_attachments=False)
-
-    metadata.get.assert_called_once_with("files", strip_file_prefix(file_relative_url))
-    assert result == AttachmentParam(type="image/png", title="photo.png", url="files/resolved.png")
-    promoter.promote.assert_not_awaited()
-
-
-@pytest.mark.asyncio
-async def test_resolve_attachment_external_supports_emits_reference_url():
-    promoter = MagicMock(spec=DialFilePromoter)
-    promoter.promote = AsyncMock()
-    dial_client = MagicMock()
-    dial_client.metadata.get = AsyncMock()
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=dial_client,
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-        file_promoter=promoter,
-    )
-    result = await service._resolve_attachment(
-        "https://example.com/path/whitepaper.pdf", supports_url_attachments=True
-    )
-    assert result.get("reference_url") == "https://example.com/path/whitepaper.pdf"
-    assert result.get("title") == "whitepaper.pdf"
-    assert result.get("url") is None
-    assert result.get("type") is None
-    promoter.promote.assert_not_awaited()
-    dial_client.metadata.get.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_resolve_attachment_external_no_supports_promotes():
-    upload_meta = MagicMock()
-    upload_meta.url = "https://dial.example/v1/files/promoted.pdf"
-    upload_meta.name = "external.pdf"
-    upload_meta.content_type = "application/pdf"
-    promoter = MagicMock(spec=DialFilePromoter)
-    promoter.promote = AsyncMock(return_value=upload_meta)
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=MagicMock(),
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-        file_promoter=promoter,
-    )
-    result = await service._resolve_attachment(
-        "https://example.com/external.pdf", supports_url_attachments=False
-    )
-    promoter.promote.assert_awaited_once_with(
-        "https://example.com/external.pdf", parameter_name="attachment_urls"
-    )
-    assert result == AttachmentParam(
-        type="application/pdf",
-        title="external.pdf",
-        url="https://dial.example/v1/files/promoted.pdf",
-    )
-
-
-@pytest.mark.asyncio
-async def test_resolve_attachment_unsupported_scheme_raises():
-    from quickapp.common.exceptions import InvalidToolCallParameterException
-
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=MagicMock(),
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-        file_promoter=MagicMock(spec=DialFilePromoter),
-    )
-    with pytest.raises(InvalidToolCallParameterException):
-        await service._resolve_attachment("ftp://example.com/x", supports_url_attachments=False)
-
-
-@pytest.mark.asyncio
-async def test_resolve_attachment_promote_invalid_param_propagates():
-    """The promoter now translates fetch errors internally; the resolver just propagates."""
-    from quickapp.common.exceptions import InvalidToolCallParameterException
-
-    promoter = MagicMock(spec=DialFilePromoter)
-    promoter.promote = AsyncMock(
-        side_effect=InvalidToolCallParameterException(
-            parameter_name="attachment_urls", message="External URL fetching is disabled"
-        )
-    )
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=MagicMock(),
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-        file_promoter=promoter,
-    )
-    with pytest.raises(InvalidToolCallParameterException):
-        await service._resolve_attachment("https://x", supports_url_attachments=False)
-
-
-@pytest.mark.asyncio
 async def test_forwarded_x_headers_passed_to_chat_completion(
-    azure_client, mock_stage_wrapper, file_promoter
+    azure_client, mock_stage_wrapper, attachment_resolver
 ):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
     service = DialCompletionService(
         azure_client,
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=None,
         forwarded_headers=forwarded,
         stream_handler=ChatCompletionStreamHandler(),
         timeout_resolver=noop_timeout_resolver(),
-        file_promoter=file_promoter,
+        attachment_resolver=attachment_resolver,
     )
 
     await service.complete_request_async(

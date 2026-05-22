@@ -1,6 +1,6 @@
 import pytest
 
-from quickapp.common.host_pattern_match import match_host
+from quickapp.common.external_fetch.host_pattern_match import match_host
 
 
 @pytest.mark.parametrize(

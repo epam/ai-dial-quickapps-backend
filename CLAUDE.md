@@ -66,10 +66,11 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 
 ### File Transfer (`file_transfer/`)
 
-`FileLoaderService`, `ExternalUrlFetcher`, and `DialFilePromoter` together resolve any URL the agent encounters
-(DIAL or external) into bytes or a durable DIAL file. External egress is gated by a two-tier policy: the admin
-`EXTERNAL_URL_FETCH_ENABLED` env switch and the per-app `features.external_url_fetch.enabled` field. The deployment-
-attachment path is capability-aware via `Deployment.features.url_attachments`. See [`docs/file_transfer.md`](docs/file_transfer.md).
+`FileLoaderService` (in `file_transfer/`), `ExternalUrlFetcher` (in `common/external_fetch/`), and `DialFilePromoter`
+(in `dial_core_services/`) together resolve any URL the agent encounters (DIAL or external) into bytes or a durable
+DIAL file. External egress is gated by a two-tier policy: the admin `EXTERNAL_URL_FETCH_ENABLED` env switch and the
+per-app `features.external_url_fetch.enabled` field. The deployment-attachment path is capability-aware via
+`Deployment.features.url_attachments`. See [`docs/file_transfer.md`](docs/file_transfer.md).
 
 ### Skills
 

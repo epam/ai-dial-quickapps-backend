@@ -13,7 +13,7 @@ The same conceptual operation ("here is a URL — go use the file") fails differ
 
 | # | Surface | Failing call site | What goes wrong |
 |---|---------|-------------------|-----------------|
-| 1 | RAG / deployment tools | `DialCompletionService._resolve_attachment` (`src/quickapp/dial_deployment_tooling/dial_completion_service.py:188-195`) | Calls `dial_client.metadata.get("files", url)` for every entry in `attachment_urls`; an external URL 404s. |
+| 1 | RAG / deployment tools | `AttachmentResolver._resolve_attachment` (`src/quickapp/dial_deployment_tooling/_attachment_resolver.py`) | Calls `dial_client.metadata.get("files", url)` for every entry in `attachment_urls`; an external URL 404s. |
 | 2 | REST/MCP tool, base64-inline | `FilePrefixHandlers.handle_base64` via `DialFileService.download_file` (`src/quickapp/dial_core_services/dial_file_service.py:25-42`) | Asks DIAL Core to download the URL via `dial_client.files.download`; DIAL doesn't own it. |
 | 3 | REST/MCP tool, text-inline | `FilePrefixHandlers.handle_text` via the same service | Same path; same failure. |
 | 4 | Python interpreter input | `_PyInterpreterTool._prepare_input_files` + `InputFileHandler.get_attachment_url` (`src/quickapp/internal_tooling/py_interpreter_tooling/_py_interpreter_tool.py:154-220`, `handlers/input_file_handler.py:17-50`) | The interpreter's `transferInputFile` endpoint is given a raw URL it can only resolve against DIAL. |
@@ -51,7 +51,7 @@ The agent-facing skill `tool-call-file-parameter-formatting` already documents `
 
 **Trigger:** The orchestrator invokes a deployment tool with `attachment_urls=["https://example.com/whitepaper.pdf"]`. The deployment's metadata advertises `features.url_attachments == true`.
 
-**Behaviour:** `DialCompletionService._resolve_attachment` classifies the URL as external, skips the `metadata.get("files", ...)` lookup, and emits `AttachmentParam(reference_url="https://example.com/whitepaper.pdf", type=..., title=...)`. QuickApps does not download the bytes; the deployment fetches them itself.
+**Behaviour:** `AttachmentResolver._resolve_attachment` classifies the URL as external, skips the `metadata.get("files", ...)` lookup, and emits `AttachmentParam(reference_url="https://example.com/whitepaper.pdf", type=..., title=...)`. QuickApps does not download the bytes; the deployment fetches them itself.
 
 **Outcome:** The deployment receives the URL as a reference attachment. QuickApps' egress surface is untouched — the outbound fetch comes from the deployment's own host, which is the audit-log and network-policy boundary operators expect for that resource.
 
@@ -59,7 +59,7 @@ The agent-facing skill `tool-call-file-parameter-formatting` already documents `
 
 **Trigger:** Same as UC-1, but the deployment advertises `features.url_attachments` as `false`, `None`, or absent.
 
-**Behaviour:** `DialCompletionService._resolve_attachment` classifies the URL as external, hands it to `DialFilePromoter.promote(url)` (see Proposed Design), which fetches the bytes through the shared `ExternalUrlFetcher`, uploads them to the caller's DIAL File Storage via the existing upload path, and returns the resulting DIAL `url`. The resolver then emits a regular `AttachmentParam(url=<dial-url>, type=..., title=...)`.
+**Behaviour:** `AttachmentResolver._resolve_attachment` classifies the URL as external, hands it to `DialFilePromoter.promote(url)` (see Proposed Design), which fetches the bytes through the shared `ExternalUrlFetcher`, uploads them to the caller's DIAL File Storage via the existing upload path, and returns the resulting DIAL `url`. The resolver then emits a regular `AttachmentParam(url=<dial-url>, type=..., title=...)`.
 
 **Outcome:** The deployment sees a normal DIAL attachment and proceeds. The agent-visible behaviour is identical to UC-1; only the wire-level shape and who fetches the bytes differ.
 
@@ -152,7 +152,7 @@ flowchart TD
         A3["_PyInterpreterTool._prepare_input_files"]
     end
 
-    A1a --> Resolve["DialCompletionService._resolve_attachment"]
+    A1a --> Resolve["AttachmentResolver._resolve_attachment"]
     A1b --> Resolve
     Resolve -->|"deployment supports url_attachments?"| C{"features.url_attachments"}
     C -->|"yes"| R1["AttachmentParam reference_url=..."]
@@ -199,7 +199,7 @@ The two-tier egress policy (on/off gate plus host allowlist) and the security en
 
 **What:** A request-scoped service that wraps `httpx.AsyncClient` with the security envelope mandated by the issue. The single egress point for every external fetch QuickApps performs.
 
-**Owner:** `src/quickapp/file_transfer/_external_url_fetcher.py` (new file). Bound at request scope alongside `DialFileService`.
+**Owner:** `src/quickapp/common/external_fetch/external_url_fetcher.py` (new file). Bound at request scope.
 
 **Public API:** one async method, `fetch(url) -> FetchedBytes`. `FetchedBytes` is a small frozen Pydantic model carrying `bytes`, `content_type` (best-effort, from `Content-Type`), and `filename` (best-effort, from `Content-Disposition` or the URL path). Everything the downstream `base64`/`text`/upload pipeline needs.
 
@@ -254,7 +254,7 @@ The DIAL branch keeps the existing logic verbatim — `dial_client.files.get_met
 
 **What:** A request-scoped service with one method `promote(url: str, parameter_name: str = "<unknown>") -> FileMetadata` that materialises any URL as a durable DIAL file and returns its metadata. `FileMetadata` is the SDK type `aidial_client.types.metadata.FileMetadata` returned by `dial_client.files.get_metadata` and `dial_client.files.upload`; the promoter does not introduce a wrapper. Callers (`_resolve_attachment`, `_PyInterpreterTool._prepare_input_files` via `InputFileHandler`) thread the originating tool-argument name through `parameter_name` so policy and envelope failures surface as `InvalidToolCallParameterException(parameter_name=...)`. The single shared API for the deployment-attachment fallback (UC-2) and interpreter staging of external files (UC-5).
 
-**Owner:** `src/quickapp/file_transfer/_dial_file_promoter.py` (new file, sibling of the loader). Bound at request scope.
+**Owner:** `src/quickapp/dial_core_services/dial_file_promoter.py` (new file). Bound at request scope. Sits in `dial_core_services/` because it integrates with DIAL Core (`AsyncDial.files.get_metadata` for DIAL URLs and `AttachmentService.upload_bytes` for materialised external bytes); the external-fetch leg goes through the `common/external_fetch/` infrastructure.
 
 **Why colocated with the loader rather than under `dial_core_services/`.** The promoter depends on `ExternalUrlFetcher` (in `file_transfer/`) for the external branch. Today the import direction is `file_transfer/` → `dial_core_services/`; placing the promoter under `dial_core_services/` would invert it and force `dial_core_services/` to import from `file_transfer/`. Keeping the promoter in `file_transfer/` preserves the current direction. The DIAL upload work it performs goes through `AttachmentService` (still in `dial_core_services/`) via the factored helper, which is the standard direction.
 
@@ -289,9 +289,9 @@ Both upstream-derived branches (`Content-Disposition` and URL path) pass through
 
 ### Capability-aware deployment-attachment resolution
 
-**What:** `DialCompletionService._resolve_attachment` becomes scheme-aware and capability-aware. The single call site that today silently assumes DIAL paths now dispatches on URL classification and the deployment's `features.url_attachments`.
+**What:** Attachment URL → `AttachmentParam` resolution becomes scheme-aware and capability-aware. The single call site that today silently assumes DIAL paths now dispatches on URL classification and the deployment's `features.url_attachments`.
 
-**Owner:** `src/quickapp/dial_deployment_tooling/dial_completion_service.py`.
+**Owner:** `src/quickapp/dial_deployment_tooling/_attachment_resolver.py` (request-scoped `AttachmentResolver`). Consumed by `DialCompletionService` (live-call path) and `BaseDeploymentTool._build_user_message_from_tool_call` (history-rebuild path). Originally landed inside `DialCompletionService` and was extracted in a follow-up to give the dispatch its own single-responsibility seam.
 
 **Resolution table:**
 
@@ -351,7 +351,7 @@ This design extends the snapshot path: `_convert_to_openai_tool_format` retains 
 
 #### Admin tier — env settings
 
-**Owner:** New `BaseSettings` class `ExternalFetchSettings` in `src/quickapp/common/external_fetch_settings.py`, mirroring `FileLoadingSettings`. Singleton.
+**Owner:** New `BaseSettings` class `ExternalFetchSettings` in `src/quickapp/common/external_fetch/external_fetch_settings.py`, mirroring `FileLoadingSettings`. Singleton.
 
 | Setting | Env | Default | Notes |
 |---------|-----|---------|-------|
@@ -393,7 +393,7 @@ IP-literal hosts (`https://1.2.3.4/...`) are not matchable via the allowlist. If
 
 #### Effective-policy resolution
 
-**Owner:** Request-scoped `ExternalUrlFetchPolicyResolver` in `src/quickapp/common/external_url_fetch_policy_resolver.py`, mirroring `FileLoadingSizeLimitResolver`. The resolver exposes two methods:
+**Owner:** Request-scoped `ExternalUrlFetchPolicyResolver` in `src/quickapp/common/external_fetch/external_url_fetch_policy_resolver.py`, mirroring `FileLoadingSizeLimitResolver`. The resolver exposes two methods:
 
 - `resolve_reason() -> "admin" | "builder" | "allowed"` — the on/off gate, called once per fetch.
 - `resolve_host(host) -> "admin_allowlist" | "builder_allowlist" | "allowed"` — the host check, called once per URL (and re-called on each redirect target).
@@ -443,7 +443,7 @@ The error message names which tier rejected (admin or builder) and whether the r
 
 ### Parameter-aware errors on unresolvable attachments
 
-Today, when `DialCompletionService._resolve_attachment` is handed a URL DIAL Core doesn't own, the error surfaces as a raw `DialException` with status 404 — no parameter context, no agent-actionable hint. The new resolver catches every classification and unsupported-scheme case and raises `InvalidToolCallParameterException(parameter_name="attachment_urls", message=...)`. The retry pipeline in `StagedBaseTool` already converts that to a retry response (`docs/file_transfer.md:138-145`), so the agent gets a clear "use file:base64:: instead" or "this URL scheme is not supported" message instead of a generic deployment failure.
+Previously, when `DialCompletionService._resolve_attachment` was handed a URL DIAL Core doesn't own, the error surfaced as a raw `DialException` with status 404 — no parameter context, no agent-actionable hint. The new `AttachmentResolver` catches every classification and unsupported-scheme case and raises `InvalidToolCallParameterException(parameter_name="attachment_urls", message=...)`. The retry pipeline in `StagedBaseTool` already converts that to a retry response (`docs/file_transfer.md:138-145`), so the agent gets a clear "use file:base64:: instead" or "this URL scheme is not supported" message instead of a generic deployment failure.
 
 ### Document the URL semantics
 
@@ -638,27 +638,30 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 **New files:**
 
 - `src/quickapp/common/url_classification.py` — `UrlScheme` enum, `classify_url(url) -> UrlScheme`. Single source of truth for the DIAL-vs-external distinction.
-- `src/quickapp/common/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `EXTERNAL_URL_FETCH_ENABLED`, `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (parsed from a comma-separated list), redirect cap, connect timeout. Singleton.
-- `src/quickapp/common/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver` with two methods: `resolve_reason()` for the on/off gate and `resolve_host(host)` for the allowlist check. Request-scoped. Combines the admin tier (`ExternalFetchSettings.enabled` + `host_allowlist`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled` + `host_allowlist`) into per-axis effective decisions; mirrors `FileLoadingSizeLimitResolver` for the singleton/request layout.
-- `src/quickapp/common/host_pattern_match.py` — small pure helper `match_host(host, patterns) -> bool` implementing the exact-or-`*.suffix` matching rule used by both tiers. Single source of truth, easy to unit-test in isolation from the resolver.
-- `src/quickapp/file_transfer/_external_url_fetcher.py` — `ExternalUrlFetcher` with the shared security envelope; `ExternalFetchError` and `ExternalFetchDisabledError` co-located in the same module. Consumes `ExternalUrlFetchPolicyResolver` for the gate check. Request-scoped.
+- `src/quickapp/common/external_fetch/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `EXTERNAL_URL_FETCH_ENABLED`, `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (parsed from a comma-separated list), redirect cap, connect timeout. Singleton.
+- `src/quickapp/common/external_fetch/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver` with two methods: `resolve_reason()` for the on/off gate and `resolve_host(host)` for the allowlist check. Request-scoped. Combines the admin tier (`ExternalFetchSettings.enabled` + `host_allowlist`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled` + `host_allowlist`) into per-axis effective decisions; mirrors `FileLoadingSizeLimitResolver` for the singleton/request layout.
+- `src/quickapp/common/external_fetch/host_pattern_match.py` — small pure helper `match_host(host, patterns) -> bool` implementing the exact-or-`*.suffix` matching rule used by both tiers. Single source of truth, easy to unit-test in isolation from the resolver.
+- `src/quickapp/common/external_fetch/external_url_fetcher.py` — `ExternalUrlFetcher` with the shared security envelope; `ExternalFetchError` and `ExternalFetchDisabledError` co-located in the same module. Consumes `ExternalUrlFetchPolicyResolver` for the gate check. Request-scoped.
 - `src/quickapp/file_transfer/_file_loader_service.py` — `FileLoaderService.load(url)`. Request-scoped. Dispatches on `UrlScheme`; reuses `StateHolder` for per-request caching.
-- `src/quickapp/file_transfer/_dial_file_promoter.py` — `DialFilePromoter.promote(url) -> FileMetadata`. Request-scoped. Colocated with the loader; depends on `ExternalUrlFetcher` (external branch) and `AttachmentService`'s factored upload helper (DIAL upload).
+- `src/quickapp/dial_core_services/dial_file_promoter.py` — `DialFilePromoter.promote(url) -> FileMetadata`. Request-scoped. Depends on `ExternalUrlFetcher` (external branch, via `common/external_fetch/`) and `AttachmentService` (DIAL upload, sibling in `dial_core_services/`).
+- `src/quickapp/dial_deployment_tooling/_attachment_resolver.py` — `AttachmentResolver` with the 4-branch dispatch (DIAL / external+supports / external+materialise / unsupported). Request-scoped. Originally lived inside `DialCompletionService` and was extracted in a follow-up to give the resolution its own single-responsibility seam, shared by the live-call path (`DialCompletionService.create_user_message_with_attachments`) and the history-rebuild path (`BaseDeploymentTool._build_user_message_from_tool_call`).
 
 **Modified files:**
 
 - `src/quickapp/config/application.py` — `Features` gains `external_url_fetch: ExternalUrlFetchConfig = Field(default_factory=ExternalUrlFetchConfig, ...)` (sibling of `file_loading`). `ExternalUrlFetchConfig` carries `enabled: bool | None = None` (on/off override) and `host_allowlist: list[str] | None = None` (per-app domain allowlist; intersects with the admin list, never expands it). Both default to "follow the admin tier".
 - `src/quickapp/dial_core_services/dial_file_service.py` — bytes-only DIAL-download logic extracted into a new request-scoped `DialDownloader` in the same directory, consumed by `FileLoaderService`. `DialFileService.download_file` retained (with its `(bytes, FileMetadata | None)` tuple shape) for `dial_files_tooling/` callers needing `FileMetadata.etag`; unifying the two paths is tracked as a follow-up (`claude/issues/dial-download-path-unification.md`). `grant_permissions_to_files` unchanged.
-- `src/quickapp/dial_deployment_tooling/dial_completion_service.py` — `_resolve_attachment` becomes 4-branch (DIAL / external+supports / external+materialise / unsupported). `complete_request_async`, `__build_request_messages`, `__user_message_from_content_and_attachments`, `resolve_attachment_urls`, and `_resolve_attachment` all thread a new `supports_url_attachments: bool` parameter so every outbound attachment-list construction sees the flag.
-- `src/quickapp/dial_deployment_tooling/base_deployment_tool.py` — reads `self.tool_config.supports_url_attachments` once and passes it to `complete_request_async` (live call) and `resolve_attachment_urls` (history rebuild).
+- `src/quickapp/dial_deployment_tooling/dial_completion_service.py` — `complete_request_async`, `__build_request_messages`, and `__user_message_from_content_and_attachments` thread a new `supports_url_attachments: bool` parameter so every outbound attachment-list construction sees the flag. The attachment resolution itself is delegated to the injected `AttachmentResolver` (extracted into its own file).
+- `src/quickapp/dial_deployment_tooling/base_deployment_tool.py` — reads `self.tool_config.supports_url_attachments` once and passes it to `complete_request_async` (live call) and to `AttachmentResolver.resolve_attachment_urls` (history rebuild).
 - `src/quickapp/config/tools/deployment.py` (`DialDeploymentTool`) — gains `supports_url_attachments: bool = False`. Populated by `_convert_to_openai_tool_format`.
 - `src/quickapp/dial_core_services/tool_config_service.py` — `_convert_to_openai_tool_format` reads `deployment.features.url_attachments` and sets the new field. The `attachment_urls` parameter description is updated to mention external URLs explicitly.
 - `src/quickapp/file_transfer/_file_argument_transformer.py` — constructor takes `FileLoaderService`. The transformer threads the originating tool-argument key into `FileLoaderService.load(..., parameter_name=key)` so policy / envelope failures attribute to the correct parameter.
 - `src/quickapp/file_transfer/_file_prefix_handlers.py` — `handle_base64`, `handle_text` take `FileLoaderService` and accept `parameter_name`, threading it to `FileLoaderService.load`.
 - `src/quickapp/dial_core_services/attachment_service.py` — upload body factored into an internal helper `_upload_bytes(bytes, content_type, filename) -> FileMetadata`, exposed via a public alias `upload_bytes` for callers (today: `DialFilePromoter`) that want the raw upload without `upload_attachment_to_core`'s "swallow exception, return original attachment" branch. Public `upload_attachment_to_core` signature unchanged.
 - `src/quickapp/internal_tooling/py_interpreter_tooling/_py_interpreter_tool.py`, `handlers/input_file_handler.py` — external branch added; routes through `DialFilePromoter`.
-- `src/quickapp/file_transfer/file_transfer_module.py` — bind `FileLoaderService`, `ExternalUrlFetcher`, `DialFilePromoter` at request scope.
-- `src/quickapp/application/app_module.py` — bind `ExternalFetchSettings` as a singleton and `ExternalUrlFetchPolicyResolver` at request scope, alongside the sibling `FileLoadingSettings` (singleton) and `FileLoadingSizeLimitResolver` (request) that today live in this module.
+- `src/quickapp/file_transfer/file_transfer_module.py` — bind `_FileArgumentTransformer` and `FileLoaderService` at request scope.
+- `src/quickapp/application/app_module.py` — bind `ExternalFetchSettings` as a singleton and `ExternalUrlFetchPolicyResolver`, `ExternalUrlFetcher` at request scope (the `common/external_fetch/` trio).
+- `src/quickapp/dial_core_services/dial_core_services_module.py` — bind `DialFilePromoter` at request scope, alongside `AttachmentService` / `DialDownloader`.
+- `src/quickapp/dial_deployment_tooling/dial_deployment_tooling_module.py` — bind `AttachmentResolver` at request scope, alongside `DialCompletionService`.
 - `config/predefined/skills/tool-call-file-parameter-formatting/SKILL.md` — note the operator-egress-disabled fallback in "Common Mistakes."
 - `docs/file_transfer.md`, `docs/agent.md`, `CONFIGURATION.md` — document the classification, dispatch, security envelope, and env switches.
 - `docs/generated-app-schema.json` — regenerated via `make dump_app_schema` (description string change on `attachment_urls`; new `features.external_url_fetch` object).

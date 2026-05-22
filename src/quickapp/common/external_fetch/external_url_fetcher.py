@@ -12,8 +12,8 @@ import httpx
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_url_fetch_policy_resolver import (
+from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
+from quickapp.common.external_fetch.external_url_fetch_policy_resolver import (
     DisabledReason,
     ExternalUrlFetchPolicyResolver,
 )

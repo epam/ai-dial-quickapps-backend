@@ -167,7 +167,7 @@ applies.
 
 ## Deployment-attachment dispatch
 
-`DialCompletionService._resolve_attachment` is capability-aware. The four-branch dispatch is:
+`AttachmentResolver._resolve_attachment` is capability-aware. The four-branch dispatch is:
 
 | URL classification | Deployment `features.url_attachments` | Output                                                                                |
 |--------------------|---------------------------------------|---------------------------------------------------------------------------------------|
@@ -179,6 +179,11 @@ applies.
 The `features.url_attachments` flag is snapshotted at tool-config build time and cached in
 `DialDeploymentToolCacheService` for the process. An operator who flips the flag on a deployment sees the new
 behaviour after process restart — same staleness profile as `input_attachment_types`.
+
+`AttachmentResolver` lives at `src/quickapp/dial_deployment_tooling/_attachment_resolver.py` and is
+request-scoped. `DialCompletionService` calls it when building the outbound user message;
+`BaseDeploymentTool._build_user_message_from_tool_call` calls it directly when rebuilding tool-call
+history (so the resolver is shared between live and history-rebuild paths).
 
 ## MCP-Specific: `dial_url` Permission Grants
 

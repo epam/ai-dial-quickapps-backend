@@ -20,6 +20,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
+from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
@@ -41,6 +42,7 @@ class BaseDeploymentTool(StagedBaseTool):
         tool_config: DialDeploymentTool,
         content_propagation: ContentPropagation | None,
         dial_completion_service: DialCompletionService,
+        attachment_resolver: AttachmentResolver,
         messages_mixin: MessagesMixin,
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
@@ -57,6 +59,7 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__application_id: str = application_id
         self.__application_name: str = application_name
         self.__dial_completion_service: DialCompletionService = dial_completion_service
+        self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
         self.__messages_mixin: MessagesMixin = messages_mixin
 
@@ -149,7 +152,7 @@ class BaseDeploymentTool(StagedBaseTool):
         user_msg = UserMessageParam(role="user", content=query or "")
         if attachment_urls:
             tool_config = cast(DialDeploymentTool, self.tool_config)
-            resolved = await self.__dial_completion_service.resolve_attachment_urls(
+            resolved = await self.__attachment_resolver.resolve_attachment_urls(
                 attachment_urls,
                 supports_url_attachments=tool_config.supports_url_attachments,
             )
