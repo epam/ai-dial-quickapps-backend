@@ -24,6 +24,7 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
+from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
@@ -186,13 +187,6 @@ class _MCPTool(StagedBaseTool):
                 tool_call_result = await self.__connection_manager.call_mcp_tool(
                     self.__tool.name, **kwargs
                 )
-            # Handle error flag if present
-            if getattr(tool_call_result, "isError", False):
-                logger.error(
-                    "MCP tool call returned isError=True; structuredContent: %s",
-                    getattr(tool_call_result, "structuredContent", None),
-                )
-
             contents = getattr(tool_call_result, "content", []) or []
             # Separate text blocks from non-text blocks
             text_parts: list[str] = []
@@ -211,6 +205,16 @@ class _MCPTool(StagedBaseTool):
                     non_text_contents.append(block)
 
             tool_content = "\n\n".join(filter(None, text_parts))
+
+            # Raise on error flag so fallback strategies can apply
+            if getattr(tool_call_result, "isError", False):
+                logger.error(
+                    "MCP tool '%s' returned isError=True; error: %s; structuredContent: %s",
+                    self.__tool.name,
+                    tool_content,
+                    getattr(tool_call_result, "structuredContent", None),
+                )
+                raise MCPToolErrorException(self.__tool.name, tool_content)
 
             logger.debug(
                 "Tool returned text length %d and %d non-text content blocks",
