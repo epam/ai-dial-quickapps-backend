@@ -33,7 +33,7 @@ class AttachmentService:
         if attachment.url is None and attachment.data:
             try:
                 attachment_name = attachment.title or generate_attachment_filename(attachment.type)
-                metadata = await self._upload_bytes(
+                metadata = await self.upload_bytes(
                     data=_get_bytes(attachment.data),
                     content_type=attachment.type,
                     filename=attachment_name,
@@ -49,20 +49,6 @@ class AttachmentService:
         return attachment
 
     async def upload_bytes(
-        self,
-        data: bytes,
-        content_type: str | None,
-        filename: str,
-    ) -> FileMetadata:
-        """Upload raw bytes as a DIAL file and return its metadata.
-
-        Public alias of the internal helper, exposed for callers that want the
-        upload behaviour without ``upload_attachment_to_core``'s swallow-and-
-        return-original-attachment semantics. Raises on any DIAL upload error.
-        """
-        return await self._upload_bytes(data=data, content_type=content_type, filename=filename)
-
-    async def _upload_bytes(
         self,
         data: bytes,
         content_type: str | None,
