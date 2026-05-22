@@ -1,5 +1,5 @@
 ---
-name: design-review
+name: quickapps-design-review
 description: Use when the user asks to review, critique, validate, or approve a design doc under docs/designs/. Appends a Review Notes block; on explicit approval, strips notes and flips Status to Approved.
 context: fork
 agent: general-purpose
@@ -76,7 +76,7 @@ Append to the **end** of the target doc, separated from the existing content by 
 
 ## Review Notes — Round N
 
-- **Reviewer:** Claude (design-review skill)
+- **Reviewer:** Claude (quickapps-design-review skill)
 - **Date:** YYYY-MM-DD
 
 ### Verdict
