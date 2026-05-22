@@ -68,7 +68,7 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 
 `FileLoaderService`, `ExternalUrlFetcher`, and `DialFilePromoter` together resolve any URL the agent encounters
 (DIAL or external) into bytes or a durable DIAL file. External egress is gated by a two-tier policy: the admin
-`ALLOW_EXTERNAL_URL_FETCH` env switch and the per-app `features.external_url_fetch.enabled` field. The deployment-
+`EXTERNAL_URL_FETCH_ENABLED` env switch and the per-app `features.external_url_fetch.enabled` field. The deployment-
 attachment path is capability-aware via `Deployment.features.url_attachments`. See [`docs/file_transfer.md`](docs/file_transfer.md).
 
 ### Skills

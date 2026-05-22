@@ -146,7 +146,7 @@ builder (per-app) tier. Defaults are off / unset.
 
 | Axis      | Tier    | Setting                                                  | Default | Effect                                                                                                                                           |
 |-----------|---------|----------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| On/off    | Admin   | env `ALLOW_EXTERNAL_URL_FETCH`                           | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                                                    |
+| On/off    | Admin   | env `EXTERNAL_URL_FETCH_ENABLED`                           | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                                                    |
 | On/off    | Builder | manifest `features.external_url_fetch.enabled`           | `null`  | `null` defers to admin; `true` is a no-op when admin allows; `false` opts this app out from below.                                               |
 | Allowlist | Admin   | env `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (comma-separated) | `null` | When unset, no admin-level host restriction. When set, only hosts matching the patterns are reachable; per-app builder lists can narrow further. |
 | Allowlist | Builder | manifest `features.external_url_fetch.host_allowlist`    | `null`  | `null` defers to admin; a non-empty list narrows the admin list (intersection); an explicit empty list locks this app out of all hosts.          |
@@ -205,7 +205,7 @@ response includes the error details so the agent can self-correct:
 | External URL with SSRF block                   | "External URL … resolves to a blocked address …"                              |
 | External URL with redirect cap                 | "External URL … exceeded the configured redirect limit."                      |
 | External URL with timeout                      | "External URL … timed out."                                                   |
-| External fetching disabled (admin)             | "External URL fetching is disabled by operator policy (ALLOW_EXTERNAL_URL_FETCH)." |
+| External fetching disabled (admin)             | "External URL fetching is disabled by operator policy (EXTERNAL_URL_FETCH_ENABLED)." |
 | External fetching disabled (per-app)           | "External URL fetching is disabled by this app (features.external_url_fetch.enabled=false)." |
 | Host not in admin allowlist                    | "External URL host is not in the operator allowlist (EXTERNAL_URL_FETCH_HOST_ALLOWLIST)." |
 | Host not in per-app allowlist                  | "External URL host is not in this app's allowlist (features.external_url_fetch.host_allowlist)." |

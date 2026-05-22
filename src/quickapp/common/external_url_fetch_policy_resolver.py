@@ -24,7 +24,7 @@ class ExternalUrlFetchPolicyResolver:
         self.__app_config = app_config
 
     def resolve_reason(self) -> PolicyReason:
-        if not self.__settings.allow:
+        if not self.__settings.enabled:
             return "admin"
         features = self.__app_config.features
         if features is not None and features.external_url_fetch.enabled is False:

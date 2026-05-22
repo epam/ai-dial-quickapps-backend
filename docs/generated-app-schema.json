@@ -1265,7 +1265,7 @@
             }
           ],
           "default": null,
-          "description": "Per-app override for fetching external (non-DIAL) URLs. `null` (default) defers to the admin env switch `ALLOW_EXTERNAL_URL_FETCH`. `false` opts this app out even when the admin allows it. `true` is a no-op when admin allows; the admin gate is a hard cap.",
+          "description": "Per-app override for fetching external (non-DIAL) URLs. `null` (default) defers to the admin env switch `EXTERNAL_URL_FETCH_ENABLED`. `false` opts this app out even when the admin allows it. `true` is a no-op when admin allows; the admin gate is a hard cap.",
           "title": "Enabled"
         },
         "host_allowlist": {
@@ -1307,7 +1307,7 @@
         },
         "external_url_fetch": {
           "$ref": "#/$defs/ExternalUrlFetchConfig",
-          "description": "Per-app override for fetching external (non-DIAL) URLs. Operates within the admin cap set by `ALLOW_EXTERNAL_URL_FETCH`."
+          "description": "Per-app override for fetching external (non-DIAL) URLs. Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
         },
         "stage_display": {
           "$ref": "#/$defs/StageDisplayConfig",

@@ -427,7 +427,7 @@ The application is composed of 15 specialized DI modules:
     injection. Owns the loader/fetcher/promoter trio: `FileLoaderService` (scheme-aware bytes loader),
     `ExternalUrlFetcher` (single egress for external URLs with the SSRF / size / redirect / timeout envelope), and
     `DialFilePromoter` (URL → DIAL file metadata for the deployment-attachment fallback and Python interpreter
-    staging). External egress is gated by a two-tier policy: `ALLOW_EXTERNAL_URL_FETCH` (admin) and per-app
+    staging). External egress is gated by a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app
     `features.external_url_fetch.enabled` (builder), composed by `ExternalUrlFetchPolicyResolver`.
 12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
 13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher

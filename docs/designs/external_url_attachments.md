@@ -107,7 +107,7 @@ UC-6 is the **conceptual** capability shared by UC-2 and UC-5; it does not intro
 
 ### UC-8: Operator disables external egress entirely (admin cap)
 
-**Trigger:** `ALLOW_EXTERNAL_URL_FETCH=false` (the default).
+**Trigger:** `EXTERNAL_URL_FETCH_ENABLED=false` (the default).
 
 **Behaviour:** `ExternalUrlFetcher.fetch` raises `ExternalFetchDisabledError` immediately, before any DNS lookup. UC-1 (deployment with `features.url_attachments == true`) continues to work — no QuickApps egress happens on that branch. UC-2 / UC-4 / UC-5 / UC-6 fail with a clear message naming the operator-level switch. **Per-app overrides (UC-9) are ignored on this branch** — when the admin gate is closed, a builder cannot opt their app back in.
 
@@ -115,7 +115,7 @@ UC-6 is the **conceptual** capability shared by UC-2 and UC-5; it does not intro
 
 ### UC-9: Builder opts a single app out of external egress (within admin-allowed)
 
-**Trigger:** `ALLOW_EXTERNAL_URL_FETCH=true` AND the app's manifest sets `features.external_url_fetch.enabled: false`.
+**Trigger:** `EXTERNAL_URL_FETCH_ENABLED=true` AND the app's manifest sets `features.external_url_fetch.enabled: false`.
 
 **Behaviour:** The fetcher raises `ExternalFetchDisabledError` for any caller within the request, with a message naming the per-app switch (same exception type as UC-8, different reason). Other apps in the same process — same admin policy, no per-app `false` — keep the feature.
 
@@ -123,7 +123,7 @@ UC-6 is the **conceptual** capability shared by UC-2 and UC-5; it does not intro
 
 ### UC-10: Operator restricts external fetches to a specific set of hosts (admin allowlist)
 
-**Trigger:** `ALLOW_EXTERNAL_URL_FETCH=true` AND `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` is set to a non-empty list (e.g. `example.com,*.public-cdn.net`). The fetcher receives a URL whose host is not on that list.
+**Trigger:** `EXTERNAL_URL_FETCH_ENABLED=true` AND `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` is set to a non-empty list (e.g. `example.com,*.public-cdn.net`). The fetcher receives a URL whose host is not on that list.
 
 **Behaviour:** `ExternalUrlFetcher.fetch` raises `ExternalFetchDisabledError` with reason `admin_allowlist`, before any DNS lookup. Hosts that *are* on the list proceed through the normal pipeline (SSRF guard, redirect cap, size limit). Each redirect hop's host is re-checked against the same list.
 
@@ -244,7 +244,7 @@ The DIAL branch keeps the existing logic verbatim — `dial_client.files.get_met
 
 | Component | Before | After |
 |-----------|--------|-------|
-| `DialFileService.download_file(url)` | Method on `DialFileService` doing DIAL-only download. | Removed. The DIAL-download logic moves into a new request-scoped `DialDownloader` consumed by `FileLoaderService`. `DialFileService` keeps `grant_permissions_to_files` only — still DIAL-resource-permission management with no external analogue. |
+| `DialFileService.download_file(url)` | Method on `DialFileService` doing DIAL-only download. | Bytes-only DIAL-download logic extracted into a new request-scoped `DialDownloader` consumed by `FileLoaderService`. `DialFileService.download_file` itself stays (with its existing `(bytes, FileMetadata \| None)` tuple shape) — `dial_files_tooling/` consumers need `FileMetadata.etag` for `If-Match` semantics and the slim bytes-only `DialDownloader.fetch` doesn't expose it. Unifying the two DIAL-download paths is tracked as a follow-up (see `claude/issues/dial-download-path-unification.md`). |
 | `_FileArgumentTransformer.__init__` | Takes `DialFileService`. | Takes `FileLoaderService`. |
 | `FilePrefixHandlers.handle_base64 / handle_text` | Take a `DialFileService`. | Take a `FileLoaderService`. |
 
@@ -345,7 +345,7 @@ This design extends the snapshot path: `_convert_to_openai_tool_format` retains 
 
 **What:** Egress is gated by two layers, mirroring the `FileLoadingConfig` pattern (`src/quickapp/config/application.py:59-79` + `src/quickapp/common/file_loading_size_limit_resolver.py`). Two orthogonal axes are gated through this composition: **on/off** (does egress happen at all) and **host allowlist** (which destinations are reachable). The deployment-handoff branch (UC-1) is **not** gated — no QuickApps egress happens there, and neither tier reaches it.
 
-**Implementation cadence.** The on/off axis (`enabled`, `ALLOW_EXTERNAL_URL_FETCH`, the corresponding `admin` / `builder` reasons) shipped first within this PR; the host-allowlist axis (`host_allowlist` env + per-app field, `match_host`, `resolve_host`, the corresponding `admin_allowlist` / `builder_allowlist` reasons, the per-redirect-hop re-check) is staged in the same PR as a follow-on commit. Both axes are designed together because they share the resolver, the error class, the SSRF transport's redirect-hop integration, and the agent-facing retry contract — splitting the design would force forward-references in either half.
+**Implementation cadence.** The on/off axis (`enabled`, `EXTERNAL_URL_FETCH_ENABLED`, the corresponding `admin` / `builder` reasons) shipped first within this PR; the host-allowlist axis (`host_allowlist` env + per-app field, `match_host`, `resolve_host`, the corresponding `admin_allowlist` / `builder_allowlist` reasons, the per-redirect-hop re-check) is staged in the same PR as a follow-on commit. Both axes are designed together because they share the resolver, the error class, the SSRF transport's redirect-hop integration, and the agent-facing retry contract — splitting the design would force forward-references in either half.
 
 #### Admin tier — env settings
 
@@ -353,7 +353,7 @@ This design extends the snapshot path: `_convert_to_openai_tool_format` retains 
 
 | Setting | Env | Default | Notes |
 |---------|-----|---------|-------|
-| `allow` | `ALLOW_EXTERNAL_URL_FETCH` | `false` | Admin cap. When `false`, no app can fetch externally regardless of its manifest. |
+| `enabled` | `EXTERNAL_URL_FETCH_ENABLED` | `false` | Admin cap. When `false`, no app can fetch externally regardless of its manifest. |
 | `host_allowlist` | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` | `None` | Optional comma-separated list of host patterns (see [Domain matching semantics](#domain-matching-semantics)). When unset, no admin-level host restriction (any host that passes the SSRF envelope is reachable). When set, only listed hosts are reachable; per-app builder lists can narrow but never expand this set. Independent from the SSRF blocklist — both must pass. |
 | `max_redirects` | `EXTERNAL_URL_FETCH_MAX_REDIRECTS` | `5` | Hard ceiling 10 enforced by validator. Not per-app overridable; SSRF policy is uniform. |
 | `connect_timeout_seconds` | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5` | Read/total timeout reuses `ToolTimeoutResolver`. The resolver is request-scoped and returns the app-level tool-timeout default; every consuming surface — `_FileArgumentTransformer`, `DialFilePromoter`, and `_resolve_attachment` (reached during `BaseDeploymentTool.complete_request_async`) — runs inside a tool call and therefore inherits a timeout budget. |
@@ -399,7 +399,7 @@ IP-literal hosts (`https://1.2.3.4/...`) are not matchable via the allowlist. If
 ```mermaid
 flowchart TD
     subgraph Gate["resolve_reason() — once per fetch"]
-        A["start"] --> B{"env.allow?"}
+        A["start"] --> B{"env.enabled?"}
         B -->|"false"| F["admin"]
         B -->|"true"| C{"app.enabled?"}
         C -->|"None / true"| TG["allowed"]
@@ -449,7 +449,7 @@ Today, when `DialCompletionService._resolve_attachment` is handed a URL DIAL Cor
 
 - Which surfaces accept external URLs and which DIAL paths.
 - The role of `Deployment.features.url_attachments` in dispatch.
-- The two-tier egress policy: the `ALLOW_EXTERNAL_URL_FETCH` admin switch and the per-app `features.external_url_fetch.enabled` opt-out, plus the security envelope.
+- The two-tier egress policy: the `EXTERNAL_URL_FETCH_ENABLED` admin switch and the per-app `features.external_url_fetch.enabled` opt-out, plus the security envelope.
 - The list of blocked address ranges.
 
 `docs/agent.md` mentions the new modules in the DI module list and the new `_resolve_attachment` dispatch.
@@ -476,7 +476,7 @@ The MCP transformer already requires DIAL files for `dial_url: true` parameters 
 ### Default operator deployment (egress on)
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_ENABLED=true
 DEFAULT_FILE_LOADING_SIZE_LIMIT=10485760  # 10 MiB, also applies to external fetches
 ```
 
@@ -493,7 +493,7 @@ Per-app override of the size limit (already supported, no change):
 ### Egress disabled by admin (regulated tenant)
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=false  # default
+EXTERNAL_URL_FETCH_ENABLED=false  # default
 ```
 
 Behaviour:
@@ -506,7 +506,7 @@ Behaviour:
 ### Egress allowed by admin, disabled per app (security-sensitive app)
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_ENABLED=true
 ```
 
 App manifest:
@@ -528,7 +528,7 @@ Behaviour:
 ### Egress allowed by admin, default (typical case)
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_ENABLED=true
 ```
 
 App manifest omits `features.external_url_fetch` entirely. The resolver returns `allowed`; external fetches proceed under the security envelope. This is the path most apps take once an operator has decided to permit the egress surface.
@@ -536,7 +536,7 @@ App manifest omits `features.external_url_fetch` entirely. The resolver returns 
 ### Admin restricts external fetches to a vetted host list
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_ENABLED=true
 EXTERNAL_URL_FETCH_HOST_ALLOWLIST=example.com,*.public-cdn.net,partner.io
 ```
 
@@ -550,7 +550,7 @@ Behaviour:
 ### Builder narrows the allowlist for a high-trust app
 
 ```bash
-ALLOW_EXTERNAL_URL_FETCH=true
+EXTERNAL_URL_FETCH_ENABLED=true
 EXTERNAL_URL_FETCH_HOST_ALLOWLIST=example.com,*.public-cdn.net,partner.io
 ```
 
@@ -622,9 +622,9 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 
 ### Non-breaking changes
 
-- New env vars (`ALLOW_EXTERNAL_URL_FETCH`, `EXTERNAL_URL_FETCH_*`, including the newly-in-scope `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`) all have safe defaults; the admin cap is **off** by default and the host allowlist is **unset** by default (no admin-level host restriction once the cap is open). The new per-app `features.external_url_fetch` field defaults to absent, which the resolver treats as "follow the admin tier" — no existing manifest needs to be updated. Both `enabled` and `host_allowlist` sub-fields default to `None`.
+- New env vars (`EXTERNAL_URL_FETCH_ENABLED`, `EXTERNAL_URL_FETCH_*`, including the newly-in-scope `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`) all have safe defaults; the admin cap is **off** by default and the host allowlist is **unset** by default (no admin-level host restriction once the cap is open). The new per-app `features.external_url_fetch` field defaults to absent, which the resolver treats as "follow the admin tier" — no existing manifest needs to be updated. Both `enabled` and `host_allowlist` sub-fields default to `None`.
 - New `FileLoaderService`, `ExternalUrlFetcher`, and `DialFilePromoter` services in DI; downstream consumers (`_FileArgumentTransformer`, `FilePrefixHandlers`, `_PyInterpreterTool`, `DialCompletionService`) switch to them. Internal-only — no public type renames.
-- `DialFileService` loses `download_file` (callers migrate to `FileLoaderService.load`); `grant_permissions_to_files` stays. Internal-only — no public consumer.
+- File-prefix handlers and other bytes-only callers migrate from `DialFileService.download_file` to `FileLoaderService.load`. `DialFileService.download_file` itself retains its existing `(bytes, FileMetadata | None)` shape for `dial_files_tooling/` consumers that need the etag for `If-Match` semantics; unifying the two DIAL-download paths is tracked as a follow-up (`claude/issues/dial-download-path-unification.md`). Internal-only — no public consumer.
 - `_resolve_attachment` accepts external URLs.
 - The auto-generated `attachment_urls` parameter description on deployment tools is reworded to mention external URLs explicitly. The schema **shape** is unchanged (`array[string]`), but the schema **dump** in `docs/generated-app-schema.json` changes the description string.
 - The new `features.external_url_fetch` field (default-absent) lands in `docs/generated-app-schema.json` as a non-breaking addition; existing manifests need no update. Operators running schema diffs will see this delta and the description-string delta in the same `make dump_app_schema` regeneration.
@@ -636,8 +636,8 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 **New files:**
 
 - `src/quickapp/common/url_classification.py` — `UrlScheme` enum, `classify_url(url) -> UrlScheme`. Single source of truth for the DIAL-vs-external distinction.
-- `src/quickapp/common/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `ALLOW_EXTERNAL_URL_FETCH`, `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (parsed from a comma-separated list), redirect cap, connect timeout. Singleton.
-- `src/quickapp/common/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver` with two methods: `resolve_reason()` for the on/off gate and `resolve_host(host)` for the allowlist check. Request-scoped. Combines the admin tier (`ExternalFetchSettings.allow` + `host_allowlist`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled` + `host_allowlist`) into per-axis effective decisions; mirrors `FileLoadingSizeLimitResolver` for the singleton/request layout.
+- `src/quickapp/common/external_fetch_settings.py` — `ExternalFetchSettings` (`BaseSettings`) with `EXTERNAL_URL_FETCH_ENABLED`, `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (parsed from a comma-separated list), redirect cap, connect timeout. Singleton.
+- `src/quickapp/common/external_url_fetch_policy_resolver.py` — `ExternalUrlFetchPolicyResolver` with two methods: `resolve_reason()` for the on/off gate and `resolve_host(host)` for the allowlist check. Request-scoped. Combines the admin tier (`ExternalFetchSettings.enabled` + `host_allowlist`) and the builder tier (`ApplicationConfig.features.external_url_fetch.enabled` + `host_allowlist`) into per-axis effective decisions; mirrors `FileLoadingSizeLimitResolver` for the singleton/request layout.
 - `src/quickapp/common/host_pattern_match.py` — small pure helper `match_host(host, patterns) -> bool` implementing the exact-or-`*.suffix` matching rule used by both tiers. Single source of truth, easy to unit-test in isolation from the resolver.
 - `src/quickapp/file_transfer/_external_url_fetcher.py` — `ExternalUrlFetcher` with the shared security envelope; `ExternalFetchError` and `ExternalFetchDisabledError` co-located in the same module. Consumes `ExternalUrlFetchPolicyResolver` for the gate check. Request-scoped.
 - `src/quickapp/file_transfer/_file_loader_service.py` — `FileLoaderService.load(url)`. Request-scoped. Dispatches on `UrlScheme`; reuses `StateHolder` for per-request caching.
@@ -646,7 +646,7 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 **Modified files:**
 
 - `src/quickapp/config/application.py` — `Features` gains `external_url_fetch: ExternalUrlFetchConfig = Field(default_factory=ExternalUrlFetchConfig, ...)` (sibling of `file_loading`). `ExternalUrlFetchConfig` carries `enabled: bool | None = None` (on/off override) and `host_allowlist: list[str] | None = None` (per-app domain allowlist; intersects with the admin list, never expands it). Both default to "follow the admin tier".
-- `src/quickapp/dial_core_services/dial_file_service.py` — `download_file` removed; the DIAL-download body moves into a new request-scoped `DialDownloader` in the same directory, consumed by `FileLoaderService`. `grant_permissions_to_files` unchanged.
+- `src/quickapp/dial_core_services/dial_file_service.py` — bytes-only DIAL-download logic extracted into a new request-scoped `DialDownloader` in the same directory, consumed by `FileLoaderService`. `DialFileService.download_file` retained (with its `(bytes, FileMetadata | None)` tuple shape) for `dial_files_tooling/` callers needing `FileMetadata.etag`; unifying the two paths is tracked as a follow-up (`claude/issues/dial-download-path-unification.md`). `grant_permissions_to_files` unchanged.
 - `src/quickapp/dial_deployment_tooling/dial_completion_service.py` — `_resolve_attachment` becomes 4-branch (DIAL / external+supports / external+materialise / unsupported). `complete_request_async`, `__build_request_messages`, `__user_message_from_content_and_attachments`, `resolve_attachment_urls`, and `_resolve_attachment` all thread a new `supports_url_attachments: bool` parameter so every outbound attachment-list construction sees the flag.
 - `src/quickapp/dial_deployment_tooling/base_deployment_tool.py` — reads `self.tool_config.supports_url_attachments` once and passes it to `complete_request_async` (live call) and `resolve_attachment_urls` (history rebuild).
 - `src/quickapp/config/tools/deployment.py` (`DialDeploymentTool`) — gains `supports_url_attachments: bool = False`. Populated by `_convert_to_openai_tool_format`.

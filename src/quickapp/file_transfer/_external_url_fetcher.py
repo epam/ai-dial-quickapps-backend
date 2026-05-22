@@ -61,7 +61,7 @@ class ExternalFetchError(Exception):
 
 
 _DISABLED_DETAIL: dict[DisabledReason, str] = {
-    "admin": "External URL fetching is disabled by operator policy (ALLOW_EXTERNAL_URL_FETCH).",
+    "admin": "External URL fetching is disabled by operator policy (EXTERNAL_URL_FETCH_ENABLED).",
     "builder": (
         "External URL fetching is disabled by this app "
         "(features.external_url_fetch.enabled=false)."

@@ -9,13 +9,13 @@ class ExternalFetchSettings(BaseSettings):
 
     model_config = SettingsConfigDict()
 
-    allow: bool = Field(
+    enabled: bool = Field(
         default=False,
         description=(
             "Admin cap on external URL fetching. When false, no app may fetch "
             "external URLs regardless of its manifest."
         ),
-        alias="ALLOW_EXTERNAL_URL_FETCH",
+        alias="EXTERNAL_URL_FETCH_ENABLED",
     )
     host_allowlist: list[str] | None = Field(
         default=None,

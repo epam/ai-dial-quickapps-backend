@@ -107,7 +107,7 @@ class ExternalUrlFetchConfig(BaseModel):
         default=None,
         description=(
             "Per-app override for fetching external (non-DIAL) URLs. "
-            "`null` (default) defers to the admin env switch `ALLOW_EXTERNAL_URL_FETCH`. "
+            "`null` (default) defers to the admin env switch `EXTERNAL_URL_FETCH_ENABLED`. "
             "`false` opts this app out even when the admin allows it. "
             "`true` is a no-op when admin allows; the admin gate is a hard cap."
         ),
@@ -138,7 +138,7 @@ class Features(BaseModel):
         default_factory=ExternalUrlFetchConfig,
         description=(
             "Per-app override for fetching external (non-DIAL) URLs. "
-            "Operates within the admin cap set by `ALLOW_EXTERNAL_URL_FETCH`."
+            "Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
         ),
     )
     stage_display: StageDisplayConfig = Field(

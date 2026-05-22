@@ -8,13 +8,13 @@ from quickapp.config.application import ExternalUrlFetchConfig, Features, FileLo
 
 
 def _resolver(
-    admin_allow: bool = True,
+    admin_enabled: bool = True,
     app_enabled: bool | None = None,
     admin_host_allowlist: list[str] | None = None,
     app_host_allowlist: list[str] | None = None,
 ) -> ExternalUrlFetchPolicyResolver:
     settings = MagicMock(spec=ExternalFetchSettings)
-    settings.allow = admin_allow
+    settings.enabled = admin_enabled
     settings.host_allowlist = admin_host_allowlist
     app_config = MagicMock()
     app_config.features = Features(
@@ -29,37 +29,37 @@ def _resolver(
 
 @pytest.mark.parametrize("app_enabled", [None, True, False])
 def test_admin_disallow_overrides_any_app(app_enabled: bool | None):
-    assert _resolver(admin_allow=False, app_enabled=app_enabled).resolve_reason() == "admin"
+    assert _resolver(admin_enabled=False, app_enabled=app_enabled).resolve_reason() == "admin"
 
 
-def test_admin_allow_app_unset_is_allowed():
-    assert _resolver(admin_allow=True, app_enabled=None).resolve_reason() == "allowed"
+def test_admin_enabled_app_unset_is_allowed():
+    assert _resolver(admin_enabled=True, app_enabled=None).resolve_reason() == "allowed"
 
 
-def test_admin_allow_app_true_is_allowed():
-    assert _resolver(admin_allow=True, app_enabled=True).resolve_reason() == "allowed"
+def test_admin_enabled_app_true_is_allowed():
+    assert _resolver(admin_enabled=True, app_enabled=True).resolve_reason() == "allowed"
 
 
-def test_admin_allow_app_false_blocks_with_builder_reason():
-    assert _resolver(admin_allow=True, app_enabled=False).resolve_reason() == "builder"
+def test_admin_enabled_app_false_blocks_with_builder_reason():
+    assert _resolver(admin_enabled=True, app_enabled=False).resolve_reason() == "builder"
 
 
 def test_features_none_falls_back_to_admin():
     settings = MagicMock(spec=ExternalFetchSettings)
-    settings.allow = True
+    settings.enabled = True
     app_config = MagicMock()
     app_config.features = None
     assert ExternalUrlFetchPolicyResolver(settings, app_config).resolve_reason() == "allowed"
 
 
 def test_settings_default_is_disabled(monkeypatch):
-    monkeypatch.delenv("ALLOW_EXTERNAL_URL_FETCH", raising=False)
-    assert ExternalFetchSettings().allow is False
+    monkeypatch.delenv("EXTERNAL_URL_FETCH_ENABLED", raising=False)
+    assert ExternalFetchSettings().enabled is False
 
 
 def test_settings_reads_env_alias(monkeypatch):
-    monkeypatch.setenv("ALLOW_EXTERNAL_URL_FETCH", "true")
-    assert ExternalFetchSettings().allow is True
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_ENABLED", "true")
+    assert ExternalFetchSettings().enabled is True
 
 
 def test_settings_redirect_cap_default(monkeypatch):
@@ -137,7 +137,7 @@ def test_resolve_host_intersection_match():
 
 def test_resolve_host_features_none_consults_admin_only():
     settings = MagicMock(spec=ExternalFetchSettings)
-    settings.allow = True
+    settings.enabled = True
     settings.host_allowlist = ["example.com"]
     app_config = MagicMock()
     app_config.features = None

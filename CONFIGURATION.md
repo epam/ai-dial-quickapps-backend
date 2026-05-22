@@ -243,6 +243,7 @@ The project contains predefined configs of application and predefined tools
 | orchestrator | Yes      | Object       | Configurations for Agent (model, system prompt, etc.). [Orchestrator configuration](#orchestrator-configuration)                                      | -                | -             |
 | contexts     | Yes      | List[Object] | The list of contexts. [Contexts configuration](#contexts-configuration)                                                                               | -                | -             |
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
+| features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, etc.). [Features configuration](#features-configuration)                  | -                | `{}`          |
 
 ### Orchestrator configuration
 
@@ -359,6 +360,64 @@ The context loaded by URL:
 ```
 
 </details>
+
+### Features configuration
+
+Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
+fields fall back to the deployment-wide defaults configured via environment variables.
+
+| Field                | Required | Type   | Description                                                                                                                  | Default Value |
+|----------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `external_url_fetch` | No       | Object | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration). | `{}`          |
+
+#### External URL fetch configuration
+
+External URL fetching is gated by **two tiers** that compose: an admin tier (env vars under
+`EXTERNAL_URL_FETCH_*`, see [README.md](./README.md#environment-variables)) and a builder tier
+(this `features.external_url_fetch` object). The admin tier is a hard cap — a per-app override
+can only narrow it, never expand it. The deployment-handoff branch (DIAL deployments advertising
+`features.url_attachments`) is never gated: the deployment fetches the URL itself, so no
+QuickApps egress happens.
+
+Builder-tier fields:
+
+| Field            | Required | Type            | Description                                                                                                                                                                                                                                                                | Default Value |
+|------------------|----------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | No       | Boolean or null | Per-app override of the on/off gate. `null` (default) defers to the admin env switch. `false` opts this app out even when the admin allows. `true` is a no-op when admin allows; the admin gate is a hard cap.                                                              | `null`        |
+| `host_allowlist` | No       | Array[String] or null | Per-app override of the allowed hosts. `null` (default) defers to the admin env var. A non-empty list **narrows** the admin list (intersection) — a host must be in both lists to be allowed. An explicit empty list locks this app out of all hosts. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. | `null`        |
+
+<details>
+<summary><b>External URL fetch configuration JSON sample</b></summary>
+
+Opt this app out even when the admin allows external fetches:
+
+```json
+{
+  "features": {
+    "external_url_fetch": {
+      "enabled": false
+    }
+  }
+}
+```
+
+Narrow the admin allowlist for a high-trust app (admin permits `example.com` and `partner.io`,
+this app only allows `example.com`):
+
+```json
+{
+  "features": {
+    "external_url_fetch": {
+      "host_allowlist": ["example.com"]
+    }
+  }
+}
+```
+
+</details>
+
+See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL classification,
+SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
 
 ### Tool sets configuration
 

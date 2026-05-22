@@ -130,7 +130,7 @@ Before executing the tool call, perform this check:
 
 External `https://` URLs are valid file references — `attachment_urls` accepts them, and `file:base64::https://...`
 / `file:text::https://...` will inline external content. They may fail with a clear error when the operator has
-disabled external egress (`ALLOW_EXTERNAL_URL_FETCH=false`) or the per-app config has opted out
+disabled external egress (`EXTERNAL_URL_FETCH_ENABLED=false`) or the per-app config has opted out
 (`features.external_url_fetch.enabled: false`). When that happens:
 
 *   For `file:base64::https://...` and `file:text::https://...`, retry by asking the user to upload the file to DIAL
