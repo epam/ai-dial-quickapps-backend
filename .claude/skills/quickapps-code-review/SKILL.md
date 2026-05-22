@@ -1,5 +1,5 @@
 ---
-name: code-review
+name: quickapps-code-review
 description: Use before creating a PR or claiming a change is ready (or on explicit user invocation). Self-reviews the current diff against the patterns this team's reviewers consistently flag.
 allowed-tools: Read Grep Glob LSP Bash(git diff:*) Bash(git log:*) Bash(git show:*) Bash(git status:*) Bash(git rev-parse:*) Bash(date:*) Bash(gh pr view:*) Bash(gh pr diff:*) Bash(gh pr list:*) Write(docs/reviews/*) Bash(mkdir -p docs/reviews)
 argument-hint: "[pr|uncommitted]"
@@ -10,7 +10,7 @@ context: fork
 agent: general-purpose
 ---
 
-# code-review
+# quickapps-code-review
 
 Self-review the current diff against the recurring feedback this team's reviewers actually leave. Catches it before they do.
 
@@ -166,7 +166,7 @@ Every finding is a checkbox — the author ticks them off as fixes land.
 This checklist drifts as conventions evolve. At the start of every review run, check freshness:
 
 ```bash
-git log -1 --since='7 days ago' --format=%h -- .claude/skills/code-review/SKILL.md
+git log -1 --since='7 days ago' --format=%h -- .claude/skills/quickapps-code-review/SKILL.md
 ```
 
 - **Non-empty output** → fresh. Skip; don't load `references/REFRESHING.md`.

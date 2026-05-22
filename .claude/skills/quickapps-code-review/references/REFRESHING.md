@@ -1,4 +1,4 @@
-# Refreshing the code-review checklist
+# Refreshing the quickapps-code-review checklist
 
 Procedure for refreshing the `SKILL.md` checklist from recent review comments. Invoked from `SKILL.md` when its staleness check exceeds the threshold.
 
