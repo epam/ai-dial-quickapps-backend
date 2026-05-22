@@ -2,6 +2,7 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client.types.metadata import FileMetadata
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
@@ -24,6 +25,12 @@ def _settings() -> MagicMock:
     return s
 
 
+def _metadata(etag: str = "abc123") -> MagicMock:
+    md = MagicMock(spec=FileMetadata)
+    md.etag = etag
+    return md
+
+
 def _make_loader(
     dial_downloader: MagicMock | None = None,
     fetcher: MagicMock | None = None,
@@ -40,7 +47,7 @@ def _make_loader(
 @pytest.mark.asyncio
 async def test_dial_url_dispatches_to_dial_downloader():
     dial_dl = MagicMock(spec=DialDownloader)
-    dial_dl.fetch = AsyncMock(return_value=b"dial-bytes")
+    dial_dl.fetch = AsyncMock(return_value=(b"dial-bytes", _metadata()))
     fetcher = MagicMock(spec=ExternalUrlFetcher)
     fetcher.fetch = AsyncMock()
 
@@ -79,7 +86,7 @@ async def test_unsupported_url_raises_invalid_param():
 @pytest.mark.asyncio
 async def test_second_call_returns_from_state_holder_cache():
     dial_dl = MagicMock(spec=DialDownloader)
-    dial_dl.fetch = AsyncMock(return_value=b"first")
+    dial_dl.fetch = AsyncMock(return_value=(b"first", _metadata()))
     holder = StateHolder()
 
     loader = _make_loader(dial_downloader=dial_dl, state_holder=holder)
@@ -91,9 +98,44 @@ async def test_second_call_returns_from_state_holder_cache():
 
 
 @pytest.mark.asyncio
+async def test_dial_load_populates_state_holder_metadata():
+    """Regression: DialFileService.download_file readers (e.g. _edit_file_tool
+    for the etag) must see metadata when the bytes were cached by the loader.
+    Without this, edit_file silently falls back to if_none_match="*" and the
+    DIAL upload trips an EtagMismatchError surfaced to the agent as a
+    confusing "file changed concurrently; re-read and retry"."""
+    metadata = _metadata(etag="etag-xyz")
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(return_value=(b"first", metadata))
+    holder = StateHolder()
+
+    loader = _make_loader(dial_downloader=dial_dl, state_holder=holder)
+    await loader.load("files/x.pdf")
+
+    assert holder.get_file_data(url="files/x.pdf") == b"first"
+    assert holder.get_file_metadata("files/x.pdf") is metadata
+
+
+@pytest.mark.asyncio
+async def test_external_load_leaves_state_holder_metadata_unset():
+    """External fetches don't have a DIAL FileMetadata; the cache entry should
+    just carry bytes, not a placeholder metadata object."""
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock(
+        return_value=FetchedBytes(data=b"ext", content_type="text/plain", filename="x.txt")
+    )
+    holder = StateHolder()
+    loader = _make_loader(fetcher=fetcher, state_holder=holder)
+    await loader.load("https://example.com/x.txt")
+
+    assert holder.get_file_data(url="https://example.com/x.txt") == b"ext"
+    assert holder.get_file_metadata("https://example.com/x.txt") is None
+
+
+@pytest.mark.asyncio
 async def test_dial_absolute_url_classified_as_dial_branch():
     dial_dl = MagicMock(spec=DialDownloader)
-    dial_dl.fetch = AsyncMock(return_value=b"dial")
+    dial_dl.fetch = AsyncMock(return_value=(b"dial", _metadata()))
     fetcher = MagicMock(spec=ExternalUrlFetcher)
     fetcher.fetch = AsyncMock()
 
@@ -109,11 +151,12 @@ async def test_dial_absolute_url_classified_as_dial_branch():
 async def test_concurrent_load_same_url_dedupes_fetch():
     fetch_started = asyncio.Event()
     release_fetch = asyncio.Event()
+    md = _metadata()
 
-    async def slow_fetch(_url: str) -> bytes:
+    async def slow_fetch(_url: str) -> tuple[bytes, MagicMock]:
         fetch_started.set()
         await release_fetch.wait()
-        return b"dial-bytes"
+        return b"dial-bytes", md
 
     dial_dl = MagicMock(spec=DialDownloader)
     dial_dl.fetch = AsyncMock(side_effect=slow_fetch)
@@ -134,7 +177,7 @@ async def test_concurrent_load_same_url_dedupes_fetch():
 @pytest.mark.asyncio
 async def test_failed_load_allows_retry():
     dial_dl = MagicMock(spec=DialDownloader)
-    dial_dl.fetch = AsyncMock(side_effect=[RuntimeError("boom"), b"second"])
+    dial_dl.fetch = AsyncMock(side_effect=[RuntimeError("boom"), (b"second", _metadata())])
 
     loader = _make_loader(dial_downloader=dial_dl)
 

@@ -295,9 +295,10 @@ class TestDialFileServiceHttpCalls:
             dial_client=_dial_client(),
             size_limit_resolver=_file_loading_size_limit_resolver(),
         )
-        result = await downloader.fetch("files/my-bucket/test.txt")
+        data, metadata = await downloader.fetch("files/my-bucket/test.txt")
 
-        assert result == b"hello world"
+        assert data == b"hello world"
+        assert metadata is not None
         urls = [str(r.url) for r in httpx_mock.get_requests()]
         assert any("v1/metadata/files/my-bucket/test.txt" in u for u in urls)
         assert any("v1/files/my-bucket/test.txt" in u for u in urls)

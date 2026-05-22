@@ -2,9 +2,11 @@ import asyncio
 import ipaddress
 import logging
 import mimetypes
+import re
 from email.message import Message
 from hashlib import sha256
 from typing import Literal
+from urllib.parse import unquote
 
 import httpx
 from injector import inject
@@ -17,7 +19,7 @@ from quickapp.common.external_url_fetch_policy_resolver import (
 )
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.common.utils import filename_from_url_path
+from quickapp.common.utils import filename_from_url_path, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -214,20 +216,63 @@ def _parse_content_disposition_filename(header_value: str | None) -> str | None:
     return None
 
 
+_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def _sanitize_external_filename(name: str) -> str:
+    """Return a filename safe to interpolate into ``files/{bucket}/{name}``.
+
+    ``Content-Disposition`` and URL paths come from the upstream server (i.e.
+    untrusted bytes); without sanitisation a malicious upstream could ship
+    ``filename="../../poison.pdf"`` and break out of the upload bucket. Returns
+    an empty string when nothing usable remains, signalling to the caller that
+    it should fall back to the placeholder filename.
+
+    Steps:
+    * URL-decode the input once so ``%2F`` / ``%5C`` payloads can't smuggle a
+      path separator past the segment split (the URL-path branch already
+      unquotes via ``filename_from_url_path``; running it here too keeps the
+      Content-Disposition branch symmetric)
+    * keep only the last path segment (split on both ``/`` and ``\\``)
+    * drop C0/C1 control characters and DEL — ``\\x00``-``\\x1f``,
+      ``\\x7f``-``\\x9f``
+    * apply :func:`sanitize_filename` (collapses ``\\ / : * ? " < > |`` and
+      whitespace to ``-``)
+    * reject results that are entirely dots (``.``, ``..``, ``...``) — those
+      are path-traversal segments, not filenames. Single-dot prefixes on
+      otherwise normal names (``.bashrc``, ``.env``) are preserved.
+    """
+    decoded = unquote(name)
+    last_segment = decoded.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1]
+    no_controls = _CONTROL_CHARS_RE.sub("", last_segment)
+    sanitized = sanitize_filename(no_controls).strip()
+    if not sanitized or all(c == "." for c in sanitized):
+        return ""
+    return sanitized
+
+
 def _placeholder_filename(url: str, content_type: str | None) -> str:
     digest = sha256(url.encode("utf-8")).hexdigest()[:16]
-    extension = mimetypes.guess_extension(content_type) if content_type else None
+    # ``guess_extension`` returns ``None`` for parameterised types
+    # (e.g. ``text/plain; charset=utf-8``); strip parameters first so a
+    # well-known type still produces an extension.
+    base_type = content_type.split(";", 1)[0].strip() if content_type else None
+    extension = mimetypes.guess_extension(base_type) if base_type else None
     return f"external-{digest}{extension or ''}"
 
 
 def _derive_filename(response: httpx.Response, original_url: str, content_type: str | None) -> str:
     cd = _parse_content_disposition_filename(response.headers.get("content-disposition"))
     if cd:
-        return cd
+        sanitized = _sanitize_external_filename(cd)
+        if sanitized:
+            return sanitized
     final_url = str(response.url) if response.url else original_url
     from_path = filename_from_url_path(final_url)
     if from_path:
-        return from_path
+        sanitized = _sanitize_external_filename(from_path)
+        if sanitized:
+            return sanitized
     return _placeholder_filename(original_url, content_type)
 
 

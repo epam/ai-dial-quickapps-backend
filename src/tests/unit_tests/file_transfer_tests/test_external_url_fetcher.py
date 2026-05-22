@@ -13,6 +13,7 @@ from quickapp.file_transfer._external_url_fetcher import (
     FetchedBytes,
     _derive_filename,
     _placeholder_filename,
+    _sanitize_external_filename,
     _SsrfGuardTransport,
 )
 from tests.unit_tests.common.common import noop_timeout_resolver
@@ -335,7 +336,7 @@ def test_filename_falls_back_to_url_path():
         request=httpx.Request("GET", "https://example.com/path/Foo%20bar.pdf"),
     )
     assert (
-        _derive_filename(response, "https://example.com/x.bin", "application/pdf") == "Foo bar.pdf"
+        _derive_filename(response, "https://example.com/x.bin", "application/pdf") == "Foo-bar.pdf"
     )
 
 
@@ -350,3 +351,118 @@ def test_placeholder_filename_extension_falls_back_to_empty():
     out = _placeholder_filename("https://example.com/x", None)
     assert out.startswith("external-")
     assert not out.endswith(".")  # no trailing dot from a missing extension
+
+
+def test_placeholder_filename_strips_content_type_parameters():
+    # ``mimetypes.guess_extension`` returns ``None`` for parameterised types
+    # like ``application/pdf; charset=binary``; strip parameters first so the
+    # placeholder still gets a useful extension.
+    out = _placeholder_filename("https://example.com/x", "application/pdf; charset=binary")
+    assert out.endswith(".pdf")
+
+
+def test_placeholder_filename_handles_whitespace_around_parameters():
+    out = _placeholder_filename("https://example.com/x", "text/plain ; charset=utf-8")
+    assert out.endswith(".txt")
+
+
+class TestSanitizeExternalFilename:
+    """Untrusted Content-Disposition / URL-path filenames feed straight into
+    ``files/{bucket}/{filename}`` on upload; sanitisation must keep path
+    components, control chars, and leading-dot escapes out of the upload URL."""
+
+    def test_strips_posix_path_traversal(self):
+        assert _sanitize_external_filename("../../poison.pdf") == "poison.pdf"
+
+    def test_strips_windows_path_traversal(self):
+        assert _sanitize_external_filename("..\\..\\poison.pdf") == "poison.pdf"
+
+    def test_mixed_separator_takes_last_segment(self):
+        assert _sanitize_external_filename("a/b\\c/d.pdf") == "d.pdf"
+
+    def test_strips_c0_control_characters(self):
+        # NUL, newline, carriage return, DEL.
+        assert _sanitize_external_filename("foo\x00bar\nbaz\r\x7f.pdf") == "foobarbaz.pdf"
+
+    def test_strips_c1_control_characters(self):
+        # C1 controls (U+0080-U+009F) are not valid in a DIAL upload URL —
+        # they would either be rejected at parse time or misrender downstream.
+        assert _sanitize_external_filename("foo\x80bar\x9f.pdf") == "foobar.pdf"
+
+    def test_preserves_legitimate_dotfiles(self):
+        # Single-dot prefixes on real filenames are not traversal segments.
+        assert _sanitize_external_filename(".bashrc") == ".bashrc"
+        assert _sanitize_external_filename(".env") == ".env"
+        assert _sanitize_external_filename(".gitignore") == ".gitignore"
+
+    def test_preserves_multi_dot_prefixed_filenames(self):
+        # ``...hidden.pdf`` is a weird name but not a traversal segment —
+        # only standalone ``.`` and ``..`` are dangerous.
+        assert _sanitize_external_filename("...hidden.pdf") == "...hidden.pdf"
+
+    def test_dot_only_collapses_to_empty(self):
+        assert _sanitize_external_filename("..") == ""
+        assert _sanitize_external_filename(".") == ""
+        assert _sanitize_external_filename("./") == ""
+        assert _sanitize_external_filename("...") == ""
+
+    def test_url_decoded_separators_in_content_disposition(self):
+        # Plain ``filename="..."`` form does not percent-decode via
+        # email.message — the sanitiser must decode itself or %2F survives
+        # the segment split and lands in the bucket URL untouched.
+        assert _sanitize_external_filename("..%2F..%2Fposion.pdf") == "posion.pdf"
+        assert _sanitize_external_filename("..%5C..%5Cposion.pdf") == "posion.pdf"
+
+    def test_trailing_slash_keeps_safe_filename(self):
+        # Some servers quote a trailing slash by mistake; ``rsplit('/',1)[-1]``
+        # on ``"document.pdf/"`` returns ``""`` without the rstrip.
+        assert _sanitize_external_filename("document.pdf/") == "document.pdf"
+
+    def test_whitespace_replaced_with_dash(self):
+        assert _sanitize_external_filename("hello world.pdf") == "hello-world.pdf"
+
+    def test_disallowed_shell_chars_replaced(self):
+        # sanitize_filename swaps \\ / : * ? " < > | for '-' before the
+        # leading-dot strip; the leading segment is already taken first.
+        assert _sanitize_external_filename('a:b*c?d"e<f>g|h.pdf') == "a-b-c-d-e-f-g-h.pdf"
+
+    def test_empty_input_returns_empty(self):
+        assert _sanitize_external_filename("") == ""
+
+    def test_only_separators_returns_empty(self):
+        assert _sanitize_external_filename("///") == ""
+
+
+def test_derive_filename_falls_back_to_placeholder_when_cd_sanitises_to_empty():
+    """A malicious upstream Content-Disposition that's pure separators / dots
+    must not produce an empty filename — we fall through to the URL path, and
+    if that also sanitises empty, to the hash placeholder."""
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", "https://example.com/"),
+        headers={"content-disposition": 'attachment; filename="../../.."'},
+    )
+    out = _derive_filename(response, "https://example.com/", "application/pdf")
+    assert out.startswith("external-")
+    assert out.endswith(".pdf")
+
+
+def test_derive_filename_blocks_path_traversal_in_content_disposition():
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", "https://example.com/x"),
+        headers={"content-disposition": 'attachment; filename="../../etc/passwd"'},
+    )
+    assert _derive_filename(response, "https://example.com/x", None) == "passwd"
+
+
+def test_derive_filename_blocks_path_traversal_in_url_path():
+    # Server redirects (or the original URL) carries a traversal payload in
+    # the path; the response final URL is what feeds the path fallback.
+    response = httpx.Response(
+        200,
+        request=httpx.Request("GET", "https://example.com/safe/..%2F..%2Fposion.pdf"),
+    )
+    # filename_from_url_path URL-decodes; the result starts with `..` which we
+    # split off and discard.
+    assert _derive_filename(response, "https://example.com/x", None) == "posion.pdf"

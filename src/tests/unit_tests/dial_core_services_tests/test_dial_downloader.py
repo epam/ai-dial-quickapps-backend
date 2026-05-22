@@ -44,13 +44,14 @@ def _make_downloader(
 
 
 @pytest.mark.asyncio
-async def test_fetch_returns_bytes():
+async def test_fetch_returns_bytes_and_metadata():
     client = _make_mock_dial_client(content_length=100, file_content=b"hello")
     downloader = _make_downloader(dial_client=client)
 
-    result = await downloader.fetch("files/x.txt")
+    data, metadata = await downloader.fetch("files/x.txt")
 
-    assert result == b"hello"
+    assert data == b"hello"
+    assert metadata is client.files.get_metadata.return_value
     client.files.get_metadata.assert_awaited_once_with("files/x.txt")
     client.files.download.assert_awaited_once_with("files/x.txt")
 

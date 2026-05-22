@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
@@ -58,8 +59,9 @@ class FileLoaderService:
 
     async def __do_load(self, url: str, parameter_name: str) -> bytes:
         scheme = classify_url(url, self.__dial_url)
+        metadata: FileMetadata | None = None
         if scheme == UrlScheme.DIAL:
-            data = await self.__dial_downloader.fetch(url)
+            data, metadata = await self.__dial_downloader.fetch(url)
         elif scheme == UrlScheme.EXTERNAL:
             try:
                 fetched = await self.__external_fetcher.fetch(url)
@@ -71,5 +73,8 @@ class FileLoaderService:
         else:
             raise unsupported_scheme_error(url, parameter_name)
 
-        self.__state_holder.store_file_data(url, data)
+        # Store metadata alongside the bytes on the DIAL branch so a later
+        # DialFileService.download_file cache-hit returns a real FileMetadata
+        # (callers like _edit_file_tool need metadata.etag for If-Match).
+        self.__state_holder.store_file_data(url, data, metadata)
         return data
