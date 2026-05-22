@@ -170,7 +170,6 @@ class _GetContentTool(StagedBaseTool):
             display = self._tool_config.display
             defer_close = bool(display and display.stage and display.stage.defer_close)
             if defer_close:
-                assert tool_call_id is not None
                 sw = stage_wrapper
                 res = result
 

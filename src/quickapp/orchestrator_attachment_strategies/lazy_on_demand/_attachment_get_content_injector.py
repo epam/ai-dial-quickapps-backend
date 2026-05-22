@@ -107,8 +107,10 @@ class _AttachmentGetContentInjector(MessagesTransformer):
             return messages
 
         last_user_idx, last_user_msg = last_user
-        assert last_user_msg.custom_content is not None
-        attachments = list(last_user_msg.custom_content.attachments or [])
+        custom_content = last_user_msg.custom_content
+        if custom_content is None:
+            return messages
+        attachments = list(custom_content.attachments or [])
         if not attachments:
             return messages
 
