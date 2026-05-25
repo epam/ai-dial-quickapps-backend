@@ -295,9 +295,9 @@ class TestDialFileServiceHttpCalls:
             state_holder=StateHolder(),
             size_limit_resolver=_file_loading_size_limit_resolver(),
         )
-        result = await svc.download_file("files/my-bucket/test.txt")
+        data, _ = await svc.download_file("files/my-bucket/test.txt")
 
-        assert result == b"hello world"
+        assert data == b"hello world"
         urls = [str(r.url) for r in httpx_mock.get_requests()]
         assert any("v1/metadata/files/my-bucket/test.txt" in u for u in urls)
         assert any("v1/files/my-bucket/test.txt" in u for u in urls)

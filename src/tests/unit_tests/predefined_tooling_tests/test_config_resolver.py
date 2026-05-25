@@ -1,10 +1,15 @@
+import json
 from copy import deepcopy
 from unittest.mock import MagicMock
 
 import pytest
 
 from quickapp.common.exceptions import ConfigResolutionException
-from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
+from quickapp.config.predefined_content_provider import (
+    ContentType,
+    PredefinedContentProvider,
+    PredefinedSettings,
+)
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.predefined import PredefinedTool
@@ -383,3 +388,84 @@ class TestResolveConfigPartialTolerance:
 
         assert len(result.tool_sets) == 1
         assert context.exceptions == []
+
+
+class TestGetDefaultConfigurationResolved:
+    """``get_default_configuration`` expands predefined toolsets and predefined tools."""
+
+    @staticmethod
+    def _resolver_with_extra_default(tmp_path) -> PredefinedConfigResolver:
+        settings = PredefinedSettings(extra_paths=[str(tmp_path)])
+        provider = PredefinedContentProvider(settings)
+        context = _PredefinedToolingContext()
+        ctx_provider = MagicMock()
+        ctx_provider.get.return_value = context
+        return PredefinedConfigResolver(provider, ctx_provider)
+
+    def test_expands_predefined_toolset(self, tmp_path):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"tool_sets": [{"type": "predefined", "template_name": "weather"}]}',
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        cfg = resolver.get_default_configuration()
+        assert len(cfg["tool_sets"]) == 1
+        assert cfg["tool_sets"][0]["type"] == "rest-api"
+        assert cfg["tool_sets"][0]["name"] == "Weather rest-api toolset"
+
+    def test_expands_predefined_tools_in_deployment_toolset(self, tmp_path):
+        tool_sets = [
+            {
+                "name": "sample",
+                "type": "dial-deployment",
+                "tools": [{"type": "predefined-tool", "template_name": "dial_rag"}],
+            }
+        ]
+        (tmp_path / "default_configuration.json").write_text(
+            json.dumps({"tool_sets": tool_sets}),
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        cfg = resolver.get_default_configuration()
+        assert len(cfg["tool_sets"]) == 1
+        assert cfg["tool_sets"][0]["type"] == "dial-deployment"
+        tools = cfg["tool_sets"][0]["tools"]
+        assert len(tools) == 1
+        assert tools[0]["type"] == "deployment-tool"
+
+    def test_invalid_tool_sets_type_left_unchanged(self, tmp_path, caplog):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"tool_sets": "broken", "contexts": []}',
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        with caplog.at_level("WARNING"):
+            cfg = resolver.get_default_configuration()
+        assert cfg["tool_sets"] == "broken"
+        assert cfg["contexts"] == []
+
+    def test_does_not_mutate_provider_cache(self, tmp_path):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"tool_sets": [{"type": "predefined", "template_name": "weather"}]}',
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        provider = resolver._provider
+        raw_tool_sets = provider.get_default_configuration()["tool_sets"]
+        assert raw_tool_sets[0]["type"] == "predefined"
+
+        resolver.get_default_configuration()
+        resolver.get_default_configuration()
+
+        assert provider.get_default_configuration()["tool_sets"] == raw_tool_sets
+
+    def test_skips_unknown_predefined_toolset(self, tmp_path, caplog):
+        (tmp_path / "default_configuration.json").write_text(
+            '{"tool_sets": [{"type": "predefined", "template_name": "no_such_toolset"}]}',
+            encoding="utf-8",
+        )
+        resolver = self._resolver_with_extra_default(tmp_path)
+        with caplog.at_level("WARNING"):
+            cfg = resolver.get_default_configuration()
+        assert cfg["tool_sets"] == []
+        assert any("Skipping toolset" in r.message for r in caplog.records)

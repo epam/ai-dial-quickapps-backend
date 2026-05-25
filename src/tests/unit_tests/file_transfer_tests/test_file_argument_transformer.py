@@ -21,14 +21,14 @@ class TestFileArgumentTransformer:
     @pytest.mark.asyncio
     async def test_base64_prefix(self, transformer, mock_file_service):
         raw = b"hello world"
-        mock_file_service.download_file.return_value = raw
+        mock_file_service.download_file.return_value = (raw, None)
         result = await transformer.transform({"data": "file:base64::files/test.bin"})
         assert result["data"] == base64.b64encode(raw).decode()
         mock_file_service.download_file.assert_called_once_with("files/test.bin")
 
     @pytest.mark.asyncio
     async def test_text_prefix(self, transformer, mock_file_service):
-        mock_file_service.download_file.return_value = b"hello text"
+        mock_file_service.download_file.return_value = (b"hello text", None)
         result = await transformer.transform({"content": "file:text::files/test.txt"})
         assert result["content"] == "hello text"
 
@@ -55,7 +55,7 @@ class TestFileArgumentTransformer:
 
     @pytest.mark.asyncio
     async def test_multiple_file_params(self, transformer, mock_file_service):
-        mock_file_service.download_file.return_value = b"content"
+        mock_file_service.download_file.return_value = (b"content", None)
         result = await transformer.transform(
             {
                 "a": "file:text::files/a.txt",
@@ -69,7 +69,7 @@ class TestFileArgumentTransformer:
 
     @pytest.mark.asyncio
     async def test_case_insensitive_prefix(self, transformer, mock_file_service):
-        mock_file_service.download_file.return_value = b"data"
+        mock_file_service.download_file.return_value = (b"data", None)
         result = await transformer.transform({"x": "file:TEXT::files/test.txt"})
         assert result["x"] == "data"
 
@@ -80,7 +80,7 @@ class TestFileArgumentTransformer:
 
     @pytest.mark.asyncio
     async def test_list_with_multiple_file_references(self, transformer, mock_file_service):
-        mock_file_service.download_file.return_value = b"content"
+        mock_file_service.download_file.return_value = (b"content", None)
         result = await transformer.transform(
             {
                 "docs": [
@@ -96,7 +96,7 @@ class TestFileArgumentTransformer:
 
     @pytest.mark.asyncio
     async def test_list_with_mixed_file_and_plain_strings(self, transformer, mock_file_service):
-        mock_file_service.download_file.return_value = b"data"
+        mock_file_service.download_file.return_value = (b"data", None)
         result = await transformer.transform(
             {"items": ["file:base64::files/img.png", "plain string", "another plain"]}
         )
