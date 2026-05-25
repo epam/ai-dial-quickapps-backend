@@ -21,6 +21,7 @@ class ContentType(StrEnum):
     TOOL = "tool"
     TOOLSET = "toolset"
     SKILL = "skills"
+    DEFAULT_CONFIGURATION = "default_configuration"
 
     @property
     def file_glob(self) -> str:
@@ -66,6 +67,7 @@ class PredefinedContentProvider:
         self.__text_store: dict[ContentType, dict[str, str]] = {ct: {} for ct in ContentType}
         self.__json_store: dict[ContentType, dict[str, Any]] = {ct: {} for ct in ContentType}
         self.__layers_info: list[LayerInfo] = []
+        self.__default_configuration: dict[str, Any] = {}
 
         layers = self.__resolve_layers(settings)
         self.__load_all(layers)
@@ -107,6 +109,9 @@ class PredefinedContentProvider:
     def get_layers_info(self) -> list[LayerInfo]:
         """Return diagnostic info about all resolved layers."""
         return list(self.__layers_info)
+
+    def get_default_configuration(self) -> dict[str, Any]:
+        return dict(self.__default_configuration)
 
     # ------------------------------------------------------------------
     # Layer resolution
@@ -173,24 +178,66 @@ class PredefinedContentProvider:
             overrides: dict[ContentType, list[str]] = {}
 
             for ct in ContentType:
-                entries = self.__scan_entries(layer_path / ct.value, ct)
+                entries = self.__entries_for_layer(layer_path, ct)
                 if not entries:
                     continue
 
                 layer_overrides: list[str] = []
+                loaded = 0
                 for name, file_path in entries:
                     if name in seen[ct]:
                         layer_overrides.append(name)
-                    self.__read_file(ct, file_path, layer_path, name_override=name)
+                    if ct == ContentType.DEFAULT_CONFIGURATION:
+                        if not self.__read_default_configuration_fragment(
+                            file_path, layer_path, name
+                        ):
+                            continue
+                    else:
+                        self.__read_file(ct, file_path, layer_path, name_override=name)
                     seen[ct].add(name)
+                    loaded += 1
 
-                counts[ct] = len(entries)
+                counts[ct] = loaded
                 if layer_overrides:
                     overrides[ct] = layer_overrides
 
             self.__layers_info.append(
                 LayerInfo(path=layer_path, content_counts=counts, overrides=overrides)
             )
+
+    def __entries_for_layer(self, layer_path: Path, ct: ContentType) -> list[tuple[str, Path]]:
+        """Return (stem, path) entries for one content type in a layer."""
+        if ct == ContentType.DEFAULT_CONFIGURATION:
+            path = layer_path / "default_configuration.json"
+            return [("default_configuration", path)] if path.is_file() else []
+        return self.__scan_entries(layer_path / ct.value, ct)
+
+    def __read_default_configuration_fragment(
+        self, file_path: Path, layer_path: Path, name: str
+    ) -> bool:
+        """Load layer default configuration; returns False when the file is skipped."""
+        try:
+            with file_path.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+            logger.error(
+                "Failed to read default_configuration.json in layer %s: %s. "
+                "Treating this file as empty.",
+                layer_path,
+                e,
+            )
+            return False
+        if not isinstance(data, dict):
+            logger.error(
+                "default_configuration.json in layer %s must be a JSON object, got %s. "
+                "Treating this file as empty.",
+                layer_path,
+                type(data).__name__,
+            )
+            return False
+        self.__json_store[ContentType.DEFAULT_CONFIGURATION][name] = data
+        self.__default_configuration.update(data)
+        return True
 
     @staticmethod
     def __scan_entries(sub_dir: Path, ct: ContentType) -> list[tuple[str, Path]]:
