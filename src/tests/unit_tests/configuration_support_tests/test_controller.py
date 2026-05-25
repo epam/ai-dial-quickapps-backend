@@ -17,20 +17,28 @@ VALID_SKILL_CONTENT = (
 BASE_URL = "http://test"
 SKILLS_URL = "/v1/configuration-support/skills"
 VALIDATE_URL = "/v1/configuration-support/skills/validate"
+DEFAULT_CONFIGURATION_URL = "/v1/configuration-support/default-configuration"
 
 
 def _make_controller(
     skills: list[SkillMetadata] | None = None,
+    *,
+    default_configuration: dict | None = None,
+    config_resolver: MagicMock | None = None,
 ) -> _Controller:
     skills_provider = MagicMock(spec=AgentSkillsProvider)
     skills_provider.get_all_skills.return_value = skills or []
+
+    resolver = config_resolver or MagicMock(spec=PredefinedConfigResolver)
+    if default_configuration is not None:
+        resolver.get_default_configuration.return_value = default_configuration
 
     dial_settings = MagicMock()
     dial_settings.url = "https://dial.example.com"
     dial_settings.api_version = "2025-01-01-preview"
 
     return _Controller(
-        config_resolver=MagicMock(spec=PredefinedConfigResolver),
+        config_resolver=resolver,
         service=MagicMock(spec=ToolConfigCoreService),
         skills_provider=skills_provider,
         dial_settings=dial_settings,
@@ -234,3 +242,15 @@ class TestValidateSkill:
 
         assert response.status_code == 200
         assert response.json()["name"] == long_name
+
+
+@pytest.mark.asyncio
+async def test_get_default_configuration_returns_resolver_payload():
+    payload = {"starters": ["Hi"]}
+    app = _make_app(_make_controller(default_configuration=payload))
+
+    async with AsyncClient(transport=ASGITransport(app=app), base_url=BASE_URL) as client:
+        response = await client.get(DEFAULT_CONFIGURATION_URL)
+
+    assert response.status_code == 200
+    assert response.json() == payload
