@@ -32,7 +32,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
     _GetContentTool,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
-    GET_CONTENT_TOOL_CONFIG,
+    render_get_content_tool_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -75,11 +75,14 @@ class LazyOnDemandStrategyModule(Module):
             orchestrator_capabilities.input_attachment_types,
         ):
             return []
+        rendered_tool_config = render_get_content_tool_config(
+            list(orchestrator_capabilities.input_attachment_types or [])
+        )
         return [
             get_content_builder.build(
-                tool_config=GET_CONTENT_TOOL_CONFIG,
-                name=GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.name,
-                description=GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.description,
+                tool_config=rendered_tool_config,
+                name=rendered_tool_config.open_ai_tool.function.name,
+                description=rendered_tool_config.open_ai_tool.function.description,
                 contexts=list(app_config.contexts),
             )
         ]

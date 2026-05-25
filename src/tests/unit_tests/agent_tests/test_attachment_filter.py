@@ -291,6 +291,38 @@ class Test_AttachmentFilter:
         assert len(result[1].custom_content.attachments) == 1
         assert result[1].custom_content.attachments[0].type == "application/pdf"
 
+    def test_fetch_tool_attachment_with_empty_type_kept_via_url_fallback(self):
+        """The keep policy must use the same MIME inference (URL-filename
+        fallback) the synthetic injector uses — otherwise an attachment whose
+        ``type`` is empty but whose URL implies an accepted MIME would be
+        injected upstream and then silently stripped here."""
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_empty_type",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_empty_type",
+            custom_content=CustomContent(attachments=[_attachment("report.pdf", url, "")]),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].url == url
+
     def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
         url = "files/bucket/report.pdf"
         contexts = [FileContextConfig(url=url)]
@@ -379,22 +411,11 @@ class Test_AttachmentFilter:
         assert result[2].custom_content.attachments[0].url == url
 
 
-def _attachment_filter_with_legacy_policy(
-    *,
-    contexts: list | None = None,
-    input_attachment_types: list[str] | None = None,
-) -> _AttachmentFilter:
-    """Mirror production wiring: legacy USER image policy + get-content keep policy."""
-    app = MagicMock(spec=ApplicationConfig)
-    app.contexts = contexts if contexts is not None else []
-    patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
-    caps = OrchestratorCapabilities(
-        deployment=MagicMock(id="orch", input_attachment_types=patterns)
-    )
-    get_content_policy = _GetContentKeepPolicy(app_config=app, orchestrator_capabilities=caps)
-    return _AttachmentFilter(
-        tool_attachment_keep_policies=[_LegacyUserImageKeepPolicy(), get_content_policy]
-    )
+def _attachment_filter_with_legacy_policy() -> _AttachmentFilter:
+    """Mirror production wiring when no ``attachment_strategy`` is configured:
+    only the legacy USER image keep policy is registered. The get-content policy
+    is added by ``LazyOnDemandStrategyModule`` and so is absent here."""
+    return _AttachmentFilter(tool_attachment_keep_policies=[_LegacyUserImageKeepPolicy()])
 
 
 class Test_AttachmentFilter_LegacyUserImagePassthrough:

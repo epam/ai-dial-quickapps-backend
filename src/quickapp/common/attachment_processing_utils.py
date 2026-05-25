@@ -19,8 +19,17 @@ def inferred_mime_type_for_file_context_url(url: str) -> str:
 
 
 def normalize_attachment_url_argument(raw: str) -> str:
-    """Normalize a model-supplied attachment URL for whitelist comparison: strip outer whitespace only."""
-    return raw.strip()
+    """Normalize a model-supplied attachment URL for whitelist comparison.
+
+    Strips outer whitespace, then strips a single leading ``/`` so that
+    DIAL-emitted forms ``/files/...`` and ``files/...`` compare equal. A
+    leading ``//`` is preserved as-is (malformed; allowlist match by exact
+    string is the safety check).
+    """
+    stripped = raw.strip()
+    if stripped.startswith("/") and not stripped.startswith("//"):
+        return stripped[1:]
+    return stripped
 
 
 def user_attachments_from_messages(messages: Sequence[Message]) -> list[Attachment]:

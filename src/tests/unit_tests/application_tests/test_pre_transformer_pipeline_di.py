@@ -1,21 +1,30 @@
 """Tests that verify the pre-transformer pipeline ordering using DI.
 
-The pipeline runs transformers sequentially via _MessagesSetup:
+The contract the model sees is the **message-list order**: the get-content
+synthetic pair lands before the context-notification pair, regardless of which
+transformer runs first. The runtime execution order today is
+``_AttachmentNotificationInjector -> _AttachmentGetContentInjector`` (because
+``AttachmentProcessingModule`` is registered before ``LazyOnDemandStrategyModule``
+in ``app_factory.py``), but this is incidental — each injector picks its own
+insertion site (``InjectionFrequency.ALWAYS`` end-append vs. after-last-USER),
+so the final list ordering is invariant to execution order.
 
-    _AddSystemPromptTransformer -> _AttachmentGetContentInjector -> _AttachmentNotificationInjector
-
-- _AddSystemPromptTransformer ensures a system message exists at the start of the conversation.
-- _AttachmentNotificationInjector handles admin-configured context files by injecting
-  synthetic tool call/result messages.
+- ``_AddSystemPromptTransformer`` ensures a system message exists at the start of the conversation.
+- ``_AttachmentGetContentInjector`` injects synthetic ``internal_attachments_get_content``
+  ASSISTANT/TOOL pairs for the last USER message's attachments (lazy strategy only).
+- ``_AttachmentNotificationInjector`` injects a synthetic
+  ``internal_attachments_available_context`` notification when admin file contexts exist.
 """
 
 import json
+from unittest.mock import MagicMock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected
 from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
@@ -65,6 +74,10 @@ def _make_context_app(ctx_url: str, *, lazy_strategy: bool = False):
         if lazy_strategy:
             app_config.orchestrator.attachment_strategy = LazyOnDemandAttachmentStrategy()
         binder.bind(ApplicationConfig, to=app_config)
+        caps = MagicMock(spec=OrchestratorCapabilities)
+        caps.input_attachment_types = ["application/pdf", "text/csv", "image/*"]
+        caps.deployment_id = "test-orchestrator"
+        binder.bind(OrchestratorCapabilities, to=caps)
 
     modules: list = [AttachmentProcessingModule, _EmptyEnrichersModule, configure]
     if lazy_strategy:

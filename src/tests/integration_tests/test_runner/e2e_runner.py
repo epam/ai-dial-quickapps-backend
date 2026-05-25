@@ -17,6 +17,7 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.utils import bool_env_var
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
@@ -340,12 +341,14 @@ def e2e_test(
     no_cache: bool = False,
     application_context_files: list[Path] | None = None,
     include_rest_toolset: bool = False,
+    attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
 ):
     if refresh is None:
         refresh = bool_env_var("REFRESH", default="false")
 
     _application_context_files = application_context_files
     _include_rest_toolset = include_rest_toolset
+    _attachment_strategy = attachment_strategy
 
     def decorator(func):
         func = pytest.mark.filterwarnings(f"always:{TestConfig.WARNING_MESSAGE}")(func)
@@ -430,6 +433,7 @@ def e2e_test(
                 toolsets=tool_sets,
                 model=execution_model,
                 contexts=contexts,
+                attachment_strategy=_attachment_strategy,
             )
 
             app = TestApp.get_app(port=unique_port)

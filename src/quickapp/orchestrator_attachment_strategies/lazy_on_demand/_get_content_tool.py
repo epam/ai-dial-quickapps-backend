@@ -82,7 +82,16 @@ class _GetContentTool(StagedBaseTool):
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
 
     def _error_result(self, message: str) -> ToolCallResult:
-        payload = json.dumps({"ok": False, "error": message}, ensure_ascii=False)
+        payload = json.dumps(
+            {
+                "ok": False,
+                "error": message,
+                "accepted_types": list(
+                    self.__orchestrator_capabilities.input_attachment_types or []
+                ),
+            },
+            ensure_ascii=False,
+        )
         return ToolCallResult(content=payload, content_type="application/json")
 
     async def _run_in_stage_async(

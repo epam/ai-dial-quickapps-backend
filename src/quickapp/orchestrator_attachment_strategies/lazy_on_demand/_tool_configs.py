@@ -42,3 +42,30 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
         stage=ToolStageConfig(name="Get context content", show=True, defer_close=True),
     ),
 )
+
+
+def render_get_content_tool_config(input_attachment_types: list[str]) -> InternalTool:
+    """Return a per-request copy of :data:`GET_CONTENT_TOOL_CONFIG` whose function and
+    ``attachment_url`` descriptions advertise the orchestrator's accepted MIME patterns.
+
+    The template constant is treated as immutable; this helper deep-copies it and
+    appends a single ``"Accepted MIME types: <pattern>, <pattern>."`` sentence to the
+    function description and the ``attachment_url`` parameter description, so the model
+    learns the live allowlist (wildcards preserved verbatim, e.g. ``image/*``).
+
+    When ``input_attachment_types`` is empty, the helper returns a deep copy of the
+    template without any appended sentence — this branch is defensive only;
+    :func:`should_enable_get_content_tool` filters out the no-allowlist case before
+    registration in practice.
+    """
+    rendered = GET_CONTENT_TOOL_CONFIG.model_copy(deep=True)
+    if not input_attachment_types:
+        return rendered
+    suffix = "Accepted MIME types: " + ", ".join(input_attachment_types) + "."
+    function = rendered.open_ai_tool.function
+    function.description = function.description.rstrip() + " " + suffix
+    attachment_url_param = function.parameters.properties["attachment_url"]
+    attachment_url_param.description = (
+        (attachment_url_param.description or "").rstrip() + " " + suffix
+    )
+    return rendered

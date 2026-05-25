@@ -4,6 +4,7 @@ from injector import inject
 from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.attachment_processing_utils import (
+    attachment_mime_type,
     collect_get_content_allowed_urls,
     normalize_attachment_url_argument,
 )
@@ -52,11 +53,19 @@ class _GetContentKeepPolicy(AttachmentKeepPolicy):
     ) -> bool:
         if message_index not in self.__get_content_tool_indices:
             return False
-        if not attachment.url or not str(attachment.url).strip().startswith("files/"):
+        if not attachment.url:
             return False
         normalized = normalize_attachment_url_argument(str(attachment.url))
+        if not normalized.startswith("files/"):
+            return False
         if normalized not in self.__allowed_urls:
             return False
-        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(attachment.type):
+        # Use ``attachment_mime_type`` (with URL filename fallback) for symmetry
+        # with the synthetic injector's gate and with ``_GetContentTool``'s own
+        # check — otherwise an attachment whose ``type`` is empty but whose URL
+        # implies an accepted MIME would be injected and then stripped here.
+        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
+            attachment_mime_type(attachment)
+        ):
             return False
         return True

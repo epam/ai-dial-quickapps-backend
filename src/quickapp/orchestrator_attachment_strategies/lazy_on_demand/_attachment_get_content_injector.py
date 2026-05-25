@@ -4,16 +4,24 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
+from injector import inject
 
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.attachment_processing_utils import attachment_mime_type
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import _make_call_id
+from quickapp.common.utils import matches_type
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
 
 
+@inject
 class _AttachmentGetContentInjector(MessagesTransformer):
     call_id_prefix: str = "s_"
+
+    def __init__(self, orchestrator_capabilities: OrchestratorCapabilities) -> None:
+        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
 
     @staticmethod
     def _last_user_with_attachments(messages: list[Message]) -> tuple[int, Message] | None:
@@ -119,9 +127,12 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         insert_idx = last_user_idx + 1
         inserted = 0
 
+        input_attachment_types = self.__orchestrator_capabilities.input_attachment_types
         for attachment in attachments:
             url = str(attachment.url or "").strip()
             if not url:
+                continue
+            if not matches_type(attachment_mime_type(attachment), input_attachment_types):
                 continue
             arguments = {"attachment_url": url}
             if self._has_pair_in_current_turn(

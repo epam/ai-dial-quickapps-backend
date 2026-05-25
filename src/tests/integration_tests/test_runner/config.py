@@ -11,6 +11,7 @@ from quickapp.config.application import ApplicationConfig, Features, Orchestrato
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
@@ -63,6 +64,7 @@ class TestConfig:
         toolsets: list[ToolSet],
         model: str,
         contexts: list[Context] | None = None,
+        attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
     ) -> ApplicationConfig:
         temperature = 0
         if "gemini" in model:
@@ -81,6 +83,7 @@ class TestConfig:
                     parameters=DialDeploymentParameters(temperature=temperature),
                 ),
                 system_prompt=PredefinedSystemPromptConfig(template=template),
+                attachment_strategy=attachment_strategy,
             ),
             contexts=list(contexts or []),
             tool_sets=toolsets,
