@@ -1,3 +1,4 @@
+import logging
 from functools import cached_property
 from typing import Any
 
@@ -13,16 +14,14 @@ from quickapp.config.predefined_content_provider import ContentType, PredefinedC
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.tools.tool import AnyTool
-from quickapp.config.toolsets.deployment import DeploymentToolSet
-from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.config.toolsets.predefined import PredefinedToolSet
-from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.config.utils import TOOL_SETS_LIST_ADAPTER, TOOLSET_ADAPTER, expand_predefined_tools
 from quickapp.predefined_tooling._predefined_tooling_context import _PredefinedToolingContext
 
-_TOOL_HOSTING_TOOLSETS = (RestApiToolSet, DeploymentToolSet, InternalToolSet)
 _TOOL_ADAPTER: TypeAdapter[AnyTool] = TypeAdapter(AnyTool)
-_TOOLSET_ADAPTER: TypeAdapter[ToolSet] = TypeAdapter(ToolSet)
+
+logger = logging.getLogger(__name__)
 
 
 def _loc_to_json_pointer(loc: tuple[Any, ...]) -> str:
@@ -152,10 +151,13 @@ class PredefinedConfigResolver(ConfigResolver):
 
     @cached_property
     def template_map(self) -> dict[str, list[str]]:
-        """Read-only map of template type → names, excluding SKILL. Cached: the
+        """Read-only map of template type → names, excluding SKILL and default config.
+        Cached: the
         provider loads templates once at startup, so the result is stable."""
         return {
-            ct.value: self._provider.list_names(ct) for ct in ContentType if ct != ContentType.SKILL
+            ct.value: self._provider.list_names(ct)
+            for ct in ContentType
+            if ct not in (ContentType.SKILL, ContentType.DEFAULT_CONFIGURATION)
         }
 
     def get_prompts(self) -> list[PromptConfigResponse]:
@@ -171,6 +173,28 @@ class PredefinedConfigResolver(ConfigResolver):
 
     def get_tool_sets(self) -> list[str]:
         return self._provider.list_names(ContentType.TOOLSET)
+
+    def get_default_configuration(self) -> dict[str, Any]:
+        """Return merged default configuration with ``tool_sets`` fully resolved.
+
+        Predefined toolsets and ``predefined-tool`` entries inside hosting toolsets
+        are expanded to validated tool models (same as runtime resolution).
+        """
+        cfg = dict(self._provider.get_default_configuration())
+        raw_tool_sets = cfg.get("tool_sets")
+        if not isinstance(raw_tool_sets, list):
+            return cfg
+        try:
+            tool_sets = TOOL_SETS_LIST_ADAPTER.validate_python(raw_tool_sets)
+        except ValidationError as e:
+            logger.warning(
+                "Invalid tool_sets in default_configuration; leaving tool_sets unchanged: %s",
+                e,
+            )
+            return cfg
+        resolved = self._resolve_tool_sets(tool_sets, log_only=True)
+        cfg["tool_sets"] = TOOL_SETS_LIST_ADAPTER.dump_python(resolved, mode="json")
+        return cfg
 
     def read_template_content(
         self, template_type: ContentType, template_name: str
@@ -196,9 +220,18 @@ class PredefinedConfigResolver(ConfigResolver):
             self._record_exception(e)
             raise
 
-    def _resolve_tool_sets(self, tool_sets: list[ToolSet]) -> list[ToolSet]:
-        # Skip-and-record per toolset: a single bad toolset must not strand the
-        # rest. Recorded exceptions surface in the *Initialization issues* stage.
+    def _resolve_tool_sets(
+        self, tool_sets: list[ToolSet], *, log_only: bool = False
+    ) -> list[ToolSet]:
+        """Resolve each toolset; failures skip that entry so the rest can proceed.
+
+        When ``log_only`` is True (default-configuration export), a failed **toolset**
+        (missing template, merge/validation error) is only logged. When False,
+        ``ConfigResolutionException`` is also recorded for the initialization-issues
+        stage, and ``KeyError`` is re-raised. Skipped **predefined tools** inside a
+        hosting toolset are always logged and recorded via
+        ``_notify_skipped_predefined_tool`` regardless of ``log_only``.
+        """
         resolved: list[ToolSet] = []
         for tool_set in tool_sets:
             try:
@@ -207,8 +240,22 @@ class PredefinedConfigResolver(ConfigResolver):
                 else:
                     resolved.append(self.resolve_toolset(tool_set))
             except ConfigResolutionException as e:
-                self._record_exception(e)
+                if log_only:
+                    logger.warning("Skipping toolset: %s", e)
+                else:
+                    self._record_exception(e)
+            except KeyError as e:
+                if log_only:
+                    logger.warning("Skipping toolset (template missing): %s", e)
+                else:
+                    raise
         return resolved
+
+    def _notify_skipped_predefined_tool(
+        self, tool: PredefinedTool, exc: ConfigResolutionException
+    ) -> None:
+        logger.warning("Skipping predefined tool %r: %s", tool.template_name, exc)
+        self._record_exception(exc)
 
     def _record_exception(self, exception: ConfigResolutionException) -> None:
         self._exceptions_provider.get().append_exception(exception)
@@ -219,29 +266,16 @@ class PredefinedConfigResolver(ConfigResolver):
             tool_set.template_name,
             template_content,
             tool_set.override,
-            _TOOLSET_ADAPTER,
+            TOOLSET_ADAPTER,
         )
         return self.resolve_toolset(actual_tool_set)
 
     def resolve_toolset(self, tool_set: ToolSet) -> ToolSet:
-        if not isinstance(tool_set, _TOOL_HOSTING_TOOLSETS):
-            return tool_set
-        resolved_tools: list[AnyTool] = []
-        # Skip-and-record per tool: a single bad tool override must not drop its
-        # sibling tools in the same toolset.
-        for tool in tool_set.tools:
-            if isinstance(tool, PredefinedTool) and tool.enabled:
-                try:
-                    resolved_tools.append(self.resolve_tool(tool))
-                except ConfigResolutionException as e:
-                    self._record_exception(e)
-            else:
-                resolved_tools.append(tool)
-
-        tool_set.tools.clear()
-        tool_set.tools.extend(resolved_tools)  # type: ignore[arg-type]
-
-        return tool_set
+        return expand_predefined_tools(
+            tool_set,
+            resolve_tool=self.resolve_tool,
+            on_predefined_tool_error=self._notify_skipped_predefined_tool,
+        )
 
     def resolve_tool(self, tool: PredefinedTool) -> AnyTool:
         template_content = self.read_template_content(ContentType.TOOL, tool.template_name)
