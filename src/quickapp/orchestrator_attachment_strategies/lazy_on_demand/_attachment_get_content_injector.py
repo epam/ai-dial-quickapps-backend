@@ -102,11 +102,11 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         return assistant_msg, tool_msg
 
     async def transform(self, messages: list[Message]) -> list[Message]:
-        last_user = self._last_user_with_attachments(messages)
-        if last_user is None:
+        last_user_msg = self._last_user_with_attachments(messages)
+        if last_user_msg is None:
             return messages
 
-        last_user_idx, last_user_msg = last_user
+        last_user_idx, last_user_msg = last_user_msg
         custom_content = last_user_msg.custom_content
         if custom_content is None:
             return messages
