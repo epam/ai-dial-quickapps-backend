@@ -86,7 +86,9 @@ class AttachmentResolver:
             if supports_url_attachments:
                 return AttachmentParam(
                     reference_url=bare,
+                    url=bare,
                     title=filename_from_url_path(bare) or bare,
+                    type="*/*",
                 )
             meta = await self.__file_promoter.promote(bare, parameter_name="attachment_urls")
             return AttachmentParam(

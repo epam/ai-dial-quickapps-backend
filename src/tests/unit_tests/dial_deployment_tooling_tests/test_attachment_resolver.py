@@ -68,14 +68,13 @@ async def test_external_with_supports_emits_reference_url():
     promoter.promote = AsyncMock()
 
     resolver = _make_resolver(dial_client=dial_client, file_promoter=promoter)
-    result = await resolver._resolve_attachment(
-        "https://example.com/path/whitepaper.pdf", supports_url_attachments=True
-    )
+    url = "https://example.com/path/whitepaper.pdf"
+    result = await resolver._resolve_attachment(url, supports_url_attachments=True)
 
-    assert result.get("reference_url") == "https://example.com/path/whitepaper.pdf"
+    assert result.get("reference_url") == url
     assert result.get("title") == "whitepaper.pdf"
-    assert result.get("url") is None
-    assert result.get("type") is None
+    assert result.get("url") == url
+    assert result.get("type") == "*/*"
     promoter.promote.assert_not_awaited()
     dial_client.metadata.get.assert_not_called()
 
