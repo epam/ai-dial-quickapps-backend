@@ -24,6 +24,7 @@ venv
 /docker_compose_files/core/data/
 /docker_compose_files/core/logs/
 /docker_compose_files/core/configuration/generated/
+/docker_compose_files/core/admin-export/out.json
 /.editorconfig
 /docs/superpowers
 /docs/reviews
