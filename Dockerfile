@@ -16,7 +16,8 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 
 FROM python:3.13-alpine AS runtime
 
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib musl musl-utils
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib musl musl-utils && \
+    apk add --no-cache ca-certificates
 
 WORKDIR /app
 
@@ -28,11 +29,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=builder /app .
 
+COPY docker_cacert_entrypoint.sh /docker_cacert_entrypoint.sh
 RUN echo '#!/bin/sh' > /docker_entrypoint.sh && \
     echo 'set -e' >> /docker_entrypoint.sh && \
+    echo '. /docker_cacert_entrypoint.sh' >> /docker_entrypoint.sh && \
     echo '. ./.venv/bin/activate' >> /docker_entrypoint.sh && \
     echo 'exec "$@"' >> /docker_entrypoint.sh && \
-    chmod +x /docker_entrypoint.sh
+    chmod +x /docker_entrypoint.sh /docker_cacert_entrypoint.sh
 
 EXPOSE 5000
 
