@@ -32,7 +32,7 @@ def _make_tool(name: str, result: ToolCallResult) -> MagicMock:
 
 
 class _DoubleProcessor(ToolCallResultProcessor):
-    priority = 50
+    order = 50
 
     async def process(self, result: ToolCallResult, ctx: ProcessingContext) -> ToolCallResult:
         return ToolCallResult(
@@ -43,7 +43,7 @@ class _DoubleProcessor(ToolCallResultProcessor):
 
 
 class _AppendProcessor(ToolCallResultProcessor):
-    priority = 100
+    order = 100
 
     def __init__(self, suffix: str) -> None:
         self._suffix = suffix
@@ -74,8 +74,8 @@ class TestToolExecutorProcessors:
         assert results[0].content == "hello!"
 
     @pytest.mark.asyncio
-    async def test_processors_run_in_priority_order(self):
-        # _DoubleProcessor (priority=50) runs before _AppendProcessor (priority=100)
+    async def test_processors_run_in_order(self):
+        # _DoubleProcessor (order=50) runs before _AppendProcessor (order=100)
         # "hi" → double → "hihi" → append "!" → "hihi!"
         base_result = ToolCallResult(content="hi", content_type="text/plain")
         tool = _make_tool("my_tool", base_result)

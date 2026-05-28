@@ -24,11 +24,7 @@ from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
-from quickapp.text_file_tooling.text_file_tooling_module import TextFileToolingModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
-from quickapp.tool_call_result_offload.tool_call_result_offload_module import (
-    ToolCallResultOffloadModule,
-)
 
 
 class AppFactory:
@@ -57,8 +53,6 @@ class AppFactory:
             TimestampModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),
-            ToolCallResultOffloadModule(),
-            TextFileToolingModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(

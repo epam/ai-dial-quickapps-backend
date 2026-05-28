@@ -11,7 +11,9 @@ class ProcessingContext(BaseModel):
 
 
 class ToolCallResultProcessor(ABC):
-    priority: int = 100
+    # Lower values run earlier; ties broken by registration order (stable sort).
+    # Default 0 means "no preference" and may be negative. Mirrors BaseInitializer.order.
+    order: int = 0
 
     @abstractmethod
     async def process(self, result: ToolCallResult, ctx: ProcessingContext) -> ToolCallResult: ...

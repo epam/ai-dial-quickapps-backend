@@ -151,32 +151,6 @@ class Features(BaseModel):
     )
 
 
-class ToolCallResultOffloadAppConfig(BaseModel):
-    enabled: bool | None = Field(
-        default=None,
-        description=(
-            "Per-app override to enable or disable large tool-response offloading. "
-            "When null (default), the global TOOL_CALL_RESULT_OFFLOAD__ENABLED env var is used."
-        ),
-    )
-    size_threshold: int | None = Field(
-        default=None,
-        gt=0,
-        description=(
-            "Per-app override for the offload size threshold (bytes). "
-            "When null (default), the global TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var is used."
-        ),
-    )
-    excluded_tools: set[str] | None = Field(
-        default=None,
-        description=(
-            "Per-app override for the set of tool names exempt from offloading. "
-            "When set, replaces the global TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var. "
-            "When null (default), the global setting is used."
-        ),
-    )
-
-
 class ToolDefaults(BaseModel):
     """Defaults applied to every tool call unless overridden locally.
 
@@ -194,10 +168,6 @@ class ToolDefaults(BaseModel):
             "When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, "
             "or each client's library default if neither is set."
         ),
-    )
-    tool_call_result_offload: ToolCallResultOffloadAppConfig | None = PreviewField(  # type: ignore[assignment]
-        default_factory=ToolCallResultOffloadAppConfig,
-        description="Per-app configuration for large tool-response offloading.",
     )
 
 

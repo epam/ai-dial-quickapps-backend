@@ -6,14 +6,14 @@ from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.tool_call_result_offload._large_response_processor import LargeResponseProcessor
-from quickapp.tool_call_result_offload._settings import ResolvedConfig
+from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
+from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
 
 
-def _make_config(**overrides) -> ResolvedConfig:
+def _make_config(**overrides) -> ResolvedOffloadConfig:
     defaults = dict(enabled=True, size_threshold=100, excluded_tools=frozenset({"excluded_tool"}))
     defaults.update(overrides)
-    return ResolvedConfig(**defaults)
+    return ResolvedOffloadConfig(**defaults)
 
 
 def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") -> MagicMock:
@@ -24,10 +24,10 @@ def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") 
 
 
 def _make_processor(
-    config: ResolvedConfig | None = None,
+    config: ResolvedOffloadConfig | None = None,
     upload_url: str = "https://storage/offloaded.txt",
-) -> LargeResponseProcessor:
-    return LargeResponseProcessor(
+) -> ToolCallResultOffloadProcessor:
+    return ToolCallResultOffloadProcessor(
         config=config or _make_config(),
         attachment_service=_make_attachment_service(upload_url),
     )
@@ -37,7 +37,7 @@ def _make_ctx(tool_name: str = "my_tool", tool_call_id: str = "id1") -> Processi
     return ProcessingContext(tool_call_id=tool_call_id, tool_name=tool_name)
 
 
-class TestLargeResponseProcessor:
+class TestToolCallResultOffloadProcessor:
     @pytest.mark.asyncio
     async def test_small_content_returned_unchanged(self):
         result = ToolCallResult(content="short", content_type="text/plain")
@@ -53,8 +53,8 @@ class TestLargeResponseProcessor:
         out = await proc.process(result, _make_ctx("fetch_logs"))
         assert "fetch_logs" in out.content
         assert "https://storage/offloaded.txt" in out.content
-        assert "read_file_lines" in out.content
-        assert "search_in_file" in out.content
+        assert "internal_file_read_lines" in out.content
+        assert "internal_file_search" in out.content
 
     @pytest.mark.asyncio
     async def test_large_content_attaches_file(self):
@@ -100,7 +100,7 @@ class TestLargeResponseProcessor:
         result = ToolCallResult(content=content, content_type="text/plain")
         svc = MagicMock()
         svc.upload_attachment_to_core = AsyncMock(side_effect=RuntimeError("storage down"))
-        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
+        proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
@@ -112,7 +112,7 @@ class TestLargeResponseProcessor:
         no_url_attachment.url = None
         svc = MagicMock()
         svc.upload_attachment_to_core = AsyncMock(return_value=no_url_attachment)
-        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
+        proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
@@ -142,7 +142,7 @@ class TestLargeResponseProcessor:
         content = "hello world " * 20  # > 100 bytes
         result = ToolCallResult(content=content, content_type="text/plain")
         svc = _make_attachment_service()
-        proc = LargeResponseProcessor(config=_make_config(), attachment_service=svc)
+        proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         await proc.process(result, _make_ctx())
         uploaded_att: Attachment = svc.upload_attachment_to_core.call_args[0][0]
         assert uploaded_att.data is not None

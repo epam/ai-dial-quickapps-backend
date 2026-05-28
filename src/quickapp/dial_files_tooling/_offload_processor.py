@@ -12,18 +12,18 @@ from quickapp.common.abstract.tool_call_result_processor import (
 )
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.tool_call_result_offload._settings import ResolvedConfig
+from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 
 logger = logging.getLogger(__name__)
 
 
 @inject
-class LargeResponseProcessor(ToolCallResultProcessor):
-    priority = 100
+class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
+    order = 0
 
     def __init__(
         self,
-        config: ResolvedConfig,
+        config: ResolvedOffloadConfig,
         attachment_service: AttachmentService,
     ) -> None:
         self._config = config
@@ -69,9 +69,9 @@ class LargeResponseProcessor(ToolCallResultProcessor):
         notice = (
             f"Response from '{ctx.tool_name}' was too large ({content_size} bytes) and\n"
             f"has been saved to: {file_url}\n"
-            "Use one of:\n"
-            "  - read_file_lines(file_url, start_line, end_line)\n"
-            "  - search_in_file(file_url, pattern, context_lines=0, case_insensitive=False)"
+            "Use one of (pass the saved URL above as `path`):\n"
+            "  - internal_file_read_lines(path, start_line, end_line)\n"
+            "  - internal_file_search(path, pattern, context_lines=0, case_insensitive=False)"
         )
 
         state = dict(result.state or {})

@@ -28,7 +28,7 @@ class ToolExecutor:
     ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
         self.__enrichers = enrichers
-        self.__processors = sorted(processors, key=lambda p: p.priority)
+        self.__processors = sorted(processors, key=lambda p: p.order)
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
