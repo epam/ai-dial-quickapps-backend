@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.file_loading_settings import FileLoadingSettings
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.config.application import Features, FileLoadingConfig
+from quickapp.config_resolvers.file_loading_settings import FileLoadingSettings
+from quickapp.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 
 
 def _resolver(env: int, app: int | None) -> FileLoadingSizeLimitResolver:

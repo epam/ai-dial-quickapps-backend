@@ -12,8 +12,6 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.file_loading_settings import FileLoadingSettings
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
@@ -23,6 +21,8 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
+from quickapp.config_resolvers.file_loading_settings import FileLoadingSettings
+from quickapp.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.config_resolvers.tool_timeout_settings import ToolSettings
 
