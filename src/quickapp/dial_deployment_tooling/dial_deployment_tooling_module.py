@@ -15,7 +15,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.deployment import DialDeploymentTool

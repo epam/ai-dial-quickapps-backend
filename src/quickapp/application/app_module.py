@@ -17,8 +17,8 @@ from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimi
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.common.tool_timeout_settings import ToolSettings
+from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.config_resolvers.tool_timeout_settings import ToolSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.predefined_content_provider import (

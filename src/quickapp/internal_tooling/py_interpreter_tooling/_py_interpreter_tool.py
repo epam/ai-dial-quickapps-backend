@@ -12,7 +12,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
