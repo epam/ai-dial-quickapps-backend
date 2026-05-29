@@ -103,3 +103,35 @@ async def test_upload_skipped_when_url_already_set():
     mock_client.bucket.get_raw.assert_not_called()
     mock_client.files.upload.assert_not_called()
     assert result.url == "https://already-set.com/file"
+
+
+@pytest.mark.asyncio
+async def test_upload_bytes_uploads_directly_and_returns_metadata():
+    mock_client = _make_mock_dial_client(upload_url="https://example.com/raw.bin")
+    svc = AttachmentService(dial_client=mock_client)
+
+    metadata = await svc.upload_bytes(
+        data=b"raw payload",
+        content_type="application/octet-stream",
+        filename="raw.bin",
+    )
+
+    mock_client.bucket.get_raw.assert_awaited_once()
+    mock_client.files.upload.assert_awaited_once()
+    call_kwargs = mock_client.files.upload.call_args.kwargs
+    assert call_kwargs["url"] == "files/test-bucket/raw.bin"
+    name, content, mime = call_kwargs["file"]
+    assert name == "raw.bin"
+    assert content == b"raw payload"
+    assert mime == "application/octet-stream"
+    assert metadata.url == "https://example.com/raw.bin"
+
+
+@pytest.mark.asyncio
+async def test_upload_bytes_propagates_failure():
+    mock_client = _make_mock_dial_client()
+    mock_client.files.upload.side_effect = RuntimeError("boom")
+    svc = AttachmentService(dial_client=mock_client)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await svc.upload_bytes(data=b"x", content_type="text/plain", filename="x.txt")

@@ -439,7 +439,15 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 15 specialized DI modules:
+The application is composed of 15 specialized DI modules. Rather than registering each module
+individually, `app_factory` splices in two package-level arrays:
+
+- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`).
+  (Physically relocating the `agent/` and `application/` source into `core/` is a follow-up; for now the
+  array aggregates them from their current packages.)
+- `quickapp.shared` exposes `shared_module` — cross-cutting utility modules. Today it holds a single
+  entry, `ExternalFetchModule` (the external-URL fetch egress envelope, see module 11), and is the seam
+  future utility modules join by appending.
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -454,8 +462,16 @@ The application is composed of 15 specialized DI modules:
 7. **Internal Tool Module**: Python interpreter and other built-in tools configured per application
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
-10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`)
-11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
+10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
+    `DialDownloader` for DIAL file bytes, `DialFilePromoter` for "URL → durable DIAL file" — DIAL metadata fetch for
+    DIAL URLs, and bytes-then-upload via `AttachmentService` for external URLs).
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction
+    injection. Owns `FileLoaderService` (scheme-aware bytes loader). The external-fetch security envelope —
+    `ExternalUrlFetcher`, `ExternalFetchSettings`, `ExternalUrlFetchPolicyResolver` — lives in
+    `shared/external_fetch/` and is bound by `ExternalFetchModule` (registered via the `shared_module` array) so
+    feature modules outside `file_transfer/` can consume it without an upward import. External egress is gated by
+    a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app `features.external_url_fetch.enabled`
+    (builder), composed by `ExternalUrlFetchPolicyResolver`.
 12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
   (when gated), attachment change detection injector
 13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher

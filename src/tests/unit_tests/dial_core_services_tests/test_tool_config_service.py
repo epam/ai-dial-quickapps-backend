@@ -28,9 +28,13 @@ def _make_deployment_model(
     input_attachment_types: list[str] | None = None,
     has_configuration: bool = False,
     display_name: str | None = None,
+    url_attachments: bool | None = None,
+    features: MagicMock | None = None,
 ) -> MagicMock:
-    features = MagicMock()
-    features.configuration = has_configuration
+    if features is None:
+        features = MagicMock()
+        features.configuration = has_configuration
+        features.url_attachments = url_attachments
     model = MagicMock()
     model.id = deployment_id
     model.display_name = display_name
@@ -326,3 +330,45 @@ class TestConvertToOpenaiToolFormatName:
         )
         result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
         assert result.open_ai_tool.function.name == "my-app_tool"
+
+
+class TestSupportsUrlAttachmentsFlag:
+
+    def test_url_attachments_true_sets_flag(self):
+        deployment = _make_deployment_model(url_attachments=True)
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.supports_url_attachments is True
+
+    def test_url_attachments_false_does_not_set_flag(self):
+        deployment = _make_deployment_model(url_attachments=False)
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.supports_url_attachments is False
+
+    def test_url_attachments_none_does_not_set_flag(self):
+        deployment = _make_deployment_model(url_attachments=None)
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.supports_url_attachments is False
+
+    def test_features_none_does_not_set_flag(self):
+        deployment = SimpleNamespace(
+            id="applications/abc/x",
+            display_name=None,
+            description="",
+            input_attachment_types=None,
+            features=None,
+        )
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        assert result.supports_url_attachments is False
+
+    def test_attachment_urls_description_mentions_external_urls(self):
+        deployment = _make_deployment_model(
+            input_attachment_types=["image/png"], url_attachments=True
+        )
+        result = ToolConfigCoreService._convert_to_openai_tool_format(deployment)
+        # The schema is built into open_ai_tool's parameters; verify the description.
+        params = result.open_ai_tool.function.parameters.properties
+        attachment_param = params.get("attachment_urls")
+        assert attachment_param is not None
+        outer_desc = attachment_param.description
+        assert outer_desc is not None
+        assert "external" in outer_desc.lower()

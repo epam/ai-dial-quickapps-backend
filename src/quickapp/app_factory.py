@@ -3,15 +3,14 @@ import logging
 from fastapi import FastAPI
 from injector import Injector, Module
 
-from quickapp.agent.agent_module import AgentModule
 from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
-from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.feature_settings import FeatureSettings
 from quickapp.common.preview import is_preview_module
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
+from quickapp.core import core_module
 from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
@@ -25,6 +24,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_s
 )
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.shared import shared_module
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
@@ -38,8 +38,8 @@ class AppFactory:
     @staticmethod
     def build_di_modules() -> list[Module]:
         modules: list[Module] = [
-            AppModule(),
-            AgentModule(),
+            *core_module,
+            *shared_module,
             PredefinedToolingModule(),
             RestApiToolingModule(),
             DialDeploymentToolingModule(),

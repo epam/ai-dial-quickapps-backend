@@ -2,6 +2,7 @@ import base64
 import logging
 
 from aidial_client import AsyncDial
+from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
@@ -32,11 +33,10 @@ class AttachmentService:
         if attachment.url is None and attachment.data:
             try:
                 attachment_name = attachment.title or generate_attachment_filename(attachment.type)
-                bucket_resp = await self.__dial_client.bucket.get_raw()
-                bucket = bucket_resp.appdata or bucket_resp.bucket
-                metadata = await self.__dial_client.files.upload(
-                    url=f"files/{bucket}/{attachment_name}",
-                    file=(attachment_name, _get_bytes(attachment.data), attachment.type),
+                metadata = await self.upload_bytes(
+                    data=_get_bytes(attachment.data),
+                    content_type=attachment.type,
+                    filename=attachment_name,
                 )
                 # Use URL instead of data for uploaded attachment.
                 attachment.data = None
@@ -47,3 +47,16 @@ class AttachmentService:
                     "Exception during uploading attachment to DIAL. Original attachment left in place."
                 )
         return attachment
+
+    async def upload_bytes(
+        self,
+        data: bytes,
+        content_type: str | None,
+        filename: str,
+    ) -> FileMetadata:
+        bucket_resp = await self.__dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+        return await self.__dial_client.files.upload(
+            url=f"files/{bucket}/{filename}",
+            file=(filename, data, content_type),
+        )

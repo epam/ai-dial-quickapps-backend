@@ -1031,6 +1031,12 @@
           ],
           "default": null,
           "description": "The configuration with propagations to DIAL deployment."
+        },
+        "supports_url_attachments": {
+          "default": false,
+          "description": "Whether the underlying DIAL deployment advertises `features.url_attachments`. Snapshotted at tool-config build time. When true, external URLs are forwarded as `reference_url` attachments; when false, they are materialised into DIAL files first.",
+          "title": "Supports Url Attachments",
+          "type": "boolean"
         }
       },
       "required": [
@@ -1247,6 +1253,41 @@
       "title": "DialSystemPromptConfig",
       "type": "object"
     },
+    "ExternalUrlFetchConfig": {
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-app override for fetching external (non-DIAL) URLs. `null` (default) defers to the admin env switch `EXTERNAL_URL_FETCH_ENABLED`. `false` opts this app out even when the admin allows it. `true` is a no-op when admin allows; the admin gate is a hard cap.",
+          "title": "Enabled"
+        },
+        "host_allowlist": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-app override for the allowed hosts on external URL fetches. `null` (default) defers to the admin env var `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`. A non-empty list narrows the admin list (intersection); a host must be in both to be allowed. An explicit empty list locks this app out of all hosts. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain.",
+          "title": "Host Allowlist"
+        }
+      },
+      "title": "ExternalUrlFetchConfig",
+      "type": "object"
+    },
     "Features": {
       "properties": {
         "timestamp": {
@@ -1263,6 +1304,10 @@
         "file_loading": {
           "$ref": "#/$defs/FileLoadingConfig",
           "description": "File loader configuration (download size limits, etc.)."
+        },
+        "external_url_fetch": {
+          "$ref": "#/$defs/ExternalUrlFetchConfig",
+          "description": "Per-app override for fetching external (non-DIAL) URLs. Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
         },
         "stage_display": {
           "$ref": "#/$defs/StageDisplayConfig",

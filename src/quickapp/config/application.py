@@ -112,6 +112,29 @@ class FileLoadingConfig(BaseModel):
     )
 
 
+class ExternalUrlFetchConfig(BaseModel):
+    enabled: bool | None = Field(
+        default=None,
+        description=(
+            "Per-app override for fetching external (non-DIAL) URLs. "
+            "`null` (default) defers to the admin env switch `EXTERNAL_URL_FETCH_ENABLED`. "
+            "`false` opts this app out even when the admin allows it. "
+            "`true` is a no-op when admin allows; the admin gate is a hard cap."
+        ),
+    )
+    host_allowlist: list[str] | None = Field(
+        default=None,
+        description=(
+            "Per-app override for the allowed hosts on external URL fetches. "
+            "`null` (default) defers to the admin env var "
+            "`EXTERNAL_URL_FETCH_HOST_ALLOWLIST`. A non-empty list narrows the admin "
+            "list (intersection); a host must be in both to be allowed. An explicit "
+            "empty list locks this app out of all hosts. Patterns: exact host "
+            "(`example.com`) or `*.example.com` for any subdomain."
+        ),
+    )
+
+
 class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
@@ -120,6 +143,13 @@ class Features(BaseModel):
     file_loading: FileLoadingConfig = Field(
         default_factory=FileLoadingConfig,
         description="File loader configuration (download size limits, etc.).",
+    )
+    external_url_fetch: ExternalUrlFetchConfig = Field(
+        default_factory=ExternalUrlFetchConfig,
+        description=(
+            "Per-app override for fetching external (non-DIAL) URLs. "
+            "Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
+        ),
     )
     stage_display: StageDisplayConfig = Field(
         default_factory=StageDisplayConfig,

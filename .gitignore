@@ -28,4 +28,5 @@ venv
 /.editorconfig
 /.gitattributes
 /docs/superpowers
+/tmp/
 /docs/reviews
