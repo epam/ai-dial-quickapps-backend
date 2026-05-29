@@ -23,6 +23,8 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.config_resolvers.file_loading_settings import FileLoadingSettings
 from quickapp.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.config_resolvers.stage_display_resolver import StageDisplayResolver
+from quickapp.config_resolvers.stage_display_settings import StageDisplaySettings
 from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.config_resolvers.tool_timeout_settings import ToolSettings
 
@@ -64,6 +66,8 @@ class AppModule(Module):
         binder.bind(
             FileLoadingSizeLimitResolver, to=FileLoadingSizeLimitResolver, scope=request_scope
         )
+        binder.bind(StageDisplaySettings, to=StageDisplaySettings, scope=singleton)
+        binder.bind(StageDisplayResolver, to=StageDisplayResolver, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
@@ -121,9 +125,8 @@ class AppModule(Module):
         return context
 
     @provider
-    def __provide_stage_display_level(self, app_config: ApplicationConfig) -> StageDisplayLevel:
-        features = app_config.features
-        return features.stage_display.level if features else StageDisplayLevel.INFO
+    def __provide_stage_display_level(self, resolver: StageDisplayResolver) -> StageDisplayLevel:
+        return resolver.resolve()
 
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
