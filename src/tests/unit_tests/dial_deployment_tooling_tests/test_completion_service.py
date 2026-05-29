@@ -7,10 +7,9 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from pydantic import SecretStr
 
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
-from quickapp.common.file_reference_pattern import strip_file_prefix
+from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 from tests.unit_tests.common.common import noop_timeout_resolver
@@ -38,17 +37,20 @@ def azure_client():
 
 
 @pytest.fixture
-def completion_service(azure_client):
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    api_key = SecretStr("test-key")
+def attachment_resolver():
+    resolver = MagicMock(spec=AttachmentResolver)
+    resolver.resolve_attachment_urls = AsyncMock(return_value=[])
+    return resolver
+
+
+@pytest.fixture
+def completion_service(azure_client, attachment_resolver):
     return DialCompletionService(
         azure_client,
-        dial_settings,
-        api_key,
-        dial_client=None,
         forwarded_headers=None,
         stream_handler=ChatCompletionStreamHandler(),
         timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
     )
 
 
@@ -281,55 +283,17 @@ async def test_history_with_custom_content_passed_through(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "file_relative_url",
-    [
-        "file:base64::files/images/chart.png",
-        "files/images/chart.png",
-    ],
-)
-async def test_resolve_attachment_queries_dial_client_metadata(file_relative_url):
-    """``_resolve_attachment`` calls ``dial_client.metadata.get('files', stripped_path)``."""
-    fileinfo = MagicMock()
-    fileinfo.content_type = "image/png"
-    fileinfo.name = "photo.png"
-    fileinfo.url = "files/resolved.png"
-
-    metadata = MagicMock()
-    metadata.get = AsyncMock(return_value=fileinfo)
-
-    dial_client = MagicMock()
-    dial_client.metadata = metadata
-
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
-    service = DialCompletionService(
-        MagicMock(),
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=dial_client,
-        forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
-        timeout_resolver=noop_timeout_resolver(),
-    )
-    result = await service._resolve_attachment(file_relative_url)
-
-    metadata.get.assert_called_once_with("files", strip_file_prefix(file_relative_url))
-    assert result == AttachmentParam(type="image/png", title="photo.png", url="files/resolved.png")
-
-
-@pytest.mark.asyncio
-async def test_forwarded_x_headers_passed_to_chat_completion(azure_client, mock_stage_wrapper):
+async def test_forwarded_x_headers_passed_to_chat_completion(
+    azure_client, mock_stage_wrapper, attachment_resolver
+):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    dial_settings = MagicMock(url="https://dial.example", api_version="2024-05-01-preview")
     service = DialCompletionService(
         azure_client,
-        dial_settings,
-        SecretStr("test-key"),
-        dial_client=None,
         forwarded_headers=forwarded,
         stream_handler=ChatCompletionStreamHandler(),
         timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
     )
 
     await service.complete_request_async(

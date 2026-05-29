@@ -2,12 +2,11 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Injector, provider, singleton
 
-from quickapp.agent.agent_module import AgentModule
-from quickapp.application import AppModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
 from quickapp.configuration_support import ConfigurationSupportApiModule
+from quickapp.core import core_module
 from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
@@ -25,6 +24,7 @@ from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings i
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
+from quickapp.shared import shared_module
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 from tests.integration_tests.test_runner.config import TestConfig
@@ -71,8 +71,8 @@ class TestApp(FastAPI):
     def get_app(cls, port: int = 8081):
         injector = Injector(
             [
-                AppModule(),
-                AgentModule(),
+                *core_module,
+                *shared_module,
                 PredefinedToolingModule(),
                 RestApiToolingModule(),
                 DialDeploymentToolingModule(),

@@ -40,7 +40,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Entry points: `src/quickapp/app.py` (process) and `src/quickapp/app_factory.py` (DI assembly).\
 Each feature is an `injector.Module` wired into the `Injector` in `app_factory.py`.\
-Cross-cutting shared code lives in `common/`.
+Cross-cutting shared code lives in `common/` (a flat utility bag). Two packages each expose a
+`<pkg>_module: list[Module]` array that `app_factory` splices into the module list instead of
+registering each entry separately: `core/` exposes `core_module` (the app's central modules —
+`AppModule` + `AgentModule`), and `shared/` exposes `shared_module` (cross-cutting utility modules with
+their own DI wiring; today `ExternalFetchModule` in `shared/external_fetch/`).
 
 → Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md)
 
@@ -63,6 +67,14 @@ Request → HTTP endpoint (`application/`) → Config resolution → Tool initia
 2. **DIAL Deployment** (`dial_deployment_tooling/`) — DIAL-native model/app tools
 3. **MCP** (`mcp_tooling/`) — Model Context Protocol servers
 4. **Internal** (`internal_tooling/`) — Built-in Python tools (pandas, plotly, etc.)
+
+### File Transfer (`file_transfer/`)
+
+`FileLoaderService` (in `file_transfer/`), `ExternalUrlFetcher` (in `shared/external_fetch/`), and `DialFilePromoter`
+(in `dial_core_services/`) together resolve any URL the agent encounters (DIAL or external) into bytes or a durable
+DIAL file. External egress is gated by a two-tier policy: the admin `EXTERNAL_URL_FETCH_ENABLED` env switch and the
+per-app `features.external_url_fetch.enabled` field. The deployment-attachment path is capability-aware via
+`Deployment.features.url_attachments`. See [`docs/file_transfer.md`](docs/file_transfer.md).
 
 ### Skills
 

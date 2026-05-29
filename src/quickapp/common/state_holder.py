@@ -35,10 +35,13 @@ class StateHolder(BaseModel):
                 return file_data
         return None
 
-    def store_file_data(self, url: str, file_data: bytes, metadata: FileMetadata) -> None:
+    def store_file_data(
+        self, url: str, file_data: bytes, metadata: FileMetadata | None = None
+    ) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict[key] = file_data
-        self._file_metadata_dict[key] = metadata
+        if metadata is not None:
+            self._file_metadata_dict[key] = metadata
 
     def get_file_metadata(self, url: str) -> FileMetadata | None:
         key = self._get_file_key_by_url(url)
