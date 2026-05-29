@@ -15,6 +15,7 @@ class StageDisplayResolver:
         self.__app_config = app_config
 
     def resolve(self) -> StageDisplayLevel:
+        # Env override takes precedence over per-app config (unlike other resolvers).
         if self.__settings.stage_display_level is not None:
             return self.__settings.stage_display_level
         features = self.__app_config.features

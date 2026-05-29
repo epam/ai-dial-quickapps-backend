@@ -5,6 +5,8 @@ from quickapp.config.application import StageDisplayLevel
 
 
 class StageDisplaySettings(BaseSettings):
+    """Operator-level override for stage display level. When set, wins over per-app config."""
+
     model_config = SettingsConfigDict()
 
     stage_display_level: StageDisplayLevel | None = Field(
