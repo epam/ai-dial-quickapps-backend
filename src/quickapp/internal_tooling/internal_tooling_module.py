@@ -6,10 +6,10 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_names import INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
+from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
