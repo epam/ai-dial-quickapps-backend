@@ -12,14 +12,14 @@ import httpx
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_fetch.external_url_fetch_policy_resolver import (
-    DisabledReason,
-    ExternalUrlFetchPolicyResolver,
-)
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import filename_from_url_path, sanitize_filename
+from quickapp.shared.external_fetch.external_fetch_settings import ExternalFetchSettings
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
+    DisabledReason,
+    ExternalUrlFetchPolicyResolver,
+)
 
 logger = logging.getLogger(__name__)
 

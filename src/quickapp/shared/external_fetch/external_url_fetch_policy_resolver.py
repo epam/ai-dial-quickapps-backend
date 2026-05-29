@@ -2,9 +2,9 @@ from typing import Literal
 
 from injector import inject
 
-from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_fetch.host_pattern_match import match_host
 from quickapp.config.application import ApplicationConfig
+from quickapp.shared.external_fetch.external_fetch_settings import ExternalFetchSettings
+from quickapp.shared.external_fetch.host_pattern_match import match_host
 
 PolicyReason = Literal["admin", "builder", "allowed"]
 HostReason = Literal["admin_allowlist", "builder_allowlist", "allowed"]

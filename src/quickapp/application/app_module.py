@@ -12,11 +12,6 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_fetch.external_url_fetch_policy_resolver import (
-    ExternalUrlFetchPolicyResolver,
-)
-from quickapp.common.external_fetch.external_url_fetcher import ExternalUrlFetcher
 from quickapp.common.file_loading_settings import FileLoadingSettings
 from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.messages_mixin import MessagesMixin
@@ -69,13 +64,6 @@ class AppModule(Module):
         binder.bind(
             FileLoadingSizeLimitResolver, to=FileLoadingSizeLimitResolver, scope=request_scope
         )
-        binder.bind(ExternalFetchSettings, to=ExternalFetchSettings, scope=singleton)
-        binder.bind(
-            ExternalUrlFetchPolicyResolver,
-            to=ExternalUrlFetchPolicyResolver,
-            scope=request_scope,
-        )
-        binder.bind(ExternalUrlFetcher, to=ExternalUrlFetcher, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )

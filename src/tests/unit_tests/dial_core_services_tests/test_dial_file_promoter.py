@@ -5,13 +5,13 @@ import pytest
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.external_fetch.external_url_fetcher import (
+from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchError,
     ExternalUrlFetcher,
     FetchedBytes,
 )
-from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 
 DIAL_URL = "https://dial.example.com"
 

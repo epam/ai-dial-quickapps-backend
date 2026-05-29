@@ -3,11 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_fetch.external_url_fetch_policy_resolver import (
+from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.shared.external_fetch.external_fetch_settings import ExternalFetchSettings
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
     ExternalUrlFetchPolicyResolver,
 )
-from quickapp.common.external_fetch.external_url_fetcher import (
+from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
     ExternalUrlFetcher,
@@ -17,7 +18,6 @@ from quickapp.common.external_fetch.external_url_fetcher import (
     _sanitize_external_filename,
     _SsrfGuardTransport,
 )
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 
@@ -54,7 +54,7 @@ def _fetcher(
     )
 
 
-_RESOLVE_PATH = "quickapp.common.external_fetch.external_url_fetcher._resolve_addresses"
+_RESOLVE_PATH = "quickapp.shared.external_fetch.external_url_fetcher._resolve_addresses"
 
 
 def _patch_resolve(addresses: list[str]) -> AsyncMock:
@@ -124,7 +124,7 @@ async def test_no_dial_credentials_leak_to_external_host():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         await _fetcher(size=_size(1024)).fetch("https://example.com/file")
@@ -152,7 +152,7 @@ async def test_happy_path_returns_fetched_bytes():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with patch(_RESOLVE_PATH, new=_patch_resolve(["8.8.8.8"])):
@@ -177,7 +177,7 @@ async def test_size_limit_via_content_length_header():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with pytest.raises(ExternalFetchError) as excinfo:
@@ -195,7 +195,7 @@ async def test_size_limit_via_streaming_when_no_content_length():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with pytest.raises(ExternalFetchError) as excinfo:
@@ -278,7 +278,7 @@ async def test_redirect_cap_raises_redirect_cap_error():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with pytest.raises(ExternalFetchError) as excinfo:
@@ -296,7 +296,7 @@ async def test_timeout_raises_timeout_error():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with pytest.raises(ExternalFetchError) as excinfo:
@@ -314,7 +314,7 @@ async def test_transport_error_maps_to_transport_reason():
 
     mock_transport = httpx.MockTransport(handler)
     with patch(
-        "quickapp.common.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
         return_value=mock_transport,
     ):
         with pytest.raises(ExternalFetchError) as excinfo:

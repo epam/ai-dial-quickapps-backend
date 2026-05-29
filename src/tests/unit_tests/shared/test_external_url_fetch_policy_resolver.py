@@ -2,11 +2,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from quickapp.common.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.common.external_fetch.external_url_fetch_policy_resolver import (
+from quickapp.config.application import ExternalUrlFetchConfig, Features, FileLoadingConfig
+from quickapp.shared.external_fetch.external_fetch_settings import ExternalFetchSettings
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
     ExternalUrlFetchPolicyResolver,
 )
-from quickapp.config.application import ExternalUrlFetchConfig, Features, FileLoadingConfig
 
 
 def _resolver(

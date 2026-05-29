@@ -7,14 +7,14 @@ from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.external_fetch.external_url_fetcher import (
+from quickapp.common.file_reference_pattern import strip_file_prefix
+from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
+from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchDisabledError,
     ExternalFetchError,
     ExternalUrlFetcher,
 )
-from quickapp.common.file_reference_pattern import strip_file_prefix
-from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
-from quickapp.dial_core_services.attachment_service import AttachmentService
 
 logger = logging.getLogger(__name__)
 
