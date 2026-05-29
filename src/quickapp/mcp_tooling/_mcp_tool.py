@@ -75,11 +75,33 @@ class _MCPTool(StagedBaseTool):
         kwargs = await super()._pre_process_params(**kwargs)
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
+        files_to_share = self._collect_dial_url_files(kwargs)
+        if files_to_share:
+            if not self.__dial_toolset_id:
+                logger.error(
+                    "Files with dial_url flag detected but dial_toolset_id is not set.",
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name="file_url",
+                    message="Files cannot be shared because dial_toolset_id is not configured.",
+                )
+            await self.__file_service.grant_permissions_to_files(
+                files_to_share, self.__dial_toolset_id
+            )
+
+        return kwargs
+
+    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
+        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
+
+        External or unsupported URLs are rejected with a parameter-aware
+        ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
+        DIAL file because permission-grant has no meaning for external resources.
+        """
+        properties = self.__tool.inputSchema.get("properties", {})
         files_to_share: list[str] = []
         for key, value in kwargs.items():
-            properties = self.__tool.inputSchema.get("properties", {})
-            schema_prop = properties.get(key, {})
-            if not schema_prop.get("dial_url"):
+            if not properties.get(key, {}).get("dial_url"):
                 continue
             candidates: list[str] = []
             if isinstance(value, str):
@@ -106,21 +128,7 @@ class _MCPTool(StagedBaseTool):
                         ),
                     )
             files_to_share.extend(candidates)
-
-        if files_to_share:
-            if not self.__dial_toolset_id:
-                logger.error(
-                    "Files with dial_url flag detected but dial_toolset_id is not set.",
-                )
-                raise InvalidToolCallParameterException(
-                    parameter_name="file_url",
-                    message="Files cannot be shared because dial_toolset_id is not configured.",
-                )
-            await self.__file_service.grant_permissions_to_files(
-                files_to_share, self.__dial_toolset_id
-            )
-
-        return kwargs
+        return files_to_share
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:
         ctype = getattr(content, "type", None)

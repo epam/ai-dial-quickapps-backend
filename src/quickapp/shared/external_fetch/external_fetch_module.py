@@ -1,8 +1,8 @@
 from fastapi_injector import request_scope
 from injector import Binder, Module, singleton
 
-from quickapp.shared.external_fetch.external_fetch_settings import ExternalFetchSettings
-from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
+from quickapp.shared.external_fetch._external_fetch_settings import ExternalFetchSettings
+from quickapp.shared.external_fetch._external_url_fetch_policy_resolver import (
     ExternalUrlFetchPolicyResolver,
 )
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher

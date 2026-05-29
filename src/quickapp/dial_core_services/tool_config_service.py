@@ -167,10 +167,6 @@ class ToolConfigCoreService:
             f"{deployment.id.split('/')[-1].replace('%20', '_')}_tool"
         )
 
-        supports_url_attachments = (
-            bool(deployment.features.url_attachments) if deployment.features else False
-        )
-
         output_tool = DialDeploymentTool(
             display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
             deployment=DialDeploymentConfig(deployment_id=deployment.id),
@@ -184,7 +180,9 @@ class ToolConfigCoreService:
                     ),
                 )
             ),
-            supports_url_attachments=supports_url_attachments,
+            supports_url_attachments=(
+                bool(deployment.features.url_attachments) if deployment.features else False
+            ),
         )
 
         properties: dict[str, ConfigurableSchemaSimpleType | ConfigurableSchemaArray] = {}
