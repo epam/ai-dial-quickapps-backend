@@ -21,12 +21,7 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
-from quickapp.shared.config_resolvers.file_loading_settings import FileLoadingSettings
-from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
-from quickapp.shared.config_resolvers import StageDisplayResolver
-from quickapp.shared.config_resolvers.stage_display_settings import StageDisplaySettings
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.shared.config_resolvers import ToolSettings
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
@@ -60,14 +55,6 @@ class AppModule(Module):
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
         binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
-        binder.bind(ToolSettings, to=ToolSettings, scope=singleton)
-        binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
-        binder.bind(FileLoadingSettings, to=FileLoadingSettings, scope=singleton)
-        binder.bind(
-            FileLoadingSizeLimitResolver, to=FileLoadingSizeLimitResolver, scope=request_scope
-        )
-        binder.bind(StageDisplaySettings, to=StageDisplaySettings, scope=singleton)
-        binder.bind(StageDisplayResolver, to=StageDisplayResolver, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
@@ -123,10 +110,6 @@ class AppModule(Module):
     @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:
         return context
-
-    @provider
-    def __provide_stage_display_level(self, resolver: StageDisplayResolver) -> StageDisplayLevel:
-        return resolver.resolve()
 
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:

@@ -9,7 +9,6 @@ from quickapp.common.tool_names import INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETE
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
-from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -25,6 +24,7 @@ from quickapp.internal_tooling.py_interpreter_tooling.handlers.input_file_handle
     InputFileHandler,
 )
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.session_manager import SessionManager
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
 

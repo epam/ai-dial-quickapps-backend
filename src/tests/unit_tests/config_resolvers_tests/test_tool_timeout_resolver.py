@@ -4,8 +4,8 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.config.application import ToolDefaults
-from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.shared.config_resolvers import ToolSettings
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 
 def _resolver(env: float, app: float | None) -> ToolTimeoutResolver:

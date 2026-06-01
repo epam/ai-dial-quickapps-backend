@@ -17,7 +17,6 @@ from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
-from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
@@ -26,6 +25,7 @@ from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
 

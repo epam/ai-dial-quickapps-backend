@@ -2,8 +2,10 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.dial_core_services.dial_downloader import DialDownloader
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
 
 DEFAULT_LIMIT = 10 * 1024 * 1024
 
