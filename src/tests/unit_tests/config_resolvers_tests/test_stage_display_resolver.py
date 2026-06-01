@@ -56,3 +56,8 @@ def test_settings_reads_env_debug(monkeypatch):
 def test_settings_reads_env_error(monkeypatch):
     monkeypatch.setenv("DEFAULT_STAGE_DISPLAY_LEVEL", "error")
     assert StageDisplaySettings().stage_display_level == StageDisplayLevel.ERROR
+
+
+def test_settings_reads_env_uppercase(monkeypatch):
+    monkeypatch.setenv("DEFAULT_STAGE_DISPLAY_LEVEL", "DEBUG")
+    assert StageDisplaySettings().stage_display_level == StageDisplayLevel.DEBUG
