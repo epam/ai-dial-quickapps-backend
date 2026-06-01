@@ -25,7 +25,7 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.state_holder import StateHolder
-from quickapp.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_service import DialFileService

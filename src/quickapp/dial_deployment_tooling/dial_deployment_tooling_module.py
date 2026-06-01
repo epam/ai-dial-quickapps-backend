@@ -20,7 +20,7 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 from ._attachment_resolver import AttachmentResolver
 from ._deployment_tool_context import _DeploymentToolingContext

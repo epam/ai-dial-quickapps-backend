@@ -21,12 +21,12 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
-from quickapp.config_resolvers.file_loading_settings import FileLoadingSettings
-from quickapp.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
-from quickapp.config_resolvers.stage_display_resolver import StageDisplayResolver
-from quickapp.config_resolvers.stage_display_settings import StageDisplaySettings
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.config_resolvers.tool_timeout_settings import ToolSettings
+from quickapp.shared.config_resolvers.file_loading_settings import FileLoadingSettings
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.shared.config_resolvers import StageDisplayResolver
+from quickapp.shared.config_resolvers.stage_display_settings import StageDisplaySettings
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers import ToolSettings
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup

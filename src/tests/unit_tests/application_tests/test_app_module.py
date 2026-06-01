@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from quickapp.application.app_module import AppModule
 from quickapp.config.application import StageDisplayLevel
-from quickapp.config_resolvers.stage_display_resolver import StageDisplayResolver
+from quickapp.shared.config_resolvers import StageDisplayResolver
 
 
 class TestProvideStageDisplayLevel:

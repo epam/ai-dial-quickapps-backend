@@ -17,7 +17,7 @@ from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService

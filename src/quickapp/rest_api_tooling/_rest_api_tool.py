@@ -14,7 +14,7 @@ from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import Authorization
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.dial_core_services.attachment_service import AttachmentService
 
 from ._request_detail_builder import _RequestDetailsBuilder

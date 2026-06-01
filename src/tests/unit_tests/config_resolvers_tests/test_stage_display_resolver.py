@@ -1,15 +1,11 @@
 from unittest.mock import MagicMock
 
-import pytest
-
 from quickapp.config.application import Features, StageDisplayConfig, StageDisplayLevel
-from quickapp.config_resolvers.stage_display_resolver import StageDisplayResolver
-from quickapp.config_resolvers.stage_display_settings import StageDisplaySettings
+from quickapp.shared.config_resolvers import StageDisplayResolver
+from quickapp.shared.config_resolvers.stage_display_settings import StageDisplaySettings
 
 
-def _resolver(
-    env: StageDisplayLevel | None, app: StageDisplayLevel
-) -> StageDisplayResolver:
+def _resolver(env: StageDisplayLevel | None, app: StageDisplayLevel) -> StageDisplayResolver:
     settings = MagicMock(spec=StageDisplaySettings)
     settings.stage_display_level = env
     app_config = MagicMock()

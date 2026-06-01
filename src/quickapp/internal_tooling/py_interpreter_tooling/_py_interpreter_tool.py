@@ -16,7 +16,6 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import _PyInterpreterError
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,

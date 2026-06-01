@@ -21,7 +21,7 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 MAX_ITERATIONS = 1000

@@ -1,7 +1,7 @@
 from injector import inject
 
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
-from quickapp.config_resolvers.stage_display_settings import StageDisplaySettings
+from quickapp.shared.config_resolvers.stage_display_settings import StageDisplaySettings
 
 
 @inject

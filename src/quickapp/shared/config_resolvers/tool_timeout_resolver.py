@@ -1,7 +1,7 @@
 from injector import inject
 
 from quickapp.config.application import ApplicationConfig
-from quickapp.config_resolvers.tool_timeout_settings import ToolSettings
+from quickapp.shared.config_resolvers.tool_timeout_settings import ToolSettings
 
 
 @inject

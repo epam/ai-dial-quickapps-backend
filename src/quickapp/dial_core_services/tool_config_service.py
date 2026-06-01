@@ -27,7 +27,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
-from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
