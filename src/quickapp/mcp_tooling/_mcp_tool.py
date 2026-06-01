@@ -8,10 +8,12 @@ from mcp.types import BlobResourceContents, TextResourceContents, Tool
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
+from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
@@ -44,6 +46,7 @@ class _MCPTool(StagedBaseTool):
         dial_toolset_id: str | None,
         login_service: InteractiveLoginService,
         timeout_resolver: ToolTimeoutResolver,
+        dial_settings: DialSettings,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
@@ -66,22 +69,13 @@ class _MCPTool(StagedBaseTool):
         self.__dial_toolset_id = dial_toolset_id
         self.__login_service: InteractiveLoginService = login_service
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
+        self.__dial_url: str = dial_settings.url
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         kwargs = await super()._pre_process_params(**kwargs)
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
-        files_to_share: list[str] = []
-        for key, value in kwargs.items():
-            properties = self.__tool.inputSchema.get("properties", {})
-            schema_prop = properties.get(key, {})
-            if not schema_prop.get("dial_url"):
-                continue
-            if isinstance(value, str):
-                files_to_share.append(value)
-            elif isinstance(value, list):
-                files_to_share.extend(elem for elem in value if isinstance(elem, str))
-
+        files_to_share = self._collect_dial_url_files(kwargs)
         if files_to_share:
             if not self.__dial_toolset_id:
                 logger.error(
@@ -96,6 +90,45 @@ class _MCPTool(StagedBaseTool):
             )
 
         return kwargs
+
+    def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
+        """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
+
+        External or unsupported URLs are rejected with a parameter-aware
+        ``InvalidToolCallParameterException`` — ``dial_url`` parameters require a
+        DIAL file because permission-grant has no meaning for external resources.
+        """
+        properties = self.__tool.inputSchema.get("properties", {})
+        files_to_share: list[str] = []
+        for key, value in kwargs.items():
+            if not properties.get(key, {}).get("dial_url"):
+                continue
+            candidates: list[str] = []
+            if isinstance(value, str):
+                candidates.append(value)
+            elif isinstance(value, list):
+                candidates.extend(elem for elem in value if isinstance(elem, str))
+            for candidate in candidates:
+                scheme = classify_url(candidate, self.__dial_url)
+                if scheme == UrlScheme.EXTERNAL:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            "external URL. Use `file:base64::` or `file:text::` to "
+                            "inline the content, or upload the file to DIAL first."
+                        ),
+                    )
+                if scheme == UrlScheme.UNSUPPORTED:
+                    raise InvalidToolCallParameterException(
+                        parameter_name=key,
+                        message=(
+                            f"Parameter `{key}` requires a DIAL file but received an "
+                            f"unsupported URL: {candidate}."
+                        ),
+                    )
+            files_to_share.extend(candidates)
+        return files_to_share
 
     def _content_to_attachment(self, content: Any) -> Attachment | None:
         ctype = getattr(content, "type", None)

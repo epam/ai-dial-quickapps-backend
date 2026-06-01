@@ -49,6 +49,7 @@ def _build_tool_side_effect(tool, tool_config, connection_manager=None, **kwargs
         dial_toolset_id=None,
         login_service=MagicMock(),
         timeout_resolver=noop_timeout_resolver(),
+        dial_settings=MagicMock(url="https://dial.example.com"),
     )
 
 

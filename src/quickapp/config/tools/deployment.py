@@ -30,3 +30,12 @@ class DialDeploymentTool(BaseOpenAITool):
     content_propagation: ContentPropagation | None = Field(
         default=None, description="The configuration with propagations to DIAL deployment."
     )
+    supports_url_attachments: bool = Field(
+        default=False,
+        description=(
+            "Whether the underlying DIAL deployment advertises "
+            "`features.url_attachments`. Snapshotted at tool-config build time. "
+            "When true, external URLs are forwarded as `reference_url` attachments; "
+            "when false, they are materialised into DIAL files first."
+        ),
+    )

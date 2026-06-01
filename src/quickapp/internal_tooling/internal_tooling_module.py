@@ -21,6 +21,9 @@ from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_tool impor
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.content_sanitizer import (
     ContentSanitizer,
 )
+from quickapp.internal_tooling.py_interpreter_tooling.handlers.input_file_handler import (
+    InputFileHandler,
+)
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.session_manager import SessionManager
 
 logger = logging.getLogger(__name__)
@@ -32,6 +35,7 @@ class InternalToolModule(Module):
         binder.bind(ContentSanitizer, to=ContentSanitizer)
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
+        binder.bind(InputFileHandler, to=InputFileHandler, scope=request_scope)
         logger.debug("InternalTooling module configuration completed")
 
     @multiprovider

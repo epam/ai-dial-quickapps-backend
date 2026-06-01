@@ -22,6 +22,7 @@ from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
+from ._attachment_resolver import AttachmentResolver
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -33,6 +34,7 @@ logger = logging.getLogger(__name__)
 class DialDeploymentToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
+        binder.bind(AttachmentResolver, to=AttachmentResolver, scope=request_scope)
         binder.bind(DialCompletionService, to=DialCompletionService, scope=request_scope)
         binder.bind(DeploymentStageWrapper, to=DeploymentStageWrapper)
         binder.bind(_DeploymentToolInitializer, to=_DeploymentToolInitializer)

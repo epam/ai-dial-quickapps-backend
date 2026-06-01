@@ -189,12 +189,21 @@ class TestInvalidateCache:
 class TestGrantPermissions:
     @pytest.mark.asyncio
     async def test_grant_permissions_calls_client(self):
-        mock_dial_client = _make_mock_dial_client()
-        svc = _make_service(dial_client=mock_dial_client)
+        client = _make_mock_dial_client()
+        svc = _make_service(dial_client=client)
 
         await svc.grant_permissions_to_files(["files/a.txt", "files/b.txt"], "my-toolset")
 
-        mock_dial_client.resource_permissions.grant.assert_awaited_once_with(
+        client.resource_permissions.grant.assert_awaited_once_with(
             resources=["files/a.txt", "files/b.txt"],
             receiver="my-toolset",
         )
+
+    @pytest.mark.asyncio
+    async def test_grant_permissions_propagates_failure(self):
+        client = _make_mock_dial_client()
+        client.resource_permissions.grant.side_effect = RuntimeError("boom")
+        svc = _make_service(dial_client=client)
+
+        with pytest.raises(RuntimeError, match="boom"):
+            await svc.grant_permissions_to_files(["files/x.txt"], "toolset")
