@@ -3,20 +3,24 @@ import inspect
 import json
 import logging
 import mimetypes
+import re
 from pathlib import Path
 from typing import Any
 
 import pytest
 import uvicorn
-from aidial_client import AsyncDial
+from aidial_client import AsyncDial, DialException, ResourceNotFoundError
+from aidial_client.types.prompt import Prompt
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import FileContextConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.utils import bool_env_var
+from quickapp.skills._frontmatter import parse_frontmatter
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
 from tests.integration_tests.test_runner.cache.cache_middleware import (
@@ -24,7 +28,14 @@ from tests.integration_tests.test_runner.cache.cache_middleware import (
     CacheMiddlewareConfig,
 )
 from tests.integration_tests.test_runner.config import TestConfig, TestDialCoreConfig
-from tests.integration_tests.test_runner.models import Failure, TstCase, check_multiple_alternatives
+from tests.integration_tests.test_runner.models import (
+    Failure,
+    SkillFileConfig,
+    TestContextConfig,
+    TstCase,
+    check_multiple_alternatives,
+)
+from tests.integration_tests.test_runner.paths import SKILLS_DIR
 from tests.integration_tests.test_runner.utils.string_utils import extract_total_price
 from tests.integration_tests.test_runner.validators import ResponseValidator
 
@@ -47,18 +58,41 @@ def extract_usage(response_message):
 
 API_KEY_HEADER = "Api-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
+INTEGRATION_PROMPTS_FOLDER = "quickapps-integration-tests"
 
 
-def create_request_headers(api_key: SecretStr, app_config: ApplicationConfig) -> dict[str, str]:
-    return {
-        API_KEY_HEADER: api_key.get_secret_value(),
-        CONTENT_TYPE_HEADER: "application/json",
-        "X-DIAL-APPLICATION-PROPERTIES": app_config.model_dump_json(),
-        "X-DIAL-APPLICATION-ID": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
-    }
+def _create_request_headers(api_key: SecretStr) -> dict[str, str]:
+    return {API_KEY_HEADER: api_key.get_secret_value(), CONTENT_TYPE_HEADER: "application/json"}
+
+
+def create_request_headers(
+    api_key: SecretStr, app_config: ApplicationConfig = None
+) -> dict[str, str]:
+    headers = _create_request_headers(api_key)
+    if app_config:
+        headers.update(
+            {
+                "X-DIAL-APPLICATION-PROPERTIES": app_config.model_dump_json(),
+                "X-DIAL-APPLICATION-ID": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
+            }
+        )
+    return headers
 
 
 class TestRunner:
+    @staticmethod
+    def _resolve_path(path: str | Path, default_parent: Path) -> Path:
+        candidate = Path(path)
+        if candidate.is_absolute():
+            return candidate
+        if candidate.parts and candidate.parts[0] == default_parent.name:
+            return default_parent.parent / candidate
+        return default_parent / candidate
+
+    @staticmethod
+    def _sanitize_path_segment(value: str) -> str:
+        return re.sub(r"[^a-zA-Z0-9._-]+", "-", value).strip("-").lower()
+
     @staticmethod
     async def start_server(refresh: bool, test_name: str, port: int, model: str, no_cache: bool):
         logger.debug("Starting middleware server...")
@@ -145,6 +179,119 @@ class TestRunner:
             url = file_metadata.url
 
         return url
+
+    @staticmethod
+    async def upload_dial_prompt_skill(
+        dial_url: str,
+        headers: dict[str, str],
+        skill_file: Path,
+    ) -> str:
+        api_key = headers.get(API_KEY_HEADER)
+        dial_client = AsyncDial(api_key=api_key, base_url=dial_url)
+
+        bucket_resp = await dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+
+        skill_content = skill_file.read_text(encoding="utf-8")
+        parsed_skill = parse_frontmatter(skill_content, str(skill_file))
+        parsed_name = parsed_skill.metadata.name
+        prompt_name = TestRunner._sanitize_path_segment(parsed_name)
+        prompt_folder = f"{INTEGRATION_PROMPTS_FOLDER}/"
+        prompt_url = f"prompts/{bucket}/{INTEGRATION_PROMPTS_FOLDER}/{prompt_name}"
+
+        try:
+            existing_prompt = await dial_client.prompts.get(prompt_url)
+            if existing_prompt.content == skill_content:
+                logger.info(f"Reusing existing dial-prompt skill: {prompt_url}")
+                return prompt_url
+        except ResourceNotFoundError:
+            pass
+        except DialException:
+            logger.debug(
+                f"Failed to fetch existing skill before upload, proceeding with upload: {prompt_url}"
+            )
+
+        prompt = Prompt(
+            id=prompt_name,
+            name=prompt_name,
+            folder_id=prompt_folder,
+            content=skill_content,
+        )
+
+        try:
+            await dial_client.prompts.save(prompt_url, prompt)
+            logger.info(f"Uploaded dial-prompt skill: {prompt_url}")
+            return prompt_url
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to upload dial-prompt skill to DIAL for {skill_file}"
+            ) from e
+
+    @staticmethod
+    def _resolve_skill_path(skill: str | Path | SkillFileConfig) -> Path:
+        if isinstance(skill, SkillFileConfig):
+            skill_path_value: str | Path = skill.path
+        else:
+            skill_path_value = skill
+
+        skill_path_raw = Path(skill_path_value)
+        if skill_path_raw.parts and skill_path_raw.parts[0] == "skills":
+            skill_path = SKILLS_DIR / Path(*skill_path_raw.parts[1:])
+        else:
+            skill_path = TestRunner._resolve_path(skill_path_value, SKILLS_DIR)
+        if skill_path.suffix == "":
+            skill_path = skill_path.with_suffix(".md")
+        if not skill_path.exists():
+            raise FileNotFoundError(f"Skill file not found: {skill_path}")
+        return skill_path
+
+    @staticmethod
+    def resolve_skill_files(
+        skills: str | Path | SkillFileConfig | list[str | Path | SkillFileConfig] | None,
+    ) -> list[Path]:
+        if skills is None:
+            return []
+        if isinstance(skills, list):
+            return [TestRunner._resolve_skill_path(skill) for skill in skills]
+        return [TestRunner._resolve_skill_path(skills)]
+
+    @staticmethod
+    def normalize_context_configs(
+        contexts: list[str | Path | TestContextConfig] | None,
+        test_file_dir: Path,
+    ) -> list[TestContextConfig]:
+        if not contexts:
+            return []
+        normalized: list[TestContextConfig] = []
+
+        for context in contexts:
+            if isinstance(context, TestContextConfig):
+                raw_path: str | Path = context.path
+                description = context.description
+            else:
+                raw_path = context
+                description = None
+
+            resolved_path = TestRunner._resolve_path(raw_path, test_file_dir)
+            if not resolved_path.exists():
+                raise FileNotFoundError(f"Context file not found: {resolved_path}")
+
+            normalized.append(TestContextConfig(path=resolved_path, description=description))
+        return normalized
+
+    @staticmethod
+    async def resolve_application_contexts(
+        dial_url: str,
+        headers: dict[str, str],
+        contexts: list[TestContextConfig],
+    ) -> list[FileContextConfig]:
+        app_contexts: list[FileContextConfig] = []
+        for context in contexts:
+            url = await TestRunner.get_attachment_url(
+                dial_url=dial_url, headers=headers, attachment=context.path
+            )
+            app_contexts.append(FileContextConfig(url=url, description=context.description))
+        return app_contexts
 
     @staticmethod
     async def execute_test_case(
@@ -329,6 +476,8 @@ def e2e_test(
     config_file_set: str = "e2e",
     runs: int = 3,
     no_cache: bool = False,
+    skills: str | Path | SkillFileConfig | list[str | Path | SkillFileConfig] | None = None,
+    contexts: list[str | Path | TestContextConfig] | None = None,
 ):
     """
     Decorator for end-to-end tests.
@@ -412,13 +561,42 @@ def e2e_test(
             run_index,
         ):
             tool_sets = TestConfig.load_tools_config(unique_port, config_file_set)
-            app_config: ApplicationConfig = TestConfig.create_app_configuration(
-                toolsets=tool_sets, model=execution_model
+            app = TestApp.get_app(port=unique_port)
+            client = TestClient(app)
+            headers = create_request_headers(TestConfig.REMOTE_DIAL_API_KEY)
+
+            skill_urls: list[str] = []
+            for skill_file in TestRunner.resolve_skill_files(skills):
+                skill_urls.append(
+                    await TestRunner.upload_dial_prompt_skill(
+                        dial_url=TestDialCoreConfig.REMOTE_DIAL_URL,
+                        headers=headers,
+                        skill_file=skill_file,
+                    )
+                )
+
+            if hasattr(request.node, "path"):
+                test_file_path = Path(str(request.node.path))
+            else:
+                test_file_path = Path(str(request.node.fspath))
+            test_file_dir = test_file_path.parent
+            normalized_contexts = TestRunner.normalize_context_configs(
+                contexts, test_file_dir=test_file_dir
+            )
+            app_contexts = await TestRunner.resolve_application_contexts(
+                dial_url=TestDialCoreConfig.REMOTE_DIAL_URL,
+                headers=headers,
+                contexts=normalized_contexts,
             )
 
-            app = TestApp.get_app(port=unique_port)
-
-            client = TestClient(app)
+            app_config: ApplicationConfig = TestConfig.create_app_configuration(
+                toolsets=tool_sets,
+                model=execution_model,
+                skill_urls=skill_urls or None,
+                contexts=app_contexts,
+            )
+            # Update headers with application configuration
+            headers = create_request_headers(TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config)
 
             # Combine CLI flag with decorator parameter - CLI takes precedence
             cli_no_cache = bool(request.config.getoption("--no-cache", default=False))

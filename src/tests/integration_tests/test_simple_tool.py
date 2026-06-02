@@ -223,6 +223,37 @@ def test_rag_search(client):
 
 @pytest.mark.integration
 @e2e_test(
+    runs=2,
+    config_file_set="no-additional-tools",
+    skills="numbered-list-only.md",
+    contexts=[Path(__file__).parent / "test_documents/integration_context_items.txt"],
+    test_case=TstCase(
+        "Dial skill format and admin context content",
+        "Read dial-prompt skill for list format and admin context via internal_file_read_lines",
+        similarity_threshold=SimilarityThreshold.STRICT.value,
+    ).add_user_message(
+        user_message=(
+            "Read the numbered-list-only skill. Give me the numbered list with data from the available attached file."
+        ),
+        tool_calls=[
+            ToolCall(ToolNames.INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT.value, max_calls=1),
+            ToolCall(ToolNames.INTERNAL_SKILLS_READ_SKILL.value, max_calls=2),
+            ToolCall(ToolNames.INTERNAL_FILE_READ_LINES.value, max_calls=5).add_soft_argument_check(
+                "path",
+                ["integration_context_items", "files/"],
+            ),
+        ],
+        answer=[
+            "1st - GammaMapper\n2nd - BetaIndexer\n3rd - AlphaReader",
+        ],
+    ),
+)
+def test_dial_skill_and_context_numbered_list(client):
+    pass
+
+
+@pytest.mark.integration
+@e2e_test(
     config_file_set="integration",
     test_case=TstCase(
         "RAG search2",
