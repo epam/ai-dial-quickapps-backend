@@ -33,29 +33,33 @@ class ToolExecutor:
         self.__period_name = "tool_execution"
 
     async def execute(self, tool_call_list: list[AccumulatedToolCall]) -> list[ToolCallResult]:
-        tasks = []
         valid_calls: list[AccumulatedToolCall] = []
+        tasks = []
         for tc in tool_call_list:
             tool = self.__tools.get(tc.name)
-            if tool:
-                args = json.loads(tc.arguments)
-                logger.debug(f"Making tool calls: {tc.name} with args:{args}")
-                tasks.append(tool.arun(tool_call_id=tc.id, **args))
-                valid_calls.append(tc)
+            if tool is None:
+                continue
+            args = json.loads(tc.arguments)
+            logger.debug(f"Making tool calls: {tc.name} with args:{args}")
+            tasks.append(tool.arun(tool_call_id=tc.id, **args))
+            valid_calls.append(tc)
 
-        results: list[ToolCallResult] = list(await asyncio.gather(*tasks, return_exceptions=False))
+        results: list[ToolCallResult] = list(await asyncio.gather(*tasks))
+        self.__enrich_all(results)
+        return [await self.__process_result(r, tc) for r, tc in zip(results, valid_calls)]
 
+    def __enrich_all(self, results: list[ToolCallResult]) -> None:
         for enricher in self.__enrichers:
             for result in results:
                 enricher.enrich(result)
 
-        for i, (result, tc) in enumerate(zip(results, valid_calls)):
-            ctx = ProcessingContext(tool_call_id=tc.id, tool_name=tc.name)
-            for processor in self.__processors:
-                result = await processor.process(result, ctx)
-            results[i] = result
-
-        return results
+    async def __process_result(
+        self, result: ToolCallResult, tc: AccumulatedToolCall
+    ) -> ToolCallResult:
+        ctx = ProcessingContext(tool_call_id=tc.id, tool_name=tc.name)
+        for processor in self.__processors:
+            result = await processor.process(result, ctx)
+        return result
 
     @staticmethod
     def __build_tool_dict(tools: list[StagedBaseTool]) -> dict[str, StagedBaseTool]:
