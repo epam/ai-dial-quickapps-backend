@@ -1082,15 +1082,8 @@
           "type": "string"
         },
         "tool_call_result_offload": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ToolCallResultOffloadConfig"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "Offload oversized tool-call responses to a file, read back on demand via the read_lines / search file tools. Present (an object) enables it; null disables it. When omitted, the default is governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. Requires read_lines and search to be exposed via enabled_tools."
+          "$ref": "#/$defs/ToolCallResultOffloadConfig",
+          "description": "Offload oversized tool-call responses to a file, read back on demand via the read_lines / search file tools. Toggled by its `enabled` flag, whose default is governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. Requires read_lines and search to be exposed via enabled_tools."
         }
       },
       "title": "DialFilesConfig",
@@ -2925,8 +2918,13 @@
       "type": "object"
     },
     "ToolCallResultOffloadConfig": {
-      "description": "Per-app config for offloading oversized tool-call responses to DIAL files.\n\nEnabled by presence (mirrors how `features.dial_files` itself is enabled):\nan instance means on; `null` in the manifest means off. Field defaults come\nfrom `ToolCallResultOffloadSettings` so env vars set the global baseline.",
+      "description": "Per-app config for offloading oversized tool-call responses to DIAL files.\n\nToggled by the explicit `enabled` flag; `size_threshold` / `excluded_tools`\nare carried regardless so an app can disable offload without losing its\noverrides. Field defaults come from `ToolCallResultOffloadSettings` so env\nvars set the global baseline.",
       "properties": {
+        "enabled": {
+          "description": "Whether to offload oversized tool-call responses to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT env var. Requires read_lines and search to be exposed via enabled_tools.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
         "size_threshold": {
           "description": "Byte threshold above which a tool-call response is offloaded to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var.",
           "exclusiveMinimum": 0,

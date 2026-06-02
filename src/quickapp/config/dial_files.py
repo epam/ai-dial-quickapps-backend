@@ -35,11 +35,20 @@ class ToolCallResultOffloadSettings(BaseSettings):
 class ToolCallResultOffloadConfig(BaseModel):
     """Per-app config for offloading oversized tool-call responses to DIAL files.
 
-    Enabled by presence (mirrors how `features.dial_files` itself is enabled):
-    an instance means on; `null` in the manifest means off. Field defaults come
-    from `ToolCallResultOffloadSettings` so env vars set the global baseline.
+    Toggled by the explicit `enabled` flag; `size_threshold` / `excluded_tools`
+    are carried regardless so an app can disable offload without losing its
+    overrides. Field defaults come from `ToolCallResultOffloadSettings` so env
+    vars set the global baseline.
     """
 
+    enabled: bool = Field(
+        default_factory=lambda: ToolCallResultOffloadSettings().enabled_by_default,
+        description=(
+            "Whether to offload oversized tool-call responses to a file. "
+            "Defaults to the TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT env var. "
+            "Requires read_lines and search to be exposed via enabled_tools."
+        ),
+    )
     size_threshold: int = Field(
         default_factory=lambda: ToolCallResultOffloadSettings().size_threshold,
         gt=0,
@@ -54,14 +63,6 @@ class ToolCallResultOffloadConfig(BaseModel):
             "Tool names exempt from offloading (e.g. the read-back tools). "
             "Defaults to the TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var."
         ),
-    )
-
-
-def _default_tool_call_result_offload() -> ToolCallResultOffloadConfig | None:
-    return (
-        ToolCallResultOffloadConfig()
-        if ToolCallResultOffloadSettings().enabled_by_default
-        else None
     )
 
 
@@ -82,12 +83,12 @@ class DialFilesConfig(BaseModel):
             "and '..' segments are rejected. Example: 'workspace/'."
         ),
     )
-    tool_call_result_offload: ToolCallResultOffloadConfig | None = Field(
-        default_factory=_default_tool_call_result_offload,
+    tool_call_result_offload: ToolCallResultOffloadConfig = Field(
+        default_factory=ToolCallResultOffloadConfig,
         description=(
             "Offload oversized tool-call responses to a file, read back on demand via the "
-            "read_lines / search file tools. Present (an object) enables it; null disables it. "
-            "When omitted, the default is governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
+            "read_lines / search file tools. Toggled by its `enabled` flag, whose default is "
+            "governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
             "Requires read_lines and search to be exposed via enabled_tools."
         ),
     )

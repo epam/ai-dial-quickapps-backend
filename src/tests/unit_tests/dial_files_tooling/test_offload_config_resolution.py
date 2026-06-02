@@ -5,9 +5,12 @@ from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesTooli
 
 
 def _make_offload(
-    size_threshold: int = 40_000, excluded_tools: "set[str] | None" = None
+    enabled: bool = True,
+    size_threshold: int = 40_000,
+    excluded_tools: "set[str] | None" = None,
 ) -> MagicMock:
     offload = MagicMock()
+    offload.enabled = enabled
     offload.size_threshold = size_threshold
     offload.excluded_tools = (
         excluded_tools
@@ -18,7 +21,7 @@ def _make_offload(
 
 
 def _make_app_config(
-    offload: "MagicMock | None | str" = "default",
+    offload: "MagicMock | str" = "default",
     enabled_tools: "str | list[str]" = "all",
     dial_files_present: bool = True,
 ) -> MagicMock:
@@ -47,11 +50,11 @@ class TestOffloadConfigResolution:
         config = _resolve(_make_app_config(dial_files_present=False))
         assert config.enabled is False
 
-    def test_disabled_when_offload_section_absent(self):
-        config = _resolve(_make_app_config(offload=None))
+    def test_disabled_when_enabled_false(self):
+        config = _resolve(_make_app_config(offload=_make_offload(enabled=False)))
         assert config.enabled is False
 
-    def test_enabled_when_present_and_all_tools(self):
+    def test_enabled_when_flag_set_and_all_tools(self):
         config = _resolve(_make_app_config(enabled_tools="all"))
         assert config.enabled is True
 
@@ -80,8 +83,12 @@ class TestOffloadInitializationExceptions:
     def test_no_exception_when_dial_files_absent(self):
         assert _exceptions(_make_app_config(dial_files_present=False)) == []
 
-    def test_no_exception_when_offload_section_absent(self):
-        assert _exceptions(_make_app_config(offload=None)) == []
+    def test_no_exception_when_enabled_false(self):
+        assert _exceptions(_make_app_config(offload=_make_offload(enabled=False))) == []
+
+    def test_no_exception_when_enabled_false_and_read_back_tools_missing(self):
+        app_config = _make_app_config(offload=_make_offload(enabled=False), enabled_tools=["write"])
+        assert _exceptions(app_config) == []
 
     def test_no_exception_when_read_back_available(self):
         assert _exceptions(_make_app_config(enabled_tools="all")) == []

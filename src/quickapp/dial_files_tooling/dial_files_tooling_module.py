@@ -119,16 +119,20 @@ class DialFilesToolingModule(Module):
     @provider
     def _provide_offload_config(self, app_config: ApplicationConfig) -> ResolvedOffloadConfig:
         # Offload is a dial-files sub-feature: it only exists when the feature is
-        # configured AND its offload section is present (enabled by presence).
-        # Checks the actual config — not the defaulted DialFilesConfig() — so an
-        # absent feature can never re-enable offload.
+        # configured. Checks the actual config — not the defaulted DialFilesConfig()
+        # — so an absent feature can never re-enable offload.
         cfg = app_config.features.dial_files if app_config.features else None
-        if cfg is None or cfg.tool_call_result_offload is None:
-            # No dial-files / no offload section: the feature was never requested.
+        if cfg is None:
+            # No dial-files: the feature was never requested.
             return ResolvedOffloadConfig(
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )
         offload = cfg.tool_call_result_offload
+        if not offload.enabled:
+            # Operator explicitly turned offload off: stay inline, no warning.
+            return ResolvedOffloadConfig(
+                enabled=False, size_threshold=0, excluded_tools=frozenset()
+            )
 
         # Hard dependency on the read-back tools: disable offload when they are
         # not exposed, so the LLM is never handed a pointer it cannot follow. The
