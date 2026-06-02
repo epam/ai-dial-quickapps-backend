@@ -12,7 +12,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.utils import generate_attachment_filename, matches_type
@@ -26,6 +25,7 @@ from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
 

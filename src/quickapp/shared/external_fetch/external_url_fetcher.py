@@ -12,9 +12,11 @@ import httpx
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import filename_from_url_path, sanitize_filename
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.shared.external_fetch._external_fetch_settings import ExternalFetchSettings
 from quickapp.shared.external_fetch._external_url_fetch_policy_resolver import (
     DisabledReason,

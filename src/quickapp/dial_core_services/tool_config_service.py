@@ -9,7 +9,6 @@ from injector import ProviderOf, inject
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.dial_deployment import DialDeploymentConfig
@@ -32,6 +31,7 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
 

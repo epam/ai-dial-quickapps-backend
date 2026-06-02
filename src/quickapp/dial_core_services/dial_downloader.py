@@ -4,7 +4,9 @@ from aidial_client import AsyncDial
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
 
 logger = logging.getLogger(__name__)
 
