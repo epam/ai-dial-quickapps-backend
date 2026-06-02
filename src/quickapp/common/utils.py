@@ -4,6 +4,7 @@ import re
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any
+from urllib.parse import unquote, urlsplit
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 
@@ -79,6 +80,20 @@ def generate_attachment_filename(mime_type: str | None, base_filename: str = "qu
     timestamp = datetime.now().isoformat(timespec='microseconds')
     filename = f"{base_filename}-{timestamp}{extension if extension is not None else ''}"
     return sanitize_filename(filename)
+
+
+def filename_from_url_path(url: str) -> str | None:
+    """Return the URL-decoded last path segment of ``url``, or ``None`` if absent."""
+    try:
+        path = urlsplit(url).path
+    except ValueError:
+        return None
+    if not path:
+        return None
+    last = path.rstrip("/").rsplit("/", 1)[-1]
+    if not last:
+        return None
+    return unquote(last) or None
 
 
 def to_plain_dict(obj: Any, _seen: set[int] | None = None) -> Any:

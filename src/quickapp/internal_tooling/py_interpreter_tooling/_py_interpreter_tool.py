@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from typing import Any
 from urllib.parse import unquote
@@ -5,14 +6,13 @@ from urllib.parse import unquote
 from aidial_sdk.chat_completion import Attachment, Message
 from injector import AssistedBuilder, inject
 
-from quickapp.common import DIAL_API_KEY, StagedBaseTool, ToolCallResult
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
@@ -62,10 +62,9 @@ class _PyInterpreterTool(StagedBaseTool):
         session_manager: SessionManager,
         display_content_processor: DisplayContentProcessor,
         dial_settings: DialSettings,
-        dial_api_key: DIAL_API_KEY,
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        timeout_resolver: ToolTimeoutResolver,
+        input_file_handler: InputFileHandler,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -85,8 +84,7 @@ class _PyInterpreterTool(StagedBaseTool):
         self.__session_manager: SessionManager = session_manager
         self.__display_content_processor: DisplayContentProcessor = display_content_processor
         self.__dial_settings: DialSettings = dial_settings
-        self.__dial_api_key: DIAL_API_KEY = dial_api_key
-        self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
+        self.__input_file_handler: InputFileHandler = input_file_handler
         self.stage_name_component = "Calling Python Code Interpreter"
 
     async def _run_in_stage_async(
@@ -165,63 +163,81 @@ class _PyInterpreterTool(StagedBaseTool):
         if not attachment_urls:
             return
 
-        # Get already loaded files
         loaded_files: LoadedFiles = await client.list_files(
             PyInterpreterSession(sessionId=session_id)
         )
-        loaded_file_names = [file.path for file in loaded_files.files]
+        loaded_file_names = {file.path for file in loaded_files.files}
 
         attachments_urls_map = self._get_attachment_urls_map(self.__messages_mixin.messages)
 
+        transfer_tasks: list[tuple[str, asyncio.Task[None]]] = []
         errors: list[str] = []
 
-        # Transfer each required file that's not already loaded
         for file_name in attachment_urls:
             target_path = unquote(posix_path_last_segment(file_name))
 
             if target_path in loaded_file_names:
                 continue
 
-            matched = False
-            for attachment_url, attachment in attachments_urls_map.items():
-                sanitized_file_name = file_name.replace(" ", "%20")
-                if attachment_url.endswith(file_name) or attachment_url.endswith(
-                    sanitized_file_name
-                ):
-                    matched = True
-                    try:
-                        url = await InputFileHandler().get_attachment_url(
-                            settings=self.__py_interpreter_settings,
-                            dial_api_key=self.__dial_api_key,
-                            attachment_url=attachment_url,
-                            attachment=attachment,
-                            dial_url=self.__dial_settings.url,
-                            timeout=self.__timeout_resolver.resolve(),
-                        )
-
-                        await client.transfer_input_file(
-                            InputFileTransferDto(
-                                sessionId=session_id,
-                                sourceUrl=url,
-                                targetPath=target_path,
-                            )
-                        )
-                    except Exception as e:
-                        logger.warning("Failed to transfer file %s: %s", target_path, e)
-                        errors.append(f"{target_path}: {e}")
-                    break
-
-            if not matched:
+            attachment_url, attachment = self._match_attachment(file_name, attachments_urls_map)
+            if attachment_url is None or attachment is None:
                 logger.warning("No matching attachment found for: %s", file_name)
-                errors.append(
-                    f"{unquote(posix_path_last_segment(file_name))}: "
-                    f"no matching attachment found in conversation"
+                errors.append(f"{target_path}: no matching attachment found in conversation")
+                continue
+
+            transfer_tasks.append(
+                (
+                    target_path,
+                    asyncio.create_task(
+                        self._transfer_one(
+                            client, session_id, target_path, attachment_url, attachment
+                        )
+                    ),
                 )
+            )
+
+        for target_path, task in transfer_tasks:
+            try:
+                await task
+            except Exception as e:
+                logger.warning("Failed to transfer file %s: %s", target_path, e)
+                errors.append(f"{target_path}: {e}")
 
         if errors:
             raise _PyInterpreterError(
                 "Failed to prepare input files:\n" + "\n".join(f"- {e}" for e in errors)
             )
+
+    @staticmethod
+    def _match_attachment(
+        file_name: str, attachments_urls_map: dict[str, Attachment]
+    ) -> tuple[str | None, Attachment | None]:
+        sanitized = file_name.replace(" ", "%20")
+        for attachment_url, attachment in attachments_urls_map.items():
+            if attachment_url.endswith(file_name) or attachment_url.endswith(sanitized):
+                return attachment_url, attachment
+        return None, None
+
+    async def _transfer_one(
+        self,
+        client: _PyInterpreterClient,
+        session_id: str,
+        target_path: str,
+        attachment_url: str,
+        attachment: Attachment,
+    ) -> None:
+        url = await self.__input_file_handler.get_attachment_url(
+            settings=self.__py_interpreter_settings,
+            attachment_url=attachment_url,
+            attachment=attachment,
+        )
+        await client.transfer_input_file(
+            InputFileTransferDto(
+                sessionId=session_id,
+                sourceUrl=url,
+                targetPath=target_path,
+            )
+        )
 
     @staticmethod
     def _get_attachment_urls_map(messages: list[Message]) -> dict[str, Attachment]:

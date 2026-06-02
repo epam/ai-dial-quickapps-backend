@@ -27,4 +27,5 @@ venv
 /docker_compose_files/core/admin-export/out.json
 /.editorconfig
 /docs/superpowers
+/tmp/
 /docs/reviews
