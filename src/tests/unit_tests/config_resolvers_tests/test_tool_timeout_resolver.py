@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.common.tool_timeout_settings import ToolSettings
 from quickapp.config.application import ToolDefaults
+from quickapp.shared.config_resolvers import ToolSettings
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 
 def _resolver(env: float, app: float | None) -> ToolTimeoutResolver:
@@ -33,7 +33,6 @@ def test_app_overrides_env():
 
 
 def test_settings_real_default_is_300():
-    # Sanity-check the chosen deployment-wide default.
     assert ToolSettings().default_tool_timeout_seconds == 300.0
 
 

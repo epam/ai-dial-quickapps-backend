@@ -1,7 +1,7 @@
 from injector import inject
 
-from quickapp.common.file_loading_settings import FileLoadingSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.shared.config_resolvers.file_loading_settings import FileLoadingSettings
 
 
 @inject

@@ -13,7 +13,6 @@ from mcp.types import CallToolResult
 from quickapp.common import DIAL_BEARER, ForwardedHeaders
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import MCP_TIMEOUT_CODE
 from quickapp.config.toolsets.authorization import (
     BasicAuthorization,
@@ -23,6 +22,7 @@ from quickapp.config.toolsets.authorization import (
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 MAX_ITERATIONS = 1000
 

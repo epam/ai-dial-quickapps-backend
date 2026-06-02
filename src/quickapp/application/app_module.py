@@ -12,19 +12,16 @@ from quickapp.common import (
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.file_loading_settings import FileLoadingSettings
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
-from quickapp.common.tool_timeout_settings import ToolSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
-from quickapp.config.application import ApplicationConfig, StageDisplayLevel
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
@@ -58,12 +55,6 @@ class AppModule(Module):
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
         binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
-        binder.bind(ToolSettings, to=ToolSettings, scope=singleton)
-        binder.bind(ToolTimeoutResolver, to=ToolTimeoutResolver, scope=request_scope)
-        binder.bind(FileLoadingSettings, to=FileLoadingSettings, scope=singleton)
-        binder.bind(
-            FileLoadingSizeLimitResolver, to=FileLoadingSizeLimitResolver, scope=request_scope
-        )
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
         )
@@ -119,11 +110,6 @@ class AppModule(Module):
     @provider
     def __provide_message_context(self, context: _RequestContext) -> MessagesMixin:
         return context
-
-    @provider
-    def __provide_stage_display_level(self, app_config: ApplicationConfig) -> StageDisplayLevel:
-        features = app_config.features
-        return features.stage_display.level if features else StageDisplayLevel.INFO
 
     @multiprovider
     def __provide_messages(self, context: _RequestContext) -> list[Message]:
