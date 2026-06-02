@@ -6,12 +6,7 @@ from enum import Enum
 from pydantic import SecretStr
 from pydantic.type_adapter import TypeAdapter
 
-from quickapp.config.application import (
-    ApplicationConfig,
-    Features,
-    FileLoadingConfig,
-    OrchestratorConfig,
-)
+from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.dial_files import DialFilesConfig
@@ -93,7 +88,7 @@ class TestConfig:
             contexts=contexts or [],
             tool_sets=toolsets,
             skills=skills,
-            features=Features(dial_files=DialFilesConfig(), file_loading=FileLoadingConfig()),
+            features=Features(dial_files=DialFilesConfig()),
         )
 
     @classmethod

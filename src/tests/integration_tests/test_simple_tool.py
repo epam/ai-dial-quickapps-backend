@@ -245,6 +245,7 @@ def test_rag_search(client):
         ],
         answer=[
             "1st - GammaMapper\n2nd - BetaIndexer\n3rd - AlphaReader",
+            "* 1st - GammaMapper\n* 2nd - BetaIndexer\n* 3rd - AlphaReader",
         ],
     ),
 )

@@ -190,10 +190,14 @@ class UserMessage(BaseModel):
 
 
 class SkillFileConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     path: Path
 
 
 class TestContextConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     path: Path
     description: str | None = None
 

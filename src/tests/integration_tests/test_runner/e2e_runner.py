@@ -20,7 +20,9 @@ from quickapp.config.context import FileContextConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.utils import bool_env_var
-from quickapp.skills._frontmatter import parse_frontmatter
+from quickapp.skills._frontmatter import (  # test harness: same parser as production skills
+    parse_frontmatter,
+)
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
 from tests.integration_tests.test_runner.cache.cache_middleware import (
@@ -66,7 +68,7 @@ def _create_request_headers(api_key: SecretStr) -> dict[str, str]:
 
 
 def create_request_headers(
-    api_key: SecretStr, app_config: ApplicationConfig = None
+    api_key: SecretStr, app_config: ApplicationConfig | None = None
 ) -> dict[str, str]:
     headers = _create_request_headers(api_key)
     if app_config:
@@ -159,7 +161,7 @@ class TestRunner:
         return None
 
     @staticmethod
-    async def get_attachment_url(dial_url: str, headers, attachment: Path):
+    async def get_attachment_url(dial_url: str, headers: dict[str, str], attachment: Path) -> str:
         api_key = headers.get(API_KEY_HEADER)
         dial_client = AsyncDial(api_key=api_key, base_url=dial_url)
 
@@ -202,13 +204,15 @@ class TestRunner:
         try:
             existing_prompt = await dial_client.prompts.get(prompt_url)
             if existing_prompt.content == skill_content:
-                logger.info(f"Reusing existing dial-prompt skill: {prompt_url}")
+                logger.info("Reusing existing dial-prompt skill: %s", prompt_url)
                 return prompt_url
         except ResourceNotFoundError:
             pass
-        except DialException:
-            logger.debug(
-                f"Failed to fetch existing skill before upload, proceeding with upload: {prompt_url}"
+        except DialException as exc:
+            logger.warning(
+                "Failed to fetch existing skill before upload (%s), proceeding with upload: %s",
+                exc,
+                prompt_url,
             )
 
         prompt = Prompt(
@@ -220,7 +224,7 @@ class TestRunner:
 
         try:
             await dial_client.prompts.save(prompt_url, prompt)
-            logger.info(f"Uploaded dial-prompt skill: {prompt_url}")
+            logger.info("Uploaded dial-prompt skill: %s", prompt_url)
             return prompt_url
         except Exception as e:
             raise RuntimeError(
@@ -595,8 +599,6 @@ def e2e_test(
                 skill_urls=skill_urls or None,
                 contexts=app_contexts,
             )
-            # Update headers with application configuration
-            headers = create_request_headers(TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config)
 
             # Combine CLI flag with decorator parameter - CLI takes precedence
             cli_no_cache = bool(request.config.getoption("--no-cache", default=False))
