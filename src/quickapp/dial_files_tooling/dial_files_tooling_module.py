@@ -8,6 +8,7 @@ from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
 from quickapp.common.preview import preview_module
+from quickapp.common.tool_names import INTERNAL_FILE_TOOL_NAME_PREFIX
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
@@ -29,7 +30,6 @@ from quickapp.dial_files_tooling._tool_configs import (
     MOVE_FILE_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
-    TOOL_NAME_PREFIX,
     WRITE_FILE_TOOL_CONFIG,
 )
 from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
@@ -100,7 +100,9 @@ class DialFilesToolingModule(Module):
         def _is_enabled(config: InternalTool) -> bool:
             if cfg.enabled_tools == "all":
                 return True
-            short_name = config.open_ai_tool.function.name.removeprefix(TOOL_NAME_PREFIX)
+            short_name = config.open_ai_tool.function.name.removeprefix(
+                INTERNAL_FILE_TOOL_NAME_PREFIX
+            )
             return short_name in cfg.enabled_tools
 
         return [

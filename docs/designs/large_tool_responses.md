@@ -146,7 +146,7 @@ flowchart TD
 **Textual steps:**
 1. If processor disabled → return result unchanged.
 2. If `ctx.tool_name in self._excluded_tools` → return result unchanged.
-3. Size check (the canonical comparison unit is **bytes**; see _Threshold calibration_). The implementation always runs a cheap code-point pre-check (`len(result.content) < threshold`) first as a fast path — code-point length is a lower bound on UTF-8 byte length, so this can only skip content that is definitely under threshold — then confirms with the byte check `len(result.content.encode("utf-8")) < threshold`. If under threshold → return result unchanged.
+3. Size check (the canonical comparison unit is **bytes**; see _Threshold calibration_). The implementation compares `len(result.content.encode("utf-8")) < threshold`. If under threshold → return result unchanged. (A code-point pre-check is intentionally avoided: `len(result.content)` is only a lower bound on UTF-8 byte length, so it cannot safely short-circuit either direction without a separate byte confirmation.)
 4. Upload `result.content` to DIAL file storage via `AttachmentService`, path `files/{bucket}/offloaded-responses/{tool_name}-{iso8601_timestamp}.txt` (see note on extension below).
 5. On upload failure → log warning, return original result (**fail-open**).
 6. On success → return a new `ToolCallResult` with:
@@ -341,8 +341,6 @@ TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS=["internal_file_read_lines","internal_f
 Offload is nested inside `features.dial_files` and **enabled by presence**: the `tool_call_result_offload` object turns it on; `null` turns it off; omitting it falls back to `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT`. The example lowers the threshold for one app while `excluded_tools` falls back to the env default. Because the section lives under `dial_files`, an app cannot enable offload without also enabling the read-back tools — and an app with no `dial_files` block gets no offload and **no warning**.
 
 ### LLM-visible notice (example content the LLM sees after offload)
-
-> This is the **target** notice text. The shipped code still emits the old `read_file_lines` / `search_in_file` names — see [Implementation status](#implementation-status-pending-code-alignment) delta #3.
 
 ```
 Response from 'fetch_logs' was too large (124312 bytes) and

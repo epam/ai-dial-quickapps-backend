@@ -11,6 +11,10 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.tool_names import (
+    INTERNAL_FILE_READ_LINES_TOOL_NAME,
+    INTERNAL_FILE_SEARCH_TOOL_NAME,
+)
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 
@@ -33,9 +37,6 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
         if not self._config.enabled:
             return result
         if ctx.tool_name in self._config.excluded_tools:
-            return result
-
-        if len(result.content) < self._config.size_threshold:
             return result
 
         content_bytes = result.content.encode("utf-8")
@@ -70,8 +71,9 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
             f"Response from '{ctx.tool_name}' was too large ({content_size} bytes) and\n"
             f"has been saved to: {file_url}\n"
             "Use one of (pass the saved URL above as `path`):\n"
-            "  - internal_file_read_lines(path, start_line, end_line)\n"
-            "  - internal_file_search(path, pattern, context_lines=0, case_insensitive=False)"
+            f"  - {INTERNAL_FILE_READ_LINES_TOOL_NAME}(path, start_line, end_line)\n"
+            f"  - {INTERNAL_FILE_SEARCH_TOOL_NAME}"
+            "(path, pattern, context_lines=0, case_insensitive=False)"
         )
 
         state = dict(result.state or {})

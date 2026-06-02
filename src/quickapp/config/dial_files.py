@@ -3,6 +3,11 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from quickapp.common.tool_names import (
+    INTERNAL_FILE_READ_LINES_TOOL_NAME,
+    INTERNAL_FILE_SEARCH_TOOL_NAME,
+)
+
 DialFilesToolName = Literal[
     "list",
     "read_lines",
@@ -22,7 +27,9 @@ class ToolCallResultOffloadSettings(BaseSettings):
 
     enabled_by_default: bool = Field(default=True)
     size_threshold: int = Field(default=40_000)
-    excluded_tools: set[str] = Field(default={"internal_file_read_lines", "internal_file_search"})
+    excluded_tools: set[str] = Field(
+        default={INTERNAL_FILE_READ_LINES_TOOL_NAME, INTERNAL_FILE_SEARCH_TOOL_NAME}
+    )
 
 
 class ToolCallResultOffloadConfig(BaseModel):
