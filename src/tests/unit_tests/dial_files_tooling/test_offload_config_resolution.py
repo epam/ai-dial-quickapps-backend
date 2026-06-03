@@ -12,11 +12,7 @@ def _make_offload(
     offload = MagicMock()
     offload.enabled = enabled
     offload.size_threshold = size_threshold
-    offload.excluded_tools = (
-        excluded_tools
-        if excluded_tools is not None
-        else {"internal_file_read_lines", "internal_file_search"}
-    )
+    offload.excluded_tools = excluded_tools if excluded_tools is not None else set()
     return offload
 
 
@@ -66,9 +62,17 @@ class TestOffloadConfigResolution:
         config = _resolve(_make_app_config(offload=_make_offload(size_threshold=10_000)))
         assert config.size_threshold == 10_000
 
-    def test_excluded_tools_is_frozenset(self):
+    def test_excluded_tools_is_frozenset_with_mandatory_read_back_tools(self):
         config = _resolve(_make_app_config(offload=_make_offload(excluded_tools={"tool_a"})))
-        assert config.excluded_tools == frozenset({"tool_a"})
+        assert isinstance(config.excluded_tools, frozenset)
+        assert config.excluded_tools == frozenset(
+            {"tool_a", "internal_file_read_lines", "internal_file_search"}
+        )
+
+    def test_read_back_tools_always_excluded_even_when_config_omits_them(self):
+        config = _resolve(_make_app_config(offload=_make_offload(excluded_tools=set())))
+        assert "internal_file_read_lines" in config.excluded_tools
+        assert "internal_file_search" in config.excluded_tools
 
     def test_disabled_when_read_back_tools_not_in_enabled_list(self):
         config = _resolve(_make_app_config(enabled_tools=["write", "edit"]))

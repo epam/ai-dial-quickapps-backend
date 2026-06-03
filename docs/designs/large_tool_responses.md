@@ -37,7 +37,7 @@ There is also **no extension point** in the current pipeline for transforming `T
 ### UC-2: Agent reads offloaded content back
 
 **Trigger:** The LLM calls `internal_file_read_lines` or `internal_file_search` with `path` set to the offloaded file URL. The offloaded file lives outside the agent's home dir, so the LLM passes the absolute `files/{bucket}/...` URL from the notice; both tools accept absolute `files/...` paths.\
-**Behavior:** Covered by [DIAL Files Tools](dial_files_tools.md). The key interaction with this design is that both tool names are in `ToolCallResultOffloadProcessor`'s default `excluded_tools`, so read-back results are never re-offloaded (no recursive loop, no duplicate storage).\
+**Behavior:** Covered by [DIAL Files Tools](dial_files_tools.md). The key interaction with this design is that both tool names are always in `ToolCallResultOffloadProcessor`'s resolved `excluded_tools` (a mandatory, non-overridable exclusion), so read-back results are never re-offloaded (no recursive loop, no duplicate storage).\
 **Outcome:** The LLM can narrow in on the content it needs. If it requests an oversized slice, it pays the context cost directly — expected self-correction.
 
 ### UC-3: DIAL file storage is unavailable during offload
@@ -159,7 +159,7 @@ flowchart TD
 **Settings:** `ToolCallResultOffloadSettings` (pydantic-settings, env prefix `TOOL_CALL_RESULT_OFFLOAD__`). Sets env-level defaults:
 - `enabled_by_default: bool` — default `True`. Sets the **default value of the per-app `enabled` flag** (see _Per-app override_): when an app's offload section omits `enabled`, it falls back to this. It is the single env knob for enablement.
 - `size_threshold: int` — byte threshold (compared against `len(result.content.encode("utf-8"))`); default `40_000` (≈ 40 KB; see _Threshold calibration_ in Design Decisions)
-- `excluded_tools: set[str]` — default `{"internal_file_read_lines", "internal_file_search"}` (the DIAL Files read-back tools — excluded so a large read-back slice is never re-offloaded into a recursive loop)
+- `excluded_tools: set[str]` — default `set()` (empty). **Additional** tools to exempt from offloading, on top of the mandatory read-back exclusion (see below). The DIAL Files read-back tools (`internal_file_read_lines`, `internal_file_search`) are **always** excluded regardless of this value, so a large read-back slice is never re-offloaded into a recursive loop — that guard is not configurable.
 
 **Per-app override (explicit `enabled` flag, nested under DIAL Files):** Offload config is nested **inside** `DialFilesConfig` as `features.dial_files.tool_call_result_offload`, a non-optional `ToolCallResultOffloadConfig` (a `default_factory` always yields an instance). Enablement is the explicit `enabled: bool` flag — `enabled: false` turns offload off for one app while still carrying its `size_threshold` / `excluded_tools` overrides. Nesting under `dial_files` makes offload structurally a sub-feature: there is no way to configure offload without engaging DIAL Files, so a globally-default-on optimization can no longer collide with the per-app-opt-in `dial_files` dependency.
 
@@ -183,7 +183,7 @@ The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: 
 
 Specified separately in [DIAL Files Tools](dial_files_tools.md). Relevant facts for this design:
 
-- The read-back tools are named `internal_file_read_lines` and `internal_file_search`; these names appear in `ToolCallResultOffloadProcessor`'s default `excluded_tools` so read-back results are never re-offloaded.
+- The read-back tools are named `internal_file_read_lines` and `internal_file_search`; these names are always in `ToolCallResultOffloadProcessor`'s resolved `excluded_tools` (a mandatory, non-overridable exclusion folded in by `_provide_offload_config`) so read-back results are never re-offloaded.
 - Both tools address files by `path`, which may be a path relative to the agent's home dir **or** an absolute `files/...` URL. Offloaded files live under `files/{bucket}/offloaded-responses/`, outside the agent home dir, so the LLM reads them back via the absolute URL carried in the notice.
 - They are wired by `DialFilesToolingModule` (preview-gated), which **also owns the offload wiring** (see Component 5). Offload has a **hard dependency** on these tools being exposed: when they are not, it self-disables. Because offload config nests under `dial_files`, offload cannot exist without the module that provides read-back.
 

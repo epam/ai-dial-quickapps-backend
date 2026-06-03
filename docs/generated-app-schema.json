@@ -2932,7 +2932,7 @@
           "type": "integer"
         },
         "excluded_tools": {
-          "description": "Tool names exempt from offloading (e.g. the read-back tools). Defaults to the TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var.",
+          "description": "Additional tool names exempt from offloading. Defaults to the TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var.",
           "items": {
             "type": "string"
           },

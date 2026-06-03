@@ -8,7 +8,11 @@ from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
 from quickapp.common.preview import preview_module
-from quickapp.common.tool_names import INTERNAL_FILE_TOOL_NAME_PREFIX
+from quickapp.common.tool_names import (
+    INTERNAL_FILE_READ_LINES_TOOL_NAME,
+    INTERNAL_FILE_SEARCH_TOOL_NAME,
+    INTERNAL_FILE_TOOL_NAME_PREFIX,
+)
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
@@ -60,6 +64,14 @@ class DialFilesToolingModule(Module):
     # Read-back tools (short names in DialFilesConfig.enabled_tools) the offload
     # notice points the LLM at. Offloading is useless without them.
     _REQUIRED_READ_BACK_TOOLS = frozenset({"read_lines", "search"})
+
+    # The same two read-back tools in full (LLM-facing) name form. Always excluded
+    # from offload, regardless of config: a large read-back slice must never be
+    # re-offloaded (infinite recursion). This guard cannot be removed via the
+    # per-app / env-var `excluded_tools`, which is additive on top of it.
+    _MANDATORY_EXCLUDED_TOOLS = frozenset(
+        {INTERNAL_FILE_READ_LINES_TOOL_NAME, INTERNAL_FILE_SEARCH_TOOL_NAME}
+    )
 
     @request_scope
     @provider
@@ -142,7 +154,7 @@ class DialFilesToolingModule(Module):
         return ResolvedOffloadConfig(
             enabled=not missing,
             size_threshold=offload.size_threshold,
-            excluded_tools=frozenset(offload.excluded_tools),
+            excluded_tools=frozenset(offload.excluded_tools) | self._MANDATORY_EXCLUDED_TOOLS,
             missing_read_back_tools=tuple(missing),
         )
 
