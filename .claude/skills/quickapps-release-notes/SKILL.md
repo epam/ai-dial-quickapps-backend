@@ -1,6 +1,6 @@
 ---
 name: quickapps-release-notes
-description: Use when the user asks to enhance, refine, polish, or "look at" the release notes for a tag — typically a fresh CI-generated pre-release (e.g. `0.8.0-rc.1`) or a stable cut. Reads the auto-generated notes off the GitHub release, classifies and rewrites each bullet in this project's editorial voice, builds the `Deployment Changes` section from `README.md` / `CONFIGURATION.md` / PR bodies, and saves a draft to `claude/release-notes/`. Never edits GitHub directly.
+description: Use when the user asks to enhance, refine, polish, or "look at" the release notes for a tag — typically a fresh CI-generated pre-release (e.g. `0.8.0-rc.1`) or a stable cut. Reads the auto-generated notes off the GitHub release, classifies and rewrites each bullet in this project's editorial voice, builds the `Deployment Changes` section from `README.md` / `CONFIGURATION.md` / PR bodies, and saves a draft to `claude/release-notes/`. When the target is a stable cut (e.g. `0.8.0`) and its `-rc.*` pre-releases already carry enhanced notes, it assembles the stable draft by merging those rc notes — reusing their approved wording — instead of re-deriving every bullet from the raw stable notes. Never edits GitHub directly.
 allowed-tools: Read Grep Glob LSP Bash(gh release view:*) Bash(gh release list:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(gh pr diff:*) Bash(git log:*) Bash(git show:*) Bash(git diff:*) Bash(git tag:*) Bash(git rev-parse:*) Bash(date:*) Write(claude/release-notes/*) Bash(mkdir -p claude/release-notes)
 argument-hint: "[tag]"
 arguments: tag
@@ -29,7 +29,18 @@ Do **not** trigger on requests like "what changed in 0.7.0?" — that is a recal
 
 `tag` = `$tag` — the GitHub release tag to enhance (e.g. `0.8.0-rc.1`, `0.9.0`). If empty, pick the most recent tag from `gh release list --limit 5` and confirm with the user before editing.
 
-## Workflow
+## Mode selection
+
+After resolving the tag, decide which path to follow:
+
+- **Merge path** — the target is a **stable** `X.Y.Z` (no `-rc` suffix) *and* one or more `X.Y.Z-rc.*` pre-releases exist whose release bodies are **already enhanced**. A stable's notes are exactly the union of its pre-releases plus whatever landed after the last rc, and those rc bodies have already been through this editorial pass — so assemble the stable draft by merging them and reserve fresh work for the post-last-rc commits. This is what "enhance `0.8.0`" means once the rc notes are done. Follow the **Merge path** section below.
+- **From-scratch path** — everything else: any `-rc.N` target, a stable with no pre-releases, or a stable whose rc bodies are still raw CI output. Process every bullet from the raw notes via the **Workflow** steps below.
+
+To tell whether an rc body is enhanced or raw, sample one (`gh release view <X.Y.Z-rc.0> --json body`): enhanced bullets read as `* <Capitalized clause> — <why> #<issue> (#<PR>)` with `—` em-dashes, backticked identifiers, and `[Preview]` tags; raw CI bullets still carry conventional-commit prefixes (`feat:`, `fix(scope):`) or `snake_case_branch_slugs`.
+
+## Workflow (from-scratch path)
+
+These steps process every bullet from the raw GitHub notes. For a stable cut whose `-rc.*` notes are already enhanced, use the **Merge path** section instead (it reuses these steps only for the post-last-rc delta).
 
 ### 1. Resolve target and reference styles
 
@@ -200,7 +211,7 @@ For the env-var tables, the description column comes from `CONFIGURATION.md` whe
 
 If the target is `<X.Y.Z>-rc.N` with `N ≥ 1`:
 
-- The release covers only what changed since the previous rc — do **not** consolidate or rewrite the predecessor's notes. Each pre-release tag has its own GitHub release page; the consolidation happens at the stable cut.
+- The release covers only what changed since the previous rc — do **not** consolidate or rewrite the predecessor's notes. Each pre-release tag has its own GitHub release page; the consolidation happens at the stable cut (see the **Merge path** section).
 - Drop sections that have no entries in the delta (e.g. no `Deployment Changes` if no env vars or schema changes landed in this rc).
 - Do **not** prepend a "Delta since <prev-rc>" pointer at the top. The CI doesn't emit one, the previously-shipped rc notes don't carry one, and the `-rc.N` version suffix already signals what the release is. Adding a header just creates editorial noise the user has to clean up.
 
@@ -218,6 +229,55 @@ Create `claude/release-notes/` if missing, then write:
 ### 9. Verify nothing was pushed to GitHub
 
 This skill **never** runs `gh release edit`, `gh release create`, or any write operation against the repo. The user explicitly directed: *"Everything should be drafted in local files. Don't push anything or change anything in GitHub."* Draft files are the only output. If the user later asks you to apply, that is a separate, explicit request.
+
+## Merge path — assembling a stable cut from enhanced rc notes
+
+A stable `X.Y.Z` ships exactly what its `X.Y.Z-rc.*` pre-releases shipped, plus whatever landed between the last rc and the stable tag. Each rc release body has **already** been through this skill — every bullet is classified, rewritten, and deduped within its own delta. Re-deriving all of that from the raw stable notes throws away wording the user already approved and invites drift. So reuse the rc bullets and reserve fresh work for the post-last-rc commits only.
+
+The raw stable GitHub notes still matter here — not as a bullet source, but as the authoritative **inventory** of what's in the release, so you can prove nothing slipped through the merge.
+
+### M1. Gather the rc chain and the stable inventory
+
+1. `gh release list --limit 30` — every `X.Y.Z-rc.*` tag for this version (ordered `rc.0`, `rc.1`, …) and the previous stable `X.Y'.Z'`.
+2. `gh release view <X.Y.Z-rc.N> --json body` for each rc — these enhanced bodies are the bullet source.
+3. `gh release view <X.Y.Z> --json body` — the raw stable notes, used as an inventory checklist. Skip if the stable release isn't published yet and use the git range below as the inventory instead.
+4. `git log <prev-stable>..<X.Y.Z> --oneline` (full range) and `git log <last-rc>..<X.Y.Z> --oneline` — the second is the **post-last-rc delta**, the only commits no rc has seen.
+
+### M2. Confirm the rc bodies are enhanced
+
+Sample each (see *Mode selection* for the enhanced-vs-raw tell). If one rc is still raw, enhance that rc's delta first — Steps 2–6 over `git log <prev-rc>..<rc>` — before merging it. If most rcs are raw, abandon the merge and run the whole from-scratch **Workflow** on the stable instead.
+
+### M3. Union the bullets
+
+Collect the `Features`, `Fixes`, and `Other` bullets from every rc body. **Copy the enhanced wording exactly — do not re-fetch the PR or rewrite it.** The editorial work is already done; your job is assembly, not re-authoring. Preserve each bullet's trailing `#<issue> (#<PR>)` references character-for-character as the rc wrote them — don't re-parenthesize, reorder, or normalize them (a stray `#283` → `(#283)` is exactly the kind of drift that creeps in when copying by eye).
+
+For ordering, follow the established stable layout rather than a rigid rc-by-rc concatenation: lead with `[Preview]` and headline features, keep related items together, and place GA graduations and minor enhancements last. Ordering is low-stakes and the user reviews it — don't agonize, but don't fragment the list strictly by rc either.
+
+### M4. Deduplicate and consolidate across the rc boundary
+
+The rcs were edited in isolation, so the union needs reconciliation:
+
+- **A feature touched by more than one rc** — introduced in one rc, refined in a later one (same `#PR`/`#issue`, or a follow-up PR on the same feature) — collapses to one bullet with the most complete wording. Cite both PR numbers in parens when each carried real change.
+- **Pre-release-only regression fixes → drop.** When an rc bullet fixes something that broke *within this version's own pre-release cycle* — it carries an `(affects pre-release users of <feature> only)` marker, or it's an orphan `hotfix:` commit patching a feature first shipped in an earlier rc of this same version — leave it out. A consumer upgrading from the previous stable never saw the broken intermediate state, so that feature's own bullet already describes the working result. Fixes for bugs that existed in the *previous stable* are real fixes — keep those. *Example: the `dial-app` toolset shipped in rc.0 and an endpoint-path hotfix corrected it before stable; the stable notes describe the working toolset and omit the hotfix.*
+- **Merge the `Deployment Changes` subsections** — union all `New environment variables` rows into one table; carry over every `DIAL Configuration changes` migration and `Schema deprecations` table; combine `Behavioral changes` into a single block. If two rcs list the same env var with different defaults or descriptions, reconcile to one row and verify the canonical name/default from source (§6 rule — code wins over PR bodies).
+
+### M5. From-scratch pass on the post-last-rc delta only
+
+For the commits in `git log <last-rc>..<X.Y.Z>` (M1.4), run Steps 2–6 of the from-scratch **Workflow** — parse refs, read PR bodies, classify, drop the noise, rewrite, and pull any new deployment changes — then fold the survivors into the unioned sections and tables. If the delta is empty, skip this step; the merge is just the reconciled rc union.
+
+### M6. Reconcile against the stable inventory
+
+Walk every PR/issue number in the raw stable notes (M1.3). Each must resolve to exactly one of:
+
+- **kept** — present in the unioned rc bullets,
+- **new** — handled by the M5 delta pass, or
+- **dropped** — an internal item the rc passes already excluded. Re-apply §4's drop rules, and **don't resurrect** something the rcs deliberately left out just because it's missing from the union (those internal refactors were dropped on purpose, not overlooked).
+
+Anything that fits none of these three is a genuine gap — surface it in the editorial companion rather than guessing.
+
+### M7. Save
+
+Write the assembled notes to `claude/release-notes/<tag>-draft.md` in the standard Output format. In `claude/release-notes/<tag>-editorial-notes.md`, record: the rcs merged (tag → bullet counts), cross-rc dedup/folds, pre-release-only fixes dropped, post-last-rc delta items added, and any inventory gaps from M6.
 
 ## Output format
 
@@ -267,7 +327,7 @@ The file saved to `claude/release-notes/<tag>-draft.md` follows this shape exact
 
 Section order: `Features` → `Fixes` → `Other` → `Deployment Changes`. Subsections inside `Deployment Changes` appear in the order: New env vars → Deprecated env vars → Removed env vars → Behavioral changes → DIAL Configuration changes → Schema deprecations.
 
-A delta `rc` release uses the same shape — no preamble paragraph, no header pointing at the previous rc.
+A delta `rc` release uses the same shape — no preamble paragraph, no header pointing at the previous rc. A merged stable cut (**Merge path**) uses this same shape too; it just sources its bullets from the rc notes plus the post-last-rc delta rather than from the raw stable notes.
 
 ## Return to the main conversation
 
@@ -280,9 +340,15 @@ Return a short summary — five lines or fewer. Include:
 - Whether a `Deployment Changes` section was added and which subsections.
 - Any open questions for the user (env-var name disagreement between PR body and source, ambiguous categorization).
 
-Example:
+For a **Merge path** run, report instead: which rcs were merged, the section counts after merging, cross-rc dedup/folds, pre-release-only fixes dropped, and what the post-last-rc delta added (or that it was empty).
+
+Example (from-scratch):
 
 > Drafted `claude/release-notes/0.8.0-rc.1-draft.md`. 5 Features, 3 Fixes, 4 Other. Reclassified 1 from Other → Features (`feat(file-loader)`) and 1 from Other → Fixes (`fix(time-awareness)`). Dropped 3 internal items (rename, package split, merge commit). Added Deployment Changes with New env vars + Behavioral changes (Time Awareness GA). One open: PR body says `file_loader` but code calls it `file_loading` — used the code name; flagged in editorial notes.
+
+Example (merge):
+
+> Drafted `claude/release-notes/0.8.0-draft.md` by merging rc.0 (6F/4Fx/6O), rc.1 (7F/3Fx/2O), rc.2 (2F). Result: 15 Features, 7 Fixes, 8 Other. Merged 3 env-var rows into one table; combined Behavioral changes (Time Awareness + DIAL Prompt Skills GA) and carried over the #319 DIAL Configuration migration and the #287 schema deprecations. Dropped the `dial-app` endpoint-path hotfix (pre-release-only). Post-rc.2 delta was empty. One open: #304 `prefetch orchestrator capabilities` — kept or internal? flagged in editorial notes.
 
 ## Safety rails
 
@@ -290,7 +356,7 @@ Example:
 - **Never invent items.** Every kept bullet maps to a PR or a commit hash in the range.
 - **Never silently rename or drop a PR reference.** The bullet ends with the canonical `#<issue> (#<PR>)` so links resolve on the release page.
 - **Verify canonical names from source**, not from PR bodies. Past PR descriptions have used pre-rename names; the code is the source of truth.
-- **Don't consolidate pre-release notes** into the stable's notes unless the user explicitly asks — each rc tag has its own page.
+- **Each rc page stands alone; the stable cut consolidates them.** When the target is a `-rc.N`, never pull sibling-rc notes into it. When the target is the **stable cut** and the rc notes are already enhanced, merging them is the expected path (**Merge path**) — but only ever write the local stable draft; never edit or overwrite the individual rc release pages on GitHub.
 - **Match the terseness of the predecessor's notes.** If they're one-liners, your bullets are one-liners. The user has flagged verbose drafts twice; defer to the established style.
 
 ## Maintenance
