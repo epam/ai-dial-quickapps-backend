@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class ToolNames(Enum):
+    INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT = "internal_attachments_available_context"
+    INTERNAL_ATTACHMENTS_GET_CONTENT = "internal_attachments_get_content"
     IMAGE_GENERATION_TOOL = "image_generation_tool"
     WEB_SEARCH_TOOL = "web_search_tool"
     RAG_SEARCH_TOOL = "rag_search_tool"

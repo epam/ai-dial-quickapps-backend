@@ -23,6 +23,27 @@ def _recovery_service(
     )
 
 
+def test_apply_recovery_invokes_all_policies_when_first_recovers():
+    messages = [Message(role=Role.USER, content="hi")]
+    error = ValueError("bad request")
+    first_policy = Mock()
+    first_policy.try_recover.return_value = True
+    second_policy = Mock()
+    second_policy.try_recover.return_value = False
+    deferred_registry = Mock(spec=DeferredStageCloseRegistry)
+    service = _recovery_service(
+        messages,
+        policies=[first_policy, second_policy],
+        deferred_registry=deferred_registry,
+    )
+
+    service.apply_message_recovery(error, retry_scope="test")
+
+    first_policy.try_recover.assert_called_once_with(messages, error)
+    second_policy.try_recover.assert_called_once_with(messages, error)
+    deferred_registry.sync_deferred_stage_ui_with_tool_messages.assert_called_once_with(messages)
+
+
 def test_apply_recovery_syncs_stage_ui_when_policy_recovers():
     messages = [Message(role=Role.USER, content="hi")]
     error = ValueError("bad request")

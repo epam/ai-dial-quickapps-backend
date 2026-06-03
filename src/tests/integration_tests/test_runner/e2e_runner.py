@@ -14,8 +14,10 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import FileContextConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.utils import bool_env_var
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
@@ -47,6 +49,15 @@ def extract_usage(response_message):
 
 API_KEY_HEADER = "Api-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
+
+
+def _dial_relative_file_url(url: str) -> str:
+    """Normalize a DIAL file URL to ``files/...`` form for :class:`FileContextConfig`."""
+    s = str(url).strip()
+    if "files/" in s:
+        idx = s.index("files/")
+        return s[idx:].split("?", 1)[0].rstrip("/")
+    return s
 
 
 def create_request_headers(api_key: SecretStr, app_config: ApplicationConfig) -> dict[str, str]:
@@ -322,24 +333,22 @@ async def execute_single_test_run(
 
 def e2e_test(
     test_case: TstCase = None,
-    app_config_path: Path = None,
     model: str = None,
-    models_applicable_for_test: list[str] = None,
+    models_applicable_for_test: list[str] | None = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
     no_cache: bool = False,
+    application_context_files: list[Path] | None = None,
+    include_rest_toolset: bool = False,
+    attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
 ):
-    """
-    Decorator for end-to-end tests.
-
-    Args:
-        no_cache: If True, bypass cache for this test. Can also be set globally via --no-cache CLI flag.
-                  CLI flag takes precedence over decorator parameter.
-    """
-
     if refresh is None:
         refresh = bool_env_var("REFRESH", default="false")
+
+    _application_context_files = application_context_files
+    _include_rest_toolset = include_rest_toolset
+    _attachment_strategy = attachment_strategy
 
     def decorator(func):
         func = pytest.mark.filterwarnings(f"always:{TestConfig.WARNING_MESSAGE}")(func)
@@ -411,9 +420,20 @@ def e2e_test(
             test_stats,
             run_index,
         ):
-            tool_sets = TestConfig.load_tools_config(unique_port, config_file_set)
+            contexts: list[FileContextConfig] = []
+            if _application_context_files:
+                await prepare_contexts(contexts)
+
+            tool_sets = TestConfig.load_tools_config(
+                unique_port,
+                config_file_set,
+                include_rest_toolset=_include_rest_toolset,
+            )
             app_config: ApplicationConfig = TestConfig.create_app_configuration(
-                toolsets=tool_sets, model=execution_model
+                toolsets=tool_sets,
+                model=execution_model,
+                contexts=contexts,
+                attachment_strategy=_attachment_strategy,
             )
 
             app = TestApp.get_app(port=unique_port)
@@ -453,6 +473,22 @@ def e2e_test(
                 await TestRunner.stop_server(server, middleware)
                 # TestClient is synchronous and doesn't need async close
                 # Don't shutdown async generators while loop is running
+
+        async def prepare_contexts(contexts: list[FileContextConfig]):
+            upload_headers = {
+                API_KEY_HEADER: TestConfig.REMOTE_DIAL_API_KEY.get_secret_value(),
+                CONTENT_TYPE_HEADER: "application/json",
+            }
+            for path in _application_context_files:
+                raw_url = await TestRunner.get_attachment_url(
+                    TestDialCoreConfig.REMOTE_DIAL_URL, upload_headers, path
+                )
+                contexts.append(
+                    FileContextConfig(
+                        url=_dial_relative_file_url(raw_url),
+                        description=f"integration fixture: {path.name}",
+                    )
+                )
 
         return wrapper
 

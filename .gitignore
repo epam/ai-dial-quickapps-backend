@@ -26,6 +26,7 @@ venv
 /docker_compose_files/core/configuration/generated/
 /docker_compose_files/core/admin-export/out.json
 /.editorconfig
+/.gitattributes
 /docs/superpowers
 /tmp/
 /docs/reviews
