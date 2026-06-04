@@ -101,30 +101,20 @@ class DialFileService:
         Behaviour:
           * `if_match` given: upload with `If-Match` (caller-driven concurrency
             check, used by the edit tool which already has the etag).
-          * `overwrite=False`: upload with `If-None-Match: *` (fail if the file
-            exists).
-          * `overwrite=True`: fetch current metadata; if the file exists, upload
-            with `If-Match: <etag>`; otherwise upload with `If-None-Match: *`.
+          * `overwrite=False`: upload with `If-None-Match: *` (create only — fail
+            if the file already exists).
+          * `overwrite=True`: upload unconditionally (create or replace). No
+            metadata round-trip, so a not-yet-existing file is simply created.
 
-        Raises `EtagMismatchError` on `If-None-Match`/`If-Match` failure; other
+        Raises `EtagMismatchError` on an `If-None-Match`/`If-Match` failure; other
         DIAL errors propagate unchanged. Cache is invalidated on success.
         """
         if if_match is not None:
             uploaded_url = await self._upload_text(url, content, content_type, if_match=if_match)
-        elif not overwrite:
-            uploaded_url = await self._upload_text(url, content, content_type, if_none_match="*")
+        elif overwrite:
+            uploaded_url = await self._upload_text(url, content, content_type)
         else:
-            try:
-                metadata = await self._get_metadata(url)
-                etag: str | None = metadata.etag
-            except ResourceNotFoundError:
-                etag = None
-            if etag is None:
-                uploaded_url = await self._upload_text(
-                    url, content, content_type, if_none_match="*"
-                )
-            else:
-                uploaded_url = await self._upload_text(url, content, content_type, if_match=etag)
+            uploaded_url = await self._upload_text(url, content, content_type, if_none_match="*")
         self.invalidate_cache(url)
         return uploaded_url
 

@@ -35,13 +35,10 @@ class _WriteFileTool(_DialFileTool):
                 overwrite=overwrite,
             )
         except EtagMismatchError as e:
-            if overwrite:
-                raise InvalidToolCallParameterException(
-                    "path", "file changed concurrently; re-read and retry"
-                ) from e
             raise InvalidToolCallParameterException(
                 "path",
-                f"file already exists: {display_path}; pass overwrite=True to replace",
+                f"file already exists: {display_path}. Ask the user whether to replace it; "
+                "only if they approve, retry with overwrite=True.",
             ) from e
         except DialException as e:
             self._check_permission_denied(e, display_path)

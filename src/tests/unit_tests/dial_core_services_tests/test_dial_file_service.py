@@ -183,20 +183,20 @@ class TestWriteFile:
         assert result == "files/b/generated-files/notes.md"
 
     @pytest.mark.asyncio
-    async def test_overwrite_creates_when_missing_via_base_404(self):
-        # overwrite=True fetches current metadata; a missing file 404s as a base
-        # DialException (via metadata.get). It must be treated as "not there yet"
-        # and uploaded with If-None-Match: *, not error out.
+    async def test_overwrite_uploads_unconditionally(self):
+        # overwrite=True is a deliberate create-or-replace: upload with no ETag
+        # conditions and no metadata round-trip, so a not-yet-existing file is
+        # simply created rather than erroring out.
         mock_client = _make_mock_dial_client(upload_url="files/b/new.txt")
-        mock_client.metadata.get = AsyncMock(side_effect=DialException(message="", status_code=404))
         svc = _make_service(dial_client=mock_client)
 
         result = await svc.write_file(url="files/b/new.txt", content="hello", overwrite=True)
 
         assert result == "files/b/new.txt"
+        mock_client.metadata.get.assert_not_called()
         mock_client.files.upload.assert_awaited_once()
         call_kwargs = mock_client.files.upload.call_args.kwargs
-        assert call_kwargs.get("etag_if_none_match") == "*"
+        assert call_kwargs.get("etag_if_none_match") is None
         assert call_kwargs.get("etag_if_match") is None
 
 
