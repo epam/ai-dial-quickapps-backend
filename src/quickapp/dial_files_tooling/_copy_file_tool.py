@@ -38,7 +38,7 @@ class _CopyFileTool(_DialFileTool):
                 f"destination already exists: {dest_display}; pass overwrite=True to replace",
             ) from e
         except DialException as e:
-            self._check_permission_denied(e, source_url, parameter_name="source")
+            self._check_permission_denied(e, source, parameter_name="source")
             raise
 
         result = ToolCallResult(content=f"Copied to: {dest_display}", content_type="text/plain")

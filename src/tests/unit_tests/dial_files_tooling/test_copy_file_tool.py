@@ -88,3 +88,6 @@ class TestCopyFile:
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, source="a.md", destination="b.md")
         assert exc.value.parameter_name == "source"
+        # The message shows the user-facing source, not the resolved internal appdata URL.
+        assert "access denied: a.md" in exc.value.message
+        assert "appbucket" not in exc.value.message
