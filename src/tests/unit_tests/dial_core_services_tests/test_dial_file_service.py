@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from aidial_client._exception import EtagMismatchError
+from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -27,9 +27,12 @@ def _make_mock_dial_client(
     mock_download_result.aget_content = AsyncMock(return_value=file_content)
 
     mock_files = MagicMock()
-    mock_files.get_metadata = AsyncMock(return_value=mock_metadata)
     mock_files.download = AsyncMock(return_value=mock_download_result)
     mock_files.upload = AsyncMock(return_value=mock_metadata)
+
+    # The service fetches file/folder metadata via metadata.get (not files.get_metadata).
+    mock_metadata_resource = MagicMock()
+    mock_metadata_resource.get = AsyncMock(return_value=mock_metadata)
 
     mock_bucket = MagicMock()
     mock_bucket.appdata = None
@@ -40,6 +43,7 @@ def _make_mock_dial_client(
 
     mock_dial_client = MagicMock()
     mock_dial_client.files = mock_files
+    mock_dial_client.metadata = mock_metadata_resource
     mock_dial_client.resource_permissions = mock_resource_permissions
     mock_dial_client.bucket = MagicMock()
     mock_dial_client.bucket.get_raw = AsyncMock(return_value=mock_bucket)
@@ -75,7 +79,7 @@ class TestDownloadFile:
 
         assert data == file_bytes
         assert metadata is not None
-        mock_dial_client.files.get_metadata.assert_awaited_once_with("files/test.txt")
+        mock_dial_client.metadata.get.assert_awaited_once_with("files", "files/test.txt")
         mock_dial_client.files.download.assert_awaited_once_with("files/test.txt")
 
     @pytest.mark.asyncio
@@ -90,7 +94,7 @@ class TestDownloadFile:
 
         assert data == b"cached content"
         assert metadata is stored_metadata
-        mock_dial_client.files.get_metadata.assert_not_called()
+        mock_dial_client.metadata.get.assert_not_called()
         mock_dial_client.files.download.assert_not_called()
 
     @pytest.mark.asyncio
@@ -113,6 +117,17 @@ class TestDownloadFile:
 
         with pytest.raises(ValueError, match="exceeds the limit of 1024"):
             await svc.download_file("files/medium.bin")
+
+    @pytest.mark.asyncio
+    async def test_base_dialexception_404_raises_resource_not_found(self):
+        # metadata.get has no on_http_error handler, so a real 404 arrives as a base
+        # DialException. It must be normalized to ResourceNotFoundError.
+        mock_client = _make_mock_dial_client()
+        mock_client.metadata.get = AsyncMock(side_effect=DialException(message="", status_code=404))
+        svc = _make_service(dial_client=mock_client)
+
+        with pytest.raises(ResourceNotFoundError):
+            await svc.download_file("files/missing.txt")
 
 
 class TestWriteFile:
@@ -167,6 +182,36 @@ class TestWriteFile:
         )
         assert result == "files/b/generated-files/notes.md"
 
+    @pytest.mark.asyncio
+    async def test_overwrite_creates_when_missing_via_base_404(self):
+        # overwrite=True fetches current metadata; a missing file 404s as a base
+        # DialException (via metadata.get). It must be treated as "not there yet"
+        # and uploaded with If-None-Match: *, not error out.
+        mock_client = _make_mock_dial_client(upload_url="files/b/new.txt")
+        mock_client.metadata.get = AsyncMock(side_effect=DialException(message="", status_code=404))
+        svc = _make_service(dial_client=mock_client)
+
+        result = await svc.write_file(url="files/b/new.txt", content="hello", overwrite=True)
+
+        assert result == "files/b/new.txt"
+        mock_client.files.upload.assert_awaited_once()
+        call_kwargs = mock_client.files.upload.call_args.kwargs
+        assert call_kwargs.get("etag_if_none_match") == "*"
+        assert call_kwargs.get("etag_if_match") is None
+
+
+class TestListFolder:
+    @pytest.mark.asyncio
+    async def test_base_dialexception_404_raises_resource_not_found(self):
+        # list_folder calls metadata.get directly; a missing folder 404s as a base
+        # DialException, which must be normalized so callers can treat it as not-found.
+        mock_client = _make_mock_dial_client()
+        mock_client.metadata.get = AsyncMock(side_effect=DialException(message="", status_code=404))
+        svc = _make_service(dial_client=mock_client)
+
+        with pytest.raises(ResourceNotFoundError):
+            await svc.list_folder("files/appbucket/")
+
 
 class TestInvalidateCache:
     @pytest.mark.asyncio
@@ -182,7 +227,7 @@ class TestInvalidateCache:
         # Now invalidate and change what the mock returns
         svc.invalidate_cache("files/b/f.txt")
         mock_client.files.download.return_value.aget_content = AsyncMock(return_value=file_bytes_v2)
-        mock_client.files.get_metadata.return_value.content_length = 100
+        mock_client.metadata.get.return_value.content_length = 100
 
         second, _ = await svc.download_file("files/b/f.txt")
         assert second == file_bytes_v2

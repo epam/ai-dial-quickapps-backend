@@ -51,19 +51,37 @@ class _ListFilesTool(_DialFileTool):
         if max_depth < 1 or max_depth > _MAX_DEPTH:
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
 
-        if not path.endswith("/"):
-            path = path + "/"
+        # Root-of-home references ('', '.', './', '/') list the agent home directory itself.
+        # They bypass _resolve_appdata_url, whose validation rejects a leading '/' and would
+        # mangle './' into 'files/.../.'.
+        if path.strip() in ("", ".", "./", "/"):
+            folder_url = await self._resolve_home_dir()
+        else:
+            if not path.endswith("/"):
+                path = path + "/"
+            folder_url = await self._resolve_appdata_url(path)
 
-        folder_url = await self._resolve_appdata_url(path)
+        try:
+            home = await self._resolve_home_dir()
+        except InvalidToolCallParameterException:
+            home = None
+        is_home_root = folder_url == home
 
         try:
             entries = await self._dial_file_service.list_folder(folder_url, max_depth=max_depth)
         except ResourceNotFoundError as e:
-            raise InvalidToolCallParameterException(
-                "path", f"folder not found: {folder_url}"
-            ) from e
+            # A 404 on the agent home root means "nothing written yet" → empty listing.
+            # A 404 on a user-specified subfolder is a genuine not-found.
+            if is_home_root:
+                entries = []
+            else:
+                display = await self._to_display_path(folder_url)
+                raise InvalidToolCallParameterException(
+                    "path", f"folder not found: {display}"
+                ) from e
         except ValueError as e:
-            raise InvalidToolCallParameterException("path", f"not a folder: {folder_url}") from e
+            display = await self._to_display_path(folder_url)
+            raise InvalidToolCallParameterException("path", f"not a folder: {display}") from e
         except DialException as e:
             self._check_permission_denied(e, path)
             raise
