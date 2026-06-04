@@ -1,4 +1,4 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from aidial_client._exception import EtagMismatchError
@@ -78,29 +78,20 @@ class TestWriteFile:
         assert call_kwargs["content_type"] == "text/csv"
 
     @pytest.mark.asyncio
-    async def test_overwrite_false_collision_raises(self):
+    async def test_overwrite_false_collision_asks_user(self):
         tool = _make_tool(raise_on_write=EtagMismatchError(message="exists"))
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, path="reports/x.md", content="x")
         assert exc.value.parameter_name == "path"
+        # Guides the model to seek user approval before retrying with overwrite=True.
+        assert "Ask the user" in exc.value.message
         assert "overwrite=True" in exc.value.message
 
     @pytest.mark.asyncio
-    async def test_overwrite_true_concurrent_modification_raises(self):
-        service = make_service()
-        service.write_file = AsyncMock(side_effect=EtagMismatchError(message="412"))
-        tool = _WriteFileTool(
-            stage_wrapper_builder=MagicMock(),
-            tool_config=WRITE_FILE_TOOL_CONFIG,
-            perf_timer=MagicMock(),
-            dial_file_service=service,
-            dial_files_config=make_config(),
-        )
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(
-                stage_wrapper=None, path="r.md", content="x", overwrite=True
-            )
-        assert "concurrently" in exc.value.message
+    async def test_overwrite_true_forwarded_to_service(self):
+        tool = _make_tool()
+        await tool._run_in_stage_async(stage_wrapper=None, path="r.md", content="x", overwrite=True)
+        assert tool._dial_file_service.write_file.call_args.kwargs["overwrite"] is True
 
     @pytest.mark.asyncio
     async def test_appdata_missing_raises(self):

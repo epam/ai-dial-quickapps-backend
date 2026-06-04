@@ -61,6 +61,9 @@ class TestListFiles:
             await tool._run_in_stage_async(stage_wrapper=None, path="missing/")
         assert exc.value.parameter_name == "path"
         assert "folder not found" in exc.value.message
+        # The message shows the user-facing relative path, not the internal appdata URL.
+        assert "folder not found: missing/" in exc.value.message
+        assert "appbucket" not in exc.value.message
 
     @pytest.mark.asyncio
     async def test_not_a_folder_raises(self):
@@ -108,3 +111,34 @@ class TestListFiles:
         tool = _make_tool(entries=[])
         result = await tool._run_in_stage_async(stage_wrapper=None, path="reports/")
         assert result.content == "(empty folder)"
+
+    @pytest.mark.asyncio
+    async def test_root_path_missing_renders_empty(self):
+        # The agent home dir doesn't exist yet (nothing written) → empty listing, not an error.
+        tool = _make_tool(side_effect=ResourceNotFoundError(message="404"))
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="./")
+        assert result.content == "(empty folder)"
+        tool._dial_file_service.list_folder.assert_awaited_once_with(
+            "files/appbucket/", max_depth=1
+        )
+
+    @pytest.mark.asyncio
+    async def test_root_slash_missing_renders_empty(self):
+        tool = _make_tool(side_effect=ResourceNotFoundError(message="404"))
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="/")
+        assert result.content == "(empty folder)"
+        tool._dial_file_service.list_folder.assert_awaited_once_with(
+            "files/appbucket/", max_depth=1
+        )
+
+    @pytest.mark.asyncio
+    async def test_root_path_lists_home_when_present(self):
+        entries = [
+            FolderEntry(url="files/appbucket/summary.md", is_folder=False, size=10),
+        ]
+        tool = _make_tool(entries=entries)
+        result = await tool._run_in_stage_async(stage_wrapper=None, path=".")
+        assert "summary.md" in result.content
+        tool._dial_file_service.list_folder.assert_awaited_once_with(
+            "files/appbucket/", max_depth=1
+        )

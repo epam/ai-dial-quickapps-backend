@@ -51,19 +51,23 @@ class _ListFilesTool(_DialFileTool):
         if max_depth < 1 or max_depth > _MAX_DEPTH:
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
 
-        if not path.endswith("/"):
-            path = path + "/"
-
-        folder_url = await self._resolve_appdata_url(path)
+        folder_url = await self._resolve_folder_url(path)
 
         try:
             entries = await self._dial_file_service.list_folder(folder_url, max_depth=max_depth)
         except ResourceNotFoundError as e:
-            raise InvalidToolCallParameterException(
-                "path", f"folder not found: {folder_url}"
-            ) from e
+            # A 404 on the agent home root means "nothing written yet" → empty listing.
+            # A 404 on a user-specified subfolder is a genuine not-found.
+            if self._is_root_reference(path):
+                entries = []
+            else:
+                display = await self._to_display_path(folder_url)
+                raise InvalidToolCallParameterException(
+                    "path", f"folder not found: {display}"
+                ) from e
         except ValueError as e:
-            raise InvalidToolCallParameterException("path", f"not a folder: {folder_url}") from e
+            display = await self._to_display_path(folder_url)
+            raise InvalidToolCallParameterException("path", f"not a folder: {display}") from e
         except DialException as e:
             self._check_permission_denied(e, path)
             raise
@@ -75,3 +79,21 @@ class _ListFilesTool(_DialFileTool):
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result
+
+    @staticmethod
+    def _is_root_reference(path: str) -> bool:
+        """Whether the path denotes the agent home directory itself ('', '.', './', '/')."""
+        return path.strip() in ("", ".", "./", "/")
+
+    async def _resolve_folder_url(self, path: str) -> str:
+        """Resolve a folder path to a 'files/...' URL ending in '/'.
+
+        Root-of-home references resolve to the home directory directly, bypassing
+        _resolve_appdata_url, whose validation rejects a leading '/' and would mangle
+        './' into 'files/.../.'.
+        """
+        if self._is_root_reference(path):
+            return await self._resolve_home_dir()
+        if not path.endswith("/"):
+            path = path + "/"
+        return await self._resolve_appdata_url(path)
