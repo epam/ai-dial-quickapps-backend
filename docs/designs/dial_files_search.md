@@ -1,10 +1,17 @@
 # Design: DIAL Files Tools — Workspace-Wide Search
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-06-03 · **Re-approved:** 2026-06-08 (post-implementation revisions below reviewed against the merged code)
 - **Owner:** Andrii Novikov
 - **Dependencies:**
   - [DIAL Files Tools](./dial_files_tools.md) — extends the existing toolkit (`_DialFileTool`, `search_in_file`, `list_files`).
 - **Tracking:** [#342](https://github.com/epam/ai-dial-quickapps-backend/issues/342)
+- **Post-approval revisions** (2026-06-08, from [PR #352](https://github.com/epam/ai-dial-quickapps-backend/pull/352) review):
+  - Glob translation delegates to the stdlib `glob.translate` (Python 3.13) instead of a hand-rolled translator.
+  - The `count` output mode was dropped; folder `search` returns only `content` or `files_with_matches`.
+  - The folder-scan file cap moved from a hardcoded `_MAX_FILES_SCANNED` constant to a configurable `DialFilesConfig.max_files_scanned` (default 200).
+  - Pure path helpers (`is_root_reference`, `relative_to`) live in a new `_path_utils.py` rather than on the tool base class.
+  - The shared folder-resolution + not-found handling is consolidated into one base helper, `_list_folder_entries`, with a shared `_resolve_max_depth`; `list`, `find`, and folder-mode `search` all use them.
 
 ## Problem Statement
 
@@ -19,7 +26,7 @@ Both gaps push work the tools should do back onto the LLM, where it is slow, los
 
 - Let the agent search **file content across an entire folder subtree** in one call, not file-by-file.
 - Let the agent locate files **by name/path glob** without downloading any bytes.
-- Keep the existing single-file `search` behavior **byte-for-byte unchanged** (it is a registered offload read-back tool — see *Offload compatibility*).
+- Keep the existing single-file `search` behavior **byte-for-byte unchanged** so existing apps and tool-call contracts are unaffected; folder mode is purely additive.
 - Make folder content search **cost-bounded and predictable**: it must not be able to trigger an unbounded download storm on a large or deep workspace.
 - Reuse the existing `_DialFileTool` base, path conventions, `list_folder` recursion, and listing renderer — no new infrastructure.
 - Stay preview-gated and per-app-configurable, exactly like the other file tools.
@@ -66,7 +73,7 @@ Both gaps push work the tools should do back onto the LLM, where it is slow, los
 ### UC-7: Folder content search hits the file cap
 
 **Trigger:** `search(path="huge-dump/", pattern="x")` over a subtree with thousands of text files.\
-**Behavior:** The tool scans files until `_MAX_FILES_SCANNED` (≈200) is reached, then stops and appends a truncation notice.\
+**Behavior:** The tool scans files until the configured file cap (`DialFilesConfig.max_files_scanned`, default 200) is reached, then stops and appends a truncation notice.\
 **Outcome:** The result is bounded and the notice tells the LLM to narrow via `name_filter`, a deeper subfolder, or a smaller `max_depth`. No download storm.
 
 ### UC-8: Agent searches a folder without the trailing slash
@@ -83,7 +90,7 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 
 ### Component 1: `search` (generalized — content search over a file *or* folder)
 
-**What:** Generalize the existing `search_in_file` so `path` may address either a single file (today's behavior) or a folder subtree (new: recursive substring content search). Folder vs file is selected by the **trailing-slash convention** already used by `list_files`.
+**What:** Generalize the existing `search_in_file` so `path` may address either a single file (today's behavior) or a folder subtree (new: recursive substring content search). Folder vs file is selected by the **trailing-slash / root-reference convention** already used by `list_files`.
 
 **Owner:** `src/quickapp/dial_files_tooling/_search_in_file_tool.py` (`_SearchInFileTool`, generalized in place; short name stays `search`).
 
@@ -95,22 +102,22 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 | `pattern` | string | yes | — | Substring to search for. *(unchanged — substring, not regex)* |
 | `case_insensitive` | boolean | no | `false` | Compare lower-cased. *(unchanged)* |
 | `context_lines` | integer | no | `0` | Lines of context around each match. *(unchanged; applies in `content` mode)* |
-| `output_mode` | string | no | `"content"` | Folder mode only. One of `content`, `files_with_matches`, `count`. |
+| `output_mode` | string | no | `"content"` | Folder mode only. Either `content` or `files_with_matches`. |
 | `name_filter` | string | no | — | Folder mode only. Glob (`**`, `*`, `?`) matched against each candidate's relative path; non-matching files are excluded **before** download. |
-| `max_depth` | integer | no | `10` | Folder mode only. Recursion depth bound, `[1, 10]`. |
+| `max_depth` | integer | no | `10` | Folder mode only. Recursion depth: `1` = immediate children only; `2` = children and their children; etc. Must be in `[1, 10]` (same semantics as `list_files`). |
 
-**File-vs-folder selection:** `_is_folder_reference(path) := _is_root_reference(path) or path.endswith("/")`. A bare `path=""` therefore searches the whole home (UC-3); a trailing slash searches a subfolder; anything else is a single file.
+**File-vs-folder selection:** `_is_folder_reference(path) := is_root_reference(path) or path.endswith("/")`. A bare `path=""` therefore searches the whole home (UC-3); a trailing slash searches a subfolder; anything else is a single file.
 
 **Semantics:**
 
-- **File mode:** Resolve URL → `_download_text` → substring match → merged ±`context_lines` windows → `lineno:line` blocks separated by `--`. `output_mode`, `name_filter`, `max_depth` are ignored (a non-default value for them in file mode is silently irrelevant, not an error). Not-found is surfaced by `_download_text` as `InvalidToolCallParameterException("path", "file not found: {display}")`; the trailing-slash guidance for folder search lives in the tool **description**, not a bespoke runtime message.
+- **File mode:** Resolve URL → `_download_text` → substring match → merged ±`context_lines` windows → `lineno:line` blocks separated by `--`. The folder-only params (`output_mode`, `name_filter`, `max_depth`) are **rejected** in file mode: if any is set to a non-default value, raise `InvalidToolCallParameterException(<param>, "only supported in folder mode (path ending with '/')")` — this surfaces an agent reasoning bug instead of silently ignoring it. Not-found is surfaced by `_download_text` as `InvalidToolCallParameterException("path", "file not found: {display}")`; the trailing-slash guidance for folder search lives in the tool **description**, not a bespoke runtime message.
 - **Folder mode:**
-  1. Resolve the folder URL via `_resolve_folder_url(path)` (handles root references → home dir, and ensures a trailing slash otherwise).
-  2. `entries = list_folder(folder_url, max_depth=max_depth)`; keep only file entries. A `ResourceNotFoundError` on a **root reference** → empty result (`"No matches found."`); on a **non-root** folder → `InvalidToolCallParameterException("path", "folder not found: {display}")`.
-  3. If `name_filter` is set, drop entries whose **relative display path** does not match the glob (via the shared `_glob_to_regex` helper — Component 3). This happens before any download.
-  4. Iterate the remaining candidates. For each, download via `_download_text`; **skip files that are not UTF-8-decodable** (binary). Substring-match the decoded text exactly as file mode does.
-  5. Stop after `_MAX_FILES_SCANNED` files have been downloaded; record that truncation occurred.
-  6. Emit output per `output_mode` (below). All output paths are relative display paths via `_to_display_path`.
+  1. Resolve and list the subtree via the shared base helper `entries = _list_folder_entries(path, max_depth)` (it calls `_resolve_folder_url` — root references → home dir, trailing slash otherwise — then `list_folder`). `max_depth` is parsed and range-checked by the shared `_resolve_max_depth(value, default=10)`.
+  2. `_list_folder_entries` applies the shared not-found policy: a missing **root reference** → empty list (→ `"No matches found."`); a missing **non-root** folder → `InvalidToolCallParameterException("path", "folder not found: {display}")`; a non-folder target → `"not a folder: {display}"`; permission errors → `"access denied"`. Keep only file entries.
+  3. If `name_filter` is set, drop entries whose path **relative to the search root** (`relative_to(entry.url, folder_url)`) does not match the glob (compiled once via the shared `_glob_to_regex` helper — Component 3). This happens before any download.
+  4. Iterate the remaining candidates. For each, call a folder-scan-only helper `_read_text_for_scan(url) -> str | None` (new, on `_DialFileTool`) that calls `DialFileService.download_file`, decodes the bytes as UTF-8, and returns the text — or returns **`None` to skip** the file if the decode fails (`UnicodeDecodeError`, binary) or the file exceeds the per-file size limit (`download_file` itself raises `ValueError`). Both exceptions are caught in the same `try` (`except (ValueError, UnicodeDecodeError): return None`). Genuine errors (not-found, access-denied) propagate. This deliberately bypasses `_download_text` — whose single-file contract (wrapping those same failures into `InvalidToolCallParameterException`) is intentionally left **unchanged** for file mode — so folder mode can skip cleanly instead of aborting. Substring-match the decoded text of the surviving (non-`None`) files exactly as file mode does.
+  5. Stop after `DialFilesConfig.max_files_scanned` download attempts (each call to `_read_text_for_scan` counts, including those that skip a binary/oversized file); record that truncation occurred.
+  6. Emit output per `output_mode` (below). Paths are rendered with `_to_display_path` — relative for entries under home, and absolute `files/...` for entries outside it (only possible when an absolute folder `path` was searched), matching `list_files`.
 
 **Folder-mode output:**
 
@@ -127,17 +134,16 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
   3:ERROR boot
   ```
 - `files_with_matches`: one matching relative path per line, nothing else.
-- `count`: `relative/path: <n>` per file, where `<n>` is the number of matching lines.
-- No matches → `"No matches found."` (all modes).
-- If truncated, append a final line: ``"-- search truncated after N files; narrow with name_filter, a subfolder, or a smaller max_depth --"``.
+- No matches → `"No matches found."` (both modes).
+- If truncated, append a final line (in **both** output modes): ``"-- search truncated after <cap> files scanned; narrow with name_filter, a subfolder, or a smaller max_depth --"`` — `<cap>` is `DialFilesConfig.max_files_scanned`, which equals the number of download attempts (including skipped binary/oversized files) when truncation fires.
 
 **Cost bounds (folder mode):**
 
-- **Text-only:** non-UTF-8 files are skipped after the (cached) download attempt; substring search cannot use binary anyway. *(A pre-download extension allowlist is deferred — see Out of Scope.)*
-- **File cap:** `_MAX_FILES_SCANNED` (≈200) downloads per call, then truncate-and-notify. This is the hard upper bound on egress.
+- **Text-only:** `_read_text_for_scan` skips files that fail UTF-8 decode (`UnicodeDecodeError`, binary) or exceed the per-file size limit (`download_file` raises `ValueError`); substring search cannot use them anyway. Each skip still **counts toward `max_files_scanned`** (a download was attempted). *(A pre-download extension allowlist is deferred — see Out of Scope.)*
+- **File cap:** `DialFilesConfig.max_files_scanned` (default 200) download attempts per call, then truncate-and-notify. This is the hard upper bound on egress, and is per-app configurable.
 - **Depth + pre-filter:** `max_depth` bounds the `list_folder` walk; `name_filter` shrinks the candidate set before any download.
 
-**Change vs current codebase:** `_SearchInFileTool._run_in_stage_async` gains a folder branch; the existing file branch is factored into a helper (`_search_single_file(text) -> matches`) reused by both. Folder resolution reuses the shared `_resolve_folder_url` / `_is_root_reference` helpers and the `_MAX_DEPTH` bound (Component 3). New constant `_MAX_FILES_SCANNED`.
+**Change vs current codebase:** `_SearchInFileTool._run_in_stage_async` gains a folder branch; the existing file branch is factored into helpers (`_matching_line_indices` + `_format_matches`) reused by both. Folder listing goes through the shared base helper `_list_folder_entries`; depth is parsed by `_resolve_max_depth`; path math uses `relative_to` / `is_root_reference` from `_path_utils` (Component 3). New base-class helper `_read_text_for_scan`; the file cap is read from `DialFilesConfig.max_files_scanned` (Component 5).
 
 ---
 
@@ -145,7 +151,7 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 
 **What:** A new tool that locates files by name or path glob, walking the folder tree via metadata only. The filename analogue of `search`; mirrors Claude Code's Glob.
 
-**Owner:** `src/quickapp/dial_files_tooling/_find_files_tool.py` (`_FindFilesTool`); short name `find`; full name `internal_file_find`.
+**Owner:** `src/quickapp/dial_files_tooling/_find_files_tool.py` (`_FindFilesTool`); short name `find`; wire name `internal_file_find`, built inline as `f"{TOOL_NAME_PREFIX}find"` in `_tool_configs.py` like every other file tool (file-tool names are not stored in `common/tool_names.py`).
 
 **Parameters:**
 
@@ -153,15 +159,14 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 |------|------|----------|---------|-------------|
 | `pattern` | string | yes | — | Glob (`**`, `*`, `?`) matched against each entry's relative path, e.g. `**/*.py`, `report-*.csv`, `data/**/*.json`. |
 | `path` | string | no | `""` (home root) | Folder to search under. Relative under the agent's home dir, or absolute `files/...`. |
-| `max_depth` | integer | no | `10` | Recursion depth bound, `[1, 10]`. |
+| `max_depth` | integer | no | `10` | Recursion depth: `1` = immediate children only; `2` = children and their children; etc. Must be in `[1, 10]` (same semantics as `list_files`). |
 
 **Semantics:**
 
-1. Validate `max_depth` in `[1, 10]` → else `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")`.
-2. Resolve the folder URL via `_resolve_folder_url(path)` (root references → home dir; ensures a trailing `/` otherwise).
-3. `entries = list_folder(folder_url, max_depth=max_depth)` — metadata only, **no file downloads**. A `ResourceNotFoundError` on a root reference → empty result; on a non-root folder → `InvalidToolCallParameterException("path", "folder not found: {display}")`.
-4. For each entry, compute its relative display path (`_to_display_path`) and match it against `pattern` via `_glob_to_regex`. Match files and folders both; folder display paths keep their trailing `/`.
-5. Render the matches with the shared listing renderer (`NAME` + `SIZE`). No matches → `"No files found."`.
+1. Parse and range-check `max_depth` via the shared `_resolve_max_depth(value, default=10)` → `InvalidToolCallParameterException("max_depth", "must be in [1, 10]")` if outside `[1, 10]`.
+2. List the subtree via the shared base helper `entries = _list_folder_entries(path, max_depth)` — metadata only, **no file downloads**. It resolves the folder URL (`_resolve_folder_url`) and applies the shared not-found policy: root reference → empty result; non-root folder → `"folder not found: {display}"`; non-folder target → `"not a folder: {display}"`; permission errors → `"access denied"`.
+3. For each entry, match its path **relative to the search root** (`relative_to(entry.url, folder_url)`) against `pattern` via `_glob_to_regex`. Match files and folders both; folder paths keep their trailing `/`. (Matching is relative to the search root so e.g. `find(path="reports/", pattern="report-*.md")` works — see UC-6.)
+4. Render the matches with the shared listing renderer (`NAME` + `SIZE`), labelling each row with `_to_display_path` (relative for entries under home, absolute `files/...` otherwise); matched folders render with size `-` and a trailing `/`, like `list_files`. No matches → `"No files found."`.
 
 **Glob semantics** (shared helper, Component 3):
 - `*` matches any run of characters **except** `/` (within one path segment).
@@ -169,19 +174,27 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 - `**` matches across `/` (any number of segments, including zero), so `**/*.csv` matches `a.csv` and `x/y/a.csv`.
 - Matching is against the relative path (case-sensitive, consistent with DIAL paths).
 
-**Change vs current codebase:** new file/class, new tool name constant, new config, new DI binding (Components 4–5).
+**Change vs current codebase:** new file/class, new config (name built inline in `_tool_configs.py`), new DI binding (Components 4–5).
 
 ---
 
 ### Component 3: Shared helpers
 
-`find` and folder-mode `search` reuse three pieces of shared infrastructure so behavior stays identical across the file tools and nothing is duplicated.
+`list`, `find`, and folder-mode `search` reuse four pieces of shared infrastructure so behavior stays identical across the file tools and nothing is duplicated.
 
-**Folder resolution (`_resolve_folder_url`, `_is_root_reference`, `_MAX_DEPTH`).** These currently live on `_ListFilesTool` and are needed verbatim by `find` and folder-mode `search`: `_is_root_reference` recognizes `""`/`.`/`./`/`/`; `_resolve_folder_url` maps a root reference to the home dir and otherwise appends a trailing `/` before `_resolve_appdata_url`; `_MAX_DEPTH = 10` bounds recursion. This design **promotes them to the `_DialFileTool` base class** so all three tools share one implementation.
+**Pure path helpers (`_path_utils.py`).** `is_root_reference(path)` recognizes `""`/`.`/`./`/`/`; `relative_to(url, folder_url)` returns the path of `url` relative to the search root (used for glob matching). These are DI-free string functions, so they live in their own module (`src/quickapp/dial_files_tooling/_path_utils.py`) rather than on the tool base class.
 
-**Listing renderer (`_render_listing`, `_format_size`).** `find` renders results exactly like `list_files` (`NAME` + `SIZE`). These tool-private helpers in `_list_files_tool.py` move to a shared module (`_listing.py`) imported by `_list_files_tool` and `_find_files_tool`.
+**Folder resolution & listing (base class).** `_resolve_folder_url` (maps a root reference to the home dir, otherwise appends a trailing `/` before `_resolve_appdata_url`), `_list_folder_entries(path, max_depth)` (resolve + `list_folder` + the shared not-found policy: missing root → `[]`, missing non-root → `"folder not found"`, non-folder → `"not a folder"`, 403 → `"access denied"`), and `_resolve_max_depth(value, default)` (parse + range-check `[1, _MAX_DEPTH]`) all live on `_DialFileTool`. `_MAX_DEPTH = 10` is a module constant there. `list`, `find`, and folder-mode `search` all go through these, so their folder/not-found behavior is identical by construction.
 
-**Glob (`_glob_to_regex`).** A single function translating a glob (`**`/`*`/`?`, with the segment semantics above) into a compiled `re.Pattern`, used by both `find` (its `pattern`) and `search` (its `name_filter`). `fnmatch.translate` does not distinguish `**` from `*`, so we translate manually: escape the literal text, then emit `[^/]*` for `*`, `[^/]` for `?`, and `.*` for `**` (collapsing an optional adjacent `/` so `**/x` matches `x`). Anchored full-match (`re.fullmatch`). Invalid patterns surface as `InvalidToolCallParameterException("pattern", ...)`. Owner: `src/quickapp/dial_files_tooling/_glob.py` (new module). One implementation guarantees `find` and `search`'s `name_filter` accept exactly the same syntax — the LLM learns one glob dialect for both.
+**Listing renderer (`_render_listing`, `_format_size`).** `find` renders results exactly like `list_files` (`NAME` + `SIZE`). These helpers live in a shared module (`_listing.py`) imported by `_list_files_tool` and `_find_files_tool`.
+
+**Glob (`_glob_to_regex`).** A single function compiling a glob into a `re.Pattern`, used by both `find` (its `pattern`) and `search` (its `name_filter`). It delegates to the stdlib `glob.translate` (Python 3.13) with `recursive=True` (so `**` spans path segments), `include_hidden=True` (dotfiles match like any name), and `seps="/"` (DIAL paths always use `/`):
+
+- `**/x` matches `x`, `a/x`, `a/b/x` but **not** `foox`; `data/**/*.json` matches `data/a.json` and `data/x/y/a.json`.
+- `*` → any run within a single segment (does not cross `/`); `?` → a single non-`/` character.
+- `**` is recursive only as a whole path segment (`/**/`); a within-segment `foo**` behaves like `foo*` and does **not** cross `/` (this is the one behavioral difference from the originally-approved hand-rolled translator).
+
+Used with `fullmatch` (anchored, case-sensitive, consistent with DIAL paths). Empty/invalid patterns surface as `InvalidToolCallParameterException("pattern", ...)`. Owner: `src/quickapp/dial_files_tooling/_glob.py` (new module). One implementation guarantees `find` and `search`'s `name_filter` accept exactly the same syntax — the LLM learns one glob dialect for both.
 
 ---
 
@@ -189,11 +202,10 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 
 **What:** A config for `find` and a generalized config/description for `search`.
 
-- **`search` config** (`SEARCH_IN_FILE_TOOL_CONFIG`, name `internal_file_search`): description updated to state that `path` may be a file or a `folder/`, plus the new `output_mode`, `name_filter`, `max_depth` parameters (all optional, folder-mode only). Existing params unchanged.
-- **`find` config** (`FIND_FILES_TOOL_CONFIG`, name `internal_file_find`): new `OpenAiToolConfig` + `ToolDisplayConfig`. Stage title `Find files`. Added to `ALL_FILE_TOOL_CONFIGS`.
-- **Name constant:** add `INTERNAL_FILE_FIND_TOOL_NAME = f"{INTERNAL_FILE_TOOL_NAME_PREFIX}find"` to `src/quickapp/common/tool_names.py`.
+- **`search` config** (`SEARCH_IN_FILE_TOOL_CONFIG`, name `f"{TOOL_NAME_PREFIX}search"`): description updated to state that `path` may be a file or a `folder/`, plus the new `output_mode`, `name_filter`, `max_depth` parameters (all optional, folder-mode only). The function description gains explicit trailing-slash guidance: *"Search a single file or a whole folder tree. For a folder, end the path with `/` to search recursively (e.g. `reports/`); omit the trailing slash to search one file (e.g. `reports/summary.md`)."* The three folder-only params are each marked *"folder mode only"* in their schema descriptions so the constraint is visible to the model. Existing params unchanged.
+- **`find` config** (`FIND_FILES_TOOL_CONFIG`, name `f"{TOOL_NAME_PREFIX}find"`): new `OpenAiToolConfig` + `ToolDisplayConfig`. Stage title `Find files`. Added to `ALL_FILE_TOOL_CONFIGS`. The name is built inline like the other file tools — no constant in `common/tool_names.py` (which holds no file-tool names).
 
-**Owner:** `src/quickapp/dial_files_tooling/_tool_configs.py`, `src/quickapp/common/tool_names.py`.
+**Owner:** `src/quickapp/dial_files_tooling/_tool_configs.py`.
 
 ---
 
@@ -201,19 +213,10 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 
 **What:** Register `_FindFilesTool` alongside the existing file tools and add `find` to the configurable tool set.
 
-- `dial_files_tooling_module.py`: bind `_FindFilesTool` in `request_scope`; add a `find_builder: AssistedBuilder[_FindFilesTool]` and the `(find_builder, FIND_FILES_TOOL_CONFIG)` entry to the `_provide_dial_files_tools` multiprovider. `_is_enabled` already keys off the short name, so `find` is gated by `enabled_tools` automatically.
-- `config/dial_files.py`: add `"internal_file_find"` to the `DialFilesToolName` literal so apps can include/exclude it.
+- `dial_files_tooling_module.py`: bind `_FindFilesTool` in `request_scope`; add a `find_builder: AssistedBuilder[_FindFilesTool]` and the `(find_builder, FIND_FILES_TOOL_CONFIG)` entry to the `_provide_dial_files_tools` multiprovider. `_is_enabled` strips `TOOL_NAME_PREFIX` (`removeprefix`) and checks the short name against `enabled_tools`, so `find` is gated automatically once it is in the literal.
+- `config/dial_files.py`: add the short name `"find"` to the `DialFilesToolName` literal (which holds short names: `"list"`, `"read_lines"`, `"search"`, …) so apps can include/exclude it; and add a `max_files_scanned: int = Field(default=200, ge=1)` field that folder-mode `search` reads for its per-call file cap.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`, `src/quickapp/config/dial_files.py`.
-
----
-
-### Component 6: Offload compatibility
-
-**What:** Confirm the offload read-back contract is preserved.
-
-- `_REQUIRED_READ_BACK_TOOLS = frozenset({"read_lines", "search"})` stays unchanged. The offload notice points the LLM at `search` to read back offloaded content; that read-back is always a **single-file** call (the offloaded result was written to one file), which is exactly the unchanged file-mode path. Generalizing `search` to also accept folders is a strict superset — it does not weaken the read-back guarantee.
-- `find` is metadata-only and is **not** a read-back tool; it is not added to `_REQUIRED_READ_BACK_TOOLS`.
 
 ---
 
@@ -223,7 +226,7 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 - **Total-byte cap on folder search.** The file cap + text-only skip bound worst-case egress; a cumulative-bytes ceiling is deferred until profiling shows a few huge text files are a problem.
 - **Pre-download extension allowlist.** Binary files are skipped *after* a (cached) download attempt fails to decode. A name/extension allowlist that avoids the download entirely is a future optimization; `name_filter` already gives the agent manual control.
 - **Auto-detect file vs folder.** We use the trailing-slash / root-reference convention (consistent with `list_files`) rather than probing whether a path is a folder. The tool description guides the LLM to end folder paths with `/`. A "probe then fall back" auto-detect is deferred — it adds a round-trip and magic for little gain.
-- **Pagination / result caps on `find`.** `find` returns all matches (metadata only, cheap). A result-count cap or pagination is deferred until folder sizes warrant it, mirroring `list_files`.
+- **Pagination / result caps on `find`.** `find` returns all matches (metadata only, cheap). The `list_folder` walk is worst-case `O(W^D)` metadata calls (`W` subfolders per level, `D` depth); `max_depth ∈ [1, 10]` is the primary bound. A result-count cap or pagination is deferred until folder sizes warrant it, mirroring `list_files`; if profiling shows metadata cost dominates, a stricter default depth can be added later.
 - **Sorting by mtime / size.** `find` returns tree-walk order. Ranking is deferred.
 
 ---
@@ -237,30 +240,33 @@ None. `search` (`internal_file_search`) keeps its existing required params and s
 ### Non-breaking changes
 
 - `find` (`internal_file_find`) is a new tool, off unless `dial_files` is enabled and `find` is in `enabled_tools` (or `enabled_tools == "all"`).
-- `DialFilesToolName` gains `"internal_file_find"`. Existing manifests that list tools explicitly are unaffected; they simply don't include `find` until updated.
-- Run `make dump_app_schema` after the `DialFilesConfig` literal change.
+- `DialFilesToolName` gains the short name `"find"`. Existing manifests that list tools explicitly are unaffected; they simply don't include `find` until updated.
+- `DialFilesConfig` gains an optional `max_files_scanned` field (default 200); existing manifests are unaffected, since the default preserves prior behavior.
+- Run `make dump_app_schema` after the `DialFilesConfig` changes (the `"find"` literal and the `max_files_scanned` field).
 
 ## Summary of Changes
+
+All items below are prescriptive — the implementation lands after approval. (Per the [design lifecycle](./README.md), *Approved* means reviewed and ready to implement, not yet implemented; *Implemented* is set once the code merges.)
 
 ### New files
 
 | File | Purpose |
 |------|---------|
 | `dial_files_tooling/_find_files_tool.py` | `_FindFilesTool` — glob filename discovery via `list_folder` (metadata only). |
-| `dial_files_tooling/_glob.py` | `_glob_to_regex` — shared `**`/`*`/`?` translator for `find` and `search`'s `name_filter`. |
+| `dial_files_tooling/_glob.py` | `_glob_to_regex` — shared `**`/`*`/`?` matcher (wraps stdlib `glob.translate`) for `find` and `search`'s `name_filter`. |
 | `dial_files_tooling/_listing.py` | Extracted `_render_listing` / `_format_size` shared by `list_files` and `find`. |
+| `dial_files_tooling/_path_utils.py` | DI-free path helpers `is_root_reference` / `relative_to` shared across the file tools. |
 
 ### Modified files
 
 | File | Change |
 |------|--------|
-| `dial_files_tooling/_base_file_tool.py` | Promote `_resolve_folder_url`, `_is_root_reference`, and `_MAX_DEPTH` from `_ListFilesTool` to the base class for reuse by `list_files`, `find`, and folder-mode `search`. |
-| `dial_files_tooling/_search_in_file_tool.py` | Add folder-mode branch (recursive content search) with `output_mode`, `name_filter`, `max_depth`; factor the existing file logic into a reused helper; reuse `_resolve_folder_url`; add `_MAX_FILES_SCANNED`; skip non-UTF-8 files. File mode unchanged. |
-| `dial_files_tooling/_list_files_tool.py` | Use the promoted base-class folder helpers and the extracted listing module instead of local definitions. |
+| `dial_files_tooling/_base_file_tool.py` | Add `_resolve_folder_url` + `_list_folder_entries` (resolve + list + shared not-found policy) + `_resolve_max_depth` and the `_MAX_DEPTH` constant for reuse by `list_files`, `find`, and folder-mode `search`; add `_read_text_for_scan` (folder-scan download returning `None` on binary/oversize). `_download_text` is unchanged. |
+| `dial_files_tooling/_search_in_file_tool.py` | Add folder-mode branch (recursive content search) with `output_mode` (`content` / `files_with_matches`), `name_filter`, `max_depth`; factor the existing file logic into reused helpers (`_matching_line_indices`, `_format_matches`); use `_list_folder_entries`; read the file cap from `DialFilesConfig.max_files_scanned`; skip non-UTF-8/oversized files; reject folder-only params in file mode. File-mode output unchanged. |
+| `dial_files_tooling/_list_files_tool.py` | Use the base-class `_list_folder_entries` / `_resolve_max_depth` and the extracted listing module instead of local definitions. |
 | `dial_files_tooling/_tool_configs.py` | Update `SEARCH_IN_FILE_TOOL_CONFIG` description/params; add `FIND_FILES_TOOL_CONFIG`; add it to `ALL_FILE_TOOL_CONFIGS`. |
-| `dial_files_tooling/dial_files_tooling_module.py` | Bind `_FindFilesTool`; add it to the `_provide_dial_files_tools` multiprovider. |
-| `common/tool_names.py` | Add `INTERNAL_FILE_FIND_TOOL_NAME`. |
-| `config/dial_files.py` | Add `"internal_file_find"` to `DialFilesToolName`. |
+| `dial_files_tooling/dial_files_tooling_module.py` | Bind `_FindFilesTool`; add it (with a `find_builder`) to the `_provide_dial_files_tools` multiprovider. |
+| `config/dial_files.py` | Add the short name `"find"` to `DialFilesToolName`; add the `max_files_scanned` field. |
 
 ### Tools exposed to the LLM
 
@@ -271,7 +277,8 @@ None. `search` (`internal_file_search`) keeps its existing required params and s
 
 - Unit: `src/tests/unit_tests/dial_files_tooling/`:
   - `search` file mode: regression — output identical to current `search_in_file` (single file, context windows, `--` separators, `case_insensitive`).
-  - `search` folder mode: `path=""` searches the whole home (root reference → folder mode); matches across multiple text files grouped by path (`content`); `files_with_matches` returns paths only; `count` returns per-file tallies; non-UTF-8 files skipped; `name_filter` excludes non-matching candidates before download; `max_depth` bounds the walk; file-cap truncation appends the notice; folder path without trailing `/` → `_download_text` "file not found" (file mode); non-root folder not-found → "folder not found: {display}"; root reference with nothing written → "No matches found."
-  - `find`: `**/*.ext` matches at any depth incl. root; `*` does not cross `/`; `?` single char; default `path=""` searches home root; subfolder `path`; `max_depth` cap and out-of-range error; root reference with nothing written → empty result; empty match set → "No files found."; output uses the shared listing renderer.
-  - `_glob_to_regex`: `*`/`?`/`**` segment semantics; literal escaping; invalid pattern → `InvalidToolCallParameterException("pattern", ...)`.
-  - Offload: `_missing_read_back_tools` / `ResolvedOffloadConfig` unaffected — `search` still satisfies the read-back requirement; `find` is not required.
+  - `search` folder mode: `path=""` searches the whole home (root reference → folder mode); matches across multiple text files grouped by path (`content`); `files_with_matches` returns paths only; `count` is rejected (mode dropped); non-UTF-8 files skipped; `name_filter` excludes non-matching candidates before download; `max_depth` bounds the walk; file-cap truncation appends the notice (cap driven by `max_files_scanned`); folder path without trailing `/` → `_download_text` "file not found" (file mode); non-root folder not-found → "folder not found: {display}"; non-folder target → "not a folder: {display}"; root reference with nothing written → "No matches found."
+  - `find`: `**/*.ext` matches at any depth incl. root; `*` does not cross `/`; `?` single char; default `path=""` searches home root; subfolder `path`; `max_depth` cap and out-of-range error; root reference with nothing written → "No files found."; empty match set → "No files found."; matched folders render with size `-`; output uses the shared listing renderer.
+  - `search` file mode also: a non-default `output_mode` / `name_filter` / `max_depth` in file mode → `InvalidToolCallParameterException`; a binary file and an oversized file in a folder are skipped (not aborting the search).
+  - `_glob_to_regex`: `**/x` matches `x`, `a/x`, `a/b/x` but **not** `foox`; `foo**` behaves like `foo*` (does **not** cross `/`); `*` does not cross `/`; `?` is one non-`/` char; literal escaping (`file.txt` matches only `file.txt`); case-sensitive; empty/invalid pattern → `InvalidToolCallParameterException("pattern", ...)`.
+  - `DialFilesConfig`: `max_files_scanned` defaults to 200 and rejects values `< 1`.
