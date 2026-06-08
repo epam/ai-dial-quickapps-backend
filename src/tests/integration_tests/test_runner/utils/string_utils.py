@@ -1,4 +1,3 @@
-import os
 import re
 
 
@@ -17,3 +16,18 @@ def extract_total_price(input_string):
         return float(match.group(0))
     else:
         return 0
+
+
+def sanitize_for_directory(name: str) -> str:
+    """
+    Sanitizes a string to make it suitable for a directory name by removing
+    all characters that are invalid.
+
+    Args:
+        name: The input string to sanitize.
+
+    Returns:
+        The sanitized string with invalid characters removed.
+    """
+    invalid_chars = r'[<>:|"|?*\\/]'
+    return re.sub(invalid_chars, '', name)

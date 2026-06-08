@@ -7,16 +7,24 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-5-2025-08-07",
+            "deployment_id": "gpt-5-2025-08-07",
             "parameters": {
-              "temperature": 1.0,
-              "seed": 820288
+              "temperature": 1.0
             }
           },
           "system_prompt": {
             "type": "custom",
             "variables": {},
             "content": "You are an AI assistant that helps people find information.\nYou have access to a variety of tools and you should use them to answer user questions.\nWhen using tools, be sure to provide clear and concise input to get the best results.\nAlways format your responses in markdown."
+          }
+        },
+        "starters": [
+          "Hello",
+          "Goodbye"
+        ],
+        "features": {
+          "stage_display": {
+            "level": "info"
           }
         },
         "contexts": [],
@@ -78,7 +86,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-4.1-2025-04-14"
+            "deployment_id": "gpt-4.1-2025-04-14"
           },
           "system_prompt": {
             "type": "custom",
@@ -103,7 +111,20 @@
               }
             ]
           }
-        ]
+        ],
+        "conversation_starters": {
+          "intro_text": "What would you like to talk about?",
+          "starters": [
+            {
+              "title": "Find latest news about AI",
+              "text": "Find latest news about AI using web search tool, focusing on major players in generative AI"
+            },
+            {
+              "title": "Generate an image of a futuristic city",
+              "text": "Generate an image of a futuristic city using image generation tool. The city should have flying cars, tall skyscrapers with greenery, and a vibrant atmosphere."
+            }
+          ]
+        }
       }
     },
     "root_quick_app": {
@@ -116,7 +137,7 @@
       "applicationProperties": {
         "orchestrator": {
           "deployment": {
-            "name": "gpt-4.1-2025-04-14"
+            "deployment_id": "gpt-4.1-2025-04-14"
           },
           "system_prompt": {
             "type": "custom",
@@ -139,7 +160,7 @@
                   }
                 },
                 "deployment": {
-                  "name": "nested_quick_app"
+                  "deployment_id": "nested_quick_app"
                 },
                 "content_propagation": {
                   "propagate_history": true,
@@ -198,6 +219,42 @@
             ]
           }
         ]
+      }
+    },
+    "quickapp_with_code_interpreter": {
+      "displayName": "QuickApp with code interpreter",
+      "description": "Sample QuickApp that has access to PyInterpreter tool",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "deployment_id": "anthropic.claude-sonnet-4-6"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are an AI assistant that helps people find information and execute python code using PyInterpreter tool. Always format your responses in markdown."
+          }
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          }
+        ],
+        "conversation_starters": {
+          "intro_text": "What would you like to talk about?",
+          "starters": [
+            {
+              "title": "Calculate Fibonacci sequence",
+              "text": "Calculate Fibonacci sequence up to 10 using PyInterpreter tool."
+            }
+          ]
+        }
       }
     }
   }

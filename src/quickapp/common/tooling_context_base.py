@@ -1,7 +1,10 @@
 import threading
 
+from aidial_sdk.chat_completion.request import StaticTool
+
 from quickapp.common import StagedBaseTool
-from quickapp.common.tool_initialization_exception import ToolInitializationException
+
+from .exceptions import InitializationException, ToolInitializationException
 
 
 class ToolingContextBase:
@@ -9,7 +12,8 @@ class ToolingContextBase:
 
     def __init__(self):
         self._tools: list[StagedBaseTool] = []
-        self._exceptions: list[ToolInitializationException] = []
+        self._static_tools: list[StaticTool] = []
+        self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
 
     def append_tool(self, tool: StagedBaseTool) -> None:
@@ -20,12 +24,20 @@ class ToolingContextBase:
         with self._lock:
             self._tools.extend(tools)
 
+    def extend_static_tools(self, tools: list[StaticTool]) -> None:
+        with self._lock:
+            self._static_tools.extend(tools)
+
     @property
     def tools(self) -> list[StagedBaseTool]:
         return self._tools
 
     @property
-    def exceptions(self) -> list[ToolInitializationException]:
+    def static_tools(self) -> list[StaticTool]:
+        return self._static_tools
+
+    @property
+    def exceptions(self) -> list[InitializationException]:
         return self._exceptions
 
     def append_exception(self, exception: ToolInitializationException) -> None:

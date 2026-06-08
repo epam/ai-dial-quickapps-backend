@@ -1,11 +1,12 @@
 import json
-from unittest.mock import MagicMock, Mock
+from unittest.mock import MagicMock
 
 import pytest
 from aidial_sdk.chat_completion import Stage
 from pydantic import BaseModel
 
-from quickapp.common import CompletionResult
+from quickapp.common import ToolCallResult
+
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 
@@ -29,11 +30,7 @@ def mock_tool_config():
 
 @pytest.fixture
 def wrapper(mock_stage, mock_tool_config):
-    return _MCPStageWrapper(
-        stage=mock_stage,
-        tool_config=mock_tool_config,
-        stage_name="test_stage"
-    )
+    return _MCPStageWrapper(stage=mock_stage, tool_config=mock_tool_config, stage_name="test_stage")
 
 
 @pytest.fixture
@@ -42,7 +39,7 @@ def params():
 
 
 def test_result_and_param(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content=json.dumps({"content": "response content"}), content_type="application/json"
     )
 
@@ -60,9 +57,6 @@ def test_result_and_param(mock_stage, wrapper, params):
 
 
 def test_serialize_base_model_request(mock_stage, wrapper):
-    result = CompletionResult(
-        content="", content_type="application/json"
-    )
     class BaseModelParams(BaseModel):
         email: str = "a@a.com"
         message: str = "Hello"
@@ -79,14 +73,11 @@ def test_serialize_base_model_request(mock_stage, wrapper):
 
 
 def test_serialize_request_object_with_dict(mock_stage, wrapper):
-    result = CompletionResult(
-        content="", content_type="application/json"
-    )
+
     class TestClass:
         def __init__(self):
             self.name = "test"
             self.value = 42
-
 
     expected = '> ##### Request:\n```json\n{\n    "key": {\n        "name": "test",\n        "value": 42\n    }\n}\n```\n\n'
 
@@ -97,19 +88,19 @@ def test_serialize_request_object_with_dict(mock_stage, wrapper):
 
 
 def test_serialize_non_serializable(mock_stage, wrapper):
-    result = CompletionResult(
-        content="", content_type="application/json"
-    )
     non_serializable = object()
 
     with pytest.raises(TypeError) as excinfo:
         with mock_stage:
             wrapper.add_parameters({"key": non_serializable})
 
-    assert f"Object of type {type(non_serializable).__name__} isn't JSON serializable" in str(excinfo.value)
+    assert f"Object of type {type(non_serializable).__name__} isn't JSON serializable" in str(
+        excinfo.value
+    )
+
 
 def test_xml_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="<root><child>data</child></root>", content_type="application/xml"
     )
     expected_params = """> ##### Request:
@@ -122,15 +113,7 @@ def test_xml_build_debug_info_from_params_and_result(mock_stage, wrapper, params
 ```
 
 """
-    expected_result = """> ##### Response:
-```xml
-<?xml version="1.0" ?>
-<root>
-	<child>data</child>
-</root>
-
-```
-"""
+    expected_result = "> ##### Response:\n```xml\n<?xml version=\"1.0\" ?>\n<root>\n\t<child>data</child>\n</root>\n\n```\n"
     with mock_stage:
         wrapper.add_parameters(params)
         wrapper.add_result(result)
@@ -141,7 +124,7 @@ def test_xml_build_debug_info_from_params_and_result(mock_stage, wrapper, params
 
 
 def test_html_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="<html><body><p>data</p></body></html>", content_type="text/html"
     )
     expected_params = """> ##### Request:
@@ -176,7 +159,7 @@ def test_html_build_debug_info_from_params_and_result(mock_stage, wrapper, param
 
 
 def test_csv_build_debug_info_from_params_and_result(mock_stage, wrapper, params):
-    result = CompletionResult(content="col1,col2\nval1,val2", content_type="text/csv")
+    result = ToolCallResult(content="col1,col2\nval1,val2", content_type="text/csv")
     expected_params = """> ##### Request:
 ```json
 {
@@ -200,6 +183,7 @@ def test_csv_build_debug_info_from_params_and_result(mock_stage, wrapper, params
     mock_stage.append_content.assert_any_call(expected_params)
     mock_stage.append_content.assert_any_call(expected_result)
 
+
 def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params):
     exception = ValueError("Invalid value provided")
 
@@ -213,8 +197,9 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
     mock_stage.append_content.assert_any_call(expected_params)
     mock_stage.append_content.assert_any_call(expected_exception)
 
+
 def test_exception_handling_in_format_response(mock_stage, wrapper, params):
-    result = CompletionResult(
+    result = ToolCallResult(
         content="{'content': 'response content'}", content_type="application/json"
     )
 

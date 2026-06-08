@@ -5,13 +5,15 @@ from enum import Enum
 from pathlib import Path
 
 from pydantic import SecretStr
-
-from quickapp.config.application import ApplicationConfig, OrchestratorConfig
-from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
-from quickapp.config.prompt import PredefinedSystemPromptConfig
-from quickapp.config.toolsets.toolset import ToolSet
 from pydantic.type_adapter import TypeAdapter
 
+from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
+from quickapp.config.context import Context
+from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+from quickapp.config.prompt import PredefinedSystemPromptConfig
+from quickapp.config.toolsets.toolset import ToolSet
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
 logger = logging.getLogger(__name__)
@@ -19,8 +21,10 @@ logger = logging.getLogger(__name__)
 file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
     "integration_simple": ["test_tool_set_chat_hub"],
-    "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"]
+    "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
+    "lazy_admin_context": [],
 }
+
 
 class SimilarityThreshold(Enum):
     DEFAULT = 0.9
@@ -31,7 +35,8 @@ class SimilarityThreshold(Enum):
 class TestDialCoreConfig:
     APP_NAME: str = os.getenv("DIAL_APP_NAME", "quick_app_2")  # used for telemetry
     APP_DEPLOYMENT_V2_NAME: str = os.getenv("APP_DEPLOYMENT_NAME", "quick_app_2")
-    REMOTE_DIAL_URL: str = os.getenv("REMOTE_DIAL_URL", "http://localhost:8090")
+    REMOTE_DIAL_URL: str = os.getenv("DIAL_URL", "http://localhost:8090")
+    REMOTE_DIAL_API_KEY: str = os.getenv("DIAL_API_KEY", "dial_api_key")
     LOG_LEVEL: str = os.getenv("DIAL_LOG_LEVEL", "INFO")
     MAX_MODEL_RETRIES: int = int(os.getenv("MAX_MODEL_RETRIES", 3))
 
@@ -54,7 +59,13 @@ class TestConfig:
     FAILURE_MESSAGE = "Rerun locally the test with REFRESH=True to renew cached LLM responses"
 
     @classmethod
-    def create_app_configuration(cls, toolsets: list[ToolSet], model) -> ApplicationConfig:
+    def create_app_configuration(
+        cls,
+        toolsets: list[ToolSet],
+        model: str,
+        contexts: list[Context] | None = None,
+        attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
+    ) -> ApplicationConfig:
         temperature = 0
         if "gemini" in model:
             template = "gemini_prompt"
@@ -67,23 +78,34 @@ class TestConfig:
 
         return ApplicationConfig(
             orchestrator=OrchestratorConfig(
-                deployment=DialDeploymentConfig(name=model, parameters=DialDeploymentParameters(temperature=temperature)),
+                deployment=DialDeploymentConfig(
+                    deployment_id=model,
+                    parameters=DialDeploymentParameters(temperature=temperature),
+                ),
                 system_prompt=PredefinedSystemPromptConfig(template=template),
+                attachment_strategy=attachment_strategy,
             ),
-            contexts=[],
-            tool_sets=toolsets
+            contexts=list(contexts or []),
+            tool_sets=toolsets,
+            features=Features(dial_files=DialFilesConfig()),
         )
 
     @classmethod
-    def load_tools_config(cls, port: int, config_file_set: str = "e2e") -> list[ToolSet]:
-        files_list = file_sets.get(config_file_set)
+    def load_tools_config(
+        cls,
+        port: int,
+        config_file_set: str = "e2e",
+        include_rest_toolset: bool = True,
+    ) -> list[ToolSet]:
+        files_list = file_sets.get(config_file_set) or []
         tool_set_list: list[ToolSet] = []
         for file in files_list:
             file_path = Path(__file__).parent / f"{file}.json"
             data = json.loads(file_path.read_text())
-            tool_set = TypeAdapter(ToolSet).validate_python(data)
+            tool_set: ToolSet = TypeAdapter(ToolSet).validate_python(data)
             tool_set_list.append(tool_set)
-        tool_set_list.append(TestToolSetRest.get_rest_toolset(port=port))
+        if include_rest_toolset:
+            tool_set_list.append(TestToolSetRest.get_rest_toolset(port=port))
         return tool_set_list
 
     @classmethod

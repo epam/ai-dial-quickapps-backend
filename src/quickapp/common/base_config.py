@@ -1,14 +1,28 @@
 from collections import deque
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, ClassVar, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
+from quickapp.common.feature_settings import FeatureSettings
 
 _DIAL_SCHEMA_URL = "https://dial.epam.com/application_type_schemas/schema#"
 _DIAL_ID_PREFIX = "https://mydial.epam.com/custom_application_schemas/"
+
+_PREVIEW_MARKER = "x-preview"
+
+# Field-level schema keys carried over from a canonical field to its LegacyAlias.
+# DIAL Core's schema-driven tooling (e.g. resource discovery / auto-share) keys
+# off these markers; an alias must mirror them or manifests stored under the
+# legacy key become invisible to those collectors.
+_LEGACY_ALIAS_PROPAGATED_KEYS: tuple[str, ...] = (
+    DialJSONSchemaExtensions.RESOURCE,
+    DialJSONSchemaExtensions.FILE,
+    "format",
+)
 
 
 def _collect_defs_references(schema: Any) -> set[str]:
@@ -156,6 +170,187 @@ def _dial_file_config_field(default: Any = ..., **kwargs) -> FieldInfo:
     return Field(default, **kwargs)
 
 
+def _preview_field(default=None, **kwargs) -> FieldInfo:
+    """
+    Create a Pydantic Field marked as a preview feature.
+
+    Preview fields are stripped from the JSON schema and nullified at runtime
+    when ENABLE_PREVIEW_FEATURES is not set.
+
+    The field type must be ``T | None`` so the runtime can deactivate it by
+    setting the value to ``None``.  Use either ``default=None`` (field is off
+    by default) or ``default_factory=SomeModel`` (field is on by default but
+    can still be nullified when preview features are disabled).
+
+    Args:
+        default: Must be None when no ``default_factory`` is provided.
+        **kwargs: Other Pydantic Field parameters (including ``default_factory``).
+
+    Returns:
+        Pydantic Field with preview marker.
+    """
+    has_factory = "default_factory" in kwargs
+    if has_factory and default is not None:
+        raise TypeError("Cannot specify both default and default_factory for PreviewField.")
+    if default is not None and not has_factory:
+        raise TypeError(
+            "PreviewField requires default=None (preview fields must be nullable "
+            "so they can be deactivated at runtime). "
+            "Use default_factory=... if the feature should be enabled by default."
+        )
+    json_schema_extra = kwargs.get("json_schema_extra", {})
+    if isinstance(json_schema_extra, dict):
+        json_schema_extra[_PREVIEW_MARKER] = True
+    else:
+        original_extra = json_schema_extra
+
+        def new_extra(schema):
+            if callable(original_extra):
+                original_extra(schema)
+            schema[_PREVIEW_MARKER] = True
+
+        json_schema_extra = new_extra
+    kwargs["json_schema_extra"] = json_schema_extra
+    if has_factory:
+        return Field(**kwargs)
+    return Field(default, **kwargs)
+
+
+@dataclass(frozen=True)
+class LegacyAlias:
+    """Annotation declaring that a field accepts a legacy property name as input.
+
+    Compose with any field helper inside ``Annotated[...]``::
+
+        deployment_id: Annotated[
+            str,
+            DialResourceConfigField(description="..."),
+            LegacyAlias("name"),
+        ]
+
+    Active when the model inherits from :class:`LegacyAliasModel`.
+    """
+
+    name: str
+    description: str | None = None
+
+
+def _find_legacy_alias(field_info: FieldInfo) -> LegacyAlias | None:
+    for item in field_info.metadata:
+        if isinstance(item, LegacyAlias):
+            return item
+    return None
+
+
+class LegacyAliasModel(BaseModel):
+    """Base for models that opt into :class:`LegacyAlias` field annotations.
+
+    For each field carrying a ``LegacyAlias``:
+
+    - At class init: extends the field's ``validation_alias`` to
+      ``AliasChoices(<field>, <legacy>)`` and forces ``model_rebuild`` so the
+      change takes effect at validation time.
+    - At ``model_json_schema()``: adds the legacy name as a deprecated sibling
+      property, removes the canonical from the top-level ``required`` list,
+      and appends an ``anyOf`` clause requiring at least one of
+      (canonical, legacy) — so DIAL Core's schema validator accepts both keys.
+    """
+
+    _legacy_alias_pairs: ClassVar[list[tuple[str, LegacyAlias]]] = []
+
+    @classmethod
+    def __pydantic_init_subclass__(cls, **kwargs: Any) -> None:
+        super().__pydantic_init_subclass__(**kwargs)
+        pairs: list[tuple[str, LegacyAlias]] = []
+        for field_name, field_info in cls.model_fields.items():
+            legacy = _find_legacy_alias(field_info)
+            if legacy is None:
+                continue
+            field_info.validation_alias = AliasChoices(field_name, legacy.name)
+            pairs.append((field_name, legacy))
+        cls._legacy_alias_pairs = pairs
+        if pairs:
+            cls.model_rebuild(force=True)
+
+    @classmethod
+    def __get_pydantic_json_schema__(cls, schema: Any, handler: Any) -> dict[str, Any]:
+        json_schema = handler(schema)
+        if not cls._legacy_alias_pairs:
+            return json_schema
+        properties = json_schema.setdefault("properties", {})
+        required = json_schema.get("required") or []
+        any_of = json_schema.setdefault("anyOf", [])
+        for canonical, legacy in cls._legacy_alias_pairs:
+            canonical_schema = properties.get(canonical, {})
+            alias_schema: dict[str, Any] = {
+                "type": "string",
+                "description": legacy.description or f"DEPRECATED. Legacy alias for `{canonical}`.",
+                "deprecated": True,
+            }
+            for key in _LEGACY_ALIAS_PROPAGATED_KEYS:
+                if key in canonical_schema:
+                    alias_schema[key] = canonical_schema[key]
+            properties[legacy.name] = alias_schema
+            if canonical in required:
+                required.remove(canonical)
+            any_of.extend([{"required": [canonical]}, {"required": [legacy.name]}])
+        if not required:
+            json_schema.pop("required", None)
+        return json_schema
+
+
+def has_preview_marker(field_info: FieldInfo) -> bool:
+    """Check whether a field is marked as a preview feature."""
+    extra = field_info.json_schema_extra
+    if extra is None:
+        return False
+    if isinstance(extra, dict):
+        return bool(extra.get(_PREVIEW_MARKER, False))
+    # Callable case: invoke on a temp dict to inspect the marker.
+    tmp: dict[str, Any] = {}
+    extra(tmp)
+    return bool(tmp.get(_PREVIEW_MARKER, False))
+
+
+def _strip_preview_properties(obj: dict) -> None:
+    """Remove preview-marked properties and clean up required list in-place."""
+    properties = obj.get("properties")
+    if not properties:
+        return
+    to_remove = [name for name, prop in properties.items() if prop.get(_PREVIEW_MARKER)]
+    for name in to_remove:
+        del properties[name]
+    required = obj.get("required")
+    if required:
+        obj["required"] = [r for r in required if r not in to_remove]
+        if not obj["required"]:
+            del obj["required"]
+
+
+def _strip_preview_fields(schema: dict) -> dict:
+    """Remove preview-marked properties from a JSON schema dict."""
+    schema = deepcopy(schema)
+
+    # Strip at root level
+    _strip_preview_properties(schema)
+
+    # Strip within $defs
+    for definition in schema.get("$defs", {}).values():
+        _strip_preview_properties(definition)
+
+    # Prune unreferenced $defs
+    defs = schema.get("$defs", {})
+    if defs:
+        still_used = _collect_defs_references(schema)
+        for key in list(defs):
+            if key not in still_used:
+                defs.pop(key)
+        if not defs:
+            schema.pop("$defs", None)
+
+    return schema
+
+
 class BaseApplicationTypeConfig(BaseModel):
     """
     Base class for configuration of schema-rich applications in DIAL.
@@ -231,6 +426,9 @@ class BaseApplicationTypeConfig(BaseModel):
         schema = super().model_json_schema(*args, **kwargs)
         schema = _flatten_root_properties(schema)
 
+        if not FeatureSettings().enable_preview_features:
+            schema = _strip_preview_fields(schema)
+
         properties = schema.get("properties", {})
         model_fields = cls.model_fields
 
@@ -273,3 +471,4 @@ class BaseApplicationTypeConfig(BaseModel):
 DialConfigField = _dial_config_field
 DialFileConfigField = _dial_file_config_field
 DialResourceConfigField = _dial_resource_config_field
+PreviewField = _preview_field

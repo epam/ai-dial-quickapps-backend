@@ -1,4 +1,6 @@
-SRC_DIRS = src/quickapp src/scripts
+SRC_DIRS = src/quickapp src/scripts src/tests
+MYPY_DIRS = src/quickapp src/scripts
+FILES ?= $(SRC_DIRS)
 POETRY ?= poetry
 PYTHON ?= python3
 
@@ -7,6 +9,12 @@ export
 
 # AI DIAL SDK: pydantic v2 mode
 export PYDANTIC_V2=True
+
+.PHONY: init_venv install install_dev install_integration install_all clean \
+	lint mypy format install_pre_commit_hooks run_chat test test_cov \
+	dump_app_schema dump_internal_tools generate_dial_config start_test_server stop_test_server \
+	integration_test integration_test_run e2e_test run_python \
+	black black_check isort isort_check autoflake autoflake_check flake8
 
 init_venv:
 	$(POETRY) env use $(PYTHON)
@@ -27,35 +35,82 @@ clean:
 	-$(POETRY) run python -m src.scripts.clean
 	-$(POETRY) env remove --all
 
+# --- Linting ---
+
 lint: install_dev
 	$(POETRY) check --lock
 	$(POETRY) run flake8 $(SRC_DIRS)
 	$(POETRY) run black $(SRC_DIRS) --check
 	$(POETRY) run isort $(SRC_DIRS) --check-only --diff
 	$(POETRY) run autoflake $(SRC_DIRS) --check
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json --check
 
 mypy: install_dev
-	$(POETRY) run mypy --show-error-codes $(SRC_DIRS)
+	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
+
+# --- Formatting ---
 
 format: install_dev
-	$(POETRY) run autoflake $(SRC_DIRS)
-	$(POETRY) run black $(SRC_DIRS)
-	$(POETRY) run isort $(SRC_DIRS)
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+	$(POETRY) run autoflake $(FILES)
+	$(POETRY) run black $(FILES)
+	$(POETRY) run isort $(FILES)
+ifeq ($(FILES), $(SRC_DIRS))
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json
+endif
 
-install_pre_commit_hooks: poetry-boot
+# --- Individual tool targets (honor FILES variable) ---
+
+black: install_dev
+	$(POETRY) run black $(FILES)
+
+black_check: install_dev
+	$(POETRY) run black $(FILES) --check
+
+isort: install_dev
+	$(POETRY) run isort $(FILES)
+
+isort_check: install_dev
+	$(POETRY) run isort $(FILES) --check-only --diff
+
+autoflake: install_dev
+	$(POETRY) run autoflake $(FILES)
+
+autoflake_check: install_dev
+	$(POETRY) run autoflake $(FILES) --check
+
+flake8: install_dev
+	$(POETRY) run flake8 $(FILES)
+
+# --- Running ---
+
+install_pre_commit_hooks:
 	pre-commit install
 
 run_chat: install_dev
 	$(POETRY) run python src/quickapp/app.py
 
+run_python: install_dev
+	$(if $(SCRIPT),,$(error SCRIPT is required, e.g. make run_python SCRIPT=path/to/script.py))
+	$(POETRY) run python $(SCRIPT)
+
+# --- Testing ---
+
+PYTEST_UNIT = $(POETRY) run pytest src/tests/unit_tests -m "not integration and not e2e"
+
 test: install_dev
-	$(POETRY) run pytest src/tests/unit_tests --junitxml=reports/tests-unit.xml -m "not integration and not e2e"
+	$(PYTEST_UNIT) --junitxml=reports/tests-unit.xml $(ARGS)
+
+test_cov: install_dev
+	$(PYTEST_UNIT) --cov=src/quickapp --cov-report=term-missing $(ARGS)
 
 dump_app_schema: install_dev
-	$(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
+
+dump_internal_tools: install_dev
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json
 
 generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
@@ -65,7 +120,7 @@ generate_dial_config: install_dev
 
 start_test_server:
 	echo "Starting MCP + REST servers..."
-	python src/tests/integration_tests/data_server_for_tests.py & echo $$! > .mcp_rest_server.pid
+	$(POETRY) run python src/tests/integration_tests/data_server_for_tests.py & echo $$! > .mcp_rest_server.pid
 	sleep 1
 	echo "Servers started with PID `cat .mcp_rest_server.pid`"
 
@@ -87,12 +142,11 @@ stop_test_server:
 
 integration_test: install_integration
 	$(MAKE) start_test_server
-	$(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration"
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
 	$(MAKE) stop_test_server
 
 integration_test_run:
-	$(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
 
 e2e_test: install_integration
-	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e"
-
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)

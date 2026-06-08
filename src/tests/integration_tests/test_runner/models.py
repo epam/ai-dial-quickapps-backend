@@ -1,13 +1,16 @@
 import datetime
 from abc import ABC, abstractmethod
-from pathlib import Path
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
 from tests.integration_tests.test_runner.config import SimilarityThreshold
-from tests.integration_tests.test_runner.similarity_checker import get_similarity, get_similarity_alternatives
+from tests.integration_tests.test_runner.similarity_checker import (
+    get_similarity,
+    get_similarity_alternatives,
+)
 
 
 class Failure(BaseModel):

@@ -3,10 +3,10 @@ from pydantic import BaseModel, Field
 
 from quickapp.common.base_config import (
     BaseApplicationTypeConfig,
-    _collect_defs_references,
-    _flatten_root_properties,
     DialConfigField,
     DialFileConfigField,
+    _collect_defs_references,
+    _flatten_root_properties,
 )
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
 

@@ -2,6 +2,7 @@ import base64
 import json
 
 from httpx import Response
+
 from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 
 

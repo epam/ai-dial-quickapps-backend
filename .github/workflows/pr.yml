@@ -1,9 +1,5 @@
 name: PR Workflow
 
-env:
-  POETRY: ${{ vars.POETRY }}
-  PYTHON: ${{ vars.PYTHON }}
-
 on:
   pull_request:
     branches: [development, release-*]
@@ -12,10 +8,14 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   run_tests:
-    uses: epam/ai-dial-ci/.github/workflows/python_docker_pr.yml@3.0.1
+    uses: epam/ai-dial-ci/.github/workflows/python_docker_pr.yml@4.4.0
     secrets: inherit
     with:
       python-version: "3.13"
-      poetry-version: "2.2.1"
+      poetry-version: "2.3.2"

@@ -1,0 +1,278 @@
+[
+  {
+    "name": "internal_attachments_available_context",
+    "description": "Returns metadata about admin-configured context files. **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, and will not return any information about them. If you see file in <attachments> section of user message, it means that the file was attached by the user, and is available for you to use.",
+    "properties": {}
+  },
+  {
+    "name": "internal_attachments_get_content",
+    "description": "Loads one allowed attachment by URL for use in this turn. Pass the exact `url` string from the `internal_attachments_available_context` tool result (`entries[].url`) or from user `<attachments>` metadata in messages. Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. Accepted MIME types: */*.",
+    "properties": {
+      "attachment_url": {
+        "type": "string",
+        "description": "Exact file `url` from `internal_attachments_available_context.entries[].url` or from user `<attachments>` section (same string, including path). Accepted MIME types: */*."
+      }
+    },
+    "required": [
+      "attachment_url"
+    ]
+  },
+  {
+    "name": "internal_file_copy",
+    "description": "Copy a file server-side in DIAL storage. Source can be relative (agent's home dir) or absolute files/... URL. Destination must be relative. No bytes downloaded.",
+    "properties": {
+      "source": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'. The file to copy."
+      },
+      "destination": {
+        "type": "string",
+        "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."
+      },
+      "overwrite": {
+        "type": "boolean",
+        "description": "Default and strongly preferred: false. Leave false unless a previous copy failed because the destination exists AND the user has explicitly approved replacing it. Never set true on your own."
+      }
+    },
+    "required": [
+      "source",
+      "destination"
+    ]
+  },
+  {
+    "name": "internal_file_delete",
+    "description": "Delete a file from DIAL storage. Hard delete; no undo.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir (e.g. 'reports/old.md'). Absolute files/... URLs are rejected."
+      }
+    },
+    "required": [
+      "path"
+    ]
+  },
+  {
+    "name": "internal_file_edit",
+    "description": "Replace a unique substring in an existing UTF-8 text file. old_string must occur exactly once. Fails if the file changed concurrently.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'). Absolute files/... URLs are rejected."
+      },
+      "old_string": {
+        "type": "string",
+        "description": "Exact substring to replace. Must occur exactly once. Include surrounding context to disambiguate."
+      },
+      "new_string": {
+        "type": "string",
+        "description": "Replacement text. May be empty to delete the match."
+      }
+    },
+    "required": [
+      "path",
+      "old_string",
+      "new_string"
+    ]
+  },
+  {
+    "name": "internal_file_list",
+    "description": "List entries (files and folders) under a folder in DIAL storage. Depth-bounded recursion.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative folder path under the agent's home dir (e.g. 'reports/'), or absolute DIAL folder URL starting with 'files/' (e.g. 'files/{bucket}/uploads/'). Folder paths end with '/'."
+      },
+      "max_depth": {
+        "type": "integer",
+        "description": "Recursion depth. 1 = immediate children only. Range: [1, 10]. Default: 1."
+      }
+    },
+    "required": [
+      "path"
+    ]
+  },
+  {
+    "name": "internal_file_move",
+    "description": "Move (rename) a file within the agent's home dir in DIAL storage. Both source and destination must be relative paths. The original file is removed by DIAL Core.",
+    "properties": {
+      "source": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."
+      },
+      "destination": {
+        "type": "string",
+        "description": "Relative path under the agent's home dir. Absolute files/... URLs are rejected."
+      },
+      "overwrite": {
+        "type": "boolean",
+        "description": "Default and strongly preferred: false. Leave false unless a previous move failed because the destination exists AND the user has explicitly approved replacing it. Never set true on your own."
+      }
+    },
+    "required": [
+      "source",
+      "destination"
+    ]
+  },
+  {
+    "name": "internal_file_read_lines",
+    "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. Prefer small initial windows (around 20 lines); widen on subsequent calls only if more context is needed.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."
+      },
+      "start_line": {
+        "type": "integer",
+        "description": "First line to include (0-indexed)."
+      },
+      "end_line": {
+        "type": "integer",
+        "description": "First line to exclude (0-indexed, like a Python slice end). Start with at most ~20 lines on the first call; widen later if more context is needed."
+      }
+    },
+    "required": [
+      "path",
+      "start_line",
+      "end_line"
+    ]
+  },
+  {
+    "name": "internal_file_search",
+    "description": "Search for a substring in a file stored in DIAL. Returns matching lines with optional surrounding context.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."
+      },
+      "pattern": {
+        "type": "string",
+        "description": "Substring to search for."
+      },
+      "context_lines": {
+        "type": "integer",
+        "description": "Lines of context around each match. Default: 0."
+      },
+      "case_insensitive": {
+        "type": "boolean",
+        "description": "If true, search is case-insensitive. Default: false."
+      }
+    },
+    "required": [
+      "path",
+      "pattern"
+    ]
+  },
+  {
+    "name": "internal_file_write",
+    "description": "Create a UTF-8 text file under the agent's home dir. Relative path only (absolute files/... URLs are rejected). Nested paths allowed; '..' rejected. Default content_type is text/plain. Always call with overwrite=false first. If it reports the file already exists, ask the user whether to replace it and only retry with overwrite=true once they approve — never set overwrite=true on your own.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir. Forward slashes for nesting. Rejected: leading '/', '..' segments, '../' substring, empty segments, absolute 'files/...' URLs."
+      },
+      "content": {
+        "type": "string",
+        "description": "UTF-8 text content of the file."
+      },
+      "content_type": {
+        "type": "string",
+        "description": "MIME type. Default: text/plain. Common: text/markdown, text/csv, application/json."
+      },
+      "overwrite": {
+        "type": "boolean",
+        "description": "Default and strongly preferred: false. Leave false unless a previous write failed because the file exists AND the user has explicitly approved replacing it. When true, the file is created if missing or replaced if it exists."
+      }
+    },
+    "required": [
+      "path",
+      "content"
+    ]
+  },
+  {
+    "name": "internal_skills_read_skill",
+    "description": "Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you.",
+    "properties": {
+      "skill_name": {
+        "display": {
+          "stage": {
+            "ignore": true,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "The name of the skill to read. This should match the name from the available_skills list."
+      }
+    },
+    "required": [
+      "skill_name"
+    ]
+  },
+  {
+    "name": "internal_timeawareness_current_timestamp",
+    "description": "Returns the current date and time. Optionally converts to a specific timezone.",
+    "properties": {
+      "timezone": {
+        "type": "string",
+        "description": "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to UTC."
+      }
+    }
+  }
+]

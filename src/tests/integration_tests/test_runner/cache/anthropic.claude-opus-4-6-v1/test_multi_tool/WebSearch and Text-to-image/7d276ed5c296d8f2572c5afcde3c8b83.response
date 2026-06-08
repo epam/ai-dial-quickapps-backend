@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A natural, photorealistic cityscape of Kyiv, Ukraine on a cloudy, overcast spring day. The sky is filled with heavy grey clouds with a hint of possible rain showers. The temperature feels cool, around 7-8\u00b0C. Show iconic Kyiv landmarks such as the golden domes of Saint Sophia's Cathedral and the Dnipro River in the background. The trees have fresh spring green leaves just beginning to emerge. People on the streets are wearing light jackets and scarves. The atmosphere is moody and atmospheric with soft diffused light filtering through the cloud cover. Wind gently moves the branches. Puddles on the cobblestone streets reflect the grey sky. Natural photography style, highly detailed, realistic lighting."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "date": "Fri, 24 Apr 2026 07:35:34 GMT",
+      "content-type": "text/event-stream; charset=utf-8",
+      "transfer-encoding": "chunked",
+      "connection": "keep-alive",
+      "access-control-allow-origin": "*",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "strict-transport-security": "max-age=31536000; includeSubDomains"
+    }
+  },
+  "body": "data: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"role\":\"assistant\"}}],\"usage\":null,\"id\":\"chatcmpl-fe9ef5d1-b32b-4819-ac1e-255636c03346\",\"created\":1777016133,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"content\":\"\"}}],\"usage\":null,\"id\":\"chatcmpl-fe9ef5d1-b32b-4819-ac1e-255636c03346\",\"created\":1777016133,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":null,\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/PHhReJdzQbtjwVegSpXV64/appdata/gpt-image-1/images/8ad44fdca27eb21e75e3428ab343631250c5d6b5b16e9897847354b99a5fcd5d.png\"}]}}}],\"usage\":null,\"id\":\"chatcmpl-fe9ef5d1-b32b-4819-ac1e-255636c03346\",\"created\":1777016133,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: {\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{}}],\"usage\":{\"prompt_tokens\":0,\"completion_tokens\":1,\"total_tokens\":1},\"id\":\"chatcmpl-fe9ef5d1-b32b-4819-ac1e-255636c03346\",\"created\":1777016133,\"object\":\"chat.completion.chunk\",\"model\":\"gpt-image-1\"}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

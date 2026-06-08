@@ -1,0 +1,47 @@
+import logging
+from abc import ABC
+
+from aidial_sdk.chat_completion import Message
+from injector import ProviderOf, inject
+
+from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    SyntheticToolCallInjector,
+)
+from quickapp.config.application import StageDisplayLevel
+
+logger = logging.getLogger(__name__)
+
+_ARUN_SYNTHETIC_CALL_ID = "synthetic_injection_probe"
+
+
+class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
+    """Provides `get_content` by locating a `StagedBaseTool` by its sanitized
+    OpenAI function name and calling `tool.arun()` with the declared arguments."""
+
+    @inject
+    def __init__(
+        self,
+        tools: list[StagedBaseTool],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
+    ):
+        super().__init__(enrichers_provider)
+        self.__tools: dict[str, StagedBaseTool] = {
+            tool.tool_config.open_ai_tool.function.name: tool for tool in tools
+        }
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        tool_name = await self.get_tool_name()
+        tool = self.__tools.get(tool_name)
+        if tool is None:
+            logger.warning(
+                "StagedToolSyntheticInjector: tool '%s' not found in staged tools, skipping",
+                tool_name,
+            )
+            return None
+        arguments = await self.get_arguments()
+        result = await tool.arun(
+            _ARUN_SYNTHETIC_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **arguments
+        )
+        return result.content

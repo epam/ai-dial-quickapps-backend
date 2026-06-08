@@ -1,47 +1,49 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
-from injector import Binder, InstanceProvider
+from injector import Binder, Injector, InstanceProvider
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import StagedBaseTool, DIAL_BEARER, DIAL_API_KEY
+from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.config.application import ApplicationConfig
+from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import (
+    BaseOpenAITool,
     OpenAiToolConfig,
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
 from quickapp.config.tools.rest_api import (
     ResponseAsAttachmentConfig,
-    RestApiTool,
+    RestApiEndpointHeaderParamInfo,
     RestApiEndpointMethodInfo,
     RestApiEndpointSimpleTypeParam,
-    RestApiEndpointHeaderParamInfo,
+    RestApiTool,
+    ToolEndpointInfoMethodType,
     ToolEndpointParamType,
 )
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
-from quickapp.common import ForwardedHeaders
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.rest_api_tooling import RestApiToolingModule
 from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration
 
 
-def _make_rest_api_tool(url: str, method: str, **tool_kwargs) -> RestApiTool:
+def _make_rest_api_tool(
+    url: str, method: ToolEndpointInfoMethodType, name: str = 'test_function', **tool_kwargs
+) -> RestApiTool:
     return RestApiTool(
-        rest_api_method_info=RestApiEndpointMethodInfo(
-            method_url=url, method_type=method
-        ),
+        rest_api_method_info=RestApiEndpointMethodInfo(method_url=url, method_type=method),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
-                name="test_function",
+                name=name,
                 description="Test function",
                 parameters=OpenAiToolFunctionParameters(
                     properties={
@@ -62,11 +64,12 @@ def _make_rest_api_tool(url: str, method: str, **tool_kwargs) -> RestApiTool:
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("request_method,url", [("get", "https://auth@abc.example.com:2020/index")])
+@pytest.mark.parametrize(
+    "request_method,url",
+    [(ToolEndpointInfoMethodType.get, "https://auth@abc.example.com:2020/index")],
+)
 @patch("httpx.AsyncClient")
-async def test_web_api_tool_2_make_correct_http_call(
-    mock_async_client, request_method, url
-):
+async def test_web_api_tool_2_make_correct_http_call(mock_async_client, request_method, url):
     mock_stage = MagicMock(spec=Stage)
     response_data = {
         "text": '{"some_key":"some value"}',
@@ -110,8 +113,10 @@ async def test_web_api_tool_2_make_correct_http_call(
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -144,15 +149,13 @@ async def test_web_api_tool_2_make_correct_http_call(
         "params": QueryParams('query_key=query_value'),
     }
 
-    actual_request_data = (
-        mock_async_client.return_value.__aenter__.return_value.request.call_args[1]
-    )
+    actual_request_data = mock_async_client.return_value.__aenter__.return_value.request.call_args[
+        1
+    ]
 
     assert expected_request_data["url"] == actual_request_data["url"]
     assert expected_request_data["params"] == actual_request_data["params"]
-    assert (
-        expected_request_data["method"].lower() == actual_request_data["method"].lower()
-    )
+    assert expected_request_data["method"].lower() == actual_request_data["method"].lower()
     assert "authorization" in actual_request_data["headers"]
     assert "Bearer test_token" == actual_request_data["headers"]["authorization"]
 
@@ -167,9 +170,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-        side_effect=mock_upload
-    )
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -185,7 +186,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         tools=[
             _make_rest_api_tool(
                 url,
-                "get",
+                ToolEndpointInfoMethodType.get,
                 response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
             )
         ],
@@ -198,6 +199,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -231,9 +233,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-        side_effect=mock_upload
-    )
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -249,7 +249,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
         tools=[
             _make_rest_api_tool(
                 url,
-                "get",
+                ToolEndpointInfoMethodType.get,
                 response_as_attachment=ResponseAsAttachmentConfig(
                     enabled=True, include_body_as_content=False
                 ),
@@ -264,6 +264,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -294,9 +295,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
     async def mock_upload(attachment):
         return attachment
 
-    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(
-        side_effect=mock_upload
-    )
+    mock_dial_attachment_service.upload_attachment_to_core = AsyncMock(side_effect=mock_upload)
 
     response_data = {
         "text": '{"data": "value"}',
@@ -311,7 +310,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
         name="rest-api",
         authorization=BearerAuthorization(token="test_token"),
         response_as_attachment=ResponseAsAttachmentConfig(enabled=True),
-        tools=[_make_rest_api_tool(url, "get")],
+        tools=[_make_rest_api_tool(url, ToolEndpointInfoMethodType.get)],
     )
 
     def configure(binder: Binder):
@@ -321,6 +320,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
         binder.bind(AttachmentService, mock_dial_attachment_service)
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -354,14 +354,12 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     }
     mock_response = AsyncMock(**response_data)
     mock_response.raise_for_status = MagicMock()
-    mock_async_client.return_value.__aenter__.return_value.request.return_value = (
-        mock_response
-    )
+    mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
     rest_api_toolset = RestApiToolSet(
         name="rest-api",
         authorization=BearerAuthorization(token="test_token"),
-        tools=[_make_rest_api_tool(url, "get")],
+        tools=[_make_rest_api_tool(url, ToolEndpointInfoMethodType.get)],
     )
 
     forwarded = {"X-Request-Id": "req-123", "X-Custom-Header": "custom-value"}
@@ -370,8 +368,10 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(DialSettings, DialSettings(url="https://core"))
         binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
         binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(Stage, to=mock_stage)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
@@ -387,12 +387,40 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
     response = client.get("/")
     assert response.status_code == 200
 
-    actual_headers = (
-        mock_async_client.return_value.__aenter__.return_value.request.call_args[1][
-            "headers"
-        ]
-    )
+    actual_headers = mock_async_client.return_value.__aenter__.return_value.request.call_args[1][
+        "headers"
+    ]
     assert "X-Request-Id" in actual_headers
     assert actual_headers["X-Request-Id"] == "req-123"
     assert "X-Custom-Header" in actual_headers
     assert actual_headers["X-Custom-Header"] == "custom-value"
+
+
+def test_openai_tools_names():
+    toolset_name = "rest-api-toolset"
+    tool_name = "rest-tool"
+    rest_api_toolset = RestApiToolSet(
+        name=toolset_name,
+        tools=[
+            _make_rest_api_tool(
+                "https://example.com/api", ToolEndpointInfoMethodType.get, name=tool_name
+            )
+        ],
+    )
+
+    def configure(binder: Binder):
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    injector = Injector(modules=[RestApiToolingModule, configure])
+    tools = injector.get(list[StagedBaseTool])
+
+    assert len(tools) == 1
+    tool_config: BaseOpenAITool = tools[0].tool_config
+    assert tool_config.open_ai_tool.function.name == f"{toolset_name}_{tool_name}"

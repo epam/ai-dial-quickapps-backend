@@ -5,8 +5,19 @@ from enum import Enum
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, Field, ValidationError
 
-from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.common.tool_names import (
+    INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+    INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+)
+from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.context import Context, FileContextConfig
+
+context_tool_names = frozenset(
+    {
+        INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
+        INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+    }
+)
 
 
 class ContextEntryStatus(str, Enum):
@@ -52,7 +63,7 @@ def build_context_entries(
         if url in current_urls:
             continue
         current_urls.add(url)
-        title = url.rsplit("/", 1)[-1]
+        title = posix_path_last_segment(url)
         mime_type = mimetypes.guess_type(title)[0] or ""
         if url not in seen_entries:
             status = ContextEntryStatus.new
@@ -117,7 +128,7 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
             for tc in msg.tool_calls:
                 if (
                     tc.function
-                    and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME
+                    and tc.function.name == INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME
                     and tc.id in tool_contents
                 ):
                     result = _parse_tool_response(tool_contents[tc.id])
@@ -127,11 +138,11 @@ def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, Con
 
 
 def has_context_tool_history(messages: Sequence[Message]) -> bool:
-    """Check whether message history contains any tool calls for the context tool."""
+    """Check whether message history contains any tool calls for the context list or fetch tools."""
     for msg in messages:
         if msg.role == Role.ASSISTANT and msg.tool_calls:
             for tc in msg.tool_calls:
-                if tc.function and tc.function.name == AVAILABLE_CONTEXT_TOOL_NAME:
+                if tc.function and tc.function.name in context_tool_names:
                     return True
     return False
 

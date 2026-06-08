@@ -1,16 +1,14 @@
 import logging
 
-from injector import AssistedBuilder, inject
+from injector import AssistedBuilder, ProviderOf, inject
 
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.common.tool_initialization_exception import ToolInitializationException
-from quickapp.config.application import ApplicationConfig
+from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
+from quickapp.common.exceptions import ToolInitializationException
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
-from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
-from quickapp.dial_deployment_tooling._di_types import DialDeploymentToolCacheService
 from quickapp.dial_deployment_tooling.deployment_tool import DeploymentTool
 
 logger = logging.getLogger(__name__)
@@ -23,27 +21,30 @@ class _DeploymentToolInitializer(CompletionInitializer):
         context: _DeploymentToolingContext,
         tool_config_service: ToolConfigCoreService,
         builder: AssistedBuilder[DeploymentTool],
-        app_config: ApplicationConfig,
         deployment_cache: DialDeploymentToolCacheService,
+        dial_tools_provider: ProviderOf[list[DialDeploymentTool]],
+        simple_tools_provider: ProviderOf[list[DialDeploymentSimpleTool]],
     ):
         self.__deployment_context: _DeploymentToolingContext = context
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__builder: AssistedBuilder[DeploymentTool] = builder
-        self.__app_config: ApplicationConfig = app_config
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
+        # Resolved lazily in initialize() because dial_app_tooling contributes
+        # to the DialDeploymentTool multibinder only after _DialAppResolver runs.
+        self.__dial_tools_provider: ProviderOf[list[DialDeploymentTool]] = dial_tools_provider
+        self.__simple_tools_provider: ProviderOf[list[DialDeploymentSimpleTool]] = (
+            simple_tools_provider
+        )
 
     async def initialize(self) -> None:
-        for toolset in self.__app_config.tool_sets:
-            if isinstance(toolset, DeploymentToolSet) and toolset.enabled:
-                for tool in toolset.tools:
-                    if isinstance(tool, DialDeploymentTool) and tool.enabled:
-                        self.__init_deployment_tool(tool)
-                    if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled:
-                        await self.__init_simple_deployment_tool(tool)
+        for tool in self.__dial_tools_provider.get():
+            self.__init_deployment_tool(tool)
+        for simple_tool in self.__simple_tools_provider.get():
+            await self.__init_simple_deployment_tool(simple_tool)
 
-    def __init_deployment_tool(self, tool):
+    def __init_deployment_tool(self, tool: DialDeploymentTool):
         built_tool = self.__builder.build(
-            application_id=tool.deployment.name,
+            application_id=tool.deployment.deployment_id,
             application_name=tool.open_ai_tool.function.name,
             description=tool.open_ai_tool.function.description,
             content_propagation=tool.content_propagation,
@@ -53,14 +54,11 @@ class _DeploymentToolInitializer(CompletionInitializer):
 
     async def __init_simple_deployment_tool(self, tool_info: DialDeploymentSimpleTool):
         try:
-            tool_config = await self.__deployment_cache.get(
-                f"basic_config_{tool_info.deployment_id}",
+            tool_config = await self.__deployment_cache.fetch_basic_tool_config(
                 self.__tool_config_service.get_basic_tool_config,
                 tool_info.deployment_id,
             )
-            if tool_config is None:
-                raise ToolInitializationException(f"No tool config for {tool_info.deployment_id}")
-            return self.__init_deployment_tool(tool_config)
+            self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:
             logger.error(e, exc_info=True)

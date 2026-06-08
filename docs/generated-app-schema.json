@@ -61,6 +61,14 @@
           },
           "title": "Propagate Types To Choice",
           "type": "array"
+        },
+        "media_type_substitution": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Maps original attachment types to substitution types for custom visualizers.",
+          "title": "Media Type Substitution",
+          "type": "object"
         }
       },
       "title": "AttachmentConfig",
@@ -507,6 +515,62 @@
       "title": "ContinueStrategyModel",
       "type": "object"
     },
+    "ConversationStarter": {
+      "properties": {
+        "title": {
+          "description": "The title of the conversation starter button.",
+          "title": "Title",
+          "type": "string"
+        },
+        "text": {
+          "description": "The text to populate in the chat input when the button is clicked.",
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "text"
+      ],
+      "title": "ConversationStarter",
+      "type": "object"
+    },
+    "ConversationStartersConfig": {
+      "properties": {
+        "intro_text": {
+          "default": "Select an action",
+          "description": "The introductory text shown above the conversation starters.",
+          "title": "Intro Text",
+          "type": "string"
+        },
+        "chat_message_input_disabled": {
+          "default": false,
+          "description": "Whether to disable the chat message input when using conversation starters. If true, users can only interact with the agent through the conversation starter buttons.",
+          "title": "Chat Message Input Disabled",
+          "type": "boolean"
+        },
+        "auto_submit": {
+          "default": true,
+          "description": "Whether to automatically submit the conversation starter text when a button is clicked. If false, the text will be populated in the chat input but not submitted, allowing users to edit it before sending.",
+          "title": "Auto Submit",
+          "type": "boolean"
+        },
+        "starters": {
+          "description": "The list of conversation starters.",
+          "items": {
+            "$ref": "#/$defs/ConversationStarter"
+          },
+          "minItems": 1,
+          "title": "Starters",
+          "type": "array"
+        }
+      },
+      "required": [
+        "starters"
+      ],
+      "title": "ConversationStartersConfig",
+      "type": "object"
+    },
     "CustomFieldsConfig": {
       "properties": {
         "configuration": {
@@ -616,21 +680,119 @@
       "title": "DeploymentToolSet",
       "type": "object"
     },
-    "DialDeploymentConfig": {
+    "DialAppToolSet": {
       "properties": {
         "name": {
-          "description": "The name of the DIAL deployment.",
+          "description": "The name of the tool set.",
           "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the tool set.",
+          "title": "Description"
+        },
+        "enabled": {
+          "default": true,
+          "description": "Whether the toolset is enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "type": {
+          "const": "dial-app",
+          "default": "dial-app",
+          "description": "The type of the tool set.",
+          "title": "Type",
+          "type": "string"
+        },
+        "deployment_id": {
+          "description": "The DIAL deployment or application id.",
+          "dial:resource": true,
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "transport": {
+          "default": "auto",
+          "description": "Routing override. 'auto' (default): use MCP if the deployment advertises features.mcp, otherwise chat completion. 'mcp': force MCP — initialization fails with a ToolInitializationException if features.mcp is not advertised. 'chat-completion': force chat completion — the resolver skips the metadata fetch and goes directly to get_basic_tool_config.",
+          "enum": [
+            "auto",
+            "mcp",
+            "chat-completion"
+          ],
+          "title": "Transport",
+          "type": "string"
+        },
+        "allowed_tools": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Allowed Tools"
+        },
+        "attachment": {
+          "$ref": "#/$defs/AttachmentConfig",
+          "description": "Configuration for toolset attachments."
+        },
+        "fallback_configuration": {
+          "$ref": "#/$defs/ToolFallbackConfig",
+          "description": "Tool fallback configuration."
+        }
+      },
+      "required": [
+        "name",
+        "deployment_id"
+      ],
+      "title": "DialAppToolSet",
+      "type": "object"
+    },
+    "DialDeploymentConfig": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ],
+      "properties": {
+        "deployment_id": {
+          "description": "The id of the DIAL deployment.",
+          "dial:resource": true,
+          "title": "Deployment Id",
           "type": "string"
         },
         "parameters": {
           "$ref": "#/$defs/DialDeploymentParameters",
           "description": "The predefined parameters for the DIAL deployment."
+        },
+        "name": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
+          "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
       "title": "DialDeploymentConfig",
       "type": "object"
     },
@@ -869,6 +1031,12 @@
           ],
           "default": null,
           "description": "The configuration with propagations to DIAL deployment."
+        },
+        "supports_url_attachments": {
+          "default": false,
+          "description": "Whether the underlying DIAL deployment advertises `features.url_attachments`. Snapshotted at tool-config build time. When true, external URLs are forwarded as `reference_url` attachments; when false, they are materialised into DIAL files first.",
+          "title": "Supports Url Attachments",
+          "type": "boolean"
         }
       },
       "required": [
@@ -878,7 +1046,58 @@
       "title": "DialDeploymentTool",
       "type": "object"
     },
+    "DialFilesConfig": {
+      "properties": {
+        "enabled_tools": {
+          "anyOf": [
+            {
+              "const": "all",
+              "type": "string"
+            },
+            {
+              "items": {
+                "enum": [
+                  "list",
+                  "read_lines",
+                  "search",
+                  "write",
+                  "edit",
+                  "delete",
+                  "copy",
+                  "move"
+                ],
+                "type": "string"
+              },
+              "type": "array"
+            }
+          ],
+          "default": "all",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
+          "title": "Enabled Tools"
+        },
+        "agent_home_dir": {
+          "default": "",
+          "description": "Optional sub-directory inside the agent's appdata folder used as the root for relative paths. Empty (default) means the appdata root. Must be a relative path; absolute 'files/...' URLs, leading '/', and '..' segments are rejected. Example: 'workspace/'.",
+          "title": "Agent Home Dir",
+          "type": "string"
+        }
+      },
+      "title": "DialFilesConfig",
+      "type": "object"
+    },
     "DialMCPToolSet": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "dial_id"
+          ]
+        }
+      ],
       "properties": {
         "name": {
           "default": "untitled-mcp-toolset",
@@ -912,10 +1131,10 @@
           "title": "Type",
           "type": "string"
         },
-        "dial_id": {
-          "description": "The Dial ID associated with this MCP toolset.",
+        "deployment_id": {
+          "description": "The id of the DIAL deployment associated with this MCP toolset.",
           "dial:resource": true,
-          "title": "Dial Id",
+          "title": "Deployment Id",
           "type": "string"
         },
         "transport": {
@@ -951,12 +1170,37 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "dial_id": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
+          "type": "string"
+        }
+      },
+      "title": "DialMCPToolSet",
+      "type": "object"
+    },
+    "DialPromptSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-prompt",
+          "default": "dial-prompt",
+          "description": "Skill sourced from a DIAL prompt.",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
         }
       },
       "required": [
-        "dial_id"
+        "url"
       ],
-      "title": "DialMCPToolSet",
+      "title": "DialPromptSkillConfig",
       "type": "object"
     },
     "DialSystemPromptConfig": {
@@ -1009,6 +1253,83 @@
       "title": "DialSystemPromptConfig",
       "type": "object"
     },
+    "ExternalUrlFetchConfig": {
+      "properties": {
+        "enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-app override for fetching external (non-DIAL) URLs. `null` (default) defers to the admin env switch `EXTERNAL_URL_FETCH_ENABLED`. `false` opts this app out even when the admin allows it. `true` is a no-op when admin allows; the admin gate is a hard cap.",
+          "title": "Enabled"
+        },
+        "host_allowlist": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-app override for the allowed hosts on external URL fetches. `null` (default) defers to the admin env var `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`. A non-empty list narrows the admin list (intersection); a host must be in both to be allowed. An explicit empty list locks this app out of all hosts. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain.",
+          "title": "Host Allowlist"
+        }
+      },
+      "title": "ExternalUrlFetchConfig",
+      "type": "object"
+    },
+    "Features": {
+      "properties": {
+        "timestamp": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolCallTimestampConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Time awareness configuration."
+        },
+        "file_loading": {
+          "$ref": "#/$defs/FileLoadingConfig",
+          "description": "File loader configuration (download size limits, etc.)."
+        },
+        "external_url_fetch": {
+          "$ref": "#/$defs/ExternalUrlFetchConfig",
+          "description": "Per-app override for fetching external (non-DIAL) URLs. Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
+        },
+        "stage_display": {
+          "$ref": "#/$defs/StageDisplayConfig",
+          "description": "Controls which stage levels are rendered to the user."
+        },
+        "dial_files": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DialFilesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+          "x-preview": true
+        }
+      },
+      "title": "Features",
+      "type": "object"
+    },
     "FileContextConfig": {
       "properties": {
         "type": {
@@ -1043,6 +1364,26 @@
         "url"
       ],
       "title": "FileContextConfig",
+      "type": "object"
+    },
+    "FileLoadingConfig": {
+      "properties": {
+        "size_limit": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum size (in bytes) of a single file the agent will download. When unset, the env default `DEFAULT_FILE_LOADING_SIZE_LIMIT` is used (default 10 MiB).",
+          "title": "Size Limit"
+        }
+      },
+      "title": "FileLoadingConfig",
       "type": "object"
     },
     "FormattedParameterConfig": {
@@ -1145,6 +1486,21 @@
       },
       "title": "ForwardAuthTokenAuthorization",
       "type": "object"
+    },
+    "HookEvent": {
+      "enum": [
+        "on_request_start"
+      ],
+      "title": "HookEvent",
+      "type": "string"
+    },
+    "InjectionFrequency": {
+      "enum": [
+        "always",
+        "append_if_changed"
+      ],
+      "title": "InjectionFrequency",
+      "type": "string"
     },
     "InternalTool": {
       "properties": {
@@ -1423,6 +1779,20 @@
         "type"
       ],
       "title": "JsonSchemaSimpleType",
+      "type": "object"
+    },
+    "LazyOnDemandAttachmentStrategy": {
+      "description": "Orchestrator receives admin/user files only on explicit\n``internal_attachments_get_content`` tool calls (not as default-prompt\nattachments). MIME gating uses the orchestrator deployment's\n``input_attachment_types`` from DialCore.",
+      "properties": {
+        "type": {
+          "const": "lazy_on_demand",
+          "default": "lazy_on_demand",
+          "description": "Strategy discriminator.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "LazyOnDemandAttachmentStrategy",
       "type": "object"
     },
     "MCPApiKeyAuthorization": {
@@ -1853,6 +2223,20 @@
           "description": "Whether the tool is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [
@@ -1874,6 +2258,20 @@
           "description": "Name of the predefined template",
           "title": "Template Name",
           "type": "string"
+        },
+        "override": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. May not target the `type` discriminator at any depth.",
+          "title": "Override"
         }
       },
       "required": [
@@ -2428,6 +2826,26 @@
       "title": "RetryStrategyModel",
       "type": "object"
     },
+    "StageDisplayConfig": {
+      "properties": {
+        "level": {
+          "$ref": "#/$defs/StageDisplayLevel",
+          "default": "info",
+          "description": "Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all."
+        }
+      },
+      "title": "StageDisplayConfig",
+      "type": "object"
+    },
+    "StageDisplayLevel": {
+      "enum": [
+        "error",
+        "info",
+        "debug"
+      ],
+      "title": "StageDisplayLevel",
+      "type": "string"
+    },
     "StopStrategyModel": {
       "properties": {
         "trigger_on": {
@@ -2451,6 +2869,74 @@
         }
       },
       "title": "StopStrategyModel",
+      "type": "object"
+    },
+    "ToolCallHookConfig": {
+      "properties": {
+        "event": {
+          "$ref": "#/$defs/HookEvent"
+        },
+        "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Name"
+        },
+        "kind": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Kind",
+          "type": "string"
+        },
+        "toolset_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Toolset Name"
+        },
+        "tool_name": {
+          "title": "Tool Name",
+          "type": "string"
+        },
+        "arguments": {
+          "additionalProperties": true,
+          "title": "Arguments",
+          "type": "object"
+        },
+        "frequency": {
+          "$ref": "#/$defs/InjectionFrequency",
+          "default": "append_if_changed"
+        }
+      },
+      "required": [
+        "event",
+        "tool_name"
+      ],
+      "title": "ToolCallHookConfig",
+      "type": "object"
+    },
+    "ToolCallTimestampConfig": {
+      "properties": {
+        "injection_strategy": {
+          "const": "tool_call",
+          "default": "tool_call",
+          "title": "Injection Strategy",
+          "type": "string"
+        }
+      },
+      "title": "ToolCallTimestampConfig",
       "type": "object"
     },
     "ToolDisplayConfig": {
@@ -2559,8 +3045,15 @@
         },
         "show": {
           "default": true,
+          "deprecated": true,
           "description": "Whether the tool stage should be shown in the chat.",
           "title": "Show",
+          "type": "boolean"
+        },
+        "defer_close": {
+          "default": false,
+          "description": "When True, the stage stays open until parallel tool execution finishes rather than closing when this tool returns. Useful when a later recovery step may rewrite the tool's result.",
+          "title": "Defer Close",
           "type": "boolean"
         }
       },
@@ -2655,6 +3148,25 @@
           "description": "The max count of orchestrator(agent) operations. Default: 15",
           "title": "Max Iterations",
           "type": "integer"
+        },
+        "propagate_stages": {
+          "default": true,
+          "description": "When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
+          "title": "Propagate Stages",
+          "type": "boolean"
+        },
+        "attachment_strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LazyOnDemandAttachmentStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only).",
+          "x-preview": true
         }
       },
       "required": [
@@ -2700,6 +3212,7 @@
       "items": {
         "discriminator": {
           "mapping": {
+            "dial-app": "#/$defs/DialAppToolSet",
             "dial-deployment": "#/$defs/DeploymentToolSet",
             "dial-mcp": "#/$defs/DialMCPToolSet",
             "internal": "#/$defs/InternalToolSet",
@@ -2721,6 +3234,9 @@
           },
           {
             "$ref": "#/$defs/MCPToolSet"
+          },
+          {
+            "$ref": "#/$defs/DialAppToolSet"
           },
           {
             "$ref": "#/$defs/DialMCPToolSet"
@@ -2750,11 +3266,120 @@
         }
       ],
       "default": null,
-      "description": "The list of starter buttons.",
+      "deprecated": true,
+      "description": "**Deprecated, use conversation_starters**. The list of starters, which can be used to start the conversation with the agent.",
       "title": "Starters",
       "dial:meta": {
         "dial:propertyKind": "server",
         "dial:propertyOrder": 4
+      }
+    },
+    "conversation_starters": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConversationStartersConfig"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "The configuration for conversation starters.",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 5
+      }
+    },
+    "skills": {
+      "anyOf": [
+        {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/DialPromptSkillConfig"
+              }
+            ]
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Optional list of user-configured agent skills.",
+      "title": "Skills",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 6
+      }
+    },
+    "hooks": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/ToolCallHookConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Config-driven hooks fired at named orchestrator seams.",
+      "title": "Hooks",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 7
+      }
+    },
+    "features": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Features"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "QuickApps Agent features configuration.",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 8
+      }
+    },
+    "tool_defaults": {
+      "description": "Defaults applied to every tool call (e.g. timeout).",
+      "properties": {
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "maximum": 3600,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Timeout (in seconds) applied to all tool calls in this app. When unset, the env default `DEFAULT_TOOL_TIMEOUT_SECONDS` is used, or each client's library default if neither is set.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "ToolDefaults",
+      "type": "object",
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 9
       }
     }
   },

@@ -26,10 +26,26 @@ services:
     command: >
       redis-server --maxmemory 2000mb --maxmemory-policy volatile-lfu --save "" --appendonly no --loglevel warning
 
+  admin-export-init:
+    image: busybox:1.37
+    volumes:
+      - ./docker_compose_files/core/admin-export:/export
+    command: >
+      sh -c "mkdir -p /export
+      && (test -f /export/out.json || echo '{}' > /export/out.json)
+      && chmod -R 777 /export"
+    restart: "no"
+
   core:
     ports:
       - "8090:8080"
     image: epam/ai-dial-core:development
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
     environment:
       'AIDIAL_SETTINGS': '/opt/configuration/settings/settings.json'
       'JAVA_OPTS': '-Dgflog.config=/opt/configuration/settings/gflog.xml'
@@ -44,13 +60,18 @@ services:
           "/opt/configuration/chathub/anthropic.json",
           "/opt/configuration/chathub/gemini.json",
           "/opt/configuration/chathub/openai.json",
-          "/opt/configuration/toolsets.json"
+          "/opt/configuration/toolsets.json",
+          "/opt/admin-export/out.json"
         ]
       'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
     depends_on:
-      - redis
+      admin-export-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
     volumes:
       - ./docker_compose_files/core/configuration:/opt/configuration
+      - ./docker_compose_files/core/admin-export:/opt/admin-export:ro
       - ./docker_compose_files/core/logs/:/app/log
       - ./docker_compose_files/core/data/:/app/data
 
@@ -60,11 +81,83 @@ services:
       DIAL_URL: "http://core:8080"
       LOG_LEVEL: "INFO"
 
-  quick_apps:
-    build:
-        context: .
-        dockerfile: ./Dockerfile
+  # If you want to run Quick Apps in Docker instead of on the host, uncomment the following section and update the quick-apps host in application-schemas.json.
+  # quick-apps:
+  #   build:
+  #       context: .
+  #       dockerfile: ./Dockerfile
+  #   environment:
+  #     DIAL_URL: "http://core:8080"
+  #     SHOW_USAGE_STATISTICS: "true"
+  #     QUICKAPP_LOG_LEVEL: "DEBUG"
+
+  # DIAL Admin (optional). Enable with: docker compose --profile admin up -d
+  # Or set COMPOSE_PROFILES=admin in .env
+  admin-backend:
+    profiles: ["admin"]
+    image: epam/ai-dial-admin-backend:development
+    ports:
+      - "8092:8080"
+    depends_on:
+      core:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:8080/api/v1/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 120s
+    volumes:
+      - admin-backend-data:/app/data
+      # Core JSON configs (read-only) — imported into Admin H2 on first startup when DB is empty
+      - ./docker_compose_files/core/configuration:/opt/core-config:ro
+      # Exported Core config (read/write) — shared with core service at /opt/admin-export/out.json
+      - ./docker_compose_files/core/admin-export:/app/data/export
     environment:
-      DIAL_URL: "http://core:8080"
-      SHOW_USAGE_STATISTICS: "true"
-      QUICKAPP_LOG_LEVEL: "DEBUG"
+      CONFIG_REST_SECURITY_MODE: "none"
+      DISABLE_SWAGGER_AUTHORIZATION: "true"
+      CORE_CLIENT_URL: "http://core:8080"
+      CORE_CONFIG_VERSION: "latest"
+      ENABLE_CORE_CONFIG_VERSION_AUTO_DETECT: "true"
+      CORE_AUTH_METHOD: "api-key"
+      CORE_AUTH_API_KEY_VALUE: "dial_api_key"
+      ENABLE_CONFIG_AUTO_IMPORT_ON_BOOTSTRAP: "true"
+      IMPORT_AUTO_BOOTSTRAP_FILE_PATHS: "/opt/core-config/applications.json,/opt/core-config/application-schemas.json,/opt/core-config/toolsets.json,/opt/core-config/chathub/anthropic.json,/opt/core-config/chathub/gemini.json,/opt/core-config/chathub/openai.json,/opt/core-config/generated/models.json"
+      IMPORT_AUTO_BOOTSTRAP_STRATEGY: "MERGE_JSON"
+      CONFIG_EXPORT_ENABLED: "true"
+      CONFIG_EXPORT_STORAGETYPE: "LOCAL_FILE"
+      CONFIG_EXPORT_OUTPUTFILE_PATH: "data/export/out.json"
+      ENABLE_CONFIG_RELOAD: "true"
+      OTEL_SDK_DISABLED: "true"
+      METRICS_ENABLED: "false"
+      H2_FILE: "./data/testdb"
+      H2_DATASOURCE_PASSWORD: "password"
+      H2_DATASOURCE_MASTER_KEY: "t8+npcgNMiipR+kHMb8zXAjgA3IedCXC"
+      H2_DATASOURCE_ENCRYPTED_FILE_KEY: "9vW1l/Eg+1J3YXpCsyR6AUI4ptMtI6pjkktePuUQts+wKVAauoP5CG21z5WTzp91xBcEww=="
+
+  admin-frontend:
+    profiles: ["admin"]
+    image: epam/ai-dial-admin-frontend:development
+    ports:
+      - "3020:3000"
+    depends_on:
+      admin-backend:
+        condition: service_healthy
+      core:
+        condition: service_healthy
+      themes:
+        condition: service_started
+    environment:
+      DIAL_ADMIN_API_URL: "http://admin-backend:8080/"
+      NEXTAUTH_SECRET: "secret"
+      # Do not set NEXTAUTH_URL for local dev — it enables NextAuth middleware (get-auth-toggle.ts).
+      # With no AUTH_* providers that yields an empty /api/auth/signin page.
+      THEMES_CONFIG_URL: "http://themes:8080"
+      DIAL_LINK: "http://localhost:3010"
+      DEPLOYMENTS_ENABLED: "true"
+      MCP_REGISTRY_ENABLED: "false"
+      NIM_ENABLED: "false"
+      HF_ENABLED: "false"
+
+volumes:
+  admin-backend-data:

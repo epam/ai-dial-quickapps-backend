@@ -25,10 +25,6 @@ class _PyInterpreterSettings(BaseSettings):
         default=None,
         description="Default session ID for the PyInterpreter",
     )
-    additional_handling_model: str = Field(
-        default="gpt-4o-mini-2024-07-18",
-        description="Model used for additional handling in the PyInterpreter",
-    )
     client_timeout: float = Field(
         default=60.0,
         description="Timeout for the PyInterpreter client requests in seconds",

@@ -1,6 +1,8 @@
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
+
+from quickapp.common.base_config import DialResourceConfigField, LegacyAlias, LegacyAliasModel
 
 
 class CustomFieldsConfig(BaseModel):
@@ -51,9 +53,14 @@ class DialDeploymentParameters(BaseModel):
     # ToDo: add more parameters according to the DIAL API reference
 
 
-class DialDeploymentConfig(BaseModel):
-    name: str = Field(description="The name of the DIAL deployment.")
+class DialDeploymentConfig(LegacyAliasModel):
+    deployment_id: Annotated[
+        str,
+        DialResourceConfigField(description="The id of the DIAL deployment."),
+        LegacyAlias("name"),
+    ]
     parameters: DialDeploymentParameters = Field(
         default_factory=DialDeploymentParameters,
         description="The predefined parameters for the DIAL deployment.",
     )
+    _configuration_param_names: set[str] = PrivateAttr(default_factory=set)

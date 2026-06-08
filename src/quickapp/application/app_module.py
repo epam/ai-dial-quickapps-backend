@@ -4,18 +4,24 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, RESPONSE_FORMAT
-from quickapp.common._di_types import ForwardedHeaders
+from quickapp.common import (
+    CLIENT_CHANNEL_ID,
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    RESPONSE_FORMAT,
+    ForwardedHeaders,
+)
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
@@ -48,7 +54,6 @@ class AppModule(Module):
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
         binder.bind(PredefinedContentProvider, to=PredefinedContentProvider, scope=singleton)
-        binder.bind(ConfigResolver, to=ConfigResolver, scope=singleton)
         binder.bind(PerformanceTimer, to=PerformanceTimer, scope=request_scope)
         binder.bind(
             _InitializationErrorHandler, to=_InitializationErrorHandler, scope=request_scope
@@ -79,18 +84,27 @@ class AppModule(Module):
         return context.forwarded_headers
 
     @provider
+    def __provide_client_channel_id(self, context: _RequestContext) -> CLIENT_CHANNEL_ID:
+        return context.client_channel_id
+
+    @provider
     def __provide_stage(self, choice: Choice) -> Stage:
         return choice.create_stage()
 
     @provider
     def __provide_async_dial(
-        self, dial_settings: DialSettings, api_key: DIAL_API_KEY, bearer: DIAL_BEARER
+        self,
+        dial_settings: DialSettings,
+        api_key: DIAL_API_KEY,
+        bearer: DIAL_BEARER,
+        timeout_resolver: ToolTimeoutResolver,
     ) -> AsyncDial:
         return AsyncDial(
             base_url=dial_settings.url,
             api_key=api_key.get_secret_value(),
             api_version=dial_settings.api_version,
             bearer_token=bearer.get_secret_value() if bearer else None,
+            timeout=build_async_dial_timeout(timeout_resolver.resolve()),
         )
 
     @provider

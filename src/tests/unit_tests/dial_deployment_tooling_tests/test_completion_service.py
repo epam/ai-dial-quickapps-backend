@@ -1,3 +1,5 @@
+from unittest.mock import AsyncMock, MagicMock, call
+
 import pytest
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -5,18 +7,19 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
-from unittest.mock import AsyncMock, MagicMock, call
 
-from quickapp.common import ForwardedHeaders
+from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
+from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
+from tests.unit_tests.common.common import noop_timeout_resolver
+from tests.unit_tests.stream_test_doubles import DummyStageWrapper
 
 
 @pytest.fixture
-def dial_client():
+def azure_client():
     client = MagicMock()
     client.chat.completions.create = AsyncMock()
-    client.metadata = MagicMock()
 
     async def mock_stream():
         chunk = MagicMock()
@@ -24,6 +27,9 @@ def dial_client():
         chunk.choices[0].delta = MagicMock()
         chunk.choices[0].delta.content = "Test response"
         chunk.choices[0].delta.custom_content = None
+        chunk.choices[0].delta.tool_calls = None
+        chunk.usage = None
+        chunk.model_extra = {}
         yield chunk
 
     client.chat.completions.create.return_value = mock_stream()
@@ -31,20 +37,30 @@ def dial_client():
 
 
 @pytest.fixture
-def completion_service(dial_client):
-    return DialCompletionService(dial_client, None)
+def attachment_resolver():
+    resolver = MagicMock(spec=AttachmentResolver)
+    resolver.resolve_attachment_urls = AsyncMock(return_value=[])
+    return resolver
+
+
+@pytest.fixture
+def completion_service(azure_client, attachment_resolver):
+    return DialCompletionService(
+        azure_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+    )
 
 
 @pytest.fixture
 def mock_stage_wrapper():
-    stage_wrapper = MagicMock()
-    stage_wrapper.append_stage_content = MagicMock()
-    stage_wrapper.add_stage_attachment = MagicMock()
-    return stage_wrapper
+    return DummyStageWrapper()
 
 
 @pytest.mark.asyncio
-async def test_history_propagation_enabled(completion_service, dial_client, mock_stage_wrapper):
+async def test_history_propagation_enabled(completion_service, azure_client, mock_stage_wrapper):
     # Act — pass pre-built history directly
     history = [
         UserMessageParam(role="user", content="First question"),
@@ -61,7 +77,7 @@ async def test_history_propagation_enabled(completion_service, dial_client, mock
     )
 
     # Assert — 4 history messages + current query
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 5
     assert call_args["messages"][0]["content"] == "First question"
     assert call_args["messages"][0]["role"] == "user"
@@ -76,7 +92,7 @@ async def test_history_propagation_enabled(completion_service, dial_client, mock
 
 
 @pytest.mark.asyncio
-async def test_no_history(completion_service, dial_client, mock_stage_wrapper):
+async def test_no_history(completion_service, azure_client, mock_stage_wrapper):
     # Act — no history passed
     await completion_service.complete_request_async(
         params={"query": "Test query"},
@@ -86,13 +102,13 @@ async def test_no_history(completion_service, dial_client, mock_stage_wrapper):
     )
 
     # Assert — only current query
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 1
     assert call_args["messages"][0]["content"] == "Test query"
 
 
 @pytest.mark.asyncio
-async def test_empty_history(completion_service, dial_client, mock_stage_wrapper):
+async def test_empty_history(completion_service, azure_client, mock_stage_wrapper):
     # Act — empty history list
     await completion_service.complete_request_async(
         params={"query": "Test query"},
@@ -103,13 +119,13 @@ async def test_empty_history(completion_service, dial_client, mock_stage_wrapper
     )
 
     # Assert — only current query
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 1
     assert call_args["messages"][0]["content"] == "Test query"
 
 
 @pytest.mark.asyncio
-async def test_history_none_explicitly(completion_service, dial_client, mock_stage_wrapper):
+async def test_history_none_explicitly(completion_service, azure_client, mock_stage_wrapper):
     # Act — explicitly pass None
     await completion_service.complete_request_async(
         params={"query": "Test query"},
@@ -120,13 +136,13 @@ async def test_history_none_explicitly(completion_service, dial_client, mock_sta
     )
 
     # Assert — only current query
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     assert len(call_args["messages"]) == 1
     assert call_args["messages"][0]["content"] == "Test query"
 
 
 @pytest.mark.asyncio
-async def test_stage_wrapper_none(completion_service, dial_client):
+async def test_stage_wrapper_none(completion_service, azure_client):
     result = await completion_service.complete_request_async(
         params={"query": "Test query"},
         deployment_id="test-deployment",
@@ -140,7 +156,9 @@ async def test_stage_wrapper_none(completion_service, dial_client):
 
 
 @pytest.mark.asyncio
-async def test_stage_wrapper_content_streaming(completion_service, dial_client, mock_stage_wrapper):
+async def test_stage_wrapper_content_streaming(
+    completion_service, azure_client, mock_stage_wrapper
+):
     # Act
     await completion_service.complete_request_async(
         params={"query": "Test query"},
@@ -150,16 +168,13 @@ async def test_stage_wrapper_content_streaming(completion_service, dial_client, 
     )
 
     # Assert - Check that both calls were made: first the header, then the content
-    expected_calls = [
-        call("> #### Response:\n"),
-        call("Test response")
-    ]
-    mock_stage_wrapper.append_stage_content.assert_has_calls(expected_calls)
+    expected_calls = [call("> #### Response:\n"), call("Test response")]
+    mock_stage_wrapper.stage_mock.append_content.assert_has_calls(expected_calls)
 
 
 @pytest.mark.asyncio
 async def test_extra_params_go_to_extra_body_not_top_level(
-    completion_service, dial_client, mock_stage_wrapper
+    completion_service, azure_client, mock_stage_wrapper
 ):
     """Params other than query and attachment_urls must be in extra_body, not top-level."""
     await completion_service.complete_request_async(
@@ -175,9 +190,9 @@ async def test_extra_params_go_to_extra_body_not_top_level(
         stage_wrapper=mock_stage_wrapper,
     )
 
-    call_args = dial_client.chat.completions.create.call_args[1]
-    # Only deployment_name, stream, messages (and extra_body) at top level
-    assert set(call_args.keys()) == {"deployment_name", "stream", "messages", EXTRA_BODY}
+    call_args = azure_client.chat.completions.create.call_args[1]
+    # Only model, stream, messages (and extra_body) at top level
+    assert set(call_args.keys()) == {"model", "stream", "messages", EXTRA_BODY}
     assert call_args["messages"][0]["content"] == "Test query"
 
     extra_body = call_args[EXTRA_BODY]
@@ -191,7 +206,7 @@ async def test_extra_params_go_to_extra_body_not_top_level(
 
 @pytest.mark.asyncio
 async def test_extra_body_from_params_merged_with_other_params(
-    completion_service, dial_client, mock_stage_wrapper
+    completion_service, azure_client, mock_stage_wrapper
 ):
     """If params already contain extra_body (e.g. from deployment), it is merged with other params."""
     await completion_service.complete_request_async(
@@ -205,7 +220,7 @@ async def test_extra_body_from_params_merged_with_other_params(
         stage_wrapper=mock_stage_wrapper,
     )
 
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     extra_body = call_args[EXTRA_BODY]
     assert extra_body["custom_fields"] == {"key": "from_deployment"}
     assert extra_body["temperature"] == 0.5
@@ -214,7 +229,7 @@ async def test_extra_body_from_params_merged_with_other_params(
 
 @pytest.mark.asyncio
 async def test_history_with_custom_content_passed_through(
-    completion_service, dial_client, mock_stage_wrapper
+    completion_service, azure_client, mock_stage_wrapper
 ):
     """History entries with custom_content appear unchanged in messages sent to the API."""
     history = [
@@ -246,7 +261,7 @@ async def test_history_with_custom_content_passed_through(
         history=history,
     )
 
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     msgs = call_args["messages"]
     assert len(msgs) == 3
 
@@ -268,57 +283,18 @@ async def test_history_with_custom_content_passed_through(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "file_relative_url, expected_stripped_url",
-    [
-        # base64:: prefix — binary/encoded content
-        ("file:base64::files/images/chart.png", "files/images/chart.png"),
-        # text:: prefix — plain-text content
-        ("file:text::files/code/main.py", "files/code/main.py"),
-        # url:: prefix — bare URL pass-through (lowercase)
-        ("file:url::files/docs/report.pdf", "files/docs/report.pdf"),
-        # url:: prefix — case-insensitive match per the convention
-        ("file:URL::files/abc/photo.png", "files/abc/photo.png"),
-        # bare file: with no type prefix — still strips the file: marker
-        ("file:files/abc/photo.png", "files/abc/photo.png"),
-    ],
-)
-async def test_resolve_attachment_strips_file_prefix(dial_client, file_relative_url, expected_stripped_url):
-    """_resolve_attachment must strip any file:{prefix}:: marker before querying metadata."""
-    fileinfo = MagicMock()
-    fileinfo.content_type = "image/png"
-    fileinfo.name = "photo.png"
-    fileinfo.url = expected_stripped_url
-    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
-
-    service = DialCompletionService(dial_client, None)
-    result = await service._resolve_attachment(file_relative_url)
-
-    dial_client.metadata.get.assert_called_once_with("files", expected_stripped_url)
-    assert result == AttachmentParam(type="image/png", title="photo.png", url=expected_stripped_url)
-
-
-@pytest.mark.asyncio
-async def test_resolve_attachment_without_prefix(dial_client):
-    """_resolve_attachment must pass the URL unchanged when there is no file: prefix."""
-    fileinfo = MagicMock()
-    fileinfo.content_type = "application/pdf"
-    fileinfo.name = "report.pdf"
-    fileinfo.url = "files/xyz/report.pdf"
-    dial_client.metadata.get = AsyncMock(return_value=fileinfo)
-
-    service = DialCompletionService(dial_client, None)
-    result = await service._resolve_attachment("files/xyz/report.pdf")
-
-    dial_client.metadata.get.assert_called_once_with("files", "files/xyz/report.pdf")
-    assert result == AttachmentParam(type="application/pdf", title="report.pdf", url="files/xyz/report.pdf")
-
-
-@pytest.mark.asyncio
-async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_stage_wrapper):
+async def test_forwarded_x_headers_passed_to_chat_completion(
+    azure_client, mock_stage_wrapper, attachment_resolver
+):
     """X-* headers from forwarded_headers (dict) are sent as extra_headers to chat completions."""
     forwarded = {"X-Request-Id": "deploy-req-789", "X-Deployment-Custom": "deploy-val"}
-    service = DialCompletionService(dial_client, forwarded)
+    service = DialCompletionService(
+        azure_client,
+        forwarded_headers=forwarded,
+        stream_handler=ChatCompletionStreamHandler(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+    )
 
     await service.complete_request_async(
         params={"query": "Test query"},
@@ -327,8 +303,33 @@ async def test_forwarded_x_headers_passed_to_chat_completion(dial_client, mock_s
         stage_wrapper=mock_stage_wrapper,
     )
 
-    call_args = dial_client.chat.completions.create.call_args[1]
+    call_args = azure_client.chat.completions.create.call_args[1]
     assert EXTRA_HEADERS in call_args
     extra_headers = call_args[EXTRA_HEADERS]
     assert extra_headers["X-Request-Id"] == "deploy-req-789"
     assert extra_headers["X-Deployment-Custom"] == "deploy-val"
+
+
+@pytest.mark.asyncio
+async def test_custom_fields_configuration_routed_to_extra_body(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    """Pre-wrapped custom_fields.configuration appears correctly nested in extra_body."""
+    await completion_service.complete_request_async(
+        params={
+            "query": "Test query",
+            "temperature": 0.7,
+            "custom_fields": {"configuration": {"size": "1024x1024", "quality": "high"}},
+        },
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = azure_client.chat.completions.create.call_args[1]
+    extra_body = call_args[EXTRA_BODY]
+    assert extra_body["temperature"] == 0.7
+    assert extra_body["custom_fields"] == {
+        "configuration": {"size": "1024x1024", "quality": "high"}
+    }
+    assert "query" not in extra_body

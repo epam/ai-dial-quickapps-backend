@@ -1,5 +1,6 @@
 import warnings
 
+import pytest
 from aidial_sdk.chat_completion import CustomContent, FunctionCall, ToolCall
 from aidial_sdk.chat_completion.request import Message, Role
 
@@ -14,25 +15,28 @@ def make_tool_call(id: str, name: str = "test_tool", arguments: str = "{}") -> T
 class TestExtractToolCallsFromStateProcessor:
     """Tests for ExtractToolCallsFromStateProcessor."""
 
-    def test_empty_messages_returns_empty(self):
+    @pytest.mark.asyncio
+    async def test_empty_messages_returns_empty(self):
         msgs_setup = _MessagesSetup([])
-        result = msgs_setup.setup([])
+        result = msgs_setup.extract_tool_calls([])
         assert result == []
 
-    def test_messages_without_state_unchanged(self):
+    @pytest.mark.asyncio
+    async def test_messages_without_state_unchanged(self):
         msgs_setup = _MessagesSetup([])
         messages = [
             Message(role=Role.USER, content="hello"),
             Message(role=Role.ASSISTANT, content="hi there"),
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         assert len(result) == 2
         assert result[0].role == Role.USER
         assert result[1].role == Role.ASSISTANT
 
-    def test_message_without_tool_history_unchanged(self):
+    @pytest.mark.asyncio
+    async def test_message_without_tool_history_unchanged(self):
         msgs_setup = _MessagesSetup([])
         messages = [
             Message(
@@ -42,12 +46,13 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         assert len(result) == 1
         assert result[0].content == "response"
 
-    def test_new_format_single_tool_call(self):
+    @pytest.mark.asyncio
+    async def test_new_format_single_tool_call(self):
         """Test extraction of new message-based format with single tool call."""
         msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
@@ -65,7 +70,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Should have: ASSISTANT (from history), TOOL (from history), ASSISTANT (final)
         assert len(result) == 3
@@ -78,7 +83,8 @@ class TestExtractToolCallsFromStateProcessor:
         assert result[2].role == Role.ASSISTANT
         assert result[2].content == "final response"
 
-    def test_new_format_parallel_tool_calls_preserved(self):
+    @pytest.mark.asyncio
+    async def test_new_format_parallel_tool_calls_preserved(self):
         """Key test: parallel tool calls should remain in ONE assistant message."""
         msgs_setup = _MessagesSetup([])
         tc1 = make_tool_call("tc-1", "tool_a")
@@ -105,7 +111,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Should have: ASSISTANT (with 2 tool_calls), TOOL, TOOL, ASSISTANT (final)
         assert len(result) == 4
@@ -120,7 +126,8 @@ class TestExtractToolCallsFromStateProcessor:
         assert result[3].role == Role.ASSISTANT
         assert result[3].content == "done"
 
-    def test_new_format_multiple_iterations(self):
+    @pytest.mark.asyncio
+    async def test_new_format_multiple_iterations(self):
         """Test multiple sequential tool call iterations."""
         msgs_setup = _MessagesSetup([])
         tc1 = make_tool_call("tc-1", "tool_a")
@@ -141,7 +148,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # 4 from history + 1 final = 5 messages
         assert len(result) == 5
@@ -154,7 +161,8 @@ class TestExtractToolCallsFromStateProcessor:
         assert result[4].role == Role.ASSISTANT
         assert result[4].content == "final"
 
-    def test_legacy_format_backward_compatibility(self):
+    @pytest.mark.asyncio
+    async def test_legacy_format_backward_compatibility(self):
         """Test that legacy ExecutedToolCallDTO format still works with deprecation warning."""
         msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
@@ -163,7 +171,11 @@ class TestExtractToolCallsFromStateProcessor:
         legacy_history = [
             {
                 "tool_call": tc.model_dump(mode="json"),
-                "tool_execution_result": {"role": "tool", "content": "output", "tool_call_id": "tc-1"},
+                "tool_execution_result": {
+                    "role": "tool",
+                    "content": "output",
+                    "tool_call_id": "tc-1",
+                },
             }
         ]
 
@@ -177,7 +189,7 @@ class TestExtractToolCallsFromStateProcessor:
 
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
-            result = msgs_setup.setup(messages)
+            result = msgs_setup.extract_tool_calls(messages)
 
             # Should emit deprecation warning about legacy tool_execution_history format
             deprecation_warnings = [
@@ -196,7 +208,8 @@ class TestExtractToolCallsFromStateProcessor:
         assert result[1].role == Role.TOOL
         assert result[2].role == Role.ASSISTANT
 
-    def test_tool_history_removed_from_final_message_state(self):
+    @pytest.mark.asyncio
+    async def test_tool_history_removed_from_final_message_state(self):
         """Verify that tool_execution_history is removed from the final message's state."""
         msgs_setup = _MessagesSetup([])
         tc = make_tool_call("tc-1", "my_tool")
@@ -216,7 +229,7 @@ class TestExtractToolCallsFromStateProcessor:
             )
         ]
 
-        result = msgs_setup.setup(messages)
+        result = msgs_setup.extract_tool_calls(messages)
 
         # Final message should not have tool_execution_history but keep other state
         final_msg = result[-1]
@@ -224,6 +237,37 @@ class TestExtractToolCallsFromStateProcessor:
         assert final_msg.custom_content.state is not None
         assert TOOL_EXECUTION_HISTORY not in final_msg.custom_content.state
         assert final_msg.custom_content.state.get("other_key") == "preserved"
+
+    @pytest.mark.asyncio
+    async def test_new_format_tool_message_with_stripped_attachments_restores_normally(self):
+        """Persisted history may omit tool attachments but keep other custom_content fields."""
+        msgs_setup = _MessagesSetup([])
+        tc = make_tool_call("tc-1", "my_tool")
+
+        tool_history = [
+            {"role": "assistant", "content": "", "tool_calls": [tc.model_dump(mode="json")]},
+            {
+                "role": "tool",
+                "content": '{"ok": true}',
+                "tool_call_id": "tc-1",
+                "custom_content": {"state": {"marker": "kept"}},
+            },
+        ]
+
+        messages = [
+            Message(
+                role=Role.ASSISTANT,
+                content="done",
+                custom_content=CustomContent(state={TOOL_EXECUTION_HISTORY: tool_history}),
+            )
+        ]
+
+        result = msgs_setup.extract_tool_calls(messages)
+
+        assert len(result) == 3
+        assert result[1].role == Role.TOOL
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.state == {"marker": "kept"}
 
     def test_is_legacy_format_detection(self):
         """Test format detection helper."""

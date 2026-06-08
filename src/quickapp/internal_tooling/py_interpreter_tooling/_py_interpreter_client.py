@@ -5,6 +5,7 @@ import httpx
 from pydantic import SecretStr
 
 from quickapp.internal_tooling.py_interpreter_tooling._exceptions import (
+    _PY_INTERPRETER_TOOL_NAME,
     _PyInterpreterSessionError,
     _PyInterpreterTimeOutError,
     _PyInterpreterWrongRequestStateError,
@@ -68,10 +69,11 @@ class _PyInterpreterClient:
             raise ValueError("No client present in the PyInterpreterClient")
         try:
             return await self._client.post(url=path, json=json)
-        except httpx.TimeoutException:
+        except httpx.TimeoutException as e:
             raise _PyInterpreterTimeOutError(
-                "Unable to execute code. Executions is taking too long time!"
-            )
+                tool_name=_PY_INTERPRETER_TOOL_NAME,
+                timeout_seconds=self.timeout,
+            ) from e
 
     async def _make_post(self, path: str, json: dict[str, Any]) -> httpx.Response:
         response = await self._make_post_request(path=path, json=json)

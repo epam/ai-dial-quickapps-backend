@@ -15,7 +15,7 @@ Schema reference:
 
 ## Agent Configuration:
 
-<details> 
+<details>
 <summary><b>Configuration JSON Sample</b></summary>
 
 The project contains predefined configs of application and predefined tools
@@ -30,7 +30,7 @@ The project contains predefined configs of application and predefined tools
 {
   "orchestrator": {
     "deployment": {
-      "name": "gpt-4o-2024-05-13",
+      "deployment_id": "gpt-4o-2024-05-13",
       "parameters": {
         "temperature": 1.0,
         "seed": 820288
@@ -124,7 +124,7 @@ The project contains predefined configs of application and predefined tools
             }
           },
           "deployment": {
-            "name": "dall-e-3"
+            "deployment_id": "dall-e-3"
           },
           "open_ai_tool": {
             "type": "function",
@@ -243,6 +243,7 @@ The project contains predefined configs of application and predefined tools
 | orchestrator | Yes      | Object       | Configurations for Agent (model, system prompt, etc.). [Orchestrator configuration](#orchestrator-configuration)                                      | -                | -             |
 | contexts     | Yes      | List[Object] | The list of contexts. [Contexts configuration](#contexts-configuration)                                                                               | -                | -             |
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
+| features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, etc.). [Features configuration](#features-configuration)                  | -                | `{}`          |
 
 ### Orchestrator configuration
 
@@ -259,7 +260,7 @@ The project contains predefined configs of application and predefined tools
 | name       | Yes      | String | The DIAL deployment name to be used for the agent                                                                                | Any valid deployment name | -             |
 | parameters | No       | Object | The parameters to configure Agent model, [See Request parameters](https://dialx.ai/dial_api#operation/sendChatCompletionRequest) | -                         | `null`        |
 
-<details> 
+<details>
 <summary><b>Deployment configuration JSON sample</b></summary>
 
 Sample:
@@ -306,7 +307,7 @@ With custom fields sample:
 | variables | Yes                         | Dict[String, String] | Dict with variables that should be replaced in the system prompt | -                | -             |
 | content   | Yes (if `type` is `custom`) | String               | The system prompt itself                                         | -                | -             |
 
-<details> 
+<details>
 <summary><b>System prompt configuration JSON sample</b></summary>
 
 Custom system prompt:
@@ -334,7 +335,7 @@ Custom system prompt:
 | content     | Yes (if `type` is `user-defined`) | String | The context content                                                     | -                      | -             |
 | url         | Yes (if `type` is `file`)         | String | The URL to the file (in dial bucket) where file with content is located | -                      | -             |
 
-<details> 
+<details>
 <summary><b>Contexts configuration JSON sample</b></summary>
 
 User-defined context:
@@ -359,6 +360,64 @@ The context loaded by URL:
 ```
 
 </details>
+
+### Features configuration
+
+Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
+fields fall back to the deployment-wide defaults configured via environment variables.
+
+| Field                | Required | Type   | Description                                                                                                                  | Default Value |
+|----------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `external_url_fetch` | No       | Object | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration). | `{}`          |
+
+#### External URL fetch configuration
+
+External URL fetching is gated by **two tiers** that compose: an admin tier (env vars under
+`EXTERNAL_URL_FETCH_*`, see [README.md](./README.md#environment-variables)) and a builder tier
+(this `features.external_url_fetch` object). The admin tier is a hard cap — a per-app override
+can only narrow it, never expand it. The deployment-handoff branch (DIAL deployments advertising
+`features.url_attachments`) is never gated: the deployment fetches the URL itself, so no
+QuickApps egress happens.
+
+Builder-tier fields:
+
+| Field            | Required | Type            | Description                                                                                                                                                                                                                                                                | Default Value |
+|------------------|----------|-----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`        | No       | Boolean or null | Per-app override of the on/off gate. `null` (default) defers to the admin env switch. `false` opts this app out even when the admin allows. `true` is a no-op when admin allows; the admin gate is a hard cap.                                                              | `null`        |
+| `host_allowlist` | No       | Array[String] or null | Per-app override of the allowed hosts. `null` (default) defers to the admin env var. A non-empty list **narrows** the admin list (intersection) — a host must be in both lists to be allowed. An explicit empty list locks this app out of all hosts. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. | `null`        |
+
+<details>
+<summary><b>External URL fetch configuration JSON sample</b></summary>
+
+Opt this app out even when the admin allows external fetches:
+
+```json
+{
+  "features": {
+    "external_url_fetch": {
+      "enabled": false
+    }
+  }
+}
+```
+
+Narrow the admin allowlist for a high-trust app (admin permits `example.com` and `partner.io`,
+this app only allows `example.com`):
+
+```json
+{
+  "features": {
+    "external_url_fetch": {
+      "host_allowlist": ["example.com"]
+    }
+  }
+}
+```
+
+</details>
+
+See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL classification,
+SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
 
 ### Tool sets configuration
 
@@ -385,10 +444,20 @@ The context loaded by URL:
 
 #### PredefinedToolSet Configuration
 
-| Field         | Required | Type   | Description                      | Default Value |
-|---------------|----------|--------|----------------------------------|---------------|
-| type          | Yes      | String | The type of the tool set.        | `predefined`  |
-| template_name | Yes      | String | Name of the predefined template. | -             |
+| Field         | Required | Type           | Description                                                                                                                                                                                                              | Default Value |
+|---------------|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| type          | Yes      | String         | The type of the tool set.                                                                                                                                                                                                | `predefined`  |
+| template_name | Yes      | String         | Name of the predefined template.                                                                                                                                                                                         | -             |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved toolset template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`        |
+
+#### PredefinedTool Configuration
+
+| Field         | Required | Type           | Description                                                                                                                                                                                                            | Default Value     |
+|---------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|
+| type          | Yes      | String         | The type indicating this is a tool template reference.                                                                                                                                                                 | `predefined-tool` |
+| template_name | Yes      | String         | The name of the tool template file (without extension).                                                                                                                                                                | -                 |
+| enabled       | No       | Boolean        | Whether the tool is enabled.                                                                                                                                                                                           | `true`            |
+| override      | No       | Object         | Optional JSON Merge Patch (RFC 7396) applied to the resolved tool template before validation. Patches must not target the `type` discriminator at any depth. See [docs/chathub.md](docs/chathub.md) for ChatHub recipes. | `null`            |
 
 #### MCPToolSet Configuration
 
@@ -425,6 +494,33 @@ The context loaded by URL:
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
 
+#### DialAppToolSet Configuration
+
+Use `DialAppToolSet` to reference a DIAL application or deployment by its id and have QuickApps choose the
+transport automatically at initialization time. If the deployment advertises MCP (`features.mcp == true`),
+**all** MCP tools it publishes are surfaced as first-class QuickApp tools over the path
+`/v1/toolset/{deployment_id}/mcp` (current DIAL Core behaviour; this will move to
+`/v1/deployments/{deployment_id}/mcp` once the matching DIAL Core change ships). Otherwise the toolset
+falls back to the existing chat-completion path (single synthetic `query` tool per deployment), matching
+`DialDeploymentSimpleTool` behaviour.
+
+This differs from `DialMCPToolSet` semantically: `DialMCPToolSet` points at a DIAL *toolset* resource
+(identified by `dial_id`), while `DialAppToolSet` points at a DIAL *deployment/application* (identified by
+`deployment_id`). Both currently hit the same `/v1/toolset/{id}/mcp` path prefix in DIAL Core, but the ids
+have different semantics and will diverge once the deployment-scoped endpoint lands.
+
+| Field                  | Required | Type               | Description                                                                                                                                                                                | Default Value |
+|------------------------|----------|--------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| name                   | Yes      | String             | The name of the tool set. Used as the tool-name prefix on the MCP branch; on the chat-completion fallback branch the synthetic tool name is derived from the deployment id, so this field has no effect on the agent-visible name. | -             |
+| description            | No       | String             | The description of the tool set.                                                                                                                                                           | `null`        |
+| enabled                | No       | Boolean            | Whether the toolset is enabled.                                                                                                                                                            | `true`        |
+| type                   | Yes      | String             | The type of the tool set.                                                                                                                                                                  | `dial-app`    |
+| deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
+| transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
+| allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
+| attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
+| fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
+
 #### InternalToolSet Configuration
 
 | Field       | Required | Type                                        | Description                      | Default Value |
@@ -456,21 +552,21 @@ The context loaded by URL:
 
 | Field         | Required | Type                      | Description      |
 |---------------|----------|---------------------------|------------------|
-| type          | Yes      | String `client_id_secret` | Type of the auth | 
-| client_id     | Yes      | String                    | client id        | 
-| client_secret | Yes      | String                    | client secret    | 
-| token_url     | Yes      | String                    | token url        | 
-| scope         | No       | Array of String           | scope list       | 
-| aud           | No       | Array of String           | aud list         | 
+| type          | Yes      | String `client_id_secret` | Type of the auth |
+| client_id     | Yes      | String                    | client id        |
+| client_secret | Yes      | String                    | client secret    |
+| token_url     | Yes      | String                    | token url        |
+| scope         | No       | Array of String           | scope list       |
+| aud           | No       | Array of String           | aud list         |
 
 ##### ApiKeyAuthorization
 
 | Field    | Required | Type                           | Description                        |
 |----------|----------|--------------------------------|------------------------------------|
-| type     | Yes      | String `api_key`               | Type of the auth                   | 
-| key      | Yes      | String                         | client id                          | 
-| name     | Yes      | String                         | name of the api key param          | 
-| location | Yes      | Enum `header`, `query`, `body` | location of the api key in request | 
+| type     | Yes      | String `api_key`               | Type of the auth                   |
+| key      | Yes      | String                         | client id                          |
+| name     | Yes      | String                         | name of the api key param          |
+| location | Yes      | Enum `header`, `query`, `body` | location of the api key in request |
 
 ##### MCPApiKeyAuthorization
 
@@ -478,8 +574,8 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 
 | Field | Required | Type             | Description               |
 |-------|----------|------------------|---------------------------|
-| type  | Yes      | String `api_key` | Type of the auth          | 
-| key   | Yes      | String           | client id                 | 
+| type  | Yes      | String `api_key` | Type of the auth          |
+| key   | Yes      | String           | client id                 |
 | name  | Yes      | String           | name of the api key param |
 
 ### Tool configuration
@@ -497,8 +593,8 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 
 | Field       | Required | Type                                       | Description |
 |-------------|----------|--------------------------------------------|-------------|
-| method_url  | Yes      | String                                     | url         | 
-| method_type | Yes      | String Enum `get`, `post`, `put`, `delete` | method      | 
+| method_url  | Yes      | String                                     | url         |
+| method_type | Yes      | String Enum `get`, `post`, `put`, `delete` | method      |
 
 #### Open AI tool configuration
 
@@ -507,7 +603,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | type     | No       | String | Will be set as `function` by default. Required, according to DIAL spec                                             | -                | `function`    |
 | function | Yes      | Object | Extended version of function from DIAL spec. See [Open AI function configuration](#open-ai-function-configuration) | -                | -             |
 
-<details> 
+<details>
 <summary><b>Open AI tool configuration JSON sample</b></summary>
 
 ```json
@@ -560,7 +656,7 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | properties | No       | Object        | Mixin of tool properties and additional configurations. See [Properties configuration](#properties-configuration) | -                | `{}`          |
 | required   | Yes      | Array[Object] | Here can be listed the properties names that are required when Agent will call a tool                             | -                | -             |
 
-<details> 
+<details>
 <summary><b>Parameters configuration JSON sample</b></summary>
 
 Original Open AI parameters configuration
@@ -667,7 +763,7 @@ More detailed for default parameters [JSON Schema spec](#https://json-schema.org
 | name  | No       | String  | The tool name that will be used as title for stage                             | -                | `null`        |
 | show  | No       | Boolean | Whether to show stage (and tools execution results) when tool is called or not | `true`, `false`  | `true`        |
 
-<details> 
+<details>
 <summary><b>Display tool stage configuration JSON sample</b></summary>
 
 Show stage with name `RAG search: `
@@ -708,7 +804,7 @@ Do not show tool execution in stage
 | replaced_value_info       | No       | String  | The replaced parameter value that will shown in the stage content. If `null` then will be used original value. If replacement is used the `prefix` and `suffix` will be ignored | -                                    | `null`        |
 | format                    | No       | String  | The format of the parameter value. If present then the value will be wrapped in ```{format} {parameter value}```                                                                | `markdown`, `python`, `json`, etc... | `null`        |
 
-<details> 
+<details>
 <summary><b>Display parameter stage configuration JSON sample</b></summary>
 
 Configuration sample:
@@ -761,7 +857,7 @@ Do not show parameter with value in stage while tool call:
 | type  | Yes      | String | The element type of REST request                                  | `query`, `url`, `body`, `header` | -             |
 | key   | Yes      | String | Name of the element in request [`query`, `url`, `body`, `header`] | -                                | -             |
 
-<details> 
+<details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
 
 ```json
@@ -781,8 +877,9 @@ Do not show parameter with value in stage while tool call:
 |---------------------------|----------|---------------|----------------------------------------------------------------------------------------------------------------------|----------------------------------------------|---------------|
 | supported_types           | No       | Array[String] | List of supported attachment MIME types                                                                              | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[*/*]`       |
 | propagate_types_to_choice | No       | Array[String] | List of supported attachment MIME types that will be shown in main chat (propagated from tool call result to choice) | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `[]`          |
+| media_type_substitution   | No       | dict[str, str] | Maps original MIME type to substitute. Key is a original mime_type, value is desired mime type. | `*/*`(all), `image/png`, `image/jpeg`, etc.. | `{}` |
 
-<details> 
+<details>
 <summary><b>Parameter info configuration JSON sample</b></summary>
 
 ```json
@@ -794,7 +891,10 @@ Do not show parameter with value in stage while tool call:
     "image/png",
     "image/jpeg",
     "application/vnd.plotly.v1+json"
-  ]
+  ],
+  "media_type_substitution": {
+    "application/json": "application/vnd.plotly.v1+json"
+  }
 }
 ```
 
@@ -835,7 +935,7 @@ There are two types of strategy models that can be used:
 | value          | Yes      | String                     | The error message text to match against   | -             |
 | case_sensitive | No       | Boolean                    | Whether matching should be case-sensitive | `false`       |
 
-<details> 
+<details>
 <summary><b>Example Of Strategies Configuration</b></summary>
 
 ```json
@@ -872,4 +972,3 @@ There are two types of strategy models that can be used:
 - If no Fallback strategy for tool provided, the default behaviour is to continue with predefined instructions
 - Strategies are evaluated in the order they appear in the array
 - The first strategy with a matching trigger condition is used
-

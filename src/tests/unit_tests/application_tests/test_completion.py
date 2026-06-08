@@ -1,16 +1,20 @@
 from types import SimpleNamespace
-from typing import Mapping
 from unittest.mock import Mock
 
 import fastapi
 import pytest
-from aidial_sdk.chat_completion import Request, Message, Role
+from aidial_sdk.chat_completion import Message, Request, Role
+from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
+
 import quickapp.application._quick_app_completion as quick_app_completion
 from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.application._request_context import _RequestContext
 from quickapp.application._request_context_setup import _RequestContextSetup
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.exceptions import (
+    ConfigResolutionException,
+    OrchestratorExceedMaxIterationsException,
+)
 from quickapp.config.config_template_resolver import ConfigResolver
 
 
@@ -85,30 +89,52 @@ async def valid_app_props(*args, **kwargs):
         "orchestrator": {
             "type": "default",
             "deployment": {"id": "default-deployment", "name": "default"},
-            "system_prompt": {"type": "custom", "content": "You are a helpful assistant.", "variables": {}},
+            "system_prompt": {
+                "type": "custom",
+                "content": "You are a helpful assistant.",
+                "variables": {},
+            },
         },
         "contexts": [],
         "tool_sets": [],
     }
 
 
-
-
-
 @pytest.fixture
 def make_request_completion():
-    def _make(orchestrator=None, api_key="k", has_binding=True, extra_mapping=None):
-        request = Request(api_key_secret=api_key, messages=[Message(content="123", role=Role.USER), Message(content="456", role=Role.USER)], deployment_id="default-deployment",
-                          headers={"1":"2"}, original_request=fastapi.Request(scope={"type": "http"}))
+    def _make(
+        orchestrator=None,
+        api_key="k",
+        has_binding=True,
+        extra_mapping=None,
+        messages=None,
+        config_resolver=None,
+        init_handler=None,
+    ):
+        if messages is None:
+            messages = [
+                Message(content="123", role=Role.USER),
+                Message(content="456", role=Role.ASSISTANT),
+                Message(content="789", role=Role.USER),
+            ]
+        request = Request(
+            api_key_secret=api_key,
+            messages=messages,
+            deployment_id="default-deployment",
+            headers={"1": "2"},
+            original_request=fastapi.Request(scope={"type": "http"}),
+        )
         request.request_dial_application_properties = valid_app_props
 
-        init_handler = SimpleNamespace(handle_initialization_errors=lambda: None)
+        if init_handler is None:
+            init_handler = SimpleNamespace(handle_initialization_issues=lambda: None)
 
         request_context = _RequestContext()
         provider = SimpleNamespace(get=lambda: request_context)
 
-        config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
-        messages_setup = _MessagesSetup([])
+        if config_resolver is None:
+            config_resolver = SimpleNamespace(resolve_config=lambda cfg: cfg)
+        messages_setup = _MessagesSetup(SimpleNamespace(get=lambda: []))
 
         request_context_setup = _RequestContextSetup(
             context_provider=provider,
@@ -120,6 +146,7 @@ def make_request_completion():
             quick_app_completion._InitializationErrorHandler: init_handler,
             _RequestContext: request_context,
             _RequestContextSetup: request_context_setup,
+            _MessagesSetup: messages_setup,
             ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
         }
@@ -134,9 +161,7 @@ def make_request_completion():
         mapping[quick_app_completion.PresentationSettings] = presentation_settings
 
         injector = FakeInjector(mapping, has_binding=has_binding)
-        completion = quick_app_completion._QuickAppCompletion(
-            injector, presentation_settings
-        )
+        completion = quick_app_completion._QuickAppCompletion(injector, presentation_settings)
         return request, completion, injector
 
     return _make
@@ -199,7 +224,9 @@ async def test_chat_completion_generic_exception_appends_generic_message(make_re
     await completion.chat_completion(request, response)
 
     # Assert
-    assert any("Something went wrong with the execution of your request" in c for c in choice.contents)
+    assert any(
+        "Something went wrong with the execution of your request" in c for c in choice.contents
+    )
 
 
 @pytest.mark.asyncio
@@ -215,18 +242,26 @@ async def test_configuration_no_binding_returns_empty_response(make_request_comp
 
 
 @pytest.mark.asyncio
-async def test_configuration_with_binding_returns_config_response(make_request_completion, monkeypatch):
+async def test_configuration_with_binding_returns_config_response(
+    make_request_completion, monkeypatch
+):
     # Arrange
     fake_configs = ["cfg1", "cfg2"]
     extra = {list[quick_app_completion.Configuration]: fake_configs}
-    request, completion, _ = make_request_completion(None, api_key="k", has_binding=True, extra_mapping=extra)
+    request, completion, _ = make_request_completion(
+        None, api_key="k", has_binding=True, extra_mapping=extra
+    )
 
     # monkeypatch Configuration.from_list_of_configurations to return object with to_configuration_response
     class FakeConfigured:
         def to_configuration_response(self):
             return {"ok": True}
 
-    monkeypatch.setattr(quick_app_completion.Configuration, "from_list_of_configurations", staticmethod(lambda cfgs: FakeConfigured()))
+    monkeypatch.setattr(
+        quick_app_completion.Configuration,
+        "from_list_of_configurations",
+        staticmethod(lambda cfgs: FakeConfigured()),
+    )
 
     # Act
     resp = await completion.configuration(request)
@@ -256,7 +291,9 @@ async def test_chat_completion_http_error_appends_safe_message(make_request_comp
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_openai_internal_server_error_appends_safe_message(make_request_completion):
+async def test_chat_completion_openai_internal_server_error_appends_safe_message(
+    make_request_completion,
+):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
@@ -285,7 +322,9 @@ async def test_chat_completion_openai_internal_server_error_appends_safe_message
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_sets_context_messages_when_request_is_request(make_request_completion, monkeypatch):
+async def test_chat_completion_sets_context_messages_when_request_is_request(
+    make_request_completion, monkeypatch
+):
     # Arrange: treat SimpleNamespace instances as Request so isinstance check passes
     monkeypatch.setattr(quick_app_completion, "Request", SimpleNamespace, raising=False)
 
@@ -301,6 +340,79 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(mak
     # Assert: inspect the request context from the injector
     msgs = list(injector.get(_RequestContext).messages)
 
-    assert len(msgs) == 2
+    assert len(msgs) == 3
     assert msgs[0].content == "123"
     assert msgs[1].content == "456"
+    assert msgs[2].content == "789"
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_system_prompt_failure_renders_initialization_stage(
+    make_request_completion,
+):
+    """A system-prompt resolution failure (the only path that still raises
+    `ConfigResolutionException`) routes to the *Initialization issues* handler
+    instead of falling through to the generic fallback message."""
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    def _resolve_raises(_cfg):
+        raise ConfigResolutionException(
+            message="bad",
+            template_name="dial_rag",
+            json_path="/deployment/name",
+        )
+
+    handler_calls = {"count": 0}
+    init_handler = SimpleNamespace(
+        handle_initialization_issues=lambda: handler_calls.__setitem__(
+            "count", handler_calls["count"] + 1
+        )
+    )
+
+    orchestrator_called = {"count": 0}
+
+    class OrchestratorFake:
+        async def invoke(self):
+            orchestrator_called["count"] += 1
+
+    request, completion, _ = make_request_completion(
+        OrchestratorFake(),
+        config_resolver=SimpleNamespace(resolve_config=_resolve_raises),
+        init_handler=init_handler,
+    )
+
+    await completion.chat_completion(request, response)
+
+    assert handler_calls["count"] == 1
+    assert orchestrator_called["count"] == 0
+    assert not any(
+        "Something went wrong with the execution of your request" in c for c in choice.contents
+    )
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_invalid_messages_raises_invalid_request_error(
+    make_request_completion,
+):
+    # Arrange: two consecutive user messages violate (System)? (User Assistant)* User
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    bad_messages = [
+        Message(content="a", role=Role.USER),
+        Message(content="b", role=Role.USER),
+    ]
+    request, completion, _ = make_request_completion(None, messages=bad_messages)
+
+    # Act + Assert: InvalidRequestError propagates past the create_single_choice
+    # block so the aidial_sdk exception handler can produce HTTP 400
+    with pytest.raises(InvalidRequestError) as exc:
+        await completion.chat_completion(request, response)
+
+    display = exc.value.display_message
+    assert display is not None
+    assert "Invalid messages array" in display
+    assert "expected role 'assistant'" in display
+    # The error must NOT be swallowed into the streamed choice content
+    assert choice.contents == []

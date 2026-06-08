@@ -4,7 +4,7 @@ import warnings
 
 from aidial_sdk.chat_completion import Message, Role, ToolCall
 from aidial_sdk.utils.pydantic import ExtraAllowModel
-from injector import inject
+from injector import ProviderOf, inject
 
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common.abstract.base_transformer import MessagesTransformer
@@ -22,15 +22,15 @@ class _MessagesSetup:
 
     def __init__(
         self,
-        transformers: list[MessagesTransformer],
+        transformers_provider: ProviderOf[list[MessagesTransformer]],
     ):
-        self.__transformers = transformers
-        logger.debug(f"Messages transformers: {transformers}")
+        self.__transformers_provider = transformers_provider
 
-    def setup(self, messages: list[Message]) -> list[Message]:
-        messages = self.extract_tool_calls(messages)
-        for transformer in self.__transformers:
-            messages = transformer.transform(messages)
+    async def run_transformers(self, messages: list[Message]) -> list[Message]:
+        transformers = self.__transformers_provider.get()
+        logger.debug(f"Messages transformers: {transformers}")
+        for transformer in transformers:
+            messages = await transformer.transform(messages)
         return messages
 
     @staticmethod
@@ -81,8 +81,9 @@ class _MessagesSetup:
     def extract_tool_calls(self, messages: list[Message]) -> list[Message]:
         """Unpack tool execution history from state into message sequence.
 
-        Expands ASSISTANT messages with tool_execution_history state into
-        the full sequence of ASSISTANT and TOOL messages.
+        Restores from state.tool_execution_history: expands ASSISTANT messages
+        that have custom_content.state[TOOL_EXECUTION_HISTORY] into the full
+        sequence of ASSISTANT and TOOL messages.
         """
         updated_messages: list[Message] = []
 

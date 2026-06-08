@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make format:*)",
+      "Bash(make lint:*)",
+      "Bash(make mypy:*)",
+      "Bash(make test_unit:*)",
+      "Bash(make test:*)",
+      "Bash(make dump_app_schema:*)"
+    ],
+    "deny": [
+      "Read(**/*.env)"
+    ],
+    "ask": []
+  },
+  "enabledPlugins": {
+    "pyright-lsp@claude-plugins-official": true,
+    "claude-md-management@claude-plugins-official": true
+  }
+}

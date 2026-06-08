@@ -1,9 +1,7 @@
-import json
 from enum import Enum
-from hashlib import sha256
 from typing import Annotated, Any, Generic, Literal, TypeVar, Union
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.tools.display.paramenter import ParameterDisplayConfig
@@ -140,26 +138,6 @@ class OpenAiToolFunction(
     description: str
     name: str
 
-    # ToDo: move to before sending to LLM, and only if collision detected
-    # Preventing name collisions for tools with same name but different parameters
-    @model_validator(mode='after')
-    def set_name(self):
-        base = self.name.strip()
-        # compute stable hash of the model excluding the name field
-        payload = self.model_dump(exclude={'name'})
-        json_str = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
-        h = sha256(json_str.encode('utf-8')).hexdigest()[:4]
-        suffix = f"_{h}"
-
-        if base.endswith(suffix):
-            # Already hashed — idempotent
-            self.name = base
-        else:
-            # Truncate base if needed to ensure total length ≤ 64
-            max_base_len = 64 - len(suffix)
-            self.name = f"{base[:max_base_len]}{suffix}"
-        return self
-
 
 DEFAULT_PROPAGATE_TO_CHOICE = ["image/*", "application/vnd.plotly.v1+json"]
 
@@ -172,6 +150,10 @@ class AttachmentConfig(BaseModel):
     propagate_types_to_choice: list[str] = Field(
         default_factory=lambda: DEFAULT_PROPAGATE_TO_CHOICE,
         description="List of attachment types to propagate from stage to choice.",
+    )
+    media_type_substitution: dict[str, str] = Field(
+        default_factory=dict,
+        description="Maps original attachment types to substitution types for custom visualizers.",
     )
 
     @field_validator("supported_types", mode="before")
@@ -186,6 +168,13 @@ class AttachmentConfig(BaseModel):
     def coerce_none_propagate_types(cls, v: list[str] | None) -> list[str]:
         if v is None:
             return DEFAULT_PROPAGATE_TO_CHOICE
+        return v
+
+    @field_validator("media_type_substitution", mode="before")
+    @classmethod
+    def coerce_none_type_substitution(cls, v: dict[str, str] | None) -> dict[str, str]:
+        if v is None:
+            return {}
         return v
 
 

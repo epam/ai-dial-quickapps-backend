@@ -125,3 +125,16 @@ Before executing the tool call, perform this check:
 *   ❌ Ignoring the tool description and defaulting to `url` for local files.
 *   ❌ Passing `file:base64::...` to a tool that only asks for a URL string (parameter name `url`).
 *   ❌ Passing raw paths (`files/doc.pdf`) without the `file:...` schema.
+
+## External URL Fallback
+
+External `https://` URLs are valid file references — `attachment_urls` accepts them, and `file:base64::https://...`
+/ `file:text::https://...` will inline external content. They may fail with a clear error when the operator has
+disabled external egress (`EXTERNAL_URL_FETCH_ENABLED=false`) or the per-app config has opted out
+(`features.external_url_fetch.enabled: false`). When that happens:
+
+*   For `file:base64::https://...` and `file:text::https://...`, retry by asking the user to upload the file to DIAL
+    and re-issue the call with `files/...` instead.
+*   For deployment-tool `attachment_urls`, the same call may still succeed against a deployment that supports
+    `features.url_attachments` (the URL is forwarded as a `reference_url` and the deployment fetches the bytes
+    itself, never via QuickApps).

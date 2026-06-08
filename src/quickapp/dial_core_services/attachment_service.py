@@ -1,13 +1,11 @@
 import base64
 import logging
-from io import BytesIO
 
+from aidial_client import AsyncDial
+from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common import DIAL_API_KEY
-from quickapp.common.dial_core_client import DialCoreClient
-from quickapp.common.dial_settings import DialSettings
 from quickapp.common.utils import generate_attachment_filename
 
 logger = logging.getLogger(__name__)
@@ -25,9 +23,8 @@ def _get_bytes(data: str) -> bytes:
 @inject
 class AttachmentService:
 
-    def __init__(self, dial_settings: DialSettings, api_key: DIAL_API_KEY):
-        self.__dial_settings: DialSettings = dial_settings
-        self.__api_key: DIAL_API_KEY = api_key
+    def __init__(self, dial_client: AsyncDial):
+        self.__dial_client: AsyncDial = dial_client
 
     async def upload_attachment_to_core(self, attachment: Attachment) -> Attachment:
         logger.debug(
@@ -35,23 +32,31 @@ class AttachmentService:
         )
         if attachment.url is None and attachment.data:
             try:
-                async with DialCoreClient(
-                    base_url=self.__dial_settings.url, api_key=self.__api_key
-                ) as dial_core:
-                    attachment_name = attachment.title or generate_attachment_filename(
-                        attachment.type
-                    )
-                    metadata = await dial_core.put_file(
-                        name=attachment_name,
-                        mime_type=attachment.type,
-                        content=BytesIO(_get_bytes(attachment.data)),
-                    )
-                    # Use URL instead of data for uploaded attachment.
-                    attachment.data = None
-                    attachment.url = metadata.get("url")
-                    logger.debug(f"Uploaded attachment {attachment_name} to {attachment.url}")
+                attachment_name = attachment.title or generate_attachment_filename(attachment.type)
+                metadata = await self.upload_bytes(
+                    data=_get_bytes(attachment.data),
+                    content_type=attachment.type,
+                    filename=attachment_name,
+                )
+                # Use URL instead of data for uploaded attachment.
+                attachment.data = None
+                attachment.url = metadata.url
+                logger.debug(f"Uploaded attachment {attachment_name} to {attachment.url}")
             except Exception:
                 logger.exception(
                     "Exception during uploading attachment to DIAL. Original attachment left in place."
                 )
         return attachment
+
+    async def upload_bytes(
+        self,
+        data: bytes,
+        content_type: str | None,
+        filename: str,
+    ) -> FileMetadata:
+        bucket_resp = await self.__dial_client.bucket.get_raw()
+        bucket = bucket_resp.appdata or bucket_resp.bucket
+        return await self.__dial_client.files.upload(
+            url=f"files/{bucket}/{filename}",
+            file=(filename, data, content_type),
+        )

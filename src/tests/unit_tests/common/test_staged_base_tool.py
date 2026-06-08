@@ -3,13 +3,15 @@ from unittest.mock import Mock
 
 import pytest
 from aidial_sdk.chat_completion import Attachment
-
 from injector import AssistedBuilder
 
-from quickapp.common import StagedBaseTool, CompletionResult
+from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
+from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.tool import AnyTool
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 
@@ -21,7 +23,9 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
         tool_config: AnyTool,
         perf_timer: PerformanceTimer,
-        result_to_return: CompletionResult | None = None,
+        deferred_stage_close_registry: DeferredStageCloseRegistry | None = None,
+        result_to_return: ToolCallResult | None = None,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
     ):
         super().__init__(
             stage_wrapper_builder=stage_wrapper_builder,
@@ -29,15 +33,34 @@ class CustomTestStagedBaseTool(StagedBaseTool):
             name="Test Tool",
             description="A test tool",
             perf_timer=perf_timer,
+            deferred_stage_close_registry=(
+                deferred_stage_close_registry or DeferredStageCloseRegistry()
+            ),
+            stage_display_level=stage_display_level,
         )
         self._result_to_return = result_to_return
 
     async def _run_in_stage_async(
-        self, stage_wrapper, *args: Any, **kwargs: Any
-    ) -> CompletionResult:
+        self, stage_wrapper, tool_call_id: str | None, *args: Any, **kwargs: Any
+    ) -> ToolCallResult:
         if self._result_to_return is not None:
             return self._result_to_return
-        return CompletionResult(content="response content", content_type="application/json")
+        return ToolCallResult(content="response content", content_type="application/json")
+
+
+def _make_tool_config(show: bool | None = None) -> Mock:
+    """Create a tool config mock. show=None means display=None (unset)."""
+    mock_config = Mock(spec=AnyTool)
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    if show is None:
+        mock_config.display = None
+    else:
+        mock_stage = Mock()
+        mock_stage.show = show
+        mock_display = Mock()
+        mock_display.stage = mock_stage
+        mock_config.display = mock_display
+    return mock_config
 
 
 @pytest.fixture
@@ -53,6 +76,7 @@ def mock_stage_wrapper_factory():
     factory = Mock()
     factory.build = Mock(return_value=mock_stage_wrapper)
     return factory
+
 
 @pytest.fixture
 def mock_tool_config():
@@ -103,7 +127,7 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     image_attachment = Attachment(type="image/png", title="image.png", data="img_data")
     text_attachment = Attachment(type="text/plain", title="readme.txt", data="text_data")
 
-    result_to_return = CompletionResult(
+    result_to_return = ToolCallResult(
         content="result",
         content_type="text/plain",
         attachments=[image_attachment, text_attachment],
@@ -126,3 +150,165 @@ async def test_propagation_only_for_surviving_attachments(mock_stage_wrapper_fac
     # so it should NOT appear in propagate_to_choice
     assert len(result.propagate_to_choice) == 1
     assert result.propagate_to_choice[0].type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_applied(mock_stage_wrapper_factory):
+    """Attachments that pass supported_types should have their type substituted
+    according to media_type_substitution mapping."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/png", title="photo.png", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/webp"
+
+
+@pytest.mark.asyncio
+async def test_media_type_substitution_not_applied_when_no_match(mock_stage_wrapper_factory):
+    """Attachments whose type is not in the substitution mapping keep their original type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["image/*"],
+        media_type_substitution={"image/png": "image/webp"},
+    )
+
+    attachment = Attachment(type="image/jpeg", title="photo.jpg", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    assert len(result.attachments) == 1
+    assert result.attachments[0].type == "image/jpeg"
+
+
+@pytest.mark.asyncio
+async def test_propagation_uses_substituted_type(mock_stage_wrapper_factory):
+    """After substitution, propagate_types_to_choice should match against the NEW type."""
+    mock_config = Mock()
+    mock_config.display = None
+    mock_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+    mock_config.attachment = AttachmentConfig(
+        supported_types=["image/*"],
+        propagate_types_to_choice=["application/custom"],
+        media_type_substitution={"image/png": "application/custom"},
+    )
+
+    attachment = Attachment(type="image/png", title="chart.png", data="img_data")
+
+    result_to_return = ToolCallResult(
+        content="result",
+        content_type="text/plain",
+        attachments=[attachment],
+    )
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_config,
+        perf_timer=Mock(),
+        result_to_return=result_to_return,
+    )
+
+    result = await tool.arun("call-1")
+
+    # The attachment survives (image/png passes supported_types=["image/*"])
+    assert len(result.attachments) == 1
+    # Its type was substituted
+    assert result.attachments[0].type == "application/custom"
+    # Propagation check uses the substituted type, which matches propagate_types_to_choice
+    assert len(result.propagate_to_choice) == 1
+    assert result.propagate_to_choice[0].type == "application/custom"
+
+
+@pytest.mark.asyncio
+async def test_defer_stage_close_defers_exit_until_registry_flush(mock_stage_wrapper_factory):
+    mock_stage_wrapper = mock_stage_wrapper_factory.build()
+    registry = DeferredStageCloseRegistry()
+
+    deferred_config = Mock(spec=AnyTool)
+    deferred_config.display = ToolDisplayConfig(stage=ToolStageConfig(defer_close=True))
+    deferred_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=True)
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=deferred_config,
+        perf_timer=Mock(),
+        deferred_stage_close_registry=registry,
+    )
+
+    await tool.arun("call-1")
+
+    mock_stage_wrapper.__exit__.assert_not_called()
+    registry.flush()
+    mock_stage_wrapper.__exit__.assert_called_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "display_level,call_level,show,expect_suppressed",
+    [
+        (StageDisplayLevel.ERROR, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.ERROR, StageDisplayLevel.INFO, None, True),
+        (StageDisplayLevel.ERROR, StageDisplayLevel.DEBUG, None, True),
+        (StageDisplayLevel.INFO, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.INFO, StageDisplayLevel.INFO, None, False),
+        (StageDisplayLevel.INFO, StageDisplayLevel.INFO, False, True),
+        (StageDisplayLevel.INFO, StageDisplayLevel.DEBUG, None, True),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.INFO, False, False),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.ERROR, None, False),
+        (StageDisplayLevel.DEBUG, StageDisplayLevel.DEBUG, None, False),
+    ],
+)
+async def test_suppression_truth_table(
+    display_level, call_level, show, expect_suppressed, mock_stage_wrapper_factory
+):
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(show),
+        perf_timer=Mock(),
+        stage_display_level=display_level,
+    )
+
+    await tool.arun("call-id", stage_level=call_level)
+
+    if expect_suppressed:
+        mock_stage_wrapper_factory.build.assert_not_called()
+    else:
+        mock_stage_wrapper_factory.build.assert_called_once()

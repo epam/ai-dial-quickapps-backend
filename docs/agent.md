@@ -42,7 +42,17 @@ When a chat completion request arrives, it flows through several stages before t
 
 The chat completion endpoint receives the incoming request with messages, configuration, and authentication credentials.
 
-### 2. Context Setup
+### 2. Messages Shape Validation
+
+The raw `messages` array is validated against the QuickApps contract `(System)? (User Assistant)* User`
+before any other request processing. The check runs outside the `create_single_choice` block so an
+`InvalidRequestError` (raised from `validate_messages_shape` in `_messages_validator.py`) propagates to
+the aidial_sdk exception handler and produces an HTTP 400 response. All rule violations are collected in
+a single pass and returned together in `display_message`, so clients see every problem at once rather
+than one at a time. Tool messages and misplaced system messages are rejected here because they are
+orchestrator-internal and must never arrive from the client.
+
+### 3. Context Setup
 
 A request-scoped context is created to hold:
 
@@ -51,27 +61,51 @@ A request-scoped context is created to hold:
 - Conversation messages
 - Response choice object for streaming output
 
-### 3. Configuration Resolution
+### 4. Configuration Resolution
 
 If the request uses predefined templates (for system prompts, tools, or toolsets), these are resolved to their actual
-definitions from the predefined configuration files.
+definitions from the predefined configuration files. Predefined references with an `override` field have the
+operator-supplied JSON Merge Patch (RFC 7396) applied to the loaded template body before pydantic validation; merge
+or validation failures surface as `ConfigResolutionException` and render in the *Initialization issues* stage.
 
-### 4. Completion Initialization
+`orchestrator.deployment` is required by default, but operators can set `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID` to make
+that field optional: manifests omitting it fall back to the env value, and the configuration-support schema endpoint
+advertises the env value as the JSON-schema `default` so DIAL Core can pre-fill new manifests.
 
-Completion initializers are invoked to prepare the request for orchestration. This includes:
+### 5. Completion Initialization
 
-- **Message preprocessing**: `_MessagesSetup` (called from `_RequestContextSetup.setup()`) expands packed tool call
-  state and runs all `MessagesTransformer` instances (adding system prompts, injecting context notifications).
-  After this step, messages are fully expanded and ready for the orchestrator.
-- **Tool construction**: Each tool module's initializer constructs tool instances based on the application
-  configuration. Each tool type (REST API, DIAL deployment, MCP, internal) has its own initializer.
+Completion initializers are invoked to prepare the request for orchestration. Initializers run
+*before* message preprocessing so that feature contexts they populate (e.g. resolved DIAL-prompt
+skills) are visible to transformers:
 
-### 5. Error Handling
+- **Tool and skill construction**: Each tool module's initializer constructs tool instances based
+  on the application configuration (REST API, DIAL deployment, MCP, internal). The
+  `_DialPromptSkillInitializer` eagerly fetches DIAL-prompt skills so the merged skill set is
+  available to the system-prompt transformer.
+- **Message preprocessing**: after initializers, `_RequestContextSetup.setup_messages()` calls
+  `_MessagesSetup.extract_tool_calls()` to expand packed tool-call state, then runs all
+  `MessagesTransformer` instances (adding system prompts, injecting context notifications). After
+  this step, messages are fully expanded and ready for the orchestrator.
+- **Interactive login (MCP)**: When a `DialMCPToolSet` returns HTTP 401 during initialization,
+  `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
+  to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
+  as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
+  401 from `_MCPConnectionManager`, requests sign-in, and retries the call once. The
+  `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
+  the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
-Any tool initialization errors are collected and displayed to the user via a dedicated error stage, allowing partial
-functionality even when some tools fail to initialize.
+### 6. Error Handling
 
-### 6. Orchestrator Invocation
+Tool-initialization failures and skill-loading failures (invalid DIAL prompt frontmatter, fetch errors,
+duplicate names, predefined-vs-external name collisions, or a whole-subsystem resolver failure) share a
+common `InitializationException` hierarchy and flow through a single `list[InitializationException]`
+multiprovider. `_InitializationErrorHandler` renders one `"Initialization issues"` stage with per-feature
+sections (`#### Tool initialization`, `#### Skill loading`) and closes it `FAILED` if any exception marks
+itself hard (`is_hard=True`) — otherwise `COMPLETED`. Tool-init failures and whole-subsystem skill
+failures are hard; per-URL skill failures are soft. The request always proceeds; the close status is a
+UI cue.
+
+### 7. Orchestrator Invocation
 
 The orchestrator is retrieved from the DI container and its invoke method is called, starting the agent loop.
 
@@ -121,6 +155,27 @@ calls or the maximum iteration limit is reached.
 
 ---
 
+## Orchestrator Static Tools
+
+Some orchestrator deployments ship **model-owned default tools** in DIAL Core metadata (`defaults.tools` on the deployment or application). Examples include grounding helpers exposed as `static_function` entries (e.g. Google Search on Gemini deployments). QuickApps does not configure or execute these tools; the orchestrator model consumes them directly.
+
+### Loading
+
+During **completion initialization**, `_OrchestratorDeploymentInitializer` fetches orchestrator deployment metadata (via `OrchestratorDeploymentCacheService` and `ToolConfigCoreService.get_deployment_metadata`). `ToolConfigCoreService.parse_static_tools_from_info` reads `defaults.tools`, keeps entries with `type == "static_function"`, validates them as `aidial_sdk.chat_completion.request.StaticTool`, and appends them to the request-scoped `_OrchestratorStaticToolsContext`. Invalid or unsupported entries are skipped (debug log only). The same metadata fetch also builds `OrchestratorCapabilities` (e.g. accepted attachment MIME types).
+
+This runs in the completion-initializer phase **before** message preprocessing and orchestrator invocation (see [Request Lifecycle](#5-completion-initialization)).
+
+### Passing to the LLM
+
+`AgentModule.provide_openai_tools` builds the chat completion `tools` list in two passes:
+
+1. **App-configured tools** — OpenAI-function schemas from resolved `StagedBaseTool` instances (REST, deployment, MCP, internal).
+2. **Static tools** — serialized `StaticTool` dicts from `provide_static_tools`, which reads `_OrchestratorStaticToolsContext.static_tools`.
+
+`AssistantInvoker` receives this merged list via DI and sends it unchanged on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
+
+---
+
 ## Tool System
 
 The tool system provides a unified abstraction for executing different types of tools while maintaining consistent
@@ -146,8 +201,9 @@ Quick Apps supports several tool types:
   response body is wrapped as a file attachment. Defaults to disabled — responses are returned as text only.
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
-- **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
-  registered conditionally (see [Attachment Notification](#attachment-notification))
+- **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
+  tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
+  conditionally (see [Attachment Notification](#attachment-notification)).
 
 ### Parallel Execution
 
@@ -157,7 +213,9 @@ When the LLM requests multiple tools, the Tool Executor runs them concurrently u
 2. Invoked with parsed arguments
 3. Timed for performance tracking
 
-Results are collected and returned in order matching the original tool calls.
+Results are collected and returned in order matching the original tool calls. After execution,
+`ToolCallResultEnricher` instances are applied to each result (e.g. the timestamp metadata enricher stamps every
+result with its production time).
 
 ### Stage Wrapper Pattern
 
@@ -190,7 +248,15 @@ Tools support configurable fallback strategies for error handling:
 
 Errors can optionally be displayed in the stage for debugging purposes.
 
-<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning CompletionResults -->
+### Timeouts
+
+Tool-call timeouts are unified via `ToolTimeoutResolver` (request-scoped). Resolution order: `ApplicationConfig.tool_defaults.timeout_seconds` → `DEFAULT_TOOL_TIMEOUT_SECONDS` env var → each client's library default. A `None` result means "do not override" — every client keeps its historical behaviour.
+
+When a tool call exceeds the resolved budget, `translate_timeout` (async context manager in `common/tool_timeout_utils.py`) converts the library exception (`httpx.TimeoutException`, `asyncio.TimeoutError`, `openai.APITimeoutError`, or a timeout-coded `mcp.McpError`) into a typed `ToolTimeoutError`. `BaseExceptionGroup`s from anyio task groups are split; any timeout leaf classifies the whole group as a timeout.
+
+`FallbackProcessor` has a dedicated branch for `ToolTimeoutError`: user strategies with an explicit `trigger_on` can pre-empt, otherwise a built-in template message naming the tool and timeout is returned. **Implicit catch-all strategies (`trigger_on=None`) are skipped for timeouts** — this is the key semantic shift versus prior behaviour. `_request_context_setup` logs an INFO line per customised catch-all so operators can spot impacted toolsets at a glance.
+
+<!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
 ---
@@ -201,12 +267,18 @@ Messages undergo processing both before being sent to the LLM and when receiving
 
 ### Pre-Transformer Pipeline
 
-All message transformers extend the typed `MessagesTransformer` base class and are registered via the `AgentModule`
-and `AttachmentProcessingModule` DI providers. They run once at request setup via `_MessagesSetup`, called from
-`_RequestContextSetup.setup()`. `_MessagesSetup` returns a new transformed list of messages. The `AssistantInvoker`
-then uses the transformed messages directly without any copying or additional preprocessing.
+Message transformers are organized into two tiers:
 
-The pipeline runs the following steps in order:
+| Tier                       | When it runs                           | Mutation safety                                     |
+|----------------------------|----------------------------------------|-----------------------------------------------------|
+| `MessagesTransformer`      | Once, in `_MessagesSetup.setup()`      | Mutates the canonical message list                  |
+| `PreInvocationTransformer` | Every iteration, in `AssistantInvoker` | Each transformer selectively copies what it mutates |
+
+`MessagesTransformer` implementations run once at request setup via `_MessagesSetup`, called from
+`_RequestContextSetup.setup()`. `PreInvocationTransformer` implementations run before every LLM call in
+`AssistantInvoker.__prepare_messages()` — their changes are transient and never persisted to history.
+
+The setup pipeline runs the following steps in order:
 
 1. **Tool Call Extraction**: Not a transformer — runs first in `_MessagesSetup.setup()`. Expands prior-turn tool calls
    packed in `custom_content.state[TOOL_EXECUTION_HISTORY]` into proper ASSISTANT + TOOL message pairs. This must run
@@ -219,7 +291,22 @@ The pipeline runs the following steps in order:
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
-   using the `available_context` tool. Returns messages unchanged when inactive.
+   using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
+
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
+   `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
+   interaction is happening. Historical timestamps are restored from state with their original times.
+
+### Pre-Invocation Transformers
+
+Before each LLM call, `AssistantInvoker` runs all `PreInvocationTransformer` instances. Current implementations:
+
+1. **Attachment Filter** (`_AttachmentFilter`): Injects attachment XML metadata and decides which
+   attachments remain inline in `custom_content` via pluggable **`AttachmentKeepPolicy`** implementations
+   (merged from all DI modules). An attachment is kept if any policy votes to keep it; the default
+   `_LegacyUserImageKeepPolicy` retains USER `image/*` for vision models.
+2. **Timestamp Annotation Transformer** (`_TimestampAnnotationTransformer`): Appends human-readable
+   `[Timestamp: ...]` annotations to tool messages that carry timestamp metadata.
 
 ### Streaming Response Processing
 
@@ -242,10 +329,14 @@ The processor builds an aggregated result containing all accumulated data for th
 The system uses two separate mechanisms to inform the agent about available files:
 
 - **Attachments**: The `_AttachmentFilter` (used in `AssistantInvoker`) appends structured XML metadata
-  (`<attachments>`) to message content. Each attachment is represented as an `<attachment>` element with
-  `<title>`, `<type>`, `<url>`, and optionally `<reference_url>` sub-elements.
+  (`<attachments>`) to USER and TOOL message content for every attachment on the message, while only
+  attachments approved by an `AttachmentKeepPolicy` stay in `custom_content`. Each attachment is
+  represented as an `<attachment>` element with `<title>`, `<type>`, `<url>`, and optionally
+  `<reference_url>` sub-elements. ASSISTANT messages are exempt from XML injection: those attachments
+  originated from the model's own prior output, and re-presenting them as XML conditions the model to
+  mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
-  `available_context` internal tool. This provides structured metadata without modifying user messages.
+  `internal_attachments_available_context` internal tool. This provides structured metadata without modifying user messages.
 
 ### Activation Conditions
 
@@ -265,7 +356,7 @@ both the tool provider and the injector see fully expanded messages and are alwa
 
 ### Context Notification Tool
 
-The **`available_context`** internal tool returns metadata about admin-configured context files attached to the
+The **`internal_attachments_available_context`** internal tool returns metadata about admin-configured context files attached to the
 application. Each entry contains:
 
 - **Title**: File name
@@ -275,8 +366,11 @@ application. Each entry contains:
 - **Change Status**: Whether the file is `new` (added), `updated` (metadata changed), or `removed` since the last
   notification
 
-Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
-file contents when needed.
+Only metadata is returned — actual file content is not included. When the orchestrator deployment accepts the file MIME
+(per DialCore `input_attachment_types`) and the lazy materialization gate passes, the **`internal_attachments_get_content`** tool
+may appear in the tool list; the model passes the exact `url` from the list response to retrieve **one** configured file
+as a tool-result attachment. Otherwise the orchestrator must rely on other configured tools (for example RAG) or answer
+without that native attachment path.
 
 ### Algorithmic Injection
 
@@ -285,7 +379,7 @@ have changed since the last notification was injected.
 
 If changes are detected, synthetic message pairs are appended to the message history:
 
-1. An **assistant message** containing a tool call to `available_context`
+1. An **assistant message** containing a tool call to `internal_attachments_available_context`
 2. A **tool result message** with the current metadata and change indicators
 
 These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
@@ -300,11 +394,42 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ### Interaction with Existing Components
 
-- **Attachment Filter**: Appends text metadata to user messages for all attachments and keeps only supported types
-  inline in `custom_content` for vision model support. Used in `AssistantInvoker`, not a pre-transformer.
+- **Attachment Filter**: Appends XML metadata to USER and TOOL messages for all attachments; inline bytes
+  in `custom_content` are governed by `AttachmentKeepPolicy` plugins (default: USER `image/*` only).
+  ASSISTANT messages skip XML injection to avoid conditioning the model to emit the metadata format.
+  Runs inside `AssistantInvoker` as a `PreInvocationTransformer`, not as a message-history pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
-- **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
+- **Admin context content (`internal_attachments_get_content`)**: Registered only when the
+  [lazy-on-demand attachment strategy](#orchestrator-attachment-strategies) is active. Supplies a single
+  admin-configured (or user-uploaded) file as a tool attachment after list-then-get-content; see
+  `docs/designs/pass_attachments_to_orchestrator.md`.
+
+---
+
+## Orchestrator attachment strategies
+
+`OrchestratorConfig.attachment_strategy` (preview field, gated by `ENABLE_PREVIEW_FEATURES`) selects how
+the orchestrator receives request-scoped attachments. The field is **opt-in per app**: when unset, the
+orchestrator gets no admin/user attachments on the native path — USER `image/*` passes through (legacy
+behaviour preserved by `_LegacyUserImageKeepPolicy`), other MIMEs are surfaced as XML metadata only.
+
+### `lazy_on_demand` strategy
+
+Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_strategies/lazy_on_demand/`).
+The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
+no-op unless both gates pass. When active it contributes:
+
+- `_GetContentTool` (`internal_attachments_get_content`) — registered when at least one admin context or
+  user attachment passes the orchestrator's `input_attachment_types` MIME gate.
+- `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
+  pairs for attachments on the last USER message.
+- `_GetContentKeepPolicy`, `_GetContentHistoryPolicy`, `_GetContentRecoveryPolicy` — keep, persist, and
+  recover get-content tool messages and their attachments.
+
+The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
+`OrchestratorDeploymentCacheService`) lives in `src/quickapp/agent/` as a shared facility for any future
+module that needs DialCore deployment metadata, not only this strategy.
 
 ---
 
@@ -314,20 +439,44 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 
 ### Module Architecture
 
-The application is composed of 12 specialized DI modules:
+The application is composed of 15 specialized DI modules. Rather than registering each module
+individually, `app_factory` splices in two package-level arrays:
+
+- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`).
+  (Physically relocating the `agent/` and `application/` source into `core/` is a follow-up; for now the
+  array aggregates them from their current packages.)
+- `quickapp.shared` exposes `shared_module` — cross-cutting utility modules. Today it holds a single
+  entry, `ExternalFetchModule` (the external-URL fetch egress envelope, see module 11), and is the seam
+  future utility modules join by appending.
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
 3. **REST API Tooling Module**: REST API tool construction
 4. **DIAL Deployment Tooling Module**: Deployment tool construction
-5. **MCP Tooling Module**: MCP server tool construction
-6. **Internal Tool Module**: Python interpreter, content downloader
-7. **Starters Module**: UI starter button configuration
-8. **Configuration Support API Module**: Configuration validation endpoints
-9. **DIAL Core Services Module**: DIAL Core integration
-10. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction injection
-11. **Attachment Processing Module**: Context notification tool, attachment change detection injector
-12. **Skills Module**: Skill reader tool, agent skills provider
+5. **DIAL App Tooling Module**: Routing resolver for `DialAppToolSet` entries. Fetches deployment metadata once
+   per request, inspects `features.mcp`, and hands either a fully-formed `MCPToolSet` (URL
+   `/v1/toolset/{deployment_id}/mcp` — current DIAL Core path, slated to move to
+   `/v1/deployments/{deployment_id}/mcp`) or a customised `DialDeploymentTool` to the MCP / Deployment
+   initializers for execution.
+6. **MCP Tooling Module**: MCP server tool construction
+7. **Internal Tool Module**: Python interpreter and other built-in tools configured per application
+8. **Starters Module**: UI starter button configuration
+9. **Configuration Support API Module**: Configuration validation endpoints
+10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
+    `DialDownloader` for DIAL file bytes, `DialFilePromoter` for "URL → durable DIAL file" — DIAL metadata fetch for
+    DIAL URLs, and bytes-then-upload via `AttachmentService` for external URLs).
+11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction
+    injection. Owns `FileLoaderService` (scheme-aware bytes loader). The external-fetch security envelope —
+    `ExternalUrlFetcher`, `ExternalFetchSettings`, `ExternalUrlFetchPolicyResolver` — lives in
+    `shared/external_fetch/` and is bound by `ExternalFetchModule` (registered via the `shared_module` array) so
+    feature modules outside `file_transfer/` can consume it without an upward import. External egress is gated by
+    a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app `features.external_url_fetch.enabled`
+    (builder), composed by `ExternalUrlFetchPolicyResolver`.
+12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
+  (when gated), attachment change detection injector
+13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher
+14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
+15. **DIAL Prompt Skills Module**: Resolver for DIAL-prompt-sourced skills
 
 ### Scoping
 
@@ -368,6 +517,8 @@ The root configuration contains:
 - **Deployment**: Which LLM model/deployment to use, with optional parameters
 - **System Prompt**: Predefined or custom instructions for the agent
 - **Max Iterations**: Limit on agent loop iterations to prevent runaway execution
+- **Attachment Strategy** (preview): How the orchestrator receives request-scoped
+  attachments. See [Orchestrator attachment strategies](#orchestrator-attachment-strategies).
 
 ### Tool Sets
 
@@ -389,7 +540,9 @@ Tools are organized into toolsets that share common configuration:
 - Tools are loaded from JSON definitions
 - Toolsets are loaded and their tools recursively resolved
 
-`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading.
+`AgentSkillsProvider` also delegates to `PredefinedContentProvider` for skill file reading. At request time,
+`SkillsRegistry` merges predefined skills with any DIAL-prompt-sourced skills configured in the `skills` field
+(see [Skills documentation](skills.md#dial-prompt-skills) for details).
 
 This enables reusable configuration building blocks that can be shared across applications, with layered override support for customization.
 
@@ -406,4 +559,5 @@ For implementation details, refer to:
 | Request handling      | `src/quickapp/application/`           |
 | Configuration schemas | `src/quickapp/config/`                |
 | Attachment processing | `src/quickapp/attachment_processing/` |
+| Attachment strategies | `src/quickapp/orchestrator_attachment_strategies/` |
 | Tool implementations  | `src/quickapp/*_tooling/`             |

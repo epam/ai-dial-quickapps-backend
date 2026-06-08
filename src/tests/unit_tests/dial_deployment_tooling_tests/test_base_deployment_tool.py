@@ -4,15 +4,32 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_sdk.chat_completion import Message, Role
-from aidial_sdk.chat_completion.request import (
-    Attachment as SdkAttachment,
-    CustomContent,
-    FunctionCall,
-    ToolCall,
-)
+from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
+from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
+from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.config.application import StageDisplayLevel
+from quickapp.config.dial_deployment import (
+    CustomFieldsConfig,
+    DialDeploymentConfig,
+    DialDeploymentParameters,
+)
+from quickapp.config.tools.base import (
+    ConfigurableSchemaSimpleType,
+    JsonTypeEnum,
+    OpenAiToolConfig,
+    OpenAiToolFunction,
+    OpenAiToolFunctionParameters,
+)
+from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
+
+
+def _make_messages_mixin(messages: list[Message]) -> MessagesMixin:
+    mixin = MessagesMixin()
+    mixin.messages = messages
+    return mixin
 
 
 def _make_tool_call(
@@ -55,10 +72,13 @@ def _make_tool_result(
 def _build_tool(
     messages: list[Message],
     dial_completion_service: Any = None,
+    attachment_resolver: Any = None,
 ) -> BaseDeploymentTool:
     """Build a BaseDeploymentTool with minimal mocks for testing _extract_tool_history."""
     if dial_completion_service is None:
         dial_completion_service = MagicMock()
+    if attachment_resolver is None:
+        attachment_resolver = MagicMock()
     tool_config = MagicMock()
     tool_config.display = None
     tool_config.attachment = MagicMock()
@@ -71,9 +91,11 @@ def _build_tool(
         tool_config=tool_config,
         content_propagation=None,
         dial_completion_service=dial_completion_service,
-        messages=messages,
+        attachment_resolver=attachment_resolver,
+        messages_mixin=_make_messages_mixin(messages),
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
     )
 
 
@@ -82,13 +104,17 @@ async def test_extract_single_tool_history():
     """Single tool with two prior interactions extracts correctly."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Help me")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "First question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "First question"),
+            ]
+        ),
         _make_tool_result("tc1", "First answer"),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc2", "my_tool", "Second question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc2", "my_tool", "Second question"),
+            ]
+        ),
         _make_tool_result("tc2", "Second answer"),
     ]
 
@@ -111,10 +137,12 @@ async def test_extract_filters_by_tool_name():
     """Only interactions for the target tool are included; other tools are excluded."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Start")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc_a1", "tool_a", "question for A"),
-            _make_tool_call("tc_b1", "tool_b", "question for B"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc_a1", "tool_a", "question for A"),
+                _make_tool_call("tc_b1", "tool_b", "question for B"),
+            ]
+        ),
         _make_tool_result("tc_a1", "answer from A"),
         _make_tool_result("tc_b1", "answer from B"),
     ]
@@ -132,14 +160,18 @@ async def test_extract_excludes_current_call():
     """Tool call without a TOOL result yet is excluded (current invocation)."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "old question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "old question"),
+            ]
+        ),
         _make_tool_result("tc1", "old answer"),
         # Current call — no TOOL result appended yet
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc2", "my_tool", "current question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc2", "my_tool", "current question"),
+            ]
+        ),
     ]
 
     tool = _build_tool(messages)
@@ -160,9 +192,11 @@ async def test_extract_live_mutations():
 
     # Simulate orchestrator appending messages after list creation
     messages.append(
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc_late", "my_tool", "late question"),
-        ])
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc_late", "my_tool", "late question"),
+            ]
+        )
     )
     messages.append(_make_tool_result("tc_late", "late answer"))
 
@@ -179,9 +213,11 @@ async def test_extract_empty_when_no_matches():
     """No matching tool calls returns empty list."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "other_tool", "question"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "other_tool", "question"),
+            ]
+        ),
         _make_tool_result("tc1", "answer"),
     ]
 
@@ -216,9 +252,11 @@ async def test_extract_preserves_response_attachments():
     )
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "describe image"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "describe image"),
+            ]
+        ),
         _make_tool_result(
             "tc1",
             "It shows a chart",
@@ -249,9 +287,11 @@ async def test_extract_preserves_response_state():
     state_data = {"cursor": 42, "mode": "streaming"}
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call("tc1", "my_tool", "continue"),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "continue"),
+            ]
+        ),
         _make_tool_result(
             "tc1",
             "partial result",
@@ -271,8 +311,8 @@ async def test_extract_preserves_response_state():
 @pytest.mark.asyncio
 async def test_extract_resolves_request_attachments():
     """Tool call args with attachment_urls → UserMessageParam has resolved attachments."""
-    mock_service = MagicMock()
-    mock_service.resolve_attachment_urls = AsyncMock(
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_attachment_urls = AsyncMock(
         return_value=[
             {"type": "application/pdf", "title": "doc.pdf", "url": "files/xyz/doc.pdf"},
         ]
@@ -280,15 +320,17 @@ async def test_extract_resolves_request_attachments():
 
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Hello")),
-        _make_assistant_with_tool_calls([
-            _make_tool_call(
-                "tc1", "my_tool", "summarize this", attachment_urls=["files/xyz/doc.pdf"]
-            ),
-        ]),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call(
+                    "tc1", "my_tool", "summarize this", attachment_urls=["files/xyz/doc.pdf"]
+                ),
+            ]
+        ),
         _make_tool_result("tc1", "Summary of the doc"),
     ]
 
-    tool = _build_tool(messages, dial_completion_service=mock_service)
+    tool = _build_tool(messages, attachment_resolver=mock_resolver)
     history = await tool._extract_tool_history("my_tool")
 
     assert len(history) == 2
@@ -300,4 +342,116 @@ async def test_extract_resolves_request_attachments():
     assert cc["attachments"][0]["type"] == "application/pdf"
     assert cc["attachments"][0]["title"] == "doc.pdf"
 
-    mock_service.resolve_attachment_urls.assert_awaited_once_with(["files/xyz/doc.pdf"])
+    mock_resolver.resolve_attachment_urls.assert_awaited_once()
+    awaited_args, awaited_kwargs = mock_resolver.resolve_attachment_urls.await_args
+    assert awaited_args[0] == ["files/xyz/doc.pdf"]
+    assert "supports_url_attachments" in awaited_kwargs
+
+
+def _make_tool_config(
+    parameters: DialDeploymentParameters | None = None,
+    configuration_param_names: set[str] | None = None,
+) -> DialDeploymentTool:
+    """Build a real DialDeploymentTool for _pre_process_params tests."""
+    deployment = DialDeploymentConfig(
+        deployment_id="test-deployment",
+        parameters=parameters or DialDeploymentParameters(),
+    )
+    if configuration_param_names:
+        deployment._configuration_param_names = configuration_param_names
+    return DialDeploymentTool(
+        deployment=deployment,
+        open_ai_tool=OpenAiToolConfig(
+            function=OpenAiToolFunction(
+                name="test_tool",
+                description="A test tool",
+                parameters=OpenAiToolFunctionParameters(
+                    type=JsonTypeEnum.object,
+                    properties={
+                        "query": ConfigurableSchemaSimpleType(
+                            type=JsonTypeEnum.string, description="The query"
+                        ),
+                    },
+                    required=["query"],
+                ),
+            )
+        ),
+    )
+
+
+def _build_tool_with_config(
+    tool_config: DialDeploymentTool,
+    messages: list[Message] | None = None,
+) -> BaseDeploymentTool:
+    """Build a BaseDeploymentTool with a real tool_config for _pre_process_params tests."""
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=tool_config,
+        content_propagation=None,
+        dial_completion_service=MagicMock(),
+        attachment_resolver=MagicMock(),
+        messages_mixin=_make_messages_mixin(messages or []),
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_wraps_config_params():
+    """Configuration params are wrapped into custom_fields.configuration."""
+    tool_config = _make_tool_config(configuration_param_names={"size", "quality"})
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw a cat", size="1024x1024", quality="high")
+
+    assert result["query"] == "draw a cat"
+    assert result["custom_fields"]["configuration"]["size"] == "1024x1024"
+    assert result["custom_fields"]["configuration"]["quality"] == "high"
+    assert "size" not in {k for k in result if k != "custom_fields"}
+    assert "quality" not in {k for k in result if k != "custom_fields"}
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_merges_defaults_with_llm_config():
+    """LLM config params override defaults; unset defaults are preserved."""
+    params = DialDeploymentParameters(
+        custom_fields=CustomFieldsConfig(configuration={"size": "512x512", "style": "natural"})
+    )
+    tool_config = _make_tool_config(
+        parameters=params, configuration_param_names={"size", "quality"}
+    )
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", size="1024x1024")
+
+    config = result["custom_fields"]["configuration"]
+    assert config["size"] == "1024x1024"  # LLM overrides default
+    assert config["style"] == "natural"  # default preserved
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_no_config_names_stays_flat():
+    """With no configuration_param_names, all kwargs remain flat (backward compat)."""
+    tool_config = _make_tool_config()
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", custom_key="value")
+
+    assert result["query"] == "draw"
+    assert result["custom_key"] == "value"
+    assert "custom_fields" not in result
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_standard_params_stay_flat():
+    """Standard API params like temperature stay flat even when config params exist."""
+    tool_config = _make_tool_config(configuration_param_names={"size"})
+    tool = _build_tool_with_config(tool_config)
+
+    result = await tool._pre_process_params(query="draw", size="1024x1024", temperature=0.7)
+
+    assert result["temperature"] == 0.7
+    assert "temperature" not in result.get("custom_fields", {}).get("configuration", {})
+    assert result["custom_fields"]["configuration"]["size"] == "1024x1024"

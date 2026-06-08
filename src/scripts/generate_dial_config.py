@@ -102,6 +102,7 @@ class DIALModel(DIALDeploymentBase):
     limits: DIALLimits | None = Field(None, description="The model limits")
     features: DIALModelFeatures = Field(description="The model features")
     pricing: DIALModelPricing | None = Field(None, description="The model pricing")
+    defaults: dict[str, Any] | None = Field(None, description="The model defaults")
 
 
 class DIALApplication(DIALDeploymentBase):
@@ -164,6 +165,7 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
             exclude_none=True, exclude_defaults=True, by_alias=True
         )
         for field in [
+            "defaults",
             "displayName",
             "displayVersion",
             "description",

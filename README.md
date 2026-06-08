@@ -39,7 +39,8 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
-- [Agent Skills](docs/skills.md) `[Preview]` - How to create and manage reusable agent skills
+- [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
+- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -56,6 +57,40 @@ file:
 
 - [Configuration](./CONFIGURATION.md) — full configuration reference and examples.
 
+### Hooks `[Preview]`
+
+Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code. Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
+
+Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app manifest:
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "memory_server",
+      "tool_name": "get_memories",
+      "arguments": { "user_id": "123" },
+      "frequency": "always"
+    }
+  ]
+}
+```
+
+Key fields:
+
+| Field | Description |
+|---|---|
+| `kind` | Hook type. Only `"tool_call"` is supported today. |
+| `event` | Orchestrator seam. Only `"on_request_start"` is wired today. |
+| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools. |
+| `tool_name` | Tool name within the toolset, or the exact function name when `toolset_name` is omitted. |
+| `arguments` | Arguments forwarded to the tool call. |
+| `frequency` | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
+
+See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
+
 ### Forwarding headers
 
 Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound
@@ -69,6 +104,26 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
+### Stage display level
+
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
+
+| Value | Behavior |
+|---|---|
+| `error` | Show stages only for failed tool calls |
+| `info` | Show stages for regular tool calls and errors (default) |
+| `debug` | Show stages for all tool calls, including internal/system ones |
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "debug"
+    }
+  }
+}
+```
+
 ### Environment Variables
 
 | Variable                                   | Default                    | Required | Description                                                                                                  |
@@ -77,13 +132,14 @@ your gateways or downstream services expect.
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
 | **Logging**                                |                            |          |                                                                                                              |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string                                                                                 |
+| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string. The default references `%(otel_context)s`, a synthetic field populated by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] ` block when OTEL log correlation is active (`OTEL_PYTHON_LOG_CORRELATION=true` and a span is in scope) and to an empty string otherwise. Custom formats may reference `%(otelTraceID)s`/`%(otelSpanID)s`/`%(otelServiceName)s`/`%(otelTraceSampled)s` directly, but those placeholders only resolve while correlation is on. |
+| `LOG_DATE_FORMAT`                          | `%Y-%m-%d %H:%M:%S`        | No       | `strftime`-style format for the `%(asctime)s` field                                                          |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
-| `PLOTLY_IMAGE_CONVERSION_LOG_LEVEL`        | `WARN`                     | No       | Log level for kaleido/choreographer (plotly image conversion)                                                |
 | `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
 | `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
@@ -92,9 +148,19 @@ your gateways or downstream services expect.
 | `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                             |
 | `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                          |
 | `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                     |
-| `PY_INTERPRETER_ADDITIONAL_HANDLING_MODEL` | `gpt-4o-mini-2024-07-18`   | No       | Model for additional handling in PyInterpreter                                                               |
-| `PY_INTERPRETER_CLIENT_TIMEOUT`            | `60.0`                     | No       | Timeout (seconds) for PyInterpreter client requests                                                          |
 | `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
+| **Tool Timeouts**                          |                            |          |                                                                                                              |
+| `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
+| `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
+| **Stage Display**                          |                            |          |                                                                                                              |
+| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
+| **External URL Egress**                    |                            |          |                                                                                                              |
+| `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                    | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
+| `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                          | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
+| `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                        | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
+| `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                    | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
+| **Feature Gating**                         |                            |          |                                                                                                              |
+| `ENABLE_PREVIEW_FEATURES`                  | `false`                    | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
 | **Templates**                              |                            |          |                                                                                                              |
 | `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
 | `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
@@ -109,9 +175,10 @@ your gateways or downstream services expect.
 > [!CAUTION]
 > These variables still work but will be removed in a future major version.
 
-| Variable               | Replacement              | Description                                                                  |
-|------------------------|--------------------------|------------------------------------------------------------------------------|
-| `PREDEFINED_BASE_PATH` | `PREDEFINED_EXTRA_PATHS` | If set alone, treated as a single extra layer on top of the built-in content |
+| Variable                        | Replacement                                                        | Description                                                                                                                  |
+|---------------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                           | If set alone, treated as a single extra layer on top of the built-in content                                                 |
+| `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
 
 ¹**Notes:**
 
@@ -125,7 +192,7 @@ your gateways or downstream services expect.
 
 > [!WARNING]
 > The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills \[Preview\]](docs/skills.md), which offer richer
+> removed. Instructions are replaced by [Agent Skills](docs/skills.md), which offer richer
 > metadata,
 > on-demand retrieval, and layered overrides. See the
 > [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.
@@ -150,7 +217,7 @@ your gateways or downstream services expect.
     - Windows - recommended way to install poetry is to
       use [official installer](https://python-poetry.org/docs/#installing-with-the-official-installer)
     - Make sure that `poetry` is in the PATH and works properly (run `poetry --version`).
-    - Alternative - venv-specific (using `pip`):  
+    - Alternative - venv-specific (using `pip`):
       make sure the correct python venv is activated `make install_poetry`
 
 ### Setup
@@ -191,13 +258,39 @@ your gateways or downstream services expect.
     - Use this if you want to bring up DIAL Core, chat UI, redis, themes and adapters locally for end-to-end development
       and testing.
     - This docker-compose setup launches multiple services and uses internal hostnames (for example core, redis,
-      themes). Example:
+      themes).
+    - Setup expects the Quick Apps service to run on your host machine at `host.docker.internal:5000`
+
+      ```bash
+      python3 ./src/quickapp/app.py
+      ```
+
+    - Then start the local stack:
 
       ```bash
       docker compose up -d
       ```
 
+    - Optional — DIAL Admin (UI + backend API, embedded H2 database):
+
+      ```bash
+      docker compose --profile admin up -d
+      ```
+
+      Or uncomment `COMPOSE_PROFILES=admin` in `.env` and run `docker compose up -d` as usual.
+
+      Startup order: `admin-export-init` → `redis` / `core` (healthy) → `admin-backend` (healthy) → `admin-frontend`.
+
+      - Admin UI: http://localhost:3020 (unauthenticated — only `DIAL_ADMIN_API_URL` + `NEXTAUTH_SECRET`; do not set `NEXTAUTH_URL` or any `AUTH_*` vars)
+      - Admin API: http://localhost:8092
+      - Backend uses H2 with dev encryption keys; Core access via `dial_api_key`. Not production-equivalent.
+      - **Admin → Core sync:** `admin-export-init` creates `docker_compose_files/core/admin-export/out.json` (gitignored) before Core starts. Admin exports merged config there (~15s after changes) and calls Core reload (`ENABLE_CONFIG_RELOAD`). Core loads static JSON from `docker_compose_files/core/configuration/` plus `out.json` (last), so Admin UI edits override the static files. Allow ~20s after a save for export + reload.
+      - Populate Admin H2 initially via the Admin UI import flow, or keep an existing `admin-backend-data` volume. Core static config is not auto-imported into Admin on startup.
+
     - Notes:
+        - If you want to run Quick Apps in Docker instead of on the host, update
+          [application-schemas.json](docker_compose_files/core/configuration/application-schemas.json) and change the Quick
+          Apps host from `host.docker.internal:5000` to `quick-apps:5000`.
         - When running via docker-compose the compose files set service hostnames (for example DIAL URL inside
           containers is http://core:8080). Those container-internal hostnames are not valid from your host machine — use
           the exposed ports (for example http://localhost:8090) when calling services from the host.
@@ -234,16 +327,40 @@ your gateways or downstream services expect.
 1. Format the code:
 
     ```bash
-    make format
+    make format                                        # Format all source files + regenerate app schema
+    make format FILES="src/quickapp/agent/orchestrator.py"  # Format specific files (skips schema dump)
     ```
 
 2. Run linters:
 
     ```bash
-    make lint
+    make lint                   # Run all linters (always checks all source files)
     ```
 
-3. To automatically apply black and isort on commit, enable PreCommit:
+3. Run individual tools (accept `FILES="..."` to target specific files):
+
+    ```bash
+    make black                  # Run black formatter
+    make isort                  # Run isort formatter
+    make flake8                 # Run flake8 linter
+    make mypy                   # Run type checking
+    ```
+
+4. Run tests:
+
+    ```bash
+    make test                          # Run all unit tests
+    make test ARGS="-k test_name -x"   # Run specific tests / fail fast
+    make test_cov                      # Run unit tests with coverage report
+    ```
+
+5. Run arbitrary Python scripts:
+
+    ```bash
+    make run_python SCRIPT=src/scripts/dump_app_schema.py
+    ```
+
+6. To automatically apply black and isort on commit, enable PreCommit:
 
    ```bash
    make install_pre_commit_hooks
@@ -251,9 +368,9 @@ your gateways or downstream services expect.
 
    This command will set up the git hook scripts.
 
-## E2E & Integration tests:
+## E2E & Integration tests
 
-    refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
+Refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
 
 ## More
 

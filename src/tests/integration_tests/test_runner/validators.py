@@ -7,7 +7,11 @@ from aidial_sdk.chat_completion.request import Message, Role
 from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from tests.integration_tests.conftest import FailureReason, TestStats
 from tests.integration_tests.test_runner.models import Argument, AttachmentCheck, Failure, ToolCall
-from tests.integration_tests.test_runner.similarity_checker import get_similarity, get_similarity_alternatives
+from tests.integration_tests.test_runner.similarity_checker import (
+    get_similarity,
+    get_similarity_alternatives,
+)
+from tests.integration_tests.test_runner.utils.string_utils import truncate_string
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +22,12 @@ class ParsedToolCall(NamedTuple):
     name: str
     args: dict[str, Any]
     result: str
+
+    _LOG_RESULT_MAX_LEN = 50
+
+    def __str__(self) -> str:
+        result_preview = truncate_string(self.result, self._LOG_RESULT_MAX_LEN)
+        return f"ParsedToolCall(name={self.name!r}, args={self.args!r}, result={result_preview!r})"
 
 
 class ResponseValidator:
@@ -40,13 +50,19 @@ class ResponseValidator:
         Returns:
             list[Failure]: List of validation failures
         """
-        logger.debug("validate_json_schema_response called with response_format: %s", response_format)
+        logger.debug(
+            "validate_json_schema_response called with response_format: %s", response_format
+        )
         failures = []
 
         if not content or not content.strip():
             logger.warning("Response content is empty or only whitespace")
             ts.increment_failure(FailureReason.ANSWER)
-            failures.append(Failure(actual=content, expected="non-empty JSON", comment="Response content is empty"))
+            failures.append(
+                Failure(
+                    actual=content, expected="non-empty JSON", comment="Response content is empty"
+                )
+            )
             return failures
 
         # Check if response is valid JSON
@@ -57,7 +73,11 @@ class ResponseValidator:
             logger.warning("Response is not valid JSON: %s", e)
             ts.increment_failure(FailureReason.ANSWER)
             failures.append(
-                Failure(actual=content, expected="valid JSON", comment=f"Response is not valid JSON: {str(e)}")
+                Failure(
+                    actual=content,
+                    expected="valid JSON",
+                    comment=f"Response is not valid JSON: {str(e)}",
+                )
             )
             return failures
 
@@ -67,16 +87,19 @@ class ResponseValidator:
             if schema:
                 logger.debug("Starting JSON schema validation; schema: %s", schema)
                 before_count = len(failures)
-                failures.extend(
-                    ResponseValidator._validate_against_schema(parsed_json, schema, ts)
-                )
+                failures.extend(ResponseValidator._validate_against_schema(parsed_json, schema, ts))
                 after_count = len(failures)
                 if after_count == before_count:
                     logger.info("JSON schema validation passed")
                 else:
-                    logger.warning("JSON schema validation failed with %d new failure(s)", after_count - before_count)
+                    logger.warning(
+                        "JSON schema validation failed with %d new failure(s)",
+                        after_count - before_count,
+                    )
             else:
-                logger.debug("json_schema provided but no 'schema' found; skipping schema validation")
+                logger.debug(
+                    "json_schema provided but no 'schema' found; skipping schema validation"
+                )
         else:
             logger.debug("No json_schema validation requested; JSON parsing succeeded")
 
@@ -239,13 +262,18 @@ class ResponseValidator:
         similarity = get_similarity(actual, expected)
         if similarity < similarity_threshold:
             failures.append(
-            Failure(actual=actual, expected=expected, comment=failure_message, similarity=str(similarity))
-        )
+                Failure(
+                    actual=actual,
+                    expected=expected,
+                    comment=failure_message,
+                    similarity=str(similarity),
+                )
+            )
         return failures
 
     @staticmethod
     def check_tool_calls(
-            state: dict, expected_tool_calls: list[ToolCall], ts: TestStats
+        state: dict, expected_tool_calls: list[ToolCall], ts: TestStats
     ) -> list[Failure]:
         """
         Validates tool calls in the response against expected calls.
@@ -258,9 +286,7 @@ class ResponseValidator:
 
         # Validate tool call counts
         failures.extend(
-            ResponseValidator._validate_tool_call_counts(
-                tool_call_history, expected_tool_calls, ts
-            )
+            ResponseValidator._validate_tool_call_counts(tool_call_history, expected_tool_calls, ts)
         )
 
         # Validate tool call arguments
@@ -279,30 +305,29 @@ class ResponseValidator:
 
     @staticmethod
     def _filter_py_code_interpreter(
-            tool_call_history: list[ParsedToolCall],
+        tool_call_history: list[ParsedToolCall],
     ) -> list[ParsedToolCall]:
         """
-        Filters out failed py_code_interpreter tool calls.
+        Filters out failed internal_code_execution_python_interpreter tool calls.
         Adapted to use the ParsedToolCall structure.
         """
         return [
             tool_call
             for tool_call in tool_call_history
             if not (
-                    tool_call.name == 'py_code_interpreter'
-                    and (
-                            "FAILURE" in tool_call.result
-                            or "Python Code Interpreter session has been closed"
-                            in tool_call.result
-                    )
+                tool_call.name == 'internal_code_execution_python_interpreter'
+                and (
+                    "FAILURE" in tool_call.result
+                    or "Python Code Interpreter session has been closed" in tool_call.result
+                )
             )
         ]
 
     @staticmethod
     def _validate_tool_call_counts(
-            tool_call_history: list[ParsedToolCall],
-            expected_tool_calls: list[ToolCall],
-            ts: TestStats,
+        tool_call_history: list[ParsedToolCall],
+        expected_tool_calls: list[ToolCall],
+        ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the count of each tool call.
@@ -336,9 +361,9 @@ class ResponseValidator:
 
     @staticmethod
     def _validate_tool_call_arguments(
-            tool_call_history: list[ParsedToolCall],
-            expected_tool_calls: list[ToolCall],
-            ts: TestStats,
+        tool_call_history: list[ParsedToolCall],
+        expected_tool_calls: list[ToolCall],
+        ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the arguments of each tool call.
@@ -362,7 +387,7 @@ class ResponseValidator:
             if not found_match:
                 failures.append(
                     Failure(
-                        actual=[call._asdict() for call in tool_call_history],
+                        actual=[str(call) for call in tool_call_history],
                         expected=expected.arguments,
                         comment=f"No matching call for '{expected.name}' found with the required arguments.",
                     )
@@ -372,15 +397,17 @@ class ResponseValidator:
 
     @staticmethod
     def _check_unexpected_tools(
-            tool_call_history: list[ParsedToolCall],
-            expected_tool_calls: list[ToolCall],
-            ts: TestStats,
+        tool_call_history: list[ParsedToolCall],
+        expected_tool_calls: list[ToolCall],
+        ts: TestStats,
     ) -> list[Failure]:
         """
         Checks for unexpected tool calls.
         """
         failures = []
         expected_names = {tc.name for tc in expected_tool_calls}
+        expected_names.add("internal_skills_read_skill")
+        expected_names.add("internal_attachments_get_content")
         for actual in tool_call_history:
             if actual.name not in expected_names:
                 failures.append(
@@ -395,9 +422,9 @@ class ResponseValidator:
 
     @staticmethod
     def check_arguments(
-            actual_tool_call: ParsedToolCall,
-            expected_arguments: dict[str, Argument],
-            ts: TestStats,
+        actual_tool_call: ParsedToolCall,
+        expected_arguments: dict[str, Argument],
+        ts: TestStats,
     ) -> list[Failure]:
         """
         Validates the arguments of a tool call against expected arguments.
@@ -416,7 +443,11 @@ class ResponseValidator:
                     ts.increment_failure(FailureReason.ARGUMENTS)
             else:
                 failures.append(
-                    Failure(actual=None, expected=expected_value, comment=f"Argument '{field}' missing in response")
+                    Failure(
+                        actual=None,
+                        expected=expected_value,
+                        comment=f"Argument '{field}' missing in response",
+                    )
                 )
         return failures
 

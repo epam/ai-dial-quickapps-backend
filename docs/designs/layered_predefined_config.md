@@ -88,6 +88,8 @@ class PredefinedContentProvider:
     def read_json(self, content_type: ContentType, name: str) -> dict: ...
 
     def get_layers_info(self) -> list[LayerInfo]: ...
+
+    def get_default_configuration(self) -> dict: ...
 ```
 
 `read_text()` is used for markdown content types (`PROMPT`, `SKILL`). `read_json()` is used for JSON content types (
@@ -135,11 +137,36 @@ Each directory follows the same structure. Override layers only need the subdire
 
 ```
 <layer>/
+  default_configuration.json   optional; JSON object (see below)
   prompt/       *.md files
   tool/         *.json files
   toolset/      *.json files
   skills/       *.md files
 ```
+
+### `default_configuration.json` (layer root)
+
+Each layer may include an optional `default_configuration.json` at the layer root (not under a content-type
+subdirectory). The built-in layer ships `config/predefined/default_configuration.json` as `{}` to document the
+convention; operators add keys via extra layers.
+
+**Merge semantics:** Layers are processed in order. Each file’s top-level keys are **shallow-merged** into the merged
+default configuration (`dict.update`) — later layers override earlier ones for the same top-level key. Nested objects are
+not deep-merged (e.g. replacing `tool_sets` in a later layer replaces the entire list from earlier layers).
+
+**Malformed files:** Invalid JSON or a non-object root is logged at `ERROR` and treated as empty for that layer only —
+startup does **not** fail. This differs from corrupt files under `prompt/`, `tool/`, `toolset/`, or `skills/`, which
+still fail fast at startup.
+
+**Retrieval:** `PredefinedContentProvider.get_default_configuration()` returns a shallow copy of the merged object.
+
+**Resolution for the builder API:** `PredefinedConfigResolver.get_default_configuration()` copies that dict, then
+expands `tool_sets` when present and valid: predefined toolsets and `predefined-tool` entries inside hosting toolsets
+are resolved the same way as at runtime. Failed toolsets are skipped with a warning only (no
+`ConfigResolutionException` recorded on the request context). Skipped predefined tools inside a hosting toolset are
+still logged and recorded. Invalid `tool_sets` (wrong type or Pydantic validation failure) are left unchanged.
+
+**API:** `GET /v1/configuration-support/default-configuration` returns the resolved dict for the app builder UI.
 
 ### Merge semantics
 
@@ -193,6 +220,7 @@ delegates to `PredefinedContentProvider`.
 | `cache` dict                                                                              | Removed (caching lives in provider)                                                                                                                                                                                                                                                                                          |
 | Constructor parameter                                                                     | `PredefinedContentProvider` instead of `PredefinedSettings`                                                                                                                                                                                                                                                                  |
 | `resolve_config()`, `resolve_predefined_toolset()`, `resolve_toolset()`, `resolve_tool()` | Unchanged — these are config resolution logic, not I/O                                                                                                                                                                                                                                                                       |
+| `get_default_configuration()`                                                               | New — copies provider merge, resolves `tool_sets` for builder export (`log_only` skips for bad toolsets)                                                                                                                                                                                                                     |
 
 ### Impact on `AgentSkillsProvider`
 
@@ -234,8 +262,9 @@ auto-detected by `PredefinedContentProvider` — no env var needed.
 
 ### Impact on `_Controller`
 
-`_Controller` continues to consume `ConfigResolver` — its API endpoints are unchanged. Two source-level updates are
-needed:
+`_Controller` continues to consume `ConfigResolver`. Existing template listing endpoints are unchanged. One new
+endpoint: `GET /v1/configuration-support/default-configuration` (delegates to `get_default_configuration()`). Two
+source-level updates were also required:
 
 - **`TemplateType` → `ContentType`:** `_Controller` imports and uses `TemplateType` directly. Update imports to use
   `ContentType`.
@@ -334,4 +363,3 @@ var (the built-in layer is auto-detected) or, if extra paths are needed, switch 
 | **`AppModule`**                       | Adds `PredefinedContentProvider` singleton binding                                                                                                                   |
 | **`Dockerfile`**                      | `PREDEFINED_BASE_PATH` env var removed (built-in layer auto-detected)                                                                                                |
 | **Integration test `Dockerfile`**     | `PREDEFINED_BASE_PATH` env var removed                                                                                                                               |
-

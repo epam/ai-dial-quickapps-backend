@@ -1,13 +1,42 @@
-import pytest
 from types import SimpleNamespace
-from unittest.mock import Mock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, Mock
 
-from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
+import openai
+import pytest
+from aidial_sdk.chat_completion.request import (
+    Attachment,
+    CustomContent,
+    FunctionCall,
+    Message,
+    Role,
+    ToolCall,
+)
 
-from quickapp.agent._models import AccumulatedToolCall
+from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
 from quickapp.common import DeploymentUsage
+from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
+from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
+    _GetContentHistoryPolicy,
+)
+from tests.unit_tests.stream_test_doubles import SpyChoice
+
+
+def _recovery_service(
+    messages_context: MessagesMixin,
+    *,
+    policies: list | None = None,
+    deferred_stage_close_registry: DeferredStageCloseRegistry | None = None,
+) -> ChatCompletionRecoveryService:
+    return ChatCompletionRecoveryService(
+        messages_context,
+        policies or [],
+        deferred_stage_close_registry or DeferredStageCloseRegistry(),
+    )
 
 
 def _make_accumulated_tool_call(id: str, name: str, arguments: str = "{}") -> AccumulatedToolCall:
@@ -28,9 +57,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # assistant call result without tool calls, with usage
     assistant_result = SimpleNamespace(
@@ -38,15 +65,15 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         attachments=[],
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7),
+        state=None,
     )
 
     assistant_invoker = Mock()
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
 
     state_holder = Mock()
     initial_state = {"some": "state"}
@@ -60,7 +87,9 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
 
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
-            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+            max_iterations=5,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
         )
     )
 
@@ -72,18 +101,21 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
     )
 
     await orchestrator.invoke()
 
-    # No tool calls means no tool execution history — state_holder.add_state should NOT be called
+    # No tool calls and no stream state: nothing to add (no tool_execution_history, no orchestrator state)
     state_holder.add_state.assert_not_called()
 
     # choice.set_state should be called with the state from state_holder
-    choice.set_state.assert_called_once_with(initial_state)
+    assert choice.set_state_calls == [initial_state]
 
     # usage_statistics_service.process_usage_statistics should be awaited with a list
     usage_statistics_service.process_usage_statistics.assert_awaited_once()
@@ -92,6 +124,129 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     assert len(called_arg) == 1
     assert isinstance(called_arg[0], DeploymentUsage)
     assert called_arg[0].model_name == "test-model"
+
+
+@pytest.mark.asyncio
+async def test_stream_phase_api_error_retries_after_recovery():
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    assistant_result = SimpleNamespace(
+        content="response",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+    )
+
+    api_err = openai.APIError(message="Unsupported media type", request=MagicMock(), body=None)
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(side_effect=[api_err, assistant_result])
+
+    recovery_policy = Mock()
+    recovery_policy.try_recover.return_value = True
+
+    deferred_registry = Mock(spec=DeferredStageCloseRegistry)
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=deferred_registry,
+        chat_completion_recovery=_recovery_service(
+            messages_context,
+            policies=[recovery_policy],
+            deferred_stage_close_registry=deferred_registry,
+        ),
+        tool_execution_history_policies=[],
+    )
+
+    await orchestrator.invoke()
+
+    assert assistant_invoker.invoke.await_count == 2
+    assert stream_handler.process_stream.await_count == 2
+    recovery_policy.try_recover.assert_called_once()
+    assert recovery_policy.try_recover.call_args[0][0] is messages_list
+    assert recovery_policy.try_recover.call_args[0][1] is api_err
+    deferred_registry.sync_deferred_stage_ui_with_tool_messages.assert_called_once_with(
+        messages_list
+    )
+
+
+@pytest.mark.asyncio
+async def test_stream_phase_api_error_raises_when_recovery_no_op():
+    presentation_settings = SimpleNamespace(show_usage_statistics=False)
+
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    api_err = openai.APIError(message="upstream", request=MagicMock(), body=None)
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(side_effect=api_err)
+
+    recovery_policy = Mock()
+    recovery_policy.try_recover.return_value = False
+
+    orchestrator = Orchestrator(
+        presentation_settings=presentation_settings,
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
+        tool_execution_history_policies=[],
+    )
+
+    with pytest.raises(openai.APIError):
+        await orchestrator.invoke()
+
+    assert assistant_invoker.invoke.await_count == 1
+    assert stream_handler.process_stream.await_count == 1
 
 
 @pytest.mark.asyncio
@@ -104,9 +259,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # First assistant result contains tool_calls, second has none (to end loop)
     assistant_result_with_tools = SimpleNamespace(
@@ -114,24 +267,25 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         attachments=[],
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
     )
     assistant_result_no_tools = SimpleNamespace(
         content="final",
         attachments=[],
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
+        state=None,
     )
 
     assistant_invoker = Mock()
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
+    stream_handler = Mock()
     # Return with tools first, then without tools to stop loop
-    chunk_processor.process_chunks = AsyncMock(
+    stream_handler.process_stream = AsyncMock(
         side_effect=[assistant_result_with_tools, assistant_result_no_tools]
     )
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -160,7 +314,9 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
 
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
-            max_iterations=10, deployment=SimpleNamespace(name="test-model")
+            max_iterations=10,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
         )
     )
 
@@ -172,9 +328,12 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
     )
 
     await orchestrator.invoke()
@@ -189,9 +348,10 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
 
     # attachments should be propagated to choice via add_attachment
     attach.model_dump.assert_called()
-    choice.add_attachment.assert_called_once_with(**attach.model_dump())
+    assert len(choice.add_attachment_kwargs) == 1
+    assert choice.add_attachment_kwargs[0] == attach.model_dump()
 
-    # state_holder.add_state should be called once at the end with the full history
+    # state_holder.add_state called once in finally with tool_execution_history (no stream state in mocks)
     state_holder.add_state.assert_called_once()
     key, value = state_holder.add_state.call_args[0]
     assert key == TOOL_EXECUTION_HISTORY
@@ -203,6 +363,81 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
 
 
 @pytest.mark.asyncio
+async def test_invoke_with_stream_state_puts_only_response_state_under_orchestrator():
+    """state.orchestrator contains only response state (e.g. claude_message_content), not stages."""
+    messages_list: list[Message] = []
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    choice = SpyChoice()
+
+    stream_state = {"claude_message_content": "thinking output"}
+    assistant_result = SimpleNamespace(
+        content="response",
+        attachments=[],
+        tool_calls=[],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
+        state=stream_state,
+        stages=[{"name": "Thinking", "content": "..."}],  # stages must not appear in state
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result)
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=Mock(),
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=5,
+                deployment=SimpleNamespace(deployment_id="m"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
+    )
+
+    await orchestrator.invoke()
+
+    # Appended message has state.orchestrator = response state only (no "stages")
+    assert len(messages_list) == 1
+    msg = messages_list[0]
+    assert msg.custom_content is not None
+    state = msg.custom_content.state
+    assert state is not None
+    assert STATE_KEY_ORCHESTRATOR in state
+    orch = state[STATE_KEY_ORCHESTRATOR]
+    assert orch == {"claude_message_content": "thinking output"}
+    assert "stages" not in orch
+
+    # state_holder received orchestrator state (response state only)
+    state_holder.add_state.assert_called()
+    orch_calls = [
+        c[0] for c in state_holder.add_state.call_args_list if c[0][0] == STATE_KEY_ORCHESTRATOR
+    ]
+    assert len(orch_calls) == 1
+    assert orch_calls[0][1] == stream_state
+
+
+@pytest.mark.asyncio
 async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     presentation_settings = SimpleNamespace(show_usage_statistics=True)
 
@@ -211,9 +446,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
 
-    choice = Mock()
-    choice.add_attachment = Mock()
-    choice.set_state = Mock()
+    choice = SpyChoice()
 
     # Assistant result contains a properly shaped tool_call entry
     assistant_result_with_tools = SimpleNamespace(
@@ -221,15 +454,15 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         attachments=[],
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
     )
 
     assistant_invoker = Mock()
     assistant_invoker.invoke = AsyncMock(return_value="stream")
     assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
 
-    chunk_processor = Mock()
-    chunk_processor.process_chunks = AsyncMock(return_value=assistant_result_with_tools)
-    chunk_processor_provider = Mock(get=Mock(return_value=chunk_processor))
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=assistant_result_with_tools)
 
     state_holder = Mock()
     state_holder.get_state = Mock(return_value={})
@@ -244,7 +477,9 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
 
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
-            max_iterations=5, deployment=SimpleNamespace(name="test-model")
+            max_iterations=5,
+            deployment=SimpleNamespace(deployment_id="test-model"),
+            propagate_stages=True,
         )
     )
 
@@ -256,9 +491,12 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         usage_statistics_service=usage_statistics_service,
         tool_executor=tool_executor,
         assistant_invoker_provider=assistant_invoker_provider,
-        chunk_processor_provider=chunk_processor_provider,
+        stream_handler=stream_handler,
         app_config=app_config,
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -289,11 +527,18 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=Mock(),
         assistant_invoker_provider=Mock(),
-        chunk_processor_provider=Mock(),
+        stream_handler=Mock(),
         app_config=SimpleNamespace(
-            orchestrator=SimpleNamespace(max_iterations=10, deployment=SimpleNamespace(name="m"))
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="m"),
+                propagate_stages=True,
+            )
         ),
         perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
     )
 
 
@@ -428,3 +673,239 @@ class TestBuildToolExecutionHistory:
         # Final ASSISTANT without tool_calls is excluded
         assert len(result) == 2
         assert all(r["role"] != "assistant" or "tool_calls" in r for r in result)
+
+    def test_history_includes_synthetic_get_content_pair_in_current_turn(self):
+        messages = [
+            Message(role=Role.USER, content="first"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-old", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(role=Role.TOOL, content='{"ok": true}', tool_call_id="tc-old"),
+            Message(role=Role.ASSISTANT, content="answer one"),
+            Message(role=Role.USER, content="second"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-synth", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(
+                role=Role.TOOL,
+                content='{"ok": true, "url": "files/bucket/new.pdf"}',
+                tool_call_id="tc-synth",
+                custom_content=CustomContent(
+                    attachments=[
+                        Attachment(
+                            title="new.pdf",
+                            type="application/pdf",
+                            url="files/bucket/new.pdf",
+                        )
+                    ]
+                ),
+            ),
+            Message(role=Role.ASSISTANT, content="answer two"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-synth"
+        assert result[1]["role"] == "tool"
+        assert result[1]["tool_call_id"] == "tc-synth"
+
+
+@pytest.mark.asyncio
+async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_history():
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[
+            _make_accumulated_tool_call(
+                id="tc-1",
+                name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                arguments='{"attachment_url":"files/bucket/report.pdf"}',
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
+        state=None,
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(
+        role=Role.TOOL,
+        content='{"ok": true}',
+        tool_call_id="tc-1",
+        custom_content=CustomContent(
+            attachments=[
+                Attachment(
+                    title="report.pdf",
+                    type="application/pdf",
+                    url="files/bucket/report.pdf",
+                )
+            ],
+            state={"marker": "keep"},
+        ),
+    )
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.propagate_to_choice = []
+    tool_result.usage = []
+
+    tool_executor = Mock()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=SpyChoice(),
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[_GetContentHistoryPolicy()],
+    )
+
+    await orchestrator.invoke()
+
+    state_holder.add_state.assert_called_once()
+    key, value = state_holder.add_state.call_args[0]
+    assert key == TOOL_EXECUTION_HISTORY
+    assert isinstance(value, list)
+    tool_entry = value[1]
+    assert tool_entry["role"] == "tool"
+    custom_content = tool_entry.get("custom_content")
+    assert isinstance(custom_content, dict)
+    assert "attachments" not in custom_content
+    assert custom_content.get("state") == {"marker": "keep"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_history():
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[
+            _make_accumulated_tool_call(
+                id="tc-1",
+                name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                arguments='{"attachment_url":"files/bucket/report.pdf"}',
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, RuntimeError("interrupted")]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(
+        role=Role.TOOL,
+        content='{"ok": true}',
+        tool_call_id="tc-1",
+        custom_content=CustomContent(
+            attachments=[
+                Attachment(
+                    title="report.pdf",
+                    type="application/pdf",
+                    url="files/bucket/report.pdf",
+                )
+            ]
+        ),
+    )
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.propagate_to_choice = []
+    tool_result.usage = []
+
+    tool_executor = Mock()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=SpyChoice(),
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[_GetContentHistoryPolicy()],
+    )
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        await orchestrator.invoke()
+
+    state_holder.add_state.assert_called_once()
+    key, value = state_holder.add_state.call_args[0]
+    assert key == TOOL_EXECUTION_HISTORY
+    assert isinstance(value, list)
+    tool_entry = value[1]
+    custom_content = tool_entry.get("custom_content")
+    assert isinstance(custom_content, dict)
+    assert "attachments" in custom_content

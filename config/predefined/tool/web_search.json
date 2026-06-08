@@ -6,7 +6,7 @@
     }
   },
   "deployment": {
-    "name": "gemini-2.5-pro-google-search"
+    "deployment_id": "gemini-2.5-pro-google-search"
   },
   "content_propagation": {
     "propagate_history": true,

@@ -9,9 +9,11 @@ from quickapp.attachment_processing._attachment_notification_injector import (
 )
 from quickapp.attachment_processing._available_context_tool import _AvailableContextTool
 from quickapp.attachment_processing._context_entries import should_activate_context_tool
+from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,6 @@ class AttachmentProcessingModule(Module):
             to=_AttachmentNotificationInjector,
             scope=request_scope,
         )
-
         logger.debug("AttachmentProcessingModule module configuration completed")
 
     @multiprovider
@@ -36,7 +37,6 @@ class AttachmentProcessingModule(Module):
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
-
         if should_activate_context_tool(app_config.contexts, messages):
             tools.append(
                 ac_builder.build(
@@ -46,7 +46,6 @@ class AttachmentProcessingModule(Module):
                     contexts=list(app_config.contexts),
                 )
             )
-
         return tools
 
     @multiprovider
@@ -55,3 +54,16 @@ class AttachmentProcessingModule(Module):
         attachment_notification_injector: _AttachmentNotificationInjector,
     ) -> list[MessagesTransformer]:
         return [attachment_notification_injector]
+
+    @multiprovider
+    def provide_tool_attachment_keep_policies(
+        self, app_config: ApplicationConfig
+    ) -> list[AttachmentKeepPolicy]:
+        # The legacy keep policy preserves USER ``image/*`` attachments verbatim, which
+        # is the pre-strategy default. When any ``attachment_strategy`` is configured
+        # (currently only ``lazy_on_demand``), that strategy owns USER attachment
+        # handling end-to-end via its own keep policy + synthetic injection, so the
+        # legacy policy is unwired to avoid duplicating image bytes.
+        if app_config.orchestrator.attachment_strategy is not None:
+            return []
+        return [_LegacyUserImageKeepPolicy()]
