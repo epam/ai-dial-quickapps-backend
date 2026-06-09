@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
@@ -96,16 +97,13 @@ class _SearchInFileTool(_DialFileTool):
             ]
 
         cap = self._dial_files_config.max_files_scanned
-        truncated = False
-        scanned = 0
+        truncated = len(candidates) > cap
+        selected = candidates[:cap]
+        texts = await asyncio.gather(*(self._read_text_for_scan(entry.url) for entry in selected))
+
         # (display_path, lines, matching_line_indices) per file with >=1 match.
         matches: list[tuple[str, list[str], list[int]]] = []
-        for entry in candidates:
-            if scanned >= cap:
-                truncated = True
-                break
-            scanned += 1
-            text = await self._read_text_for_scan(entry.url)
+        for entry, text in zip(selected, texts):
             if text is None:
                 continue
             lines = text.splitlines()
