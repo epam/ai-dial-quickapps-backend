@@ -1,6 +1,6 @@
 # Design: DIAL Files Tools — Workspace-Wide Search
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-06-03 · **Re-approved:** 2026-06-08 (post-implementation revisions below reviewed against the merged code)
 - **Owner:** Andrii Novikov
 - **Dependencies:**
