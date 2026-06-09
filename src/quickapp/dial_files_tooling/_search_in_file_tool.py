@@ -34,7 +34,6 @@ class _SearchInFileTool(_DialFileTool):
                 max_depth=self._resolve_max_depth(kwargs.get("max_depth"), default=_MAX_DEPTH),
             )
         else:
-            self._reject_folder_only_params(kwargs)
             content = await self._search_file(
                 path=path,
                 pattern=pattern,
@@ -59,17 +58,6 @@ class _SearchInFileTool(_DialFileTool):
                 "output_mode", f"must be one of {', '.join(_OUTPUT_MODES)}"
             )
         return output_mode
-
-    @staticmethod
-    def _reject_folder_only_params(kwargs: dict[str, Any]) -> None:
-        only_folder = "only supported in folder mode (path ending with '/')"
-        if kwargs.get("output_mode") not in (None, "content"):
-            raise InvalidToolCallParameterException("output_mode", only_folder)
-        if kwargs.get("name_filter") is not None:
-            raise InvalidToolCallParameterException("name_filter", only_folder)
-        max_depth = kwargs.get("max_depth")
-        if max_depth is not None and int(max_depth) != _MAX_DEPTH:
-            raise InvalidToolCallParameterException("max_depth", only_folder)
 
     async def _search_file(
         self,

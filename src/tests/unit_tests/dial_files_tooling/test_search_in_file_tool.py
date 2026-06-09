@@ -113,36 +113,27 @@ class TestSearchFileMode:
         assert result.content == "1:a\n2:ERR\n3:b\n4:c\n5:ERR\n6:d"
 
     @pytest.mark.asyncio
-    async def test_output_mode_in_file_mode_rejected(self):
+    async def test_output_mode_in_file_mode_ignored(self):
+        # Folder-only params are silently ignored in file mode, not rejected.
         tool = _make_tool("a\nb")
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(
-                stage_wrapper=None, path="x", pattern="a", output_mode="count"
-            )
-        assert exc.value.parameter_name == "output_mode"
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, path="x", pattern="a", output_mode="count"
+        )
+        assert result.content == "1:a"
 
     @pytest.mark.asyncio
-    async def test_name_filter_in_file_mode_rejected(self):
+    async def test_name_filter_in_file_mode_ignored(self):
         tool = _make_tool("a\nb")
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(
-                stage_wrapper=None, path="x", pattern="a", name_filter="*.md"
-            )
-        assert exc.value.parameter_name == "name_filter"
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, path="x", pattern="a", name_filter="*.md"
+        )
+        assert result.content == "1:a"
 
     @pytest.mark.asyncio
-    async def test_non_default_max_depth_in_file_mode_rejected(self):
-        tool = _make_tool("a\nb")
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(stage_wrapper=None, path="x", pattern="a", max_depth=3)
-        assert exc.value.parameter_name == "max_depth"
-
-    @pytest.mark.asyncio
-    async def test_default_max_depth_in_file_mode_allowed(self):
-        # max_depth equal to the default (10) is a no-op in file mode, not rejected.
+    async def test_max_depth_in_file_mode_ignored(self):
         tool = _make_tool("foo\nbar")
         result = await tool._run_in_stage_async(
-            stage_wrapper=None, path="x", pattern="bar", max_depth=10
+            stage_wrapper=None, path="x", pattern="bar", max_depth=3
         )
         assert result.content == "2:bar"
 
