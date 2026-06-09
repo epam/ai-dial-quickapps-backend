@@ -94,8 +94,14 @@ class _DialFileTool(StagedBaseTool, ABC):
             path = path + "/"
         return await self._resolve_appdata_url(path)
 
-    async def _list_folder_entries(self, path: str, max_depth: int) -> list[FolderEntry]:
+    async def _list_folder_entries(
+        self, path: str, max_depth: int
+    ) -> tuple[str, list[FolderEntry]]:
         """Resolve `path` to a folder and list it under the shared not-found policy.
+
+        Returns the resolved `(folder_url, entries)` so callers that also need the search
+        root (e.g. `find`/folder-mode `search` for relative-path glob matching) avoid
+        re-resolving it.
 
         A missing **root** reference (nothing written yet) yields an empty list; a missing
         **non-root** folder raises "folder not found"; a non-folder target raises "not a
@@ -104,10 +110,11 @@ class _DialFileTool(StagedBaseTool, ABC):
         """
         folder_url = await self._resolve_folder_url(path)
         try:
-            return await self._dial_file_service.list_folder(folder_url, max_depth=max_depth)
+            entries = await self._dial_file_service.list_folder(folder_url, max_depth=max_depth)
+            return folder_url, entries
         except ResourceNotFoundError as e:
             if is_root_reference(path):
-                return []
+                return folder_url, []
             display = await self._to_display_path(folder_url)
             raise InvalidToolCallParameterException("path", f"folder not found: {display}") from e
         except ValueError as e:

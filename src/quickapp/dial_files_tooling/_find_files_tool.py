@@ -21,8 +21,7 @@ class _FindFilesTool(_DialFileTool):
         max_depth = self._resolve_max_depth(kwargs.get("max_depth"), default=_MAX_DEPTH)
 
         regex = _glob_to_regex(pattern)
-        folder_url = await self._resolve_folder_url(path)
-        entries = await self._list_folder_entries(path, max_depth)
+        folder_url, entries = await self._list_folder_entries(path, max_depth)
 
         matched: list[tuple[str, FolderEntry]] = []
         for entry in entries:

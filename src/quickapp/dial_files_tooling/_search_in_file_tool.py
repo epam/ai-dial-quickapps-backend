@@ -96,8 +96,7 @@ class _SearchInFileTool(_DialFileTool):
         name_filter: str | None,
         max_depth: int,
     ) -> str:
-        folder_url = await self._resolve_folder_url(path)
-        entries = await self._list_folder_entries(path, max_depth)
+        folder_url, entries = await self._list_folder_entries(path, max_depth)
 
         name_regex = _glob_to_regex(name_filter) if name_filter else None
         candidates = [entry for entry in entries if not entry.is_folder]

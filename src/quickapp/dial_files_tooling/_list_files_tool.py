@@ -17,7 +17,7 @@ class _ListFilesTool(_DialFileTool):
         path: str = kwargs["path"]
         max_depth = self._resolve_max_depth(kwargs.get("max_depth"), default=1)
 
-        entries = await self._list_folder_entries(path, max_depth)
+        _, entries = await self._list_folder_entries(path, max_depth)
 
         rendered_entries = [(await self._to_display_path(entry.url), entry) for entry in entries]
         content = render_listing(rendered_entries)
