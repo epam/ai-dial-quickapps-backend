@@ -7,6 +7,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
+from quickapp.dial_files_tooling._utils import code_block
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
@@ -78,7 +79,7 @@ class TestSearchFileMode:
     async def test_single_match(self):
         tool = _make_tool("foo\nbar\nbaz")
         result = await tool._run_in_stage_async(stage_wrapper=None, path="x", pattern="bar")
-        assert result.content == "2:bar"
+        assert result.content == code_block("2:bar")
 
     @pytest.mark.asyncio
     async def test_no_matches(self):
@@ -101,7 +102,7 @@ class TestSearchFileMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="x", pattern="ERR", context_lines=1
         )
-        assert result.content == "1:ERR\n2:a\n--\n4:c\n5:ERR"
+        assert result.content == code_block("1:ERR\n2:a\n--\n4:c\n5:ERR")
 
     @pytest.mark.asyncio
     async def test_context_lines_adjacent_windows_merge(self):
@@ -110,7 +111,7 @@ class TestSearchFileMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="x", pattern="ERR", context_lines=1
         )
-        assert result.content == "1:a\n2:ERR\n3:b\n4:c\n5:ERR\n6:d"
+        assert result.content == code_block("1:a\n2:ERR\n3:b\n4:c\n5:ERR\n6:d")
 
     @pytest.mark.asyncio
     async def test_output_mode_in_file_mode_ignored(self):
@@ -119,7 +120,7 @@ class TestSearchFileMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="x", pattern="a", output_mode="count"
         )
-        assert result.content == "1:a"
+        assert result.content == code_block("1:a")
 
     @pytest.mark.asyncio
     async def test_name_filter_in_file_mode_ignored(self):
@@ -127,7 +128,7 @@ class TestSearchFileMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="x", pattern="a", name_filter="*.md"
         )
-        assert result.content == "1:a"
+        assert result.content == code_block("1:a")
 
     @pytest.mark.asyncio
     async def test_max_depth_in_file_mode_ignored(self):
@@ -135,7 +136,7 @@ class TestSearchFileMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="x", pattern="bar", max_depth=3
         )
-        assert result.content == "2:bar"
+        assert result.content == code_block("2:bar")
 
 
 class TestSearchFolderMode:
@@ -151,7 +152,7 @@ class TestSearchFolderMode:
         tool._dial_file_service.list_folder.assert_awaited_once_with(
             "files/appbucket/", max_depth=10
         )
-        assert result.content == "a.md\n2:ERROR here"
+        assert result.content == code_block("a.md\n2:ERROR here")
 
     @pytest.mark.asyncio
     async def test_content_mode_groups_matches_per_file(self):
@@ -164,7 +165,7 @@ class TestSearchFolderMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="reports/", pattern="ERROR"
         )
-        assert result.content == "a.md\n1:ERROR one\n\nb.txt\n2:ERROR two"
+        assert result.content == code_block("a.md\n1:ERROR one\n\nb.txt\n2:ERROR two")
 
     @pytest.mark.asyncio
     async def test_files_with_matches_mode(self):
@@ -177,7 +178,7 @@ class TestSearchFolderMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="reports/", pattern="ERROR", output_mode="files_with_matches"
         )
-        assert result.content == "a.md"
+        assert result.content == code_block("a.md")
 
     @pytest.mark.asyncio
     async def test_count_mode_is_rejected(self):
@@ -198,7 +199,7 @@ class TestSearchFolderMode:
         }
         tool = _make_folder_tool(entries, contents)
         result = await tool._run_in_stage_async(stage_wrapper=None, path="d/", pattern="ERROR")
-        assert result.content == "b.md\n1:ERROR text"
+        assert result.content == code_block("b.md\n1:ERROR text")
 
     @pytest.mark.asyncio
     async def test_oversized_file_skipped(self):
@@ -209,7 +210,7 @@ class TestSearchFolderMode:
         }
         tool = _make_folder_tool(entries, contents)
         result = await tool._run_in_stage_async(stage_wrapper=None, path="d/", pattern="ERROR")
-        assert result.content == "b.md\n1:ERROR text"
+        assert result.content == code_block("b.md\n1:ERROR text")
 
     @pytest.mark.asyncio
     async def test_name_filter_excludes_before_download(self):
@@ -222,7 +223,7 @@ class TestSearchFolderMode:
         result = await tool._run_in_stage_async(
             stage_wrapper=None, path="data/", pattern="2026-Q1", name_filter="**/*.csv"
         )
-        assert result.content == "data/a.csv\n1:2026-Q1 row"
+        assert result.content == code_block("data/a.csv\n1:2026-Q1 row")
         # The .json was filtered out before any download was attempted.
         tool._dial_file_service.download_file.assert_awaited_once_with("files/appbucket/data/a.csv")
 

@@ -31,6 +31,15 @@ def format_size(size: int | None) -> str:
     return f"{size / (1024 * 1024 * 1024):.1f} GB"
 
 
+def code_block(text: str) -> str:
+    """Wrap text in a fenced code block.
+
+    The agent's tool results are rendered as markdown, which collapses single
+    newlines into spaces. Fencing preserves line breaks and column alignment.
+    """
+    return f"```\n{text}\n```"
+
+
 def render_listing(entries: list[tuple[str, FolderEntry]]) -> str:
     if not entries:
         return "(empty folder)"
@@ -41,4 +50,4 @@ def render_listing(entries: list[tuple[str, FolderEntry]]) -> str:
     for display, entry in entries:
         size_col = "-" if entry.is_folder else format_size(entry.size)
         rows.append(f"{display:<{name_w}}  {size_col}")
-    return "```\n" + "\n".join(rows) + "\n```"
+    return code_block("\n".join(rows))
