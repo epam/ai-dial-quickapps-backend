@@ -10,7 +10,7 @@
   - Glob translation delegates to the stdlib `glob.translate` (Python 3.13) instead of a hand-rolled translator.
   - The `count` output mode was dropped; folder `search` returns only `content` or `files_with_matches`.
   - The folder-scan file cap moved from a hardcoded `_MAX_FILES_SCANNED` constant to a configurable `DialFilesConfig.max_files_scanned` (default 200).
-  - Pure path helpers (`is_root_reference`, `relative_to`) live in a new `_path_utils.py` rather than on the tool base class.
+  - The DI-free helpers — path math (`is_root_reference`, `relative_to`) and the listing renderer (`render_listing`, `format_size`) — live in a new `_utils.py` rather than on the tool base class (the listing renderer moved out of `_list_files_tool.py`).
   - The shared folder-resolution + not-found handling is consolidated into one base helper, `_list_folder_entries`, with a shared `_resolve_max_depth`; `list`, `find`, and folder-mode `search` all use them.
 
 ## Problem Statement
@@ -143,7 +143,7 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 - **File cap:** `DialFilesConfig.max_files_scanned` (default 200) download attempts per call, then truncate-and-notify. This is the hard upper bound on egress, and is per-app configurable.
 - **Depth + pre-filter:** `max_depth` bounds the `list_folder` walk; `name_filter` shrinks the candidate set before any download.
 
-**Change vs current codebase:** `_SearchInFileTool._run_in_stage_async` gains a folder branch; the existing file branch is factored into helpers (`_matching_line_indices` + `_format_matches`) reused by both. Folder listing goes through the shared base helper `_list_folder_entries`; depth is parsed by `_resolve_max_depth`; path math uses `relative_to` / `is_root_reference` from `_path_utils` (Component 3). New base-class helper `_read_text_for_scan`; the file cap is read from `DialFilesConfig.max_files_scanned` (Component 5).
+**Change vs current codebase:** `_SearchInFileTool._run_in_stage_async` gains a folder branch; the existing file branch is factored into helpers (`_matching_line_indices` + `_format_matches`) reused by both. Folder listing goes through the shared base helper `_list_folder_entries`; depth is parsed by `_resolve_max_depth`; path math uses `relative_to` / `is_root_reference` from `_utils` (Component 3). New base-class helper `_read_text_for_scan`; the file cap is read from `DialFilesConfig.max_files_scanned` (Component 5).
 
 ---
 
@@ -180,13 +180,11 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 
 ### Component 3: Shared helpers
 
-`list`, `find`, and folder-mode `search` reuse four pieces of shared infrastructure so behavior stays identical across the file tools and nothing is duplicated.
+`list`, `find`, and folder-mode `search` reuse three pieces of shared infrastructure so behavior stays identical across the file tools and nothing is duplicated.
 
-**Pure path helpers (`_path_utils.py`).** `is_root_reference(path)` recognizes `""`/`.`/`./`/`/`; `relative_to(url, folder_url)` returns the path of `url` relative to the search root (used for glob matching). These are DI-free string functions, so they live in their own module (`src/quickapp/dial_files_tooling/_path_utils.py`) rather than on the tool base class.
+**DI-free helpers (`_utils.py`).** A single module (`src/quickapp/dial_files_tooling/_utils.py`) for the helpers that need no `self`/DI: path math — `is_root_reference(path)` (recognizes `""`/`.`/`./`/`/`) and `relative_to(url, folder_url)` (path of `url` relative to the search root, used for glob matching) — and the listing renderer `render_listing` / `format_size`, which renders `find`'s results exactly like `list_files` (`NAME` + `SIZE`). The renderer moved here out of `_list_files_tool.py`; `_list_files_tool` and `_find_files_tool` both import it.
 
-**Folder resolution & listing (base class).** `_resolve_folder_url` (maps a root reference to the home dir, otherwise appends a trailing `/` before `_resolve_appdata_url`), `_list_folder_entries(path, max_depth)` (resolve + `list_folder` + the shared not-found policy: missing root → `[]`, missing non-root → `"folder not found"`, non-folder → `"not a folder"`, 403 → `"access denied"`), and `_resolve_max_depth(value, default)` (parse + range-check `[1, _MAX_DEPTH]`) all live on `_DialFileTool`. `_MAX_DEPTH = 10` is a module constant there. `list`, `find`, and folder-mode `search` all go through these, so their folder/not-found behavior is identical by construction.
-
-**Listing renderer (`_render_listing`, `_format_size`).** `find` renders results exactly like `list_files` (`NAME` + `SIZE`). These helpers live in a shared module (`_listing.py`) imported by `_list_files_tool` and `_find_files_tool`.
+**Folder resolution & listing (base class).** `_resolve_folder_url` (maps a root reference to the home dir, otherwise appends a trailing `/` before `_resolve_appdata_url`), `_list_folder_entries(path, max_depth)` (resolve + `list_folder` + the shared not-found policy: missing root → `[]`, missing non-root → `"folder not found"`, non-folder → `"not a folder"`, 403 → `"access denied"`), and `_resolve_max_depth(value, default)` (parse + range-check `[1, _MAX_DEPTH]`) all live on `_DialFileTool` (they need `self`/DI). `_MAX_DEPTH = 10` is a module constant there. `list`, `find`, and folder-mode `search` all go through these, so their folder/not-found behavior is identical by construction.
 
 **Glob (`_glob_to_regex`).** A single function compiling a glob into a `re.Pattern`, used by both `find` (its `pattern`) and `search` (its `name_filter`). It delegates to the stdlib `glob.translate` (Python 3.13) with `recursive=True` (so `**` spans path segments), `include_hidden=True` (dotfiles match like any name), and `seps="/"` (DIAL paths always use `/`):
 
@@ -254,8 +252,7 @@ All items below are prescriptive — the implementation lands after approval. (P
 |------|---------|
 | `dial_files_tooling/_find_files_tool.py` | `_FindFilesTool` — glob filename discovery via `list_folder` (metadata only). |
 | `dial_files_tooling/_glob.py` | `_glob_to_regex` — shared `**`/`*`/`?` matcher (wraps stdlib `glob.translate`) for `find` and `search`'s `name_filter`. |
-| `dial_files_tooling/_listing.py` | Extracted `_render_listing` / `_format_size` shared by `list_files` and `find`. |
-| `dial_files_tooling/_path_utils.py` | DI-free path helpers `is_root_reference` / `relative_to` shared across the file tools. |
+| `dial_files_tooling/_utils.py` | DI-free helpers shared across the file tools: path math (`is_root_reference` / `relative_to`) and the listing renderer (`render_listing` / `format_size`, moved out of `_list_files_tool.py`). |
 
 ### Modified files
 
@@ -263,7 +260,7 @@ All items below are prescriptive — the implementation lands after approval. (P
 |------|--------|
 | `dial_files_tooling/_base_file_tool.py` | Add `_resolve_folder_url` + `_list_folder_entries` (resolve + list + shared not-found policy) + `_resolve_max_depth` and the `_MAX_DEPTH` constant for reuse by `list_files`, `find`, and folder-mode `search`; add `_read_text_for_scan` (folder-scan download returning `None` on binary/oversize). `_download_text` is unchanged. |
 | `dial_files_tooling/_search_in_file_tool.py` | Add folder-mode branch (recursive content search) with `output_mode` (`content` / `files_with_matches`), `name_filter`, `max_depth`; factor the existing file logic into reused helpers (`_matching_line_indices`, `_format_matches`); use `_list_folder_entries`; read the file cap from `DialFilesConfig.max_files_scanned`; skip non-UTF-8/oversized files; reject folder-only params in file mode. File-mode output unchanged. |
-| `dial_files_tooling/_list_files_tool.py` | Use the base-class `_list_folder_entries` / `_resolve_max_depth` and the extracted listing module instead of local definitions. |
+| `dial_files_tooling/_list_files_tool.py` | Use the base-class `_list_folder_entries` / `_resolve_max_depth` and the `render_listing` helper in `_utils.py` instead of local definitions. |
 | `dial_files_tooling/_tool_configs.py` | Update `SEARCH_IN_FILE_TOOL_CONFIG` description/params; add `FIND_FILES_TOOL_CONFIG`; add it to `ALL_FILE_TOOL_CONFIGS`. |
 | `dial_files_tooling/dial_files_tooling_module.py` | Bind `_FindFilesTool`; add it (with a `find_builder`) to the `_provide_dial_files_tools` multiprovider. |
 | `config/dial_files.py` | Add the short name `"find"` to `DialFilesToolName`; add the `max_files_scanned` field. |

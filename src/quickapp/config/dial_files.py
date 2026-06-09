@@ -7,6 +7,7 @@ DialFilesToolName = Literal[
     "list",
     "read_lines",
     "search",
+    "find",
     "write",
     "edit",
     "delete",
@@ -83,6 +84,15 @@ class DialFilesConfig(BaseModel):
             "read_lines / search file tools. Toggled by its `enabled` flag, whose default is "
             "governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. "
             "Requires read_lines and search to be exposed via enabled_tools."
+        ),
+    )
+    max_files_scanned: int = Field(
+        default=200,
+        ge=1,
+        description=(
+            "Folder-mode 'search' cap: the maximum number of files downloaded and "
+            "scanned in a single call before the search stops and appends a truncation "
+            "notice. Bounds worst-case egress on large subtrees."
         ),
     )
 

@@ -19,6 +19,7 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
+from quickapp.dial_files_tooling._find_files_tool import _FindFilesTool
 from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
@@ -30,6 +31,7 @@ from quickapp.dial_files_tooling._tool_configs import (
     COPY_FILE_TOOL_CONFIG,
     DELETE_FILE_TOOL_CONFIG,
     EDIT_FILE_TOOL_CONFIG,
+    FIND_FILES_TOOL_CONFIG,
     LIST_FILES_TOOL_CONFIG,
     MOVE_FILE_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
@@ -49,6 +51,7 @@ class DialFilesToolingModule(Module):
         binder.bind(_ListFilesTool, to=_ListFilesTool, scope=request_scope)
         binder.bind(_ReadFileLinesTool, to=_ReadFileLinesTool, scope=request_scope)
         binder.bind(_SearchInFileTool, to=_SearchInFileTool, scope=request_scope)
+        binder.bind(_FindFilesTool, to=_FindFilesTool, scope=request_scope)
         binder.bind(_WriteFileTool, to=_WriteFileTool, scope=request_scope)
         binder.bind(_EditFileTool, to=_EditFileTool, scope=request_scope)
         binder.bind(_DeleteFileTool, to=_DeleteFileTool, scope=request_scope)
@@ -88,6 +91,7 @@ class DialFilesToolingModule(Module):
         list_builder: AssistedBuilder[_ListFilesTool],
         read_builder: AssistedBuilder[_ReadFileLinesTool],
         search_builder: AssistedBuilder[_SearchInFileTool],
+        find_builder: AssistedBuilder[_FindFilesTool],
         write_builder: AssistedBuilder[_WriteFileTool],
         edit_builder: AssistedBuilder[_EditFileTool],
         delete_builder: AssistedBuilder[_DeleteFileTool],
@@ -102,6 +106,7 @@ class DialFilesToolingModule(Module):
             (list_builder, LIST_FILES_TOOL_CONFIG),
             (read_builder, READ_FILE_LINES_TOOL_CONFIG),
             (search_builder, SEARCH_IN_FILE_TOOL_CONFIG),
+            (find_builder, FIND_FILES_TOOL_CONFIG),
             (write_builder, WRITE_FILE_TOOL_CONFIG),
             (edit_builder, EDIT_FILE_TOOL_CONFIG),
             (delete_builder, DELETE_FILE_TOOL_CONFIG),
