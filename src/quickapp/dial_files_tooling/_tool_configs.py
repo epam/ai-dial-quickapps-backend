@@ -21,6 +21,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
+from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH
 
 _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
@@ -51,7 +52,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.integer,
                         description=(
                             "Recursion depth. 1 = immediate children only. "
-                            "Range: [1, 10]. Default: 1."
+                            f"Range: [1, {_MAX_DEPTH}]. Default: 1."
                         ),
                     ),
                 },
@@ -160,7 +161,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.integer,
                         description=(
                             "Folder mode only. Recursion depth. 1 = immediate children "
-                            "only. Range: [1, 10]. Default: 10."
+                            f"only. Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
                         ),
                     ),
                 },
@@ -205,7 +206,7 @@ FIND_FILES_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.integer,
                         description=(
                             "Recursion depth. 1 = immediate children only. "
-                            "Range: [1, 10]. Default: 10."
+                            f"Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
                         ),
                     ),
                 },

@@ -87,7 +87,7 @@ class DialFilesConfig(BaseModel):
         ),
     )
     max_files_scanned: int = Field(
-        default=200,
+        default=50,
         ge=1,
         description=(
             "Folder-mode 'search' cap: the maximum number of files downloaded and "

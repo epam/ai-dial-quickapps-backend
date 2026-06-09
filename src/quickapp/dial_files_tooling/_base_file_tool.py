@@ -19,6 +19,9 @@ from quickapp.dial_files_tooling._utils import is_root_reference
 
 logger = logging.getLogger(__name__)
 
+# Ceiling of the LLM-facing `max_depth` parameter, and the single source for the
+# "Range: [1, N]" bound interpolated into the tool schema descriptions (see _tool_configs.py).
+# Not configurable: a per-app value would drift from the advertised schema.
 _MAX_DEPTH = 10
 
 

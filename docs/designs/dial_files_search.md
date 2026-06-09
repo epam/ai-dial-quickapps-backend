@@ -9,7 +9,7 @@
 - **Post-approval revisions** (2026-06-08, from [PR #352](https://github.com/epam/ai-dial-quickapps-backend/pull/352) review):
   - Glob translation delegates to the stdlib `glob.translate` (Python 3.13) instead of a hand-rolled translator.
   - The `count` output mode was dropped; folder `search` returns only `content` or `files_with_matches`.
-  - The folder-scan file cap moved from a hardcoded `_MAX_FILES_SCANNED` constant to a configurable `DialFilesConfig.max_files_scanned` (default 200).
+  - The folder-scan file cap moved from a hardcoded `_MAX_FILES_SCANNED` constant to a configurable `DialFilesConfig.max_files_scanned` (default 50).
   - The DI-free helpers — path math (`is_root_reference`, `relative_to`) and the listing renderer (`render_listing`, `format_size`) — live in a new `_utils.py` rather than on the tool base class (the listing renderer moved out of `_list_files_tool.py`).
   - The shared folder-resolution + not-found handling is consolidated into one base helper, `_list_folder_entries`, with a shared `_resolve_max_depth`; `list`, `find`, and folder-mode `search` all use them.
 
@@ -73,7 +73,7 @@ Both gaps push work the tools should do back onto the LLM, where it is slow, los
 ### UC-7: Folder content search hits the file cap
 
 **Trigger:** `search(path="huge-dump/", pattern="x")` over a subtree with thousands of text files.\
-**Behavior:** The tool scans files until the configured file cap (`DialFilesConfig.max_files_scanned`, default 200) is reached, then stops and appends a truncation notice.\
+**Behavior:** The tool scans files until the configured file cap (`DialFilesConfig.max_files_scanned`, default 50) is reached, then stops and appends a truncation notice.\
 **Outcome:** The result is bounded and the notice tells the LLM to narrow via `name_filter`, a deeper subfolder, or a smaller `max_depth`. No download storm.
 
 ### UC-8: Agent searches a folder without the trailing slash
@@ -140,7 +140,7 @@ Two tools change/appear. Both subclass the existing `_DialFileTool` (Component 1
 **Cost bounds (folder mode):**
 
 - **Text-only:** `_read_text_for_scan` skips files that fail UTF-8 decode (`UnicodeDecodeError`, binary) or exceed the per-file size limit (`download_file` raises `ValueError`); substring search cannot use them anyway. Each skip still **counts toward `max_files_scanned`** (a download was attempted). *(A pre-download extension allowlist is deferred — see Out of Scope.)*
-- **File cap:** `DialFilesConfig.max_files_scanned` (default 200) download attempts per call, then truncate-and-notify. This is the hard upper bound on egress, and is per-app configurable.
+- **File cap:** `DialFilesConfig.max_files_scanned` (default 50) download attempts per call, then truncate-and-notify. This is the hard upper bound on egress, and is per-app configurable.
 - **Depth + pre-filter:** `max_depth` bounds the `list_folder` walk; `name_filter` shrinks the candidate set before any download.
 
 **Change vs current codebase:** `_SearchInFileTool._run_in_stage_async` gains a folder branch; the existing file branch is factored into helpers (`_matching_line_indices` + `_format_matches`) reused by both. Folder listing goes through the shared base helper `_list_folder_entries`; depth is parsed by `_resolve_max_depth`; path math uses `relative_to` / `is_root_reference` from `_utils` (Component 3). New base-class helper `_read_text_for_scan`; the file cap is read from `DialFilesConfig.max_files_scanned` (Component 5).
@@ -212,7 +212,7 @@ Used with `fullmatch` (anchored, case-sensitive, consistent with DIAL paths). Em
 **What:** Register `_FindFilesTool` alongside the existing file tools and add `find` to the configurable tool set.
 
 - `dial_files_tooling_module.py`: bind `_FindFilesTool` in `request_scope`; add a `find_builder: AssistedBuilder[_FindFilesTool]` and the `(find_builder, FIND_FILES_TOOL_CONFIG)` entry to the `_provide_dial_files_tools` multiprovider. `_is_enabled` strips `TOOL_NAME_PREFIX` (`removeprefix`) and checks the short name against `enabled_tools`, so `find` is gated automatically once it is in the literal.
-- `config/dial_files.py`: add the short name `"find"` to the `DialFilesToolName` literal (which holds short names: `"list"`, `"read_lines"`, `"search"`, …) so apps can include/exclude it; and add a `max_files_scanned: int = Field(default=200, ge=1)` field that folder-mode `search` reads for its per-call file cap.
+- `config/dial_files.py`: add the short name `"find"` to the `DialFilesToolName` literal (which holds short names: `"list"`, `"read_lines"`, `"search"`, …) so apps can include/exclude it; and add a `max_files_scanned: int = Field(default=50, ge=1)` field that folder-mode `search` reads for its per-call file cap.
 
 **Owner:** `src/quickapp/dial_files_tooling/dial_files_tooling_module.py`, `src/quickapp/config/dial_files.py`.
 
@@ -239,7 +239,7 @@ None. `search` (`internal_file_search`) keeps its existing required params and s
 
 - `find` (`internal_file_find`) is a new tool, off unless `dial_files` is enabled and `find` is in `enabled_tools` (or `enabled_tools == "all"`).
 - `DialFilesToolName` gains the short name `"find"`. Existing manifests that list tools explicitly are unaffected; they simply don't include `find` until updated.
-- `DialFilesConfig` gains an optional `max_files_scanned` field (default 200); existing manifests are unaffected, since the default preserves prior behavior.
+- `DialFilesConfig` gains an optional `max_files_scanned` field (default 50); existing manifests are unaffected, since the default preserves prior behavior.
 - Run `make dump_app_schema` after the `DialFilesConfig` changes (the `"find"` literal and the `max_files_scanned` field).
 
 ## Summary of Changes
@@ -278,4 +278,4 @@ All items below are prescriptive — the implementation lands after approval. (P
   - `find`: `**/*.ext` matches at any depth incl. root; `*` does not cross `/`; `?` single char; default `path=""` searches home root; subfolder `path`; `max_depth` cap and out-of-range error; root reference with nothing written → "No files found."; empty match set → "No files found."; matched folders render with size `-`; output uses the shared listing renderer.
   - `search` file mode also: a non-default `output_mode` / `name_filter` / `max_depth` in file mode → `InvalidToolCallParameterException`; a binary file and an oversized file in a folder are skipped (not aborting the search).
   - `_glob_to_regex`: `**/x` matches `x`, `a/x`, `a/b/x` but **not** `foox`; `foo**` behaves like `foo*` (does **not** cross `/`); `*` does not cross `/`; `?` is one non-`/` char; literal escaping (`file.txt` matches only `file.txt`); case-sensitive; empty/invalid pattern → `InvalidToolCallParameterException("pattern", ...)`.
-  - `DialFilesConfig`: `max_files_scanned` defaults to 200 and rejects values `< 1`.
+  - `DialFilesConfig`: `max_files_scanned` defaults to 50 and rejects values `< 1`.
