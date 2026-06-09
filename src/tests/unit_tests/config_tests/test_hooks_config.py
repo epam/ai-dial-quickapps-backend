@@ -47,6 +47,16 @@ class TestToolCallHookConfig:
         assert cfg.tool_name == "fetch_prefs"
         assert cfg.frequency == InjectionFrequency.ALWAYS
 
+    def test_daily_refresh_frequency_parses(self):
+        data = {
+            "kind": "tool_call",
+            "event": "on_request_start",
+            "tool_name": "fetch_memories",
+            "frequency": "daily_refresh",
+        }
+        cfg = ToolCallHookConfig.model_validate(data)
+        assert cfg.frequency == InjectionFrequency.DAILY_REFRESH
+
     def test_hook_config_parses_tool_call_variant(self):
         data = {
             "kind": "tool_call",

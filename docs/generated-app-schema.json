@@ -1497,7 +1497,8 @@
     "InjectionFrequency": {
       "enum": [
         "always",
-        "append_if_changed"
+        "append_if_changed",
+        "daily_refresh"
       ],
       "title": "InjectionFrequency",
       "type": "string"

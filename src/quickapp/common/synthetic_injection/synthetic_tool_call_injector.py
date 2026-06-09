@@ -1,6 +1,7 @@
 import hashlib
 import json
 import logging
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 from uuid import uuid4
@@ -16,6 +17,9 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 from quickapp.common.tool_call_result import ToolCallResult
 
 logger = logging.getLogger(__name__)
+
+_DAILY_REFRESH_TTL_HOURS = 24
+_DAILY_REFRESH_MARKER = "dr"
 
 
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
@@ -53,18 +57,19 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
         tool_name = await self.get_tool_name()
         arguments = await self.get_arguments()
-
-        content = await self.get_content(messages)
-        if content is None:
-            return messages
-
         frequency = await self.get_frequency(messages)
 
         match frequency:
             case InjectionFrequency.ALWAYS:
+                content = await self.get_content(messages)
+                if content is None:
+                    return messages
                 call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
                 idx = len(messages)
             case InjectionFrequency.APPEND_IF_CHANGED:
+                content = await self.get_content(messages)
+                if content is None:
+                    return messages
                 call_id, args_hash = _make_call_id(
                     self.call_id_prefix, tool_name, arguments, content
                 )
@@ -74,12 +79,54 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
                     messages, tool_name, args_hash, self.call_id_prefix
                 )
                 idx = len(messages) if has_prior else _after_first_user_idx(messages)
+            case InjectionFrequency.DAILY_REFRESH:
+                return await self._inject_daily_refresh(messages, tool_name, arguments)
+            case _:
+                logger.error("Unhandled frequency %r — skipping injection", frequency)
+                return messages
 
         # Enrich the synthetic result so metadata matches real tool results.
         state = self._enrich_state(call_id, content)
 
         pair = _build_pair(tool_name, call_id, arguments, content, state)
         return messages[:idx] + list(pair) + messages[idx:]
+
+    async def _inject_daily_refresh(
+        self, messages: list[Message], tool_name: str, arguments: dict
+    ) -> list[Message]:
+        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+        dr_prefix = f"{self.call_id_prefix}{tool_name}_{args_hash}_{_DAILY_REFRESH_MARKER}"
+        existing = _find_daily_refresh_pair(messages, dr_prefix)
+
+        if existing is None:
+            content = await self.get_content(messages)
+            if content is None:
+                return messages
+            call_id = _make_daily_refresh_call_id(dr_prefix, content)
+            state = self._enrich_state(call_id, content)
+            pair = _build_pair(tool_name, call_id, arguments, content, state)
+            idx = _after_first_user_idx(messages)
+            return messages[:idx] + list(pair) + messages[idx:]
+
+        pair_idx, pair_call_id = existing
+        if not _is_daily_refresh_stale(pair_call_id, dr_prefix):
+            return messages
+
+        content = await self.get_content(messages)
+        if content is None:
+            return messages
+
+        new_call_id = _make_daily_refresh_call_id(dr_prefix, content)
+        old_content = _get_tool_message_content(messages, pair_call_id)
+        state = self._enrich_state(new_call_id, content)
+        pair = _build_pair(tool_name, new_call_id, arguments, content, state)
+
+        if content == old_content:
+            # re-stamp in place — same content, refreshed epoch_hours in call_id
+            return messages[:pair_idx] + list(pair) + messages[pair_idx + 2 :]
+        else:
+            # content changed — append at end
+            return messages + list(pair)
 
     def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
         if self._enrichers_provider is None:
@@ -113,6 +160,43 @@ def _make_call_id(
     args_hash = _hash6(json.dumps(arguments, sort_keys=True))
     call_id = f"{call_id_prefix}{tool_name}_{args_hash}_{_hash6(content)}"
     return call_id, args_hash
+
+
+def _make_daily_refresh_call_id(dr_prefix: str, content: str) -> str:
+    """Build a DAILY_REFRESH call_id encoding current epoch_hours and content hash.
+
+    Format: {dr_prefix}{epoch_hours:08x}_{content_hash6}
+    """
+    epoch_hours = int(time.time() / 3600)
+    return f"{dr_prefix}{epoch_hours:08x}_{_hash6(content)}"
+
+
+def _find_daily_refresh_pair(messages: list[Message], dr_prefix: str) -> tuple[int, str] | None:
+    """Return (assistant_idx, call_id) of the first DAILY_REFRESH pair matching dr_prefix."""
+    for i, m in enumerate(messages):
+        if (
+            m.role == Role.TOOL
+            and m.tool_call_id is not None
+            and m.tool_call_id.startswith(dr_prefix)
+        ):
+            return i - 1, m.tool_call_id
+    return None
+
+
+def _is_daily_refresh_stale(call_id: str, dr_prefix: str) -> bool:
+    """Return True if the DAILY_REFRESH pair is older than _DAILY_REFRESH_TTL_HOURS."""
+    epoch_str = call_id[len(dr_prefix) : len(dr_prefix) + 8]
+    injection_epoch_hours = int(epoch_str, 16)
+    return int(time.time() / 3600) - injection_epoch_hours >= _DAILY_REFRESH_TTL_HOURS
+
+
+def _get_tool_message_content(messages: list[Message], call_id: str) -> str | None:
+    """Return content of the TOOL message with the given tool_call_id."""
+    for m in messages:
+        if m.role == Role.TOOL and m.tool_call_id == call_id:
+            content = m.content
+            return content if isinstance(content, str) else None
+    return None
 
 
 def _after_first_user_idx(messages: list[Message]) -> int:

@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 
@@ -8,6 +10,9 @@ from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
 )
 from quickapp.common.tool_call_result import ToolCallResult
 from tests.unit_tests.common.common import make_provider
+
+_TIME_MODULE = "quickapp.common.synthetic_injection.synthetic_tool_call_injector.time"
+_EPOCH_HOURS_NOW = 500_000
 
 # ---------------------------------------------------------------------------
 # Minimal concrete implementations for testing
@@ -407,3 +412,136 @@ class TestCustomCallIdPrefix:
         result = await injector.transform([_user("hi")])
         call_id = _assert_synthetic_pair(result, 1, "prefixed_tool", "content")
         assert call_id.startswith("my_prefix_")
+
+
+# ---------------------------------------------------------------------------
+# Tests: DAILY_REFRESH
+# ---------------------------------------------------------------------------
+
+
+class _DailyRefreshInjector(SyntheticToolCallInjector):
+    def __init__(self, content: str = "daily content"):
+        super().__init__()
+        self._content = content
+
+    async def get_tool_name(self) -> str:
+        return "daily_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.DAILY_REFRESH
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return self._content
+
+
+class TestDailyRefresh:
+    @pytest.mark.asyncio
+    async def test_first_injection_placed_after_first_user_message(self):
+        injector = _DailyRefreshInjector()
+        messages = [_user("first"), Message(role=Role.ASSISTANT, content="reply"), _user("second")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            result = await injector.transform(messages)
+
+        assert len(result) == 5
+        assert result[0].role == Role.USER
+        _assert_synthetic_pair(result, 1, "daily_tool", "daily content")
+        assert result[3].role == Role.ASSISTANT
+        assert result[4].role == Role.USER
+
+    @pytest.mark.asyncio
+    async def test_skips_when_pair_is_fresh(self):
+        injector = _DailyRefreshInjector()
+        messages = [_user("hi")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            result = await injector.transform(messages)
+
+        assert len(result) == 3
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = (_EPOCH_HOURS_NOW + 1) * 3600
+            result2 = await injector.transform(result)
+
+        assert len(result2) == 3  # no new injection
+
+    @pytest.mark.asyncio
+    async def test_restamps_in_place_when_stale_and_content_unchanged(self):
+        injector = _DailyRefreshInjector(content="same content")
+        messages = [_user("hi")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            result = await injector.transform(messages)
+
+        assert len(result) == 3
+        old_call_id = _assert_synthetic_pair(result, 1, "daily_tool", "same content")
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = (_EPOCH_HOURS_NOW + 25) * 3600
+            result2 = await injector.transform(result)
+
+        assert len(result2) == 3  # still 3 — replaced in place, not appended
+        new_call_id = _assert_synthetic_pair(result2, 1, "daily_tool", "same content")
+        assert new_call_id != old_call_id  # timestamp refreshed
+
+    @pytest.mark.asyncio
+    async def test_appends_at_end_when_stale_and_content_changed(self):
+        injector = _DailyRefreshInjector(content="v1")
+        messages = [_user("hi")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            result = await injector.transform(messages)
+
+        assert len(result) == 3
+        _assert_synthetic_pair(result, 1, "daily_tool", "v1")
+
+        injector._content = "v2"
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = (_EPOCH_HOURS_NOW + 25) * 3600
+            result2 = await injector.transform(result)
+
+        assert len(result2) == 5  # old pair preserved + new pair appended
+        _assert_synthetic_pair(result2, 1, "daily_tool", "v1")
+        _assert_synthetic_pair(result2, 3, "daily_tool", "v2")
+
+    @pytest.mark.asyncio
+    async def test_skips_when_content_is_none(self):
+        class _NullDailyInjector(SyntheticToolCallInjector):
+            async def get_tool_name(self) -> str:
+                return "null_daily"
+
+            async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+                return InjectionFrequency.DAILY_REFRESH
+
+            async def get_content(self, messages: list[Message]) -> str | None:
+                return None
+
+        injector = _NullDailyInjector()
+        messages = [_user("hi")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            result = await injector.transform(messages)
+
+        assert result is messages
+
+    @pytest.mark.asyncio
+    async def test_uses_deterministic_call_id_for_same_content(self):
+        injector = _DailyRefreshInjector()
+        messages = [_user("hi")]
+
+        with patch(_TIME_MODULE) as mock_time:
+            mock_time.time.return_value = _EPOCH_HOURS_NOW * 3600
+            id1 = _assert_synthetic_pair(
+                await injector.transform(messages), 1, "daily_tool", "daily content"
+            )
+            id2 = _assert_synthetic_pair(
+                await injector.transform(messages), 1, "daily_tool", "daily content"
+            )
+
+        assert id1 == id2
+        assert "dr" in id1
