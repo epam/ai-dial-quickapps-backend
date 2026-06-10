@@ -89,16 +89,11 @@ Future hook variants (e.g. guards at `on_pre_tool_use`, observers at `on_complet
 
 `HookEvent` values:
 
-| Value | Fires at | Status |
-|---|---|---|
-| `on_request_start` | After initializers, before the first orchestrator iteration | ✅ In enum, wired |
-| `on_pre_llm` | Start of each `_run_iteration`, before the LLM call | ❌ Not in enum yet (deferred) |
-| `on_pre_tool_use` | `ToolExecutor.execute`, before `tool.arun` | ❌ Not in enum yet (deferred) |
-| `on_post_tool_use` | After `tool.arun`, before result enrichers | ❌ Not in enum yet (deferred) |
-| `on_iteration_end` | End of each `_run_iteration` | ❌ Not in enum yet (deferred) |
-| `on_completion` | After `Orchestrator.invoke` returns | ❌ Not in enum yet (deferred) |
+| Value | Fires at |
+|---|---|
+| `on_request_start` | After initializers, before the first orchestrator iteration |
 
-Deferred events are commented out in `HookEvent` — they are not accepted by the schema and cannot be specified in manifests until wired.
+Only `on_request_start` is currently available. Additional seams (`on_pre_llm`, `on_pre_tool_use`, `on_post_tool_use`, `on_iteration_end`, `on_completion`) are deferred — they are not in the enum and Pydantic rejects them at validation time.
 
 **Change:** New file `config/hooks.py`.
 
@@ -160,10 +155,12 @@ interface on future hook variants. Each concrete variant mixes in its own interf
 `_BaseConfigDrivenHook` is listed first so any overrides it defines in the future take
 precedence over `StagedToolSyntheticInjector`.
 
-`_ConfigDrivenToolCallHook` defines an explicit `__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig)`
-that calls `super().__init__(tools)` directly. This is required because `StagedToolSyntheticInjector.__init__`
-carries `@inject` — without the override, the injector library would attempt to wire the class via
-DI rather than accepting the manually-supplied arguments from `AgentHooksModule`.
+`_ConfigDrivenToolCallHook` defines an explicit
+`__init__(self, tools: list[StagedBaseTool], config: ToolCallHookConfig, enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None)`
+that calls `super().__init__(tools, enrichers_provider)` directly. This is required because
+`StagedToolSyntheticInjector.__init__` carries `@inject` — without the override, the injector
+library would attempt to wire the class via DI rather than accepting the manually-supplied
+arguments from `AgentHooksModule`.
 
 `StagedBaseTool.arun()` catches exceptions internally and routes them through `FallbackProcessor`.
 If a matching fallback strategy is configured on the tool, `arun()` returns a `ToolCallResult` with
@@ -185,30 +182,25 @@ there is no concurrent collision.
 No hook class uses `@inject` — all are constructed manually by the module's `@multiprovider`
 with explicit arguments.
 
-**Change:** New file `synthetic_injection_tooling/_config_driven_hooks.py`.
+**Change:** New file `agent_hooks/_config_driven_hooks.py`.
 
 ---
 
 ### Component 4: `AgentHooksModule`
 
 **What:** A new `@preview_module` DI module in
-`synthetic_injection_tooling/agent_hooks_module.py`. It routes each hook to the correct
+`agent_hooks/agent_hooks_module.py`. It routes each hook to the correct
 `@multiprovider` list based on `entry.event`, building the skeleton for future event extensions.
 
-**Owner:** `synthetic_injection_tooling/`
+**Owner:** `agent_hooks/`
 
-**Event → seam mapping (first iteration):**
+**Event → seam mapping:**
 
-| `HookEvent` | DI list contributed to | Status |
-|---|---|---|
-| `on_request_start` | `list[MessagesTransformer]` | ✅ Supported |
-| `on_pre_llm` | `list[PreInvocationTransformer]` | ❌ Deferred — not in `HookEvent` enum yet (`PreInvocationTransformer.transform()` is synchronous; bridging `tool.arun()` requires an event loop or interface restructuring) |
-| `on_pre_tool_use` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
-| `on_post_tool_use` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
-| `on_iteration_end` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
-| `on_completion` | *(future seam)* | ❌ Deferred — not in `HookEvent` enum yet |
+| `HookEvent` | DI list contributed to |
+|---|---|
+| `on_request_start` | `list[MessagesTransformer]` |
 
-Deferred events are rejected at schema-validation time (Pydantic rejects unknown `HookEvent` values) — they never reach the module.
+Adding support for a new event means adding one `@multiprovider` method to `AgentHooksModule` and a matching `case` in `_build_on_request_message_transformers`, then uncommenting the corresponding value in `HookEvent`.
 
 **Semantics:**
 
@@ -221,38 +213,35 @@ class AgentHooksModule(Module):
         self,
         app_config_provider: ProviderOf[ApplicationConfig],
         tools_provider: ProviderOf[list[StagedBaseTool]],
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
     ) -> list[MessagesTransformer]:
-        return self._build(app_config_provider, tools_provider, HookEvent.ON_REQUEST_START)
+        return self._build_on_request_message_transformers(
+            app_config_provider, tools_provider, HookEvent.ON_REQUEST_START, enrichers_provider
+        )
 
     @staticmethod
-    def _build(
+    def _build_on_request_message_transformers(
         app_config_provider: ProviderOf[ApplicationConfig],
         tools_provider: ProviderOf[list[StagedBaseTool]],
         event: HookEvent,
+        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
     ) -> list[MessagesTransformer]:
-        result = []
-        for entry in (app_config_provider.get().hooks or []):
+        result: list[MessagesTransformer] = []
+        for entry in app_config_provider.get().hooks or []:
             if entry.event != event:
                 continue
             match entry:
                 case ToolCallHookConfig():
-                    result.append(_ConfigDrivenToolCallHook(tools_provider.get(), entry))
-                case _:
-                    logger.error(
-                        "Hook type %r is not supported for event %r — skipping",
-                        type(entry).__name__,
-                        entry.event,
+                    result.append(
+                        _ConfigDrivenToolCallHook(tools_provider.get(), entry, enrichers_provider)
                     )
         return result
 ```
 
 `@preview_module` means the module is not loaded at all when `ENABLE_PREVIEW_FEATURES=false`.
 When preview is enabled but `hooks` is `None` or empty, the multiprovider returns an empty list.
-Adding support for a new event requires adding one `@multiprovider` method to `AgentHooksModule` and
-one branch in `_build`.
 
-**Change:** New files `synthetic_injection_tooling/__init__.py` and
-`synthetic_injection_tooling/agent_hooks_module.py`.
+**Change:** New files `agent_hooks/__init__.py` and `agent_hooks/agent_hooks_module.py`.
 
 ---
 
@@ -281,12 +270,10 @@ one branch in `_build`.
   in a future iteration.
 - **Content templating.** Arguments and `static` content are treated as literals. Dynamic rendering
   (e.g. Jinja templates) is deferred.
-- **`on_pre_llm` and beyond for `ToolCallHookConfig`.** `on_request_start` is fully wired.
-  `on_pre_llm` is blocked by `PreInvocationTransformer.transform()` being synchronous while
-  `tool.arun()` is async — bridging requires running in an event loop or restructuring the interface.
-  Remaining events need new orchestrator seams. All deferred events are commented out in `HookEvent`
-  so they are rejected at schema-validation time; no runtime degradation path is needed until they
-  are wired.
+- **Additional `HookEvent` seams.** Only `on_request_start` is wired. `on_pre_llm` is additionally
+  blocked by `PreInvocationTransformer.transform()` being synchronous while `tool.arun()` is async.
+  Other seams (`on_pre_tool_use`, `on_post_tool_use`, `on_iteration_end`, `on_completion`) need new
+  orchestrator integration points before they can be enabled.
 
 ---
 
@@ -362,8 +349,7 @@ are unaffected.
 
 ### `config/hooks.py` — NEW
 
-- `HookEvent` — enum of orchestrator seams (`on_request_start`, `on_pre_llm`, `on_pre_tool_use`,
-  `on_post_tool_use`, `on_iteration_end`, `on_completion`)
+- `HookEvent` — enum of orchestrator seams; currently only `on_request_start`
 - `_BaseHookConfig` — universal fields (`event`, `name`)
 - `ToolCallHookConfig(_BaseHookConfig)` — `kind="tool_call"`, adds `toolset_name`, `tool_name`, `arguments`, `frequency`
 - `HookConfig` — discriminated union type alias (currently a single-variant union; extensible)

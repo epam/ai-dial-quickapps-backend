@@ -80,6 +80,7 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 class InjectionFrequency(StrEnum):
     ALWAYS            = "always"             # always append a new pair at END; accumulates across turns
     APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; append at END if content changed
+    DAILY_REFRESH     = "daily_refresh"      # inject once near start; re-check every 24h: re-stamp in place if unchanged, append at END if changed
 ```
 
 Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
@@ -123,21 +124,31 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         ...
 ```
 
-The base `transform` implementation:
+The base `transform` implementation is a two-stage dispatcher:
 
 1. **Precondition gate**: calls `should_inject(messages)`. Returns messages unchanged if `False`.
    Use this for coarse preconditions (e.g. feature flags, missing config) that are independent
    of content. Conditional injection logic that depends on content belongs in `get_content`.
-2. **Content fetch**: calls `get_content(messages)`. Returns messages unchanged if `None`.
-3. **Frequency gate + implicit position**: determines whether and how to inject, and where.
-   - `ALWAYS`: proceeds unconditionally; uses a random `call_id`; appends at **END**.
-   - `APPEND_IF_CHANGED`: computes `call_id = synth_{tool_name}_{args_hash[:6]}_{content_hash[:6]}`.
-     Skips if that exact `call_id` already exists in history. On first injection (no prior pair for
-     this tool+args) inserts **after the first USER message**. On subsequent injections when content
-     changed, appends at **END** so the updated content appears after all prior history.
-   - All modes fall back to appending at END when no USER message exists.
-4. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair using the computed
-   `call_id`.
+2. **Frequency dispatch**: calls `get_frequency(messages)` and routes to one of three private
+   methods, each responsible for fetching content and determining position:
+
+| Frequency | Private method | Behavior |
+|---|---|---|
+| `ALWAYS` | `_inject_always` | Fetches content; uses a random `call_id`; appends at **END**. |
+| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id = {prefix}{tool_name}_{args_hash6}_{content_hash6}`. Skips if `call_id` already in history. On first injection inserts **after the first USER message**; on re-injection with changed content appends at **END**. |
+| `DAILY_REFRESH` | `_inject_daily_refresh` | Injects once near the start of history; re-evaluates every 24 h. If stale and content is unchanged, re-stamps in place (updated `call_id`, same position). If content changed, appends at **END** alongside the old pair. |
+
+All methods return messages unchanged if `get_content()` returns `None`. All fall back to
+appending at END when no USER message exists.
+
+**`_inject_at` helper:** all three private methods (and the no-prior-pair path of
+`_inject_daily_refresh`) converge on
+`_inject_at(messages, idx, tool_name, call_id, arguments, content)`, which:
+
+1. Calls `_enrich_state(call_id, content)` — runs enrichers to build the `state` dict.
+2. Calls `_build_pair(tool_name, call_id, arguments, content, state)` — constructs the
+   `(ASSISTANT/tool_calls, TOOL)` message pair.
+3. Splices the pair into `messages` at position `idx`.
 
 **Change:** New file. Replaces duplicated logic in all three existing injectors.
 
