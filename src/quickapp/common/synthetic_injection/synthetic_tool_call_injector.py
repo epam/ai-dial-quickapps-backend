@@ -61,35 +61,35 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
         match frequency:
             case InjectionFrequency.ALWAYS:
-                content = await self.get_content(messages)
-                if content is None:
-                    return messages
-                call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
-                idx = len(messages)
+                return await self._inject_always(messages, tool_name, arguments)
             case InjectionFrequency.APPEND_IF_CHANGED:
-                content = await self.get_content(messages)
-                if content is None:
-                    return messages
-                call_id, args_hash = _make_call_id(
-                    self.call_id_prefix, tool_name, arguments, content
-                )
-                if _has_tool_call_id(messages, call_id):
-                    return messages
-                has_prior = _has_any_pair_for_tool_and_args(
-                    messages, tool_name, args_hash, self.call_id_prefix
-                )
-                idx = len(messages) if has_prior else _after_first_user_idx(messages)
+                return await self._inject_append_if_changed(messages, tool_name, arguments)
             case InjectionFrequency.DAILY_REFRESH:
                 return await self._inject_daily_refresh(messages, tool_name, arguments)
-            case _:
-                logger.error("Unhandled frequency %r — skipping injection", frequency)
-                return messages
 
-        # Enrich the synthetic result so metadata matches real tool results.
-        state = self._enrich_state(call_id, content)
+    async def _inject_always(
+        self, messages: list[Message], tool_name: str, arguments: dict
+    ) -> list[Message]:
+        content = await self.get_content(messages)
+        if content is None:
+            return messages
+        call_id = f"{self.call_id_prefix}{uuid4().hex[:12]}"
+        return self._inject_at(messages, len(messages), tool_name, call_id, arguments, content)
 
-        pair = _build_pair(tool_name, call_id, arguments, content, state)
-        return messages[:idx] + list(pair) + messages[idx:]
+    async def _inject_append_if_changed(
+        self, messages: list[Message], tool_name: str, arguments: dict
+    ) -> list[Message]:
+        content = await self.get_content(messages)
+        if content is None:
+            return messages
+        call_id, args_hash = _make_call_id(self.call_id_prefix, tool_name, arguments, content)
+        if _has_tool_call_id(messages, call_id):
+            return messages
+        has_prior = _has_any_pair_for_tool_and_args(
+            messages, tool_name, args_hash, self.call_id_prefix
+        )
+        idx = len(messages) if has_prior else _after_first_user_idx(messages)
+        return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
 
     async def _inject_daily_refresh(
         self, messages: list[Message], tool_name: str, arguments: dict
@@ -103,10 +103,8 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
             if content is None:
                 return messages
             call_id = _make_daily_refresh_call_id(dr_prefix, content)
-            state = self._enrich_state(call_id, content)
-            pair = _build_pair(tool_name, call_id, arguments, content, state)
             idx = _after_first_user_idx(messages)
-            return messages[:idx] + list(pair) + messages[idx:]
+            return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
 
         pair_idx, pair_call_id = existing
         if not _is_daily_refresh_stale(pair_call_id, dr_prefix):
@@ -127,6 +125,19 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         else:
             # content changed — append at end
             return messages + list(pair)
+
+    def _inject_at(
+        self,
+        messages: list[Message],
+        idx: int,
+        tool_name: str,
+        call_id: str,
+        arguments: dict,
+        content: str,
+    ) -> list[Message]:
+        state = self._enrich_state(call_id, content)
+        pair = _build_pair(tool_name, call_id, arguments, content, state)
+        return messages[:idx] + list(pair) + messages[idx:]
 
     def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
         if self._enrichers_provider is None:
