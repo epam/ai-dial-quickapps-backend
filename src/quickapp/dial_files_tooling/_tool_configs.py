@@ -1,3 +1,13 @@
+from quickapp.common.tool_names import (
+    INTERNAL_FILE_COPY_TOOL_NAME,
+    INTERNAL_FILE_DELETE_TOOL_NAME,
+    INTERNAL_FILE_EDIT_TOOL_NAME,
+    INTERNAL_FILE_LIST_TOOL_NAME,
+    INTERNAL_FILE_MOVE_TOOL_NAME,
+    INTERNAL_FILE_READ_LINES_TOOL_NAME,
+    INTERNAL_FILE_SEARCH_TOOL_NAME,
+    INTERNAL_FILE_WRITE_TOOL_NAME,
+)
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -12,8 +22,6 @@ from quickapp.config.tools.display.paramenter import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 
-TOOL_NAME_PREFIX = "internal_file_"
-
 _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
 )
@@ -22,7 +30,7 @@ _PATH_IN_TITLE = ParameterDisplayConfig(
 LIST_FILES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}list",
+            name=INTERNAL_FILE_LIST_TOOL_NAME,
             description=(
                 "List entries (files and folders) under a folder in DIAL storage. "
                 "Depth-bounded recursion."
@@ -57,7 +65,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
 READ_FILE_LINES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}read_lines",
+            name=INTERNAL_FILE_READ_LINES_TOOL_NAME,
             description=(
                 "Read a range of lines from a file stored in DIAL. "
                 "Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. "
@@ -99,7 +107,7 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
 SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}search",
+            name=INTERNAL_FILE_SEARCH_TOOL_NAME,
             description=(
                 "Search for a substring in a file stored in DIAL. "
                 "Returns matching lines with optional surrounding context."
@@ -138,7 +146,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
 WRITE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}write",
+            name=INTERNAL_FILE_WRITE_TOOL_NAME,
             description=(
                 "Create a UTF-8 text file under the agent's home dir. "
                 "Relative path only (absolute files/... URLs are rejected). "
@@ -190,7 +198,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
 EDIT_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}edit",
+            name=INTERNAL_FILE_EDIT_TOOL_NAME,
             description=(
                 "Replace a unique substring in an existing UTF-8 text file. "
                 "old_string must occur exactly once. Fails if the file changed concurrently."
@@ -228,7 +236,7 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
 DELETE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}delete",
+            name=INTERNAL_FILE_DELETE_TOOL_NAME,
             description="Delete a file from DIAL storage. Hard delete; no undo.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -252,7 +260,7 @@ DELETE_FILE_TOOL_CONFIG = InternalTool(
 COPY_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}copy",
+            name=INTERNAL_FILE_COPY_TOOL_NAME,
             description=(
                 "Copy a file server-side in DIAL storage. Source can be relative "
                 "(agent's home dir) or absolute files/... URL. Destination must be "
@@ -295,7 +303,7 @@ COPY_FILE_TOOL_CONFIG = InternalTool(
 MOVE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}move",
+            name=INTERNAL_FILE_MOVE_TOOL_NAME,
             description=(
                 "Move (rename) a file within the agent's home dir in DIAL storage. "
                 "Both source and destination must be relative paths. The original file "
