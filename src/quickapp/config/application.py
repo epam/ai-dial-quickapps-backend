@@ -7,7 +7,7 @@ from pydantic.fields import FieldInfo
 from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
-from quickapp.config.context import Context
+from quickapp.config.context import Context, FolderContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
@@ -220,4 +220,8 @@ class ApplicationConfig(BaseApplicationTypeConfig):
         if FeatureSettings().enable_preview_features:
             return self
         nullify_preview_fields(self)
+        filtered_contexts: list[Context] = [
+            ctx for ctx in self.contexts if not isinstance(ctx, FolderContextConfig)
+        ]
+        self.contexts = filtered_contexts
         return self

@@ -1051,7 +1051,10 @@
         "enabled_tools": {
           "anyOf": [
             {
-              "const": "all",
+              "enum": [
+                "read_only",
+                "all"
+              ],
               "type": "string"
             },
             {
@@ -1072,7 +1075,7 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
+          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for list/read_lines/search only, or a list to restrict further.",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {
@@ -1389,6 +1392,56 @@
       },
       "title": "FileLoadingConfig",
       "type": "object"
+    },
+    "FolderContextConfig": {
+      "properties": {
+        "type": {
+          "const": "folder",
+          "default": "folder",
+          "description": "The type of the context.",
+          "title": "Type",
+          "type": "string"
+        },
+        "mime": {
+          "default": "application/vnd.dial.metadata+json",
+          "title": "Mime",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative file URL in DIAL",
+          "dial:file": true,
+          "format": "dial-file-encoded",
+          "title": "Url",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the folder context.",
+          "title": "Description"
+        },
+        "max_depth": {
+          "default": 10,
+          "description": "Maximum recursion depth when expanding folder contents into available-context entries (files and subfolders).",
+          "maximum": 10,
+          "minimum": 1,
+          "title": "Max Depth",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "FolderContextConfig",
+      "type": "object",
+      "x-preview": true
     },
     "FormattedParameterConfig": {
       "properties": {
@@ -3176,6 +3229,7 @@
           "title": "System Prompt"
         },
         "max_iterations": {
+          "default": 15,
           "description": "The max count of orchestrator(agent) operations. Default: 15",
           "title": "Max Iterations",
           "type": "integer"
@@ -3218,6 +3272,7 @@
         "discriminator": {
           "mapping": {
             "file": "#/$defs/FileContextConfig",
+            "folder": "#/$defs/FolderContextConfig",
             "user-defined": "#/$defs/UserDefinedContextConfig"
           },
           "propertyName": "type"
@@ -3225,6 +3280,9 @@
         "oneOf": [
           {
             "$ref": "#/$defs/FileContextConfig"
+          },
+          {
+            "$ref": "#/$defs/FolderContextConfig"
           },
           {
             "$ref": "#/$defs/UserDefinedContextConfig"

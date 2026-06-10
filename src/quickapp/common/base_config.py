@@ -312,6 +312,50 @@ def has_preview_marker(field_info: FieldInfo) -> bool:
     return bool(tmp.get(_PREVIEW_MARKER, False))
 
 
+def _mark_json_schema_preview(schema: dict[str, Any]) -> None:
+    """Mark a JSON schema object (e.g. a ``$defs`` entry) as preview-only."""
+    schema[_PREVIEW_MARKER] = True
+
+
+def _preview_def_names(defs: dict[str, Any]) -> set[str]:
+    return {name for name, definition in defs.items() if definition.get(_PREVIEW_MARKER)}
+
+
+def _strip_preview_discriminated_unions(obj: dict, preview_defs: set[str]) -> None:
+    """Remove ``oneOf`` variants that reference preview-marked ``$defs`` entries."""
+    if not preview_defs:
+        return
+    one_of = obj.get("oneOf")
+    if isinstance(one_of, list):
+        filtered = [
+            variant
+            for variant in one_of
+            if not (
+                isinstance(variant, dict) and variant.get("$ref", "").split("/")[-1] in preview_defs
+            )
+        ]
+        if len(filtered) != len(one_of):
+            if filtered:
+                obj["oneOf"] = filtered
+            else:
+                obj.pop("oneOf", None)
+        discriminator = obj.get("discriminator")
+        if isinstance(discriminator, dict):
+            mapping = discriminator.get("mapping")
+            if isinstance(mapping, dict):
+                for key, ref in list(mapping.items()):
+                    if isinstance(ref, str) and ref.split("/")[-1] in preview_defs:
+                        del mapping[key]
+
+    for value in obj.values():
+        if isinstance(value, dict):
+            _strip_preview_discriminated_unions(value, preview_defs)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _strip_preview_discriminated_unions(item, preview_defs)
+
+
 def _strip_preview_properties(obj: dict) -> None:
     """Remove preview-marked properties and clean up required list in-place."""
     properties = obj.get("properties")
@@ -331,12 +375,18 @@ def _strip_preview_fields(schema: dict) -> dict:
     """Remove preview-marked properties from a JSON schema dict."""
     schema = deepcopy(schema)
 
+    defs = schema.get("$defs", {})
+    preview_defs = _preview_def_names(defs)
+
     # Strip at root level
     _strip_preview_properties(schema)
 
     # Strip within $defs
-    for definition in schema.get("$defs", {}).values():
+    for definition in defs.values():
         _strip_preview_properties(definition)
+
+    # Strip preview variants from discriminated unions (e.g. folder context type)
+    _strip_preview_discriminated_unions(schema, preview_defs)
 
     # Prune unreferenced $defs
     defs = schema.get("$defs", {})

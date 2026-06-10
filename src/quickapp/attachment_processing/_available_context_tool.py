@@ -8,11 +8,13 @@ from quickapp.attachment_processing._available_context_stage_wrapper import (
 )
 from quickapp.attachment_processing._context_entries import (
     AvailableContextToolResponse,
-    build_context_entries,
+    build_context_entries_async,
     extract_seen_entries_from_messages,
 )
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -31,6 +33,8 @@ class _AvailableContextTool(StagedBaseTool):
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
         messages_mixin: MessagesMixin,
+        folder_listing: FolderListingProvider,
+        expanded_file_urls: ExpandedContextFileUrls,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -45,11 +49,18 @@ class _AvailableContextTool(StagedBaseTool):
         )
         self.__contexts: list[Context] = contexts
         self.__messages_mixin: MessagesMixin = messages_mixin
+        self.__folder_listing: FolderListingProvider = folder_listing
+        self.__expanded_file_urls: ExpandedContextFileUrls = expanded_file_urls
 
-    def _get_response(self) -> AvailableContextToolResponse:
+    async def _get_response(self) -> AvailableContextToolResponse:
         """Collect context file metadata, flagging new or changed ones."""
         seen_entries = extract_seen_entries_from_messages(self.__messages_mixin.messages)
-        _, entries = build_context_entries(self.__contexts, seen_entries)
+        _, entries = await build_context_entries_async(
+            self.__contexts,
+            seen_entries,
+            self.__folder_listing,
+            self.__expanded_file_urls,
+        )
         return AvailableContextToolResponse(entries=entries)
 
     async def _run_in_stage_async(
@@ -59,7 +70,7 @@ class _AvailableContextTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        response = self._get_response()
+        response = await self._get_response()
         content = json.dumps(response.model_dump(exclude_none=True), ensure_ascii=False)
         result = ToolCallResult(content=content, content_type="application/json")
         if stage_wrapper:

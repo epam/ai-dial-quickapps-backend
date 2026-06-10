@@ -16,6 +16,7 @@ from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
 from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.attachment_processing_utils import (
@@ -64,6 +65,7 @@ class _GetContentTool(StagedBaseTool):
         orchestrator_capabilities: OrchestratorCapabilities,
         messages_mixin: MessagesMixin,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
+        expanded_file_urls: ExpandedContextFileUrls,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -80,6 +82,7 @@ class _GetContentTool(StagedBaseTool):
         self.__messages_mixin: MessagesMixin = messages_mixin
         self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
+        self.__expanded_file_urls: ExpandedContextFileUrls = expanded_file_urls
 
     def _error_result(self, message: str) -> ToolCallResult:
         payload = json.dumps(
@@ -111,6 +114,7 @@ class _GetContentTool(StagedBaseTool):
             contexts=self.__contexts,
             messages=self.__messages_mixin.messages,
             input_attachment_types=self.__orchestrator_capabilities.input_attachment_types,
+            expanded_folder_file_urls=self.__expanded_file_urls.urls,
         )
         if normalized_url not in allowed_urls:
             log_segment = posix_path_last_segment(attachment_url)

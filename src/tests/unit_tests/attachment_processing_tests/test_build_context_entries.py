@@ -1,12 +1,25 @@
+import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.attachment_processing._context_entries import (
     ContextEntry,
     ContextEntryStatus,
     build_context_entries,
+    build_context_entries_async,
+)
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
+from quickapp.common.abstract.folder_listing_provider import (
+    ExpandedFolderEntry,
+    FolderListingProvider,
 )
 from quickapp.common.attachment_processing_utils import collect_get_content_allowed_urls
-from quickapp.config.context import Context, FileContextConfig, UserDefinedContextConfig
+from quickapp.common.folder_context_urls import FOLDER_METADATA_MIME
+from quickapp.config.context import (
+    Context,
+    FileContextConfig,
+    FolderContextConfig,
+    UserDefinedContextConfig,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._gating import (
     should_enable_get_content_tool,
 )
@@ -245,3 +258,77 @@ class TestGetContentEligibility:
         assert "files/bucket/admin.pdf" in allowed
         assert "files/bucket/user-report.pdf" in allowed
         assert "files/bucket/notes.txt" not in allowed
+
+
+class _FakeFolderListing(FolderListingProvider):
+    def __init__(self, entries: list[ExpandedFolderEntry]) -> None:
+        self._entries = entries
+
+    async def list_folder_entries(
+        self, files_folder_url: str, *, max_depth: int
+    ) -> list[ExpandedFolderEntry]:
+        return self._entries
+
+
+class TestBuildContextEntriesAsync:
+    @pytest.mark.asyncio
+    async def test_expands_folder_with_files_and_subfolders(self):
+        contexts: list[Context] = [
+            FolderContextConfig(
+                url="metadata/files/bucket/shared-docs/",
+                description="Shared docs",
+            )
+        ]
+        listing = _FakeFolderListing(
+            [
+                ExpandedFolderEntry(url="files/bucket/shared-docs/sub/", is_folder=True),
+                ExpandedFolderEntry(url="files/bucket/shared-docs/a.pdf", is_folder=False),
+            ]
+        )
+        holder = ExpandedContextFileUrls()
+        urls, entries = await build_context_entries_async(contexts, {}, listing, holder)
+
+        assert urls == {
+            "metadata/files/bucket/shared-docs/",
+            "files/bucket/shared-docs/sub/",
+            "files/bucket/shared-docs/a.pdf",
+        }
+        assert holder.urls == {"files/bucket/shared-docs/a.pdf"}
+        by_url = {e.url: e for e in entries}
+        assert by_url["metadata/files/bucket/shared-docs/"].type == FOLDER_METADATA_MIME
+        assert by_url["metadata/files/bucket/shared-docs/"].description == "Shared docs"
+        assert by_url["files/bucket/shared-docs/sub/"].type == FOLDER_METADATA_MIME
+        assert by_url["files/bucket/shared-docs/a.pdf"].type == "application/pdf"
+
+    @pytest.mark.asyncio
+    async def test_new_file_in_folder_gets_new_status(self):
+        contexts: list[Context] = [
+            FolderContextConfig(url="metadata/files/bucket/docs/"),
+        ]
+        listing = _FakeFolderListing(
+            [ExpandedFolderEntry(url="files/bucket/docs/new.pdf", is_folder=False)]
+        )
+        seen = {
+            "metadata/files/bucket/docs/": ContextEntry(
+                title="docs",
+                url="metadata/files/bucket/docs/",
+                type=FOLDER_METADATA_MIME,
+            )
+        }
+        _, entries = await build_context_entries_async(contexts, seen, listing, None)
+        by_url = {e.url: e for e in entries}
+        assert by_url["files/bucket/docs/new.pdf"].status == ContextEntryStatus.new
+
+    @pytest.mark.asyncio
+    async def test_collect_allowed_urls_includes_expanded_folder_file(self):
+        contexts: list[Context] = [
+            FolderContextConfig(url="metadata/files/bucket/docs/"),
+        ]
+        expanded = {"files/bucket/docs/report.pdf"}
+        allowed = collect_get_content_allowed_urls(
+            contexts=contexts,
+            messages=[],
+            input_attachment_types=["application/pdf"],
+            expanded_folder_file_urls=expanded,
+        )
+        assert "files/bucket/docs/report.pdf" in allowed

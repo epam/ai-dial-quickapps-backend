@@ -1,7 +1,10 @@
+import logging
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 DialFilesToolName = Literal[
     "list",
@@ -13,6 +16,28 @@ DialFilesToolName = Literal[
     "copy",
     "move",
 ]
+
+DialFilesToolPreset = Literal["read_only", "all"]
+
+READ_ONLY_DIAL_FILES_TOOLS: frozenset[str] = frozenset({"list", "read_lines", "search"})
+WRITE_DIAL_FILES_TOOLS: frozenset[str] = frozenset({"write", "edit", "delete", "copy", "move"})
+
+
+def resolve_enabled_dial_files_tools(
+    enabled_tools: DialFilesToolPreset | list[DialFilesToolName],
+) -> set[str]:
+    if enabled_tools == "all":
+        return set(READ_ONLY_DIAL_FILES_TOOLS | WRITE_DIAL_FILES_TOOLS)
+    if enabled_tools == "read_only":
+        return set(READ_ONLY_DIAL_FILES_TOOLS)
+    selected: set[str] = set(enabled_tools)
+    if selected & WRITE_DIAL_FILES_TOOLS and not selected & READ_ONLY_DIAL_FILES_TOOLS:
+        logger.warning(
+            "dial_files enabled_tools lists write tools without read tools; "
+            "unioning read_only preset (list, read_lines, search)"
+        )
+        selected |= set(READ_ONLY_DIAL_FILES_TOOLS)
+    return selected
 
 
 class ToolCallResultOffloadSettings(BaseSettings):
@@ -60,11 +85,11 @@ class ToolCallResultOffloadConfig(BaseModel):
 
 
 class DialFilesConfig(BaseModel):
-    enabled_tools: Literal["all"] | list[DialFilesToolName] = Field(
+    enabled_tools: DialFilesToolPreset | list[DialFilesToolName] = Field(
         default="all",
         description=(
-            "Which file tools to expose. Use 'all' for every tool, "
-            "or a list to restrict (e.g. ['read_lines', 'search'])."
+            "Which file tools to expose. Use 'all' for every tool, 'read_only' for "
+            "list/read_lines/search only, or a list to restrict further."
         ),
     )
     agent_home_dir: str = Field(

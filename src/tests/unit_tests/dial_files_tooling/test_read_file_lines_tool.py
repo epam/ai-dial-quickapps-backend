@@ -4,8 +4,8 @@ import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
-from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
+from quickapp.shared.dial_files._read_file_lines_tool import _ReadFileLinesTool
+from quickapp.shared.dial_files._tool_configs import READ_FILE_LINES_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 

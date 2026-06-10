@@ -9,6 +9,7 @@ from quickapp.attachment_processing._attachment_notification_injector import (
 )
 from quickapp.attachment_processing._available_context_tool import _AvailableContextTool
 from quickapp.attachment_processing._context_entries import should_activate_context_tool
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_CONFIG
 from quickapp.common import StagedBaseTool
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 class AttachmentProcessingModule(Module):
     def configure(self, binder: Binder) -> None:
+        binder.bind(ExpandedContextFileUrls, to=ExpandedContextFileUrls, scope=request_scope)
         binder.bind(_AvailableContextTool, to=_AvailableContextTool, scope=request_scope)
         binder.bind(
             _AttachmentNotificationInjector,

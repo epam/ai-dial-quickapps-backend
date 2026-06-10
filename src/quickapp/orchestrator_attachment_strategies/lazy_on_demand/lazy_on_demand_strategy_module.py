@@ -5,11 +5,15 @@ from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
 from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.attachment_processing._context_entries import ensure_expanded_folder_file_urls
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
+from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
+from quickapp.common.async_blocking import run_blocking
 from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
@@ -66,13 +70,23 @@ class LazyOnDemandStrategyModule(Module):
         messages: list[Message],
         get_content_builder: AssistedBuilder[_GetContentTool],
         orchestrator_capabilities: OrchestratorCapabilities,
+        folder_listing: FolderListingProvider,
+        expanded_file_urls: ExpandedContextFileUrls,
     ) -> list[StagedBaseTool]:
         if not _is_active(app_config):
             return []
+        run_blocking(
+            ensure_expanded_folder_file_urls(
+                list(app_config.contexts),
+                folder_listing,
+                expanded_file_urls,
+            )
+        )
         if not should_enable_get_content_tool(
             app_config.contexts,
             messages,
             orchestrator_capabilities.input_attachment_types,
+            expanded_file_urls.urls,
         ):
             return []
         rendered_tool_config = render_get_content_tool_config(

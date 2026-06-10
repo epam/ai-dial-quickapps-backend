@@ -16,7 +16,7 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_SEARCH_TOOL_NAME,
 )
 from quickapp.dial_core_services.attachment_service import AttachmentService
-from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
+from quickapp.shared.dial_files._offload_config import ResolvedOffloadConfig
 
 logger = logging.getLogger(__name__)
 

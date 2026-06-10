@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from quickapp.config.dial_files import DialFilesConfig
-from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
+from quickapp.shared.dial_files.dial_files_module import DialFilesModule
 
 
 def _builder():
@@ -23,23 +23,23 @@ def _make_builders():
     )
 
 
-class TestDialFilesToolingModule:
+class TestDialFilesModule:
     def test_cfg_none_returns_empty(self):
-        module = DialFilesToolingModule()
+        module = DialFilesModule()
         app_config = MagicMock()
         app_config.features = None
         result = module._provide_dial_files_tools(app_config, *_make_builders())
         assert result == []
 
     def test_enabled_all_returns_eight_tools(self):
-        module = DialFilesToolingModule()
+        module = DialFilesModule()
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools="all")
         result = module._provide_dial_files_tools(app_config, *_make_builders())
         assert len(result) == 8
 
     def test_enabled_subset_filters_tools(self):
-        module = DialFilesToolingModule()
+        module = DialFilesModule()
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools=["read_lines"])
         builders = _make_builders()
@@ -48,3 +48,10 @@ class TestDialFilesToolingModule:
         # read is builder[1] (after list)
         builders[1].build.assert_called_once()
         builders[0].build.assert_not_called()
+
+    def test_read_only_preset_exposes_three_tools(self):
+        module = DialFilesModule()
+        app_config = MagicMock()
+        app_config.features.dial_files = DialFilesConfig(enabled_tools="read_only")
+        result = module._provide_dial_files_tools(app_config, *_make_builders())
+        assert len(result) == 3

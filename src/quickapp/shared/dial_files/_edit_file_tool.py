@@ -5,7 +5,7 @@ from aidial_client._exception import DialException, EtagMismatchError
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
+from quickapp.shared.dial_files._base_file_tool import _DialFileTool
 
 
 class _EditFileTool(_DialFileTool):
