@@ -37,6 +37,7 @@ class TestDialCoreConfig:
     APP_DEPLOYMENT_V2_NAME: str = os.getenv("APP_DEPLOYMENT_NAME", "quick_app_2")
     REMOTE_DIAL_URL: str = os.getenv("DIAL_URL", "http://localhost:8090")
     REMOTE_DIAL_API_KEY: str = os.getenv("DIAL_API_KEY", "dial_api_key")
+    REMOTE_DIAL_API_KEY_SECRET = SecretStr(REMOTE_DIAL_API_KEY)
     LOG_LEVEL: str = os.getenv("DIAL_LOG_LEVEL", "INFO")
     MAX_MODEL_RETRIES: int = int(os.getenv("MAX_MODEL_RETRIES", 3))
 
@@ -50,10 +51,9 @@ class TestConfig:
     MOCK_DIAL_CORE_URL = "http://localhost:"
 
     DEFAULT_MODEL = os.getenv("MODEL", "gpt4_1")  # "gpt4o", "claude35", "claude37"
-    REMOTE_DIAL_API_KEY = SecretStr(os.getenv("REMOTE_DIAL_API_KEY", "dial_api_key"))
 
     PY_INTERPRETER_URL = os.getenv("PY_INTERPRETER_URL")
-    PY_INTERPRETER_API_KEY = SecretStr(os.getenv("PY_INTERPRETER_API_KEY", REMOTE_DIAL_API_KEY))
+    PY_INTERPRETER_API_KEY = SecretStr(os.getenv("PY_INTERPRETER_API_KEY", TestDialCoreConfig.REMOTE_DIAL_API_KEY))
 
     WARNING_MESSAGE = "No cached value found, this means that something was changed in the logic"
     FAILURE_MESSAGE = "Rerun locally the test with REFRESH=True to renew cached LLM responses"
