@@ -62,8 +62,9 @@ class OrchestratorConfig(BaseModel):
     system_prompt: AgentSystemPromptConfig = Field(
         description="The configuration for the system prompt."
     )
-    max_iterations: int = Field(
+    max_iterations: int = Field(  # type: ignore[return-value]
         default_factory=get_max_iterations,
+        json_schema_extra={"default": 15},
         description="The max count of orchestrator(agent) operations. Default: 15",
     )
     propagate_stages: bool = Field(
