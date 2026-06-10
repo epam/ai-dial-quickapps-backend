@@ -6,6 +6,7 @@ from injector import ProviderOf, inject
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     InitializationException,
+    OffloadConfigurationException,
     SkillCatastrophicInitializationException,
     SkillInitializationException,
     ToolInitializationException,
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 _STAGE_NAME = "Initialization issues"
 _TOOL_SECTION = "#### Tool initialization"
 _SKILL_SECTION = "#### Skill loading"
+_OFFLOAD_SECTION = "#### Large tool-response offload"
 _CATASTROPHIC_HEADER = (
     "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
 )
@@ -50,11 +52,14 @@ class _InitializationErrorHandler:
         catastrophic_lines: list[str] = []
         per_url_error_lines: list[str] = []
         per_url_warning_lines: list[str] = []
+        offload_lines: list[str] = []
         for exc in exceptions:
             if isinstance(exc, ToolInitializationException):
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
                 if exc.details:
                     tool_lines.append(f"```\n{exc.details}\n```")
+            elif isinstance(exc, OffloadConfigurationException):
+                offload_lines.append(f"- {exc}")
             elif isinstance(exc, ConfigResolutionException):
                 tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
                 if exc.details:
@@ -88,6 +93,8 @@ class _InitializationErrorHandler:
                 skill_section.append(_PER_URL_WARNINGS_HEADER)
                 skill_section.extend(per_url_warning_lines)
             sections.append(skill_section)
+        if offload_lines:
+            sections.append([_OFFLOAD_SECTION, *offload_lines])
 
         status = Status.FAILED if any(exc.is_hard for exc in exceptions) else Status.COMPLETED
         stage = self.__stage_provider.get()
