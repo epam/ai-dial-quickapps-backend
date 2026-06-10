@@ -2,6 +2,7 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_COPY_TOOL_NAME,
     INTERNAL_FILE_DELETE_TOOL_NAME,
     INTERNAL_FILE_EDIT_TOOL_NAME,
+    INTERNAL_FILE_FIND_TOOL_NAME,
     INTERNAL_FILE_LIST_TOOL_NAME,
     INTERNAL_FILE_MOVE_TOOL_NAME,
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
@@ -175,7 +176,7 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
 FIND_FILES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}find",
+            name=INTERNAL_FILE_FIND_TOOL_NAME,
             description=(
                 "Find files by name or path glob in DIAL storage, walking the folder "
                 "tree via metadata only (no file contents are downloaded). Returns "
