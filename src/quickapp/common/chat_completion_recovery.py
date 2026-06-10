@@ -56,7 +56,9 @@ class ChatCompletionRecoveryService:
             raise error
 
         messages = self.__messages.messages
-        recovered = any(policy.try_recover(messages, error) for policy in self.__policies)
+        recovered = False
+        for policy in self.__policies:
+            recovered = policy.try_recover(messages, error) or recovered
         if not recovered:
             logger.exception(
                 "Chat completion failed with BadRequest/APIError; message recovery did not "
@@ -68,7 +70,7 @@ class ChatCompletionRecoveryService:
         self.__deferred_stage_close_registry.sync_deferred_stage_ui_with_tool_messages(messages)
         self.__recovery_retry_used = True
         logger.warning(
-            "Chat completion failed with %s; message recovery applied, retrying once. " "Scope: %s",
+            "Chat completion failed with %s; message recovery applied, retrying once. Scope: %s",
             type(error).__name__,
             retry_scope,
         )

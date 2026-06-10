@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
+from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
@@ -69,3 +70,14 @@ class TestReadFileLines:
                 stage_wrapper=None, path="f.txt", start_line=5, end_line=2
             )
         assert exc.value.parameter_name == "end_line"
+
+    @pytest.mark.asyncio
+    async def test_missing_file_raises_friendly_not_found(self):
+        tool = _make_tool()
+        tool._dial_file_service.download_file.side_effect = ResourceNotFoundError(message="404")
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, path="missing.txt", start_line=0, end_line=2
+            )
+        assert exc.value.parameter_name == "path"
+        assert "file not found" in exc.value.message

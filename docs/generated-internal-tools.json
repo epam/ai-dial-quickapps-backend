@@ -5,6 +5,19 @@
     "properties": {}
   },
   {
+    "name": "internal_attachments_get_content",
+    "description": "Loads one allowed attachment by URL for use in this turn. Pass the exact `url` string from the `internal_attachments_available_context` tool result (`entries[].url`) or from user `<attachments>` metadata in messages. Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. Accepted MIME types: */*.",
+    "properties": {
+      "attachment_url": {
+        "type": "string",
+        "description": "Exact file `url` from `internal_attachments_available_context.entries[].url` or from user `<attachments>` section (same string, including path). Accepted MIME types: */*."
+      }
+    },
+    "required": [
+      "attachment_url"
+    ]
+  },
+  {
     "name": "internal_file_copy",
     "description": "Copy a file server-side in DIAL storage. Source can be relative (agent's home dir) or absolute files/... URL. Destination must be relative. No bytes downloaded.",
     "properties": {
@@ -25,7 +38,7 @@
       },
       "overwrite": {
         "type": "boolean",
-        "description": "If true, replace an existing destination. Default: false."
+        "description": "Default and strongly preferred: false. Leave false unless a previous copy failed because the destination exists AND the user has explicitly approved replacing it. Never set true on your own."
       }
     },
     "required": [
@@ -128,7 +141,7 @@
       },
       "overwrite": {
         "type": "boolean",
-        "description": "If true, replace an existing destination. Default: false."
+        "description": "Default and strongly preferred: false. Leave false unless a previous move failed because the destination exists AND the user has explicitly approved replacing it. Never set true on your own."
       }
     },
     "required": [
@@ -201,7 +214,7 @@
   },
   {
     "name": "internal_file_write",
-    "description": "Create or overwrite a UTF-8 text file under the agent's home dir. Relative path only (absolute files/... URLs are rejected). Nested paths allowed; '..' rejected. Default content_type is text/plain. overwrite=False fails on collision; overwrite=True replaces with ETag guard.",
+    "description": "Create a UTF-8 text file under the agent's home dir. Relative path only (absolute files/... URLs are rejected). Nested paths allowed; '..' rejected. Default content_type is text/plain. Always call with overwrite=false first. If it reports the file already exists, ask the user whether to replace it and only retry with overwrite=true once they approve — never set overwrite=true on your own.",
     "properties": {
       "path": {
         "display": {
@@ -224,7 +237,7 @@
       },
       "overwrite": {
         "type": "boolean",
-        "description": "If true, replace an existing file. Default: false."
+        "description": "Default and strongly preferred: false. Leave false unless a previous write failed because the file exists AND the user has explicitly approved replacing it. When true, the file is created if missing or replaced if it exists."
       }
     },
     "required": [

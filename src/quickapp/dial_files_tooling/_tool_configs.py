@@ -148,10 +148,12 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_FILE_WRITE_TOOL_NAME,
             description=(
-                "Create or overwrite a UTF-8 text file under the agent's home dir. "
+                "Create a UTF-8 text file under the agent's home dir. "
                 "Relative path only (absolute files/... URLs are rejected). "
                 "Nested paths allowed; '..' rejected. Default content_type is text/plain. "
-                "overwrite=False fails on collision; overwrite=True replaces with ETag guard."
+                "Always call with overwrite=false first. If it reports the file already "
+                "exists, ask the user whether to replace it and only retry with "
+                "overwrite=true once they approve — never set overwrite=true on your own."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -178,7 +180,12 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing file. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous write failed because the file exists AND the user has "
+                            "explicitly approved replacing it. When true, the file is created "
+                            "if missing or replaced if it exists."
+                        ),
                     ),
                 },
                 required=["path", "content"],
@@ -279,7 +286,11 @@ COPY_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing destination. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous copy failed because the destination exists AND the user "
+                            "has explicitly approved replacing it. Never set true on your own."
+                        ),
                     ),
                 },
                 required=["source", "destination"],
@@ -318,7 +329,11 @@ MOVE_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing destination. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous move failed because the destination exists AND the user "
+                            "has explicitly approved replacing it. Never set true on your own."
+                        ),
                     ),
                 },
                 required=["source", "destination"],

@@ -9,6 +9,7 @@ from quickapp.attachment_processing._context_entries import (
     should_activate_context_tool,
 )
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.context import FileContextConfig, UserDefinedContextConfig
 
 TOOL_NAME = AVAILABLE_CONTEXT_TOOL_NAME
@@ -173,6 +174,10 @@ class TestHasContextToolHistory:
 
     def test_matching_context_tool_call(self):
         messages = _tool_call_pair(TOOL_NAME, [{"title": "a.csv", "url": "files/a.csv"}])
+        assert has_context_tool_history(messages) is True
+
+    def test_get_content_tool_call_counts_as_history(self):
+        messages = _tool_call_pair(INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME, [])
         assert has_context_tool_history(messages) is True
 
 

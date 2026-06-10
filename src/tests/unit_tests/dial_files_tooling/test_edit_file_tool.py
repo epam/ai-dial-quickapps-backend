@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 import pytest
-from aidial_client._exception import EtagMismatchError
+from aidial_client._exception import EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
@@ -37,6 +37,17 @@ class TestEditFile:
             stage_wrapper=None, path="r.md", old_string="bar", new_string="qux"
         )
         tool._dial_file_service.download_file.assert_awaited_once_with("files/appbucket/r.md")
+
+    @pytest.mark.asyncio
+    async def test_missing_file_raises_friendly_not_found(self):
+        tool = _make_tool()
+        tool._dial_file_service.download_file.side_effect = ResourceNotFoundError(message="404")
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, path="missing.md", old_string="bar", new_string="qux"
+            )
+        assert exc.value.parameter_name == "path"
+        assert "file not found" in exc.value.message
 
     @pytest.mark.asyncio
     async def test_absolute_url_rejected(self):

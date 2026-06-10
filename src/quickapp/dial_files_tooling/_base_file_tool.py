@@ -2,7 +2,7 @@ import logging
 from abc import ABC
 from typing import Any
 
-from aidial_client._exception import DialException
+from aidial_client._exception import DialException, ResourceNotFoundError
 from aidial_client.types.metadata import FileMetadata
 from injector import AssistedBuilder, inject
 
@@ -50,6 +50,10 @@ class _DialFileTool(StagedBaseTool, ABC):
     ) -> tuple[str, FileMetadata | None]:
         try:
             data, metadata = await self._dial_file_service.download_file(file_url)
+        except ResourceNotFoundError as e:
+            raise InvalidToolCallParameterException(
+                "path", f"file not found: {display_path}"
+            ) from e
         except DialException as e:
             self._check_permission_denied(e, display_path)
             raise InvalidToolCallParameterException("path", f"File download failed: {e}") from e

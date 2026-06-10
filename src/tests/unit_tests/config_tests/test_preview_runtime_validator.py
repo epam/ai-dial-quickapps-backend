@@ -106,3 +106,56 @@ class TestApplicationConfigPreviewValidator:
 
         assert model.preview_feat == "val"
         assert model.stable == "ok"
+
+
+class TestOrchestratorAttachmentStrategyPreviewGating:
+    """The strategy field on OrchestratorConfig is a nested PreviewField and
+    must be nullified (with a warning) when preview features are disabled."""
+
+    def _build_app_config(self, *, attachment_strategy_obj):
+        from quickapp.config.application import ApplicationConfig, OrchestratorConfig
+        from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+        from quickapp.config.prompt import CustomSystemPromptConfig
+
+        orchestrator = OrchestratorConfig.model_construct(
+            deployment=DialDeploymentConfig(
+                deployment_id="orch",
+                parameters=DialDeploymentParameters(),
+            ),
+            system_prompt=CustomSystemPromptConfig(type="custom", content="sp", variables={}),
+            max_iterations=5,
+            propagate_stages=True,
+            attachment_strategy=attachment_strategy_obj,
+        )
+        return ApplicationConfig.model_construct(
+            orchestrator=orchestrator,
+            contexts=[],
+            tool_sets=[],
+        )
+
+    def test_attachment_strategy_nullified_when_preview_off(self, caplog, monkeypatch):
+        monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
+        from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+
+        model = self._build_app_config(attachment_strategy_obj=LazyOnDemandAttachmentStrategy())
+        with caplog.at_level(logging.WARNING):
+            nullify_preview_fields(model)
+
+        assert model.orchestrator.attachment_strategy is None
+        assert any(
+            "attachment_strategy" in r.message and "preview features are disabled" in r.message
+            for r in caplog.records
+        )
+
+    def test_attachment_strategy_preserved_when_preview_on(self, monkeypatch):
+        monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+        from quickapp.common.feature_settings import FeatureSettings
+        from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+
+        assert FeatureSettings().enable_preview_features is True
+
+        model = self._build_app_config(attachment_strategy_obj=LazyOnDemandAttachmentStrategy())
+        if not FeatureSettings().enable_preview_features:
+            nullify_preview_fields(model)
+
+        assert isinstance(model.orchestrator.attachment_strategy, LazyOnDemandAttachmentStrategy)

@@ -27,7 +27,6 @@ class AttachmentProcessingModule(Module):
             to=_AttachmentNotificationInjector,
             scope=request_scope,
         )
-
         logger.debug("AttachmentProcessingModule module configuration completed")
 
     @multiprovider
@@ -38,7 +37,6 @@ class AttachmentProcessingModule(Module):
         ac_builder: AssistedBuilder[_AvailableContextTool],
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
-
         if should_activate_context_tool(app_config.contexts, messages):
             tools.append(
                 ac_builder.build(
@@ -48,7 +46,6 @@ class AttachmentProcessingModule(Module):
                     contexts=list(app_config.contexts),
                 )
             )
-
         return tools
 
     @multiprovider
@@ -59,5 +56,14 @@ class AttachmentProcessingModule(Module):
         return [attachment_notification_injector]
 
     @multiprovider
-    def provide_tool_attachment_keep_policies(self) -> list[AttachmentKeepPolicy]:
+    def provide_tool_attachment_keep_policies(
+        self, app_config: ApplicationConfig
+    ) -> list[AttachmentKeepPolicy]:
+        # The legacy keep policy preserves USER ``image/*`` attachments verbatim, which
+        # is the pre-strategy default. When any ``attachment_strategy`` is configured
+        # (currently only ``lazy_on_demand``), that strategy owns USER attachment
+        # handling end-to-end via its own keep policy + synthetic injection, so the
+        # legacy policy is unwired to avoid duplicating image bytes.
+        if app_config.orchestrator.attachment_strategy is not None:
+            return []
         return [_LegacyUserImageKeepPolicy()]

@@ -1,11 +1,30 @@
+from unittest.mock import MagicMock
+
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
+from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.agent._attachment_filter import _AttachmentFilter
+from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.config.application import ApplicationConfig
+from quickapp.config.context import FileContextConfig
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
+    _GetContentKeepPolicy,
+)
 
 
-def _make_filter() -> _AttachmentFilter:
-    return _AttachmentFilter(tool_attachment_keep_policies=[_LegacyUserImageKeepPolicy()])
+def _make_filter(
+    contexts: list | None = None, input_attachment_types: list[str] | None = None
+) -> _AttachmentFilter:
+    app = MagicMock(spec=ApplicationConfig)
+    app.contexts = contexts if contexts is not None else []
+    patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
+    caps = OrchestratorCapabilities(
+        deployment=MagicMock(id="orch", input_attachment_types=patterns)
+    )
+    keep_policy = _GetContentKeepPolicy(app_config=app, orchestrator_capabilities=caps)
+    return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 
 def _msg(
@@ -43,8 +62,7 @@ class Test_AttachmentFilter:
             [_attachment("photo.png", "/files/photo.png", "image/png")],
         )
         result = transformer.transform([msg])
-        assert len(result[0].custom_content.attachments) == 1
-        assert result[0].custom_content.attachments[0].type == "image/png"
+        assert len(result[0].custom_content.attachments) == 0
 
     def test_non_image_attachments_removed(self):
         transformer = _make_filter()
@@ -72,9 +90,8 @@ class Test_AttachmentFilter:
         assert "<title>photo.png</title>" in content
         assert "<type>image/png</type>" in content
 
-        # Image attachments are kept inline AND get XML metadata injected
-        assert result[0].custom_content.attachments[0].type == "image/png"
-        assert result[0].custom_content.attachments[0].title == "photo.png"
+        # USER attachments are removed from custom_content, XML metadata remains.
+        assert len(result[0].custom_content.attachments) == 0
 
     def test_mixed_attachments_only_images_kept(self):
         transformer = _make_filter()
@@ -89,9 +106,7 @@ class Test_AttachmentFilter:
         )
         result = transformer.transform([msg])
         attachments = result[0].custom_content.attachments
-        assert len(attachments) == 2
-        types = {str(a.type) for a in attachments}
-        assert types == {"image/png", "image/jpeg"}
+        assert len(attachments) == 0
 
     def test_filter_does_not_mutate_original_messages(self):
         transformer = _make_filter()
@@ -142,9 +157,8 @@ class Test_AttachmentFilter:
         )
         result = transformer.transform([msg1, msg2])
 
-        # First message: image kept, pdf removed
-        assert len(result[0].custom_content.attachments) == 1
-        assert result[0].custom_content.attachments[0].type == "image/png"
+        # First message: all attachments removed
+        assert len(result[0].custom_content.attachments) == 0
         content0 = str(result[0].content)
         assert "<title>doc.pdf</title>" in content0
         assert "<title>photo.png</title>" in content0
@@ -246,3 +260,235 @@ class Test_AttachmentFilter:
         result = transformer.transform([msg])
         content = str(result[0].content)
         assert "<reference_url>/refs/doc.pdf</reference_url>" in content
+
+    def test_fetch_tool_pdf_retained_when_whitelisted(self):
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_1",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_1",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].type == "application/pdf"
+
+    def test_fetch_tool_attachment_with_empty_type_kept_via_url_fallback(self):
+        """The keep policy must use the same MIME inference (URL-filename
+        fallback) the synthetic injector uses — otherwise an attachment whose
+        ``type`` is empty but whose URL implies an accepted MIME would be
+        injected upstream and then silently stripped here."""
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_empty_type",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_empty_type",
+            custom_content=CustomContent(attachments=[_attachment("report.pdf", url, "")]),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].url == url
+
+    def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
+        url = "files/bucket/report.pdf"
+        contexts = [FileContextConfig(url=url)]
+        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_other",
+                    type="function",
+                    function=FunctionCall(name="some_other_tool", arguments="{}"),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content="out",
+            tool_call_id="call_other",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 0
+
+    def test_fetch_tool_pdf_stripped_when_url_not_in_config(self):
+        url = "files/bucket/report.pdf"
+        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_2",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments="{}",
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content="out",
+            tool_call_id="call_fetch_2",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 0
+
+    def test_fetch_tool_pdf_kept_when_url_matches_user_attachment(self):
+        url = "files/bucket/user-report.pdf"
+        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
+        user_msg = _user_msg(
+            "please use my report",
+            [_attachment("user-report.pdf", url, "application/pdf")],
+        )
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_3",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/user-report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_3",
+            custom_content=CustomContent(
+                attachments=[_attachment("user-report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([user_msg, assistant, tool_msg])
+        assert len(result[2].custom_content.attachments) == 1
+        assert result[2].custom_content.attachments[0].url == url
+
+
+def _attachment_filter_with_legacy_policy() -> _AttachmentFilter:
+    """Mirror production wiring when no ``attachment_strategy`` is configured:
+    only the legacy USER image keep policy is registered. The get-content policy
+    is added by ``LazyOnDemandStrategyModule`` and so is absent here."""
+    return _AttachmentFilter(tool_attachment_keep_policies=[_LegacyUserImageKeepPolicy()])
+
+
+class Test_AttachmentFilter_LegacyUserImagePassthrough:
+    """Regression guard for the `development`-branch behaviour: USER `image/*`
+    attachments survive `_AttachmentFilter` when the legacy keep policy is wired
+    (i.e. attachment_strategy is not configured)."""
+
+    def test_user_image_kept(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _user_msg(
+            "look at this",
+            [_attachment("photo.png", "/files/photo.png", "image/png")],
+        )
+        result = transformer.transform([msg])
+        attachments = result[0].custom_content.attachments
+        assert len(attachments) == 1
+        assert attachments[0].type == "image/png"
+
+    def test_user_image_kept_alongside_xml_metadata(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _user_msg(
+            "original content",
+            [_attachment("photo.png", "/files/photo.png", "image/png")],
+        )
+        result = transformer.transform([msg])
+        attachments = result[0].custom_content.attachments
+        assert len(attachments) == 1
+        # XML metadata is still surfaced into content (legacy behaviour).
+        content = str(result[0].content)
+        assert "<title>photo.png</title>" in content
+        assert "<type>image/png</type>" in content
+
+    def test_user_non_image_dropped(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _user_msg(
+            "doc",
+            [_attachment("doc.pdf", "/files/doc.pdf", "application/pdf")],
+        )
+        result = transformer.transform([msg])
+        assert len(result[0].custom_content.attachments) == 0
+
+    def test_assistant_image_still_stripped(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _msg(
+            Role.ASSISTANT,
+            "response",
+            [_attachment("photo.png", "/files/photo.png", "image/png")],
+        )
+        result = transformer.transform([msg])
+        assert len(result[0].custom_content.attachments) == 0
+
+    def test_tool_image_still_stripped(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _msg(
+            Role.TOOL,
+            "tool output",
+            [_attachment("photo.png", "/files/photo.png", "image/png")],
+        )
+        result = transformer.transform([msg])
+        assert len(result[0].custom_content.attachments) == 0
+
+    def test_user_mixed_only_images_kept(self):
+        transformer = _attachment_filter_with_legacy_policy()
+        msg = _user_msg(
+            "",
+            [
+                _attachment("doc.pdf", "/files/doc.pdf", "application/pdf"),
+                _attachment("photo.png", "/files/photo.png", "image/png"),
+                _attachment("chart.jpg", "/files/chart.jpg", "image/jpeg"),
+                _attachment("data.csv", "/files/data.csv", "text/csv"),
+            ],
+        )
+        result = transformer.transform([msg])
+        attachments = result[0].custom_content.attachments
+        kept_types = sorted(att.type for att in attachments)
+        assert kept_types == ["image/jpeg", "image/png"]

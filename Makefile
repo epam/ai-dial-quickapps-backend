@@ -142,11 +142,11 @@ stop_test_server:
 
 integration_test: install_integration
 	$(MAKE) start_test_server
-	$(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
 	$(MAKE) stop_test_server
 
 integration_test_run:
-	$(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
 
 e2e_test: install_integration
-	$(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)
