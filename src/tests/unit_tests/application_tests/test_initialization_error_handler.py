@@ -4,7 +4,11 @@ from unittest.mock import MagicMock
 from aidial_sdk.chat_completion import Stage, Status
 
 from quickapp.application._initialization_error_handler import _InitializationErrorHandler
-from quickapp.common.exceptions import ConfigResolutionException, SkillInitializationException
+from quickapp.common.exceptions import (
+    ConfigResolutionException,
+    OffloadConfigurationException,
+    SkillInitializationException,
+)
 
 
 def _make_handler(stage: MagicMock, exceptions: list) -> _InitializationErrorHandler:
@@ -97,4 +101,19 @@ class TestSkillInitializationWarningRendering:
         assert "prompts/bucket/broken" in rendered
         assert "prompts/bucket/iffy" in rendered
         # Both entries have is_hard=False — status stays COMPLETED.
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+
+class TestOffloadConfigurationRendering:
+    def test_renders_offload_section_as_completed_warning(self):
+        stage = MagicMock(spec=Stage)
+        exc = OffloadConfigurationException(missing_tools=["read_lines", "search"])
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "Large tool-response offload" in rendered
+        assert "read_lines/search" in rendered
+        # is_hard=False — a lone offload issue keeps the stage COMPLETED.
         stage.close.assert_called_once_with(Status.COMPLETED)

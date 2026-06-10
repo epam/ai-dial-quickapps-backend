@@ -77,7 +77,7 @@ class TestRunner:
         logger.debug(f"Remote dial url:{url}")
         config_data = {
             "dial_core_url": TestDialCoreConfig.REMOTE_DIAL_URL,
-            "dial_core_api_key": TestConfig.REMOTE_DIAL_API_KEY,
+            "dial_core_api_key": TestDialCoreConfig.REMOTE_DIAL_API_KEY,
             "model": model,
             "test_name": test_name,
             "refresh": refresh,
@@ -164,7 +164,7 @@ class TestRunner:
         messages = []
         all_failures = []
         headers = create_request_headers(
-            api_key=TestConfig.REMOTE_DIAL_API_KEY, app_config=app_config
+            api_key=TestDialCoreConfig.REMOTE_DIAL_API_KEY_SECRET, app_config=app_config
         )
 
         for i, test_message_data in enumerate(test_case.messages):
@@ -476,7 +476,7 @@ def e2e_test(
 
         async def prepare_contexts(contexts: list[FileContextConfig]):
             upload_headers = {
-                API_KEY_HEADER: TestConfig.REMOTE_DIAL_API_KEY.get_secret_value(),
+                API_KEY_HEADER: TestDialCoreConfig.REMOTE_DIAL_API_KEY,
                 CONTENT_TYPE_HEADER: "application/json",
             }
             for path in _application_context_files:
