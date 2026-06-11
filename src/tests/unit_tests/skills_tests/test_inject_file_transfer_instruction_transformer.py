@@ -13,7 +13,7 @@ from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 from tests.unit_tests.common.common import make_provider
 
-EXPECTED_CALL_ID_NAME_START = f"synth_{SKILL_READER_TOOL_NAME}"
+EXPECTED_CALL_ID_NAME_START = "synth_t_"
 
 
 def _make_transformer() -> _InjectFileTransferInstructionTransformer:

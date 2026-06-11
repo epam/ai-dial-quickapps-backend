@@ -238,7 +238,7 @@ class TestAppendIfChanged:
             await injector.transform([_user("hi")]), 1, "append_tool", "append content"
         )
         assert id1 == id2
-        assert id1.startswith("synth_append_tool_a_")
+        assert id1.startswith("synth_t_")
 
     @pytest.mark.asyncio
     async def test_no_user_message_appends_at_end(self):

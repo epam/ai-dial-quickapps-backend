@@ -49,8 +49,9 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     def _make_call_id_prefix(self, tool_name: str, arguments: dict) -> str:
         """Return the stable prefix for a tool+args pair (no content, no TTL)."""
+        tool_hash = _hash6(tool_name)
         args_hash = _hash6(json.dumps(arguments, sort_keys=True))
-        return f"{self.call_id_prefix}{tool_name}_a_{args_hash}_"
+        return f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_"
 
     def make_call_id(
         self,
@@ -59,10 +60,15 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         content: str,
         ttl_expiry_seconds: int | None = None,
     ) -> str:
-        """Build a structured call_id for the given tool+args+content."""
+        """Build a structured call_id for the given tool+args+content.
+
+        Format: {prefix}t_{tool_hash6}_a_{args_hash6}_c_{content_hash6}[_ttl_{expiry:08x}]
+        Maximum length: prefix + 2+6+3+6+3+6+5+8 = prefix + 39 chars (≤ 64 for any prefix ≤ 25).
+        """
+        tool_hash = _hash6(tool_name)
         args_hash = _hash6(json.dumps(arguments, sort_keys=True))
         content_hash = _hash6(content)
-        base = f"{self.call_id_prefix}{tool_name}_a_{args_hash}_c_{content_hash}"
+        base = f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_c_{content_hash}"
         if ttl_expiry_seconds is not None:
             return f"{base}_ttl_{ttl_expiry_seconds:08x}"
         return base
