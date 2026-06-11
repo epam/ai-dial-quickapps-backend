@@ -1501,8 +1501,7 @@
     "InjectionFrequency": {
       "enum": [
         "always",
-        "append_if_changed",
-        "daily_refresh"
+        "append_if_changed"
       ],
       "title": "InjectionFrequency",
       "type": "string"
@@ -2876,6 +2875,26 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "TTLRefreshCondition": {
+      "properties": {
+        "kind": {
+          "const": "ttl",
+          "default": "ttl",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ttl_minutes": {
+          "exclusiveMinimum": 0,
+          "title": "Ttl Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ttl_minutes"
+      ],
+      "title": "TTLRefreshCondition",
+      "type": "object"
+    },
     "ToolCallHookConfig": {
       "properties": {
         "event": {
@@ -2923,6 +2942,17 @@
         "frequency": {
           "$ref": "#/$defs/InjectionFrequency",
           "default": "append_if_changed"
+        },
+        "refresh_condition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TTLRefreshCondition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

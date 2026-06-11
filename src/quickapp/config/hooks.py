@@ -15,6 +15,16 @@ class HookEvent(StrEnum):
     # ON_COMPLETION = "on_completion"
 
 
+class TTLRefreshCondition(BaseModel):
+    kind: Literal["ttl"] = "ttl"
+    ttl_minutes: int = Field(gt=0)
+
+
+# Single-variant — add new variants here as
+# Annotated[Union[TTLRefreshCondition, NextCondition], Field(discriminator="kind")]
+RefreshConditionConfig = TTLRefreshCondition
+
+
 class _BaseHookConfig(BaseModel):
     event: HookEvent
     name: str | None = None
@@ -26,6 +36,7 @@ class ToolCallHookConfig(_BaseHookConfig):
     tool_name: str
     arguments: dict[str, Any] = Field(default_factory=dict)
     frequency: InjectionFrequency = InjectionFrequency.APPEND_IF_CHANGED
+    refresh_condition: RefreshConditionConfig | None = None
 
 
 # Single-variant discriminated union — add new variants here as
