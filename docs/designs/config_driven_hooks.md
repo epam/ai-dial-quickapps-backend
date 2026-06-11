@@ -63,7 +63,7 @@ prefixed with a toolset name.
 
 ```
 _BaseHookConfig         [event]
-└── ToolCallHookConfig  [kind="tool_call", toolset_name, tool_name, arguments, frequency]
+└── ToolCallHookConfig  [kind="tool_call", toolset_name, tool_name, arguments, frequency, refresh_condition]
 ```
 
 `_BaseHookConfig` — the only field universal to any hook:
@@ -83,6 +83,23 @@ resulting `(ASSISTANT/tool_calls, TOOL)` pair into the message history:
 | `tool_name` | `str` | required | Tool name within the toolset, or final OpenAI function name when `toolset_name` is omitted. |
 | `arguments` | `dict[str, Any]` | `{}` | Arguments forwarded to the synthetic tool call and to `tool.arun()`. |
 | `frequency` | `InjectionFrequency` | `append_if_changed` | How often to inject. |
+| `refresh_condition` | `RefreshConditionConfig \| None` | `None` | When set, the hook skips the tool call while a prior result is still fresh. See `RefreshConditionConfig` below. |
+
+**`RefreshConditionConfig`** — currently a single-variant discriminated union (extensible):
+
+```
+RefreshConditionConfig
+└── TTLRefreshCondition  [kind="ttl", ttl_minutes: int]
+```
+
+`TTLRefreshCondition` — reuse the last result until the TTL elapses, then re-fetch:
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `kind` | `Literal["ttl"]` | `"ttl"` | Discriminator. |
+| `ttl_minutes` | `int` | required | Number of minutes a cached result stays valid. Must be `> 0`. |
+
+Future variants (e.g. `{"kind": "daily"}`) extend the union via `Annotated[Union[...], Field(discriminator="kind")]`.
 
 Future hook variants (e.g. guards at `on_pre_tool_use`, observers at `on_completion`) extend
 `_BaseHookConfig` directly with their own fields.
@@ -140,6 +157,8 @@ _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)
 ├── get_tool_name()         → sanitize_toolname(f"{toolset_name}_{tool_name}") or tool_name verbatim
 ├── get_arguments()         → config.arguments
 ├── get_frequency(messages) → config.frequency
+├── make_call_id(...)       → injects ttl_expiry_seconds when refresh_condition is TTLRefreshCondition
+├── should_inject(messages) → checks TTL expiry against existing call_id in history; True if expired/absent
 └── get_content(messages)   → overrides StagedToolSyntheticInjector: wraps super().get_content(messages)
                         in try/except; returns the result on success, logs + returns None on exception
 ```
@@ -161,6 +180,19 @@ that calls `super().__init__(tools, enrichers_provider)` directly. This is requi
 `StagedToolSyntheticInjector.__init__` carries `@inject` — without the override, the injector
 library would attempt to wire the class via DI rather than accepting the manually-supplied
 arguments from `AgentHooksModule`.
+
+**TTL refresh (`refresh_condition: {kind: "ttl", ttl_minutes: N}`):**
+
+`should_inject` scans conversation history (from the end) for a TOOL message whose `call_id`
+starts with `_make_call_id_prefix(tool_name, arguments)`. If no such message exists, injection
+proceeds normally. If one is found, `_parse_call_id_ttl_expiry` reads the embedded Unix
+timestamp; the hook is skipped while `now < expiry`, and re-runs once `now >= expiry`.
+
+`make_call_id` is overridden to set `ttl_expiry_seconds = int(time.time()) + ttl_minutes * 60`
+before delegating to `super().make_call_id(...)`. This stamps the new expiry into the
+`call_id` at injection time. Because `APPEND_IF_CHANGED` replaces an existing pair in place
+when the content is unchanged, the expiry is refreshed on every re-injection without
+duplicating messages in history.
 
 `StagedBaseTool.arun()` catches exceptions internally and routes them through `FallbackProcessor`.
 If a matching fallback strategy is configured on the tool, `arun()` returns a `ToolCallResult` with
@@ -314,6 +346,27 @@ Resolved call name: `sanitize_toolname("memory_server_get_memories")` = `memory_
 }
 ```
 
+### REST API injection with TTL (re-fetch every hour)
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "user_prefs_api",
+      "tool_name": "get_preferences",
+      "frequency": "append_if_changed",
+      "refresh_condition": { "kind": "ttl", "ttl_minutes": 60 }
+    }
+  ]
+}
+```
+
+The tool is called on the first request. For the next 60 minutes the cached result is reused
+unchanged. Once the TTL elapses the tool is called again; if the result changed it is appended
+at the end of history, if unchanged the existing pair is updated in place with a new expiry.
+
 ### DIAL Deployment tool (no toolset prefix, UC-2)
 
 ```json
@@ -351,7 +404,9 @@ are unaffected.
 
 - `HookEvent` — enum of orchestrator seams; currently only `on_request_start`
 - `_BaseHookConfig` — universal fields (`event`, `name`)
-- `ToolCallHookConfig(_BaseHookConfig)` — `kind="tool_call"`, adds `toolset_name`, `tool_name`, `arguments`, `frequency`
+- `ToolCallHookConfig(_BaseHookConfig)` — `kind="tool_call"`, adds `toolset_name`, `tool_name`, `arguments`, `frequency`, `refresh_condition`
+- `TTLRefreshCondition` — `kind="ttl"`, `ttl_minutes: int`; skip tool call while result is fresh
+- `RefreshConditionConfig` — discriminated union type alias (currently single-variant; extensible)
 - `HookConfig` — discriminated union type alias (currently a single-variant union; extensible)
 
 ### `config/application.py` — MODIFIED
@@ -361,7 +416,7 @@ are unaffected.
 ### `agent_hooks/` — NEW package
 
 - `__init__.py`
-- `_config_driven_hooks.py` — `_BaseConfigDrivenHook(ABC)` (pure marker), `_ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)`
+- `_config_driven_hooks.py` — `_BaseConfigDrivenHook(ABC)` (pure marker), `_ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector)`; adds `make_call_id` (stamps TTL expiry) and `should_inject` (checks TTL) overrides
 - `agent_hooks_module.py` — `AgentHooksModule` (`@preview_module`)
 
 ### `app_factory.py` — MODIFIED
