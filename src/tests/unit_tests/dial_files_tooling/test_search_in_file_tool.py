@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from quickapp.shared.dial_files._search_in_file_tool import _SearchInFileTool
-from quickapp.shared.dial_files._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
+from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
+from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 

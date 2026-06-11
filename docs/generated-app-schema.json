@@ -1051,10 +1051,7 @@
         "enabled_tools": {
           "anyOf": [
             {
-              "enum": [
-                "read_only",
-                "all"
-              ],
+              "const": "all",
               "type": "string"
             },
             {
@@ -1075,7 +1072,7 @@
             }
           ],
           "default": "all",
-          "description": "Which file tools to expose. Use 'all' for every tool, 'read_only' for list/read_lines/search only, or a list to restrict further.",
+          "description": "Which file tools to expose. Use 'all' for every tool, or a list to restrict (e.g. ['read_lines', 'search']).",
           "title": "Enabled Tools"
         },
         "agent_home_dir": {

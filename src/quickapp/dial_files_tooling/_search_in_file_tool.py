@@ -2,7 +2,7 @@ from typing import Any
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.shared.dial_files._base_file_tool import _DialFileTool
+from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
 
 
 class _SearchInFileTool(_DialFileTool):

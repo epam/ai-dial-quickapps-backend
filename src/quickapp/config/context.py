@@ -2,7 +2,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from quickapp.common.base_config import DialFileConfigField, _mark_json_schema_preview
+from quickapp.common.base_config import DialFileConfigField, mark_json_schema_preview
 
 _FOLDER_MAX_DEPTH = 10
 
@@ -16,7 +16,7 @@ class FileContextConfig(BaseModel):
 
 
 class FolderContextConfig(BaseModel):
-    model_config = ConfigDict(json_schema_extra=_mark_json_schema_preview)
+    model_config = ConfigDict(json_schema_extra=mark_json_schema_preview)
 
     type: Literal["folder"] = Field(default="folder", description="The type of the context.")
     mime: str = Field(

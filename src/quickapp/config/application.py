@@ -40,6 +40,15 @@ def get_max_iterations() -> int:
     return AgentSettings().default_agent_max_iterations
 
 
+def _max_iterations_field() -> FieldInfo:
+    description = "The max count of orchestrator(agent) operations. Default: 15"
+    return Field(  # type: ignore[return-value]
+        default_factory=get_max_iterations,
+        json_schema_extra={"default": 15},
+        description=description,
+    )
+
+
 def _orchestrator_deployment_field() -> FieldInfo:
     description = "The configuration for the orchestrator DIAL deployment."
     env_id = AgentSettings().default_orchestrator_deployment_id
@@ -62,11 +71,7 @@ class OrchestratorConfig(BaseModel):
     system_prompt: AgentSystemPromptConfig = Field(
         description="The configuration for the system prompt."
     )
-    max_iterations: int = Field(  # type: ignore[return-value]
-        default_factory=get_max_iterations,
-        json_schema_extra={"default": 15},
-        description="The max count of orchestrator(agent) operations. Default: 15",
-    )
+    max_iterations: int = _max_iterations_field()  # type: ignore[assignment]
     propagate_stages: bool = Field(
         default=True,
         description="When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
@@ -220,8 +225,15 @@ class ApplicationConfig(BaseApplicationTypeConfig):
         if FeatureSettings().enable_preview_features:
             return self
         nullify_preview_fields(self)
-        filtered_contexts: list[Context] = [
-            ctx for ctx in self.contexts if not isinstance(ctx, FolderContextConfig)
-        ]
-        self.contexts = filtered_contexts
+        folder_contexts = [ctx for ctx in self.contexts if isinstance(ctx, FolderContextConfig)]
+        if folder_contexts:
+            entry_noun = "entry" if len(folder_contexts) == 1 else "entries"
+            logger.warning(
+                'Preview feature "folder contexts" is configured (%d %s) but preview '
+                "features are disabled (ENABLE_PREVIEW_FEATURES is not set). "
+                "Folder context entries have been removed.",
+                len(folder_contexts),
+                entry_noun,
+            )
+        self.contexts = [ctx for ctx in self.contexts if not isinstance(ctx, FolderContextConfig)]
         return self

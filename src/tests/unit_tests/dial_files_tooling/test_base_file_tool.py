@@ -4,8 +4,8 @@ import pytest
 from aidial_client._exception import DialException
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.shared.dial_files._read_file_lines_tool import _ReadFileLinesTool
-from quickapp.shared.dial_files._tool_configs import READ_FILE_LINES_TOOL_CONFIG
+from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
+from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
@@ -130,8 +130,8 @@ class TestToDisplayPath:
 class TestPermissionDeniedWrapper:
     @pytest.mark.asyncio
     async def test_403_from_list_folder_converted_to_invalid_parameter(self):
-        from quickapp.shared.dial_files._list_files_tool import _ListFilesTool
-        from quickapp.shared.dial_files._tool_configs import LIST_FILES_TOOL_CONFIG
+        from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
+        from quickapp.dial_files_tooling._tool_configs import LIST_FILES_TOOL_CONFIG
 
         service = make_service()
         service.list_folder = AsyncMock(
@@ -152,8 +152,8 @@ class TestPermissionDeniedWrapper:
 
     @pytest.mark.asyncio
     async def test_non_403_dial_exception_propagates(self):
-        from quickapp.shared.dial_files._list_files_tool import _ListFilesTool
-        from quickapp.shared.dial_files._tool_configs import LIST_FILES_TOOL_CONFIG
+        from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
+        from quickapp.dial_files_tooling._tool_configs import LIST_FILES_TOOL_CONFIG
 
         service = make_service()
         service.list_folder = AsyncMock(

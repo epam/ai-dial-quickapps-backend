@@ -4,8 +4,8 @@ import pytest
 from aidial_client._exception import EtagMismatchError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.shared.dial_files._tool_configs import WRITE_FILE_TOOL_CONFIG
-from quickapp.shared.dial_files._write_file_tool import _WriteFileTool
+from quickapp.dial_files_tooling._tool_configs import WRITE_FILE_TOOL_CONFIG
+from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 

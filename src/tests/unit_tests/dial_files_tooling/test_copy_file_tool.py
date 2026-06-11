@@ -4,8 +4,8 @@ import pytest
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.shared.dial_files._copy_file_tool import _CopyFileTool
-from quickapp.shared.dial_files._tool_configs import COPY_FILE_TOOL_CONFIG
+from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
+from quickapp.dial_files_tooling._tool_configs import COPY_FILE_TOOL_CONFIG
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 

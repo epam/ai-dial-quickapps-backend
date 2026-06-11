@@ -6,7 +6,10 @@ from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, Field, ValidationError
 
 from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
-from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
+from quickapp.common.abstract.folder_listing_provider import (
+    ExpandedFolderEntry,
+    FolderListingProvider,
+)
 from quickapp.common.folder_context_urls import (
     FOLDER_METADATA_MIME,
     metadata_folder_url_to_files_url,
@@ -83,6 +86,22 @@ def _append_context_entry(
     )
 
 
+async def _list_folder_children(
+    files_url: str,
+    *,
+    max_depth: int,
+    folder_listing: FolderListingProvider,
+    cache: ExpandedContextFileUrls,
+) -> list[ExpandedFolderEntry]:
+    key = (files_url, max_depth)
+    cached = cache.folder_children.get(key)
+    if cached is not None:
+        return cached
+    children = await folder_listing.list_folder_entries(files_url, max_depth=max_depth)
+    cache.folder_children[key] = children
+    return children
+
+
 async def _expand_folder_context(
     ctx: FolderContextConfig,
     *,
@@ -91,6 +110,7 @@ async def _expand_folder_context(
     current_urls: set[str],
     entries: list[ContextEntry],
     expanded_file_urls: set[str],
+    folder_listing_cache: ExpandedContextFileUrls,
 ) -> None:
     _append_context_entry(
         url=ctx.url,
@@ -102,7 +122,12 @@ async def _expand_folder_context(
     )
 
     files_url = metadata_folder_url_to_files_url(ctx.url)
-    children = await folder_listing.list_folder_entries(files_url, max_depth=ctx.max_depth)
+    children = await _list_folder_children(
+        files_url,
+        max_depth=ctx.max_depth,
+        folder_listing=folder_listing,
+        cache=folder_listing_cache,
+    )
     for child in children:
         if child.is_folder:
             mime_type = FOLDER_METADATA_MIME
@@ -132,6 +157,11 @@ async def build_context_entries_async(
     current_urls: set[str] = set()
     entries: list[ContextEntry] = []
     expanded_file_urls: set[str] = set()
+    folder_listing_cache = (
+        expanded_file_urls_holder
+        if expanded_file_urls_holder is not None
+        else ExpandedContextFileUrls()
+    )
 
     for ctx in contexts:
         if isinstance(ctx, FileContextConfig):
@@ -162,6 +192,7 @@ async def build_context_entries_async(
                     current_urls=current_urls,
                     entries=entries,
                     expanded_file_urls=expanded_file_urls,
+                    folder_listing_cache=folder_listing_cache,
                 )
 
     for removed_url in set(seen_entries) - current_urls:
@@ -188,7 +219,7 @@ async def ensure_expanded_folder_file_urls(
     folder_listing: FolderListingProvider,
     expanded_file_urls_holder: ExpandedContextFileUrls,
 ) -> None:
-    """List folder context files once per request for get-content allowlisting."""
+    """Collect folder-context file URLs for get-content allowlisting (cached per request)."""
     if expanded_file_urls_holder.populated:
         return
     expanded_file_urls: set[str] = set()
@@ -196,7 +227,12 @@ async def ensure_expanded_folder_file_urls(
         if not isinstance(ctx, FolderContextConfig):
             continue
         files_url = metadata_folder_url_to_files_url(ctx.url)
-        children = await folder_listing.list_folder_entries(files_url, max_depth=ctx.max_depth)
+        children = await _list_folder_children(
+            files_url,
+            max_depth=ctx.max_depth,
+            folder_listing=folder_listing,
+            cache=expanded_file_urls_holder,
+        )
         for child in children:
             if not child.is_folder:
                 expanded_file_urls.add(child.url)
@@ -267,6 +303,8 @@ def _parse_tool_response(content: str) -> dict[str, ContextEntry] | None:
 def extract_seen_entries_from_messages(messages: list[Message]) -> dict[str, ContextEntry]:
     """Scan message history for the most recent context-tool result
     and extract a mapping of URL → ContextEntry for non-removed entries."""
+    # Single reverse pass: TOOL results appear after their ASSISTANT message
+    # in forward order, so in reverse we see TOOL messages first.
     tool_contents: dict[str, str] = {}
     for msg in reversed(messages):
         if msg.role == Role.TOOL and msg.tool_call_id and msg.content:

@@ -14,7 +14,7 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.shared.dial_files._stage_wrapper import _FileStageWrapper
+from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 
 logger = logging.getLogger(__name__)
 

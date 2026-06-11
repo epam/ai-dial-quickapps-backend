@@ -1,6 +1,6 @@
 # Design: Folder Context
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - [dial_files_tools.md](dial_files_tools.md) — DIAL file tools (`list`, read/write surface)
   - [preview_feature_gating.md](preview_feature_gating.md) — preview gating for folder contexts and dial-files
@@ -22,8 +22,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 - Folder expansion (files **and** child folders, recursively) is delivered through the **`internal_attachments_available_context` tool response** — no separate synthetic `internal_file_list` assistant/tool message pairs.
 - For every `FolderContextConfig` in `contexts`, the backend **always** runs folder expansion when building the available-context response (same as if the tool were invoked for that folder on every request).
 - Expanded file URLs are then available to whatever tools the QuickApp author configured (RAG, MCP, get-content, dial-files, etc.).
-- DIAL file tools live under **`shared`** (importable cross-module infrastructure), not a standalone top-level feature module.
-- `features.dial_files` presets are **`read_only`** and **`all` only** — no `write`-only preset (write without read is unusable for folder discovery and mid-conversation file access).
+- Folder expansion uses a **`FolderListingProvider` port** in `dial_core_services` — it does **not** require `features.dial_files` or LLM-invoked file tools.
 - Folder contexts and dial-files remain **preview-gated** until they graduate to stable.
 
 ---
@@ -95,7 +94,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 - Mark the `folder` variant as preview in schema generation (same mechanism as `PreviewField` — hidden from schema when `ENABLE_PREVIEW_FEATURES=false`).
 - At runtime, `_gate_preview_fields` / context validation strips `FolderContextConfig` entries from `contexts` when preview is off; log warning if present in persisted config.
 
-**Change:** Partially implemented (`FolderContextConfig` exists). Add `max_depth`; wire preview gating for the folder discriminator.
+**Change:** Implemented — `max_depth`, preview-gated discriminator, trailing-slash URL validation.
 
 ### Concern 2: Recursive folder expansion in available-context response
 
@@ -142,7 +141,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 }
 ```
 
-**Change:** Replace synchronous `build_context_entries` with async `build_context_entries_async` (or internal expand step) that accepts `FolderListingProvider`. Update `_AvailableContextTool._get_response` and `_AttachmentNotificationInjector.get_content` to await expansion.
+**Change:** Implemented — `build_context_entries_async` with `FolderListingProvider`; request-scoped listing cache on `ExpandedContextFileUrls`.
 
 ```mermaid
 sequenceDiagram
@@ -177,71 +176,29 @@ sequenceDiagram
 - `_AvailableContextTool` uses the **same** expansion path when the LLM calls it later in the conversation (re-list / refresh).
 - `should_enable_get_content_tool`: enabled when expanded entries include file MIME types the deployment accepts (same rules as static file contexts); folder metadata rows alone do not enable get-content.
 
-**Change:** Align notification injector gating with expanded entry diff (membership change), not only root-folder metadata change.
+**Change:** Implemented — membership diff via expanded URL set; `InjectionFrequency.ALWAYS` (unchanged from prior behaviour).
 
-### Concern 4: DIAL file tools move to `shared`
+### Concern 4: DIAL file tools move to `shared` (deferred)
 
-**What:** Relocate dial-files tooling from top-level `dial_files_tooling/` to `shared/dial_files/` and register via `shared_module`.
+**Status:** Out of scope for v1. Folder context does not depend on this move.
 
-**Owner:** `src/quickapp/shared/dial_files/`, `shared/__init__.py`, `app_factory.py`
+**What (future):** Relocate dial-files tooling from `dial_files_tooling/` to `shared/dial_files/` and optionally share listing helpers with `_ListFilesTool`.
 
-**Rationale:**
+**Why deferred:** Folder expansion uses `FolderListingProvider` bound in `dial_core_services`; `attachment_processing` never imports `dial_files_tooling`. The move is a separate refactor with no folder-context functional gain.
 
-- File tools are cross-cutting infrastructure (like `external_fetch`, `config_resolvers`) used when apps opt in via `features.dial_files`.
-- `shared` is already an allowed import target for independent feature modules.
-- Folder expansion and dial-files tools share listing/formatting utilities — colocation under `shared` avoids a forbidden `attachment_processing` → `dial_files_tooling` dependency.
+### Concern 5: File tool presets — `read_only` and `all` (deferred)
 
-**Structure:**
+**Status:** Out of scope for v1.
 
-```
-shared/
-  dial_files/
-    dial_files_module.py          # was dial_files_tooling_module (@preview_module)
-    _base_file_tool.py
-    _list_files_tool.py
-    … (other tools)
-    _tool_configs.py
-    _folder_listing.py            # shared expand + render (used by AP port and list tool)
-  shared_module: […, DialFilesModule()]
-```
+**What (future):** Add a `"read_only"` preset to `DialFilesConfig.enabled_tools` alongside `"all"` and explicit tool lists.
 
-**Migration:**
-
-- Move package; update imports across codebase (`dial_files_tooling` → `shared.dial_files`).
-- Remove `DialFilesToolingModule()` from `app_factory.build_di_modules()`; append `DialFilesModule()` to `shared_module`.
-- Keep `@preview_module` on `DialFilesModule` — entire dial-files surface stays preview-gated until stable.
-
-**Change:** Physical move + import renames. No behaviour change to individual tools.
-
-### Concern 5: File tool presets — `read_only` and `all` only
-
-**What:** Extend `DialFilesConfig.enabled_tools` with preset group names. Drop `"write"` as a preset.
-
-**Owner:** `src/quickapp/config/dial_files.py`, `shared/dial_files/dial_files_module.py`
-
-**Semantics:**
-
-| Preset | Tools included |
-|--------|----------------|
-| `"read_only"` | `list`, `read_lines`, `search` |
-| `"all"` | All eight tools (read-only + write) |
-
-**Rationale:** A write-only preset omits `list`, `read_lines`, and `search`. That breaks mid-conversation file access and duplicates poorly with server-side folder expansion (which does not require LLM-invoked `list` for admin folders). Apps needing write tools use `"all"`.
-
-```python
-DialFilesToolPreset = Literal["read_only", "all"]
-enabled_tools: DialFilesToolPreset | list[DialFilesToolName] = "all"
-```
-
-Individual tool names remain supported for fine-grained control (e.g. `["list", "read_lines"]`). Explicit lists that include write tool names without read tools log a warning and union the read-only preset.
-
-**Note:** Folder expansion does **not** require `features.dial_files`. Presets apply only when the app opts into LLM-callable file tools.
+**Note:** Folder expansion does **not** require `features.dial_files` regardless of preset design.
 
 ### Concern 6: Preview gating (folder + dial-files)
 
 **What:** Both folder contexts and dial-files remain preview-gated for v1.
 
-**Owner:** `config/context.py`, `config/application.py`, `shared/dial_files/dial_files_module.py`, schema generation
+**Owner:** `config/context.py`, `config/application.py`, `dial_files_tooling/dial_files_tooling_module.py`, schema generation
 
 **Semantics:**
 
@@ -249,13 +206,13 @@ Individual tool names remain supported for fine-grained control (e.g. `["list", 
 |---------|------------------|
 | `FolderContextConfig` in `contexts` | Preview discriminator in schema; runtime strip + warn when preview off |
 | `features.dial_files` | Existing `PreviewField` on `Features.dial_files` |
-| `DialFilesModule` | Existing `@preview_module` (stays after move to `shared`) |
+| `DialFilesToolingModule` | Existing `@preview_module` |
 
 When `ENABLE_PREVIEW_FEATURES=false`:
 
-- Folder contexts in persisted configs are ignored.
+- Folder contexts in persisted configs are ignored (with warning).
 - `features.dial_files` nullified (existing behaviour).
-- `DialFilesModule` not wired (existing behaviour).
+- `DialFilesToolingModule` not wired (existing behaviour).
 
 When preview is enabled, both features are fully functional.
 
@@ -295,7 +252,7 @@ When preview is enabled, both features are fully functional.
 
 ### Available-context tool description
 
-Update description: folder contexts expand recursively into folder and file entries in **this** response. Subfolders use metadata MIME; files use inferred MIME. Use file URLs with configured tools (RAG, MCP, get-content, dial-files, etc.).
+Implemented in `attachment_processing/_tool_configs.py`: folder contexts expand recursively into folder and file entries in **this** response. Subfolders use metadata MIME; files use inferred MIME.
 
 ### System prompt guidance (optional)
 
@@ -346,7 +303,7 @@ No `features.dial_files` required. Available-context response includes root fold
   ],
   "features": {
     "dial_files": {
-      "enabled_tools": "read_only"
+      "enabled_tools": ["list", "read_lines", "search"]
     }
   }
 }
@@ -378,15 +335,14 @@ No `features.dial_files` required. Available-context response includes root fold
 
 Requires `ENABLE_PREVIEW_FEATURES=true`.
 
-### `enabled_tools` preset reference (preview on)
+### `enabled_tools` reference (preview on)
 
 | Value | Tools registered |
 |-------|------------------|
-| `"read_only"` | `list`, `read_lines`, `search` |
 | `"all"` | All eight tools |
 | `["list", "read_lines"]` | Listed tools only |
 
-No `"write"` preset. Explicit lists containing only write tool names are unioned with read-only tools (with warning).
+See [dial_files_tools.md](dial_files_tools.md) for full dial-files configuration.
 
 ---
 
@@ -394,13 +350,12 @@ No `"write"` preset. Explicit lists containing only write tool names are unioned
 
 ### Breaking changes
 
-- **`dial_files_tooling` package path** → `shared.dial_files` (import renames for any external consumers).
 - **Folder available-context shape:** Apps that relied on a single metadata row per folder will see many entries (files + subfolders). Notification diffs will include membership changes.
 
 ### Non-breaking changes
 
 - `FolderContextConfig` and folder expansion are additive when preview on.
-- `"read_only"` preset added; `"all"` unchanged. No `"write"` preset (none existed in stable release).
+- `dial_files_tooling` package path and `DialFilesConfig` presets are unchanged in v1.
 
 ---
 
@@ -408,128 +363,61 @@ No `"write"` preset. Explicit lists containing only write tool names are unioned
 
 | Component | Status | Change |
 |-----------|--------|--------|
-| **`FolderContextConfig`** | Partial | Add `max_depth`; preview-gate folder discriminator |
-| **`build_context_entries`** | **TODO** | Async recursive expansion via `FolderListingProvider`; entries for root, subfolders, files |
-| **`_AvailableContextTool`** | **TODO** | Await async expansion |
-| **`_AttachmentNotificationInjector`** | **TODO** | Diff expanded membership; ALWAYS inject when folders present |
-| **`shared/dial_files/`** | **TODO** | Move from `dial_files_tooling/`; register in `shared_module` |
-| **`DialFilesConfig.enabled_tools`** | **TODO** | `"read_only"` and `"all"` only |
-| **Preview gating** | **TODO** | Folder discriminator + existing dial-files preview |
+| **`FolderContextConfig`** | Done | `max_depth`, preview-gated discriminator, URL validation |
+| **`build_context_entries_async`** | Done | Recursive expansion via `FolderListingProvider`; per-request listing cache |
+| **`_AvailableContextTool`** | Done | Async expansion path |
+| **`_AttachmentNotificationInjector`** | Done | Expanded membership diff; `InjectionFrequency.ALWAYS` |
+| **`DialFolderListingProvider`** | Done | `FolderListingProvider` in `dial_core_services` |
+| **Preview gating** | Done | Folder discriminator strip + warning; existing dial-files preview |
 | **Configuration UI** | **TODO** (frontend) | Folder picker (preview schema) |
 | **Folder instruction files** | Future | `agents.md` etc. |
 | **Dropped:** synthetic `internal_file_list` injection | — | Enriched available-context instead |
-| **Dropped:** `"write"` preset | — | Use `"all"` |
+| **Deferred:** `shared/dial_files` move | Future | Separate refactor; not required for folder context |
+| **Deferred:** `read_only` preset | Future | Separate dial-files enhancement |
 
 ---
 
 ## Implementation: module structure
 
-Structure design for module independence. **No code changes** — ownership only.
-
-### Module inventory and import rules
-
-**Allowed import targets for independent feature modules:**
-
-`config`, `common`, `shared`, `agent`, `application`
-
-**After this design:**
+### Module inventory (as built)
 
 | Module | Role |
 |--------|------|
-| `shared/dial_files` | LLM-facing file tools + shared folder listing/expansion helpers |
-| `shared/config_resolvers`, `shared/external_fetch` | Existing shared utilities |
-| `dial_core_services` | DIAL SDK wrappers (`DialFileService`) |
-| `attachment_processing` | Available-context tool + notification injector + expansion orchestration |
+| `dial_files_tooling` | LLM-facing file tools (unchanged location; optional via `features.dial_files`) |
+| `dial_core_services` | `DialFileService` + `DialFolderListingProvider` (`FolderListingProvider` impl) |
+| `common/abstract` | `FolderListingProvider` port; `folder_context_urls.py` URL helper |
+| `attachment_processing` | Available-context expansion + notification injector |
 
-### Dependency diagram (target)
+### Dependency diagram (as built)
 
 ```mermaid
 flowchart TB
   subgraph allowed["May import: config, common, shared, agent, application"]
     AP["attachment_processing"]
-  end
-
-  subgraph shared_pkg["shared"]
-    DF["dial_files/"]
-    CR["config_resolvers"]
+    DFT["dial_files_tooling"]
   end
 
   subgraph infra["Infrastructure"]
     DCS["dial_core_services"]
   end
 
-  AP --> shared_pkg
   AP --> config
   AP --> common
-  DF --> DCS
-  DF --> common
-  DF --> config
+  DFT --> DCS
+  DFT --> config
   DCS --> common
-  DCS --> CR
 ```
 
-### Proposed structure changes
+`attachment_processing` injects `FolderListingProvider` (ABC in `common`); implementation is `DialFolderListingProvider` in `dial_core_services`. No import from `dial_files_tooling`.
 
-#### 1. `shared/dial_files/` — file tools + listing
+### What we deliberately do **not** do (v1)
 
-| Artifact | Purpose |
-|----------|---------|
-| `dial_files_module.py` | `@preview_module`; multiprovider for staged tools; `@preview_module` retained |
-| `_folder_listing.py` | `expand_folder_to_entries(...)`, `_render_listing` — used by list tool and by expansion port |
-| `_list_files_tool.py`, … | Existing tools (moved) |
-| `FolderListingProvider` | Port interface (can live in `shared/dial_files/_folder_listing_provider.py` or `common/abstract/`) |
-
-**Why `shared` not `common`:** tools are full DI modules with staged tool configs; `common` stays lightweight (ABCs, pure helpers). Listing **implementation** calls `DialFileService` and lives next to tools in `shared/dial_files`; **interface** may remain in `common/abstract/` for `attachment_processing` injection.
-
-#### 2. `common` — pure helpers
-
-| Artifact | Purpose |
-|----------|---------|
-| `folder_context_urls.py` | `metadata_folder_url_to_files_url()` |
-| `abstract/folder_listing_provider.py` | ABC: `async def expand_folder(files_url, max_depth) -> list[ExpandedFolderEntry]` |
-
-#### 3. `dial_core_services` — DIAL IO
-
-| Artifact | Purpose |
-|----------|---------|
-| Implementation backing | `DialFolderListingProvider` uses `DialFileService.list_folder` recursively; bound in `DialCoreServicesModule` or `shared/dial_files` module |
-
-Prefer binding in `DialCoreServicesModule` if it alone holds `DialFileService`; `shared/dial_files` receives `FolderListingProvider` by injection for `_ListFilesTool`.
-
-#### 4. `attachment_processing` — expansion only, no synthetic list pairs
-
-| Artifact | Purpose |
-|----------|---------|
-| `_context_entries.py` | `build_context_entries_async(contexts, seen, folder_listing_provider)` — merges static file entries + expanded folder tree; status detection on full URL set |
-| `_available_context_tool.py` | Async `_get_response` |
-| `_attachment_notification_injector.py` | Async `get_content`; inject when folder contexts present or membership changed |
-| **No** `_FolderListInjector` | Removed from plan |
-
-Imports: `config`, `common`, `shared` (port only via ABC in `common`, implementation injected).
-
-#### 5. `config`
-
-| Artifact | Change |
-|----------|--------|
-| `context.py` | `max_depth` on `FolderContextConfig`; preview-gate folder type in schema |
-| `dial_files.py` | `Literal["read_only", "all"]` presets |
-| `application.py` | Strip folder contexts when preview off (extend `_gate_preview_fields` or context validator) |
-
-#### 6. `app_factory`
-
-| Change |
-|--------|
-| Remove `DialFilesToolingModule()` from module list |
-| Append `DialFilesModule()` to `shared_module` in `shared/__init__.py` |
-
-### What we deliberately do **not** do
-
-| Approach | Why rejected |
-|----------|--------------|
-| Synthetic `internal_file_list` message pairs | User direction: enrich available-context instead |
-| `"write"` preset | Write without read is incomplete |
-| Top-level `dial_files_tooling` | Moves to `shared` per import rules |
-| `attachment_processing` → `dial_core_services` import | Use `FolderListingProvider` port |
+| Approach | Why rejected / deferred |
+|----------|-------------------------|
+| Synthetic `internal_file_list` message pairs | Enrich available-context instead |
+| Move `dial_files_tooling` → `shared` | Not required for folder context; separate refactor |
+| `read_only` dial-files preset | Separate dial-files enhancement |
+| `attachment_processing` → `dial_core_services` direct import | Use `FolderListingProvider` port |
 | Stable (non-preview) folder contexts in v1 | Preview-gated until graduation |
 
 ### Testing layout
@@ -537,9 +425,8 @@ Imports: `config`, `common`, `shared` (port only via ABC in `common`, implementa
 | Module | Tests |
 |--------|-------|
 | `common` | URL mapping; ABC contract |
-| `dial_core_services` / `shared/dial_files` | Recursive expansion; depth limit; empty folder |
-| `attachment_processing` | Expanded entries in available-context; subfolder rows; new/removed file status; preview-off strips folders |
-| `shared/dial_files` | Presets `read_only` / `all`; preview module wiring |
+| `dial_core_services` | Recursive expansion via `DialFolderListingProvider` |
+| `attachment_processing` | Expanded entries in available-context; subfolder rows; new/removed file status |
 
 ### Future: `agents.md`
 

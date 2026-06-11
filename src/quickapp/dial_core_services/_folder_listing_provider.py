@@ -10,8 +10,6 @@ from quickapp.dial_core_services.dial_file_service import DialFileService
 
 logger = logging.getLogger(__name__)
 
-_FOLDER_METADATA_MIME = "application/vnd.dial.metadata+json"
-
 
 @inject
 class DialFolderListingProvider(FolderListingProvider):
@@ -26,6 +24,13 @@ class DialFolderListingProvider(FolderListingProvider):
             raw_entries = await self.__dial_file_service.list_folder(
                 files_folder_url, max_depth=max_depth
             )
+        except ValueError as exc:
+            logger.warning(
+                "Failed to list folder context at %s: %s",
+                files_folder_url,
+                exc,
+            )
+            return []
         except Exception:
             logger.warning(
                 "Failed to list folder context at %s",
@@ -44,7 +49,3 @@ class DialFolderListingProvider(FolderListingProvider):
             ),
             key=lambda item: item.url,
         )
-
-
-def folder_metadata_mime() -> str:
-    return _FOLDER_METADATA_MIME

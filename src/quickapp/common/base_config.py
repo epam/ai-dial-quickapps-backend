@@ -312,7 +312,7 @@ def has_preview_marker(field_info: FieldInfo) -> bool:
     return bool(tmp.get(_PREVIEW_MARKER, False))
 
 
-def _mark_json_schema_preview(schema: dict[str, Any]) -> None:
+def mark_json_schema_preview(schema: dict[str, Any]) -> None:
     """Mark a JSON schema object (e.g. a ``$defs`` entry) as preview-only."""
     schema[_PREVIEW_MARKER] = True
 

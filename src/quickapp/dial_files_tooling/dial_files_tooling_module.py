@@ -14,19 +14,19 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_TOOL_NAME_PREFIX,
 )
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesConfig, resolve_enabled_dial_files_tools
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
-from quickapp.shared.dial_files._copy_file_tool import _CopyFileTool
-from quickapp.shared.dial_files._delete_file_tool import _DeleteFileTool
-from quickapp.shared.dial_files._edit_file_tool import _EditFileTool
-from quickapp.shared.dial_files._list_files_tool import _ListFilesTool
-from quickapp.shared.dial_files._move_file_tool import _MoveFileTool
-from quickapp.shared.dial_files._offload_config import ResolvedOffloadConfig
-from quickapp.shared.dial_files._offload_processor import ToolCallResultOffloadProcessor
-from quickapp.shared.dial_files._read_file_lines_tool import _ReadFileLinesTool
-from quickapp.shared.dial_files._search_in_file_tool import _SearchInFileTool
-from quickapp.shared.dial_files._stage_wrapper import _FileStageWrapper
-from quickapp.shared.dial_files._tool_configs import (
+from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
+from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
+from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
+from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
+from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
+from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
+from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
+from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
+from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
+from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
+from quickapp.dial_files_tooling._tool_configs import (
     COPY_FILE_TOOL_CONFIG,
     DELETE_FILE_TOOL_CONFIG,
     EDIT_FILE_TOOL_CONFIG,
@@ -36,13 +36,13 @@ from quickapp.shared.dial_files._tool_configs import (
     SEARCH_IN_FILE_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
 )
-from quickapp.shared.dial_files._write_file_tool import _WriteFileTool
+from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
 
 logger = logging.getLogger(__name__)
 
 
 @preview_module
-class DialFilesModule(Module):
+class DialFilesToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_FileStageWrapper, to=_FileStageWrapper, scope=request_scope)
@@ -59,7 +59,7 @@ class DialFilesModule(Module):
             to=ToolCallResultOffloadProcessor,
             scope=request_scope,
         )
-        logger.debug("DialFilesModule configuration completed")
+        logger.debug("DialFilesToolingModule configuration completed")
 
     # Read-back tools (short names in DialFilesConfig.enabled_tools) the offload
     # notice points the LLM at. Offloading is useless without them.
@@ -109,13 +109,13 @@ class DialFilesModule(Module):
             (move_builder, MOVE_FILE_TOOL_CONFIG),
         ]
 
-        enabled = resolve_enabled_dial_files_tools(cfg.enabled_tools)
-
         def _is_enabled(config: InternalTool) -> bool:
+            if cfg.enabled_tools == "all":
+                return True
             short_name = config.open_ai_tool.function.name.removeprefix(
                 INTERNAL_FILE_TOOL_NAME_PREFIX
             )
-            return short_name in enabled
+            return short_name in cfg.enabled_tools
 
         return [
             builder.build(
@@ -182,5 +182,6 @@ class DialFilesModule(Module):
         ]
 
     def _missing_read_back_tools(self, cfg: DialFilesConfig) -> list[str]:
-        enabled = resolve_enabled_dial_files_tools(cfg.enabled_tools)
-        return sorted(self._REQUIRED_READ_BACK_TOOLS - enabled)
+        if cfg.enabled_tools == "all":
+            return []
+        return sorted(self._REQUIRED_READ_BACK_TOOLS - set(cfg.enabled_tools))

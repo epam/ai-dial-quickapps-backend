@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
-from quickapp.shared.dial_files.dial_files_module import DialFilesModule
+from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 
 
 def _make_offload(
@@ -32,11 +32,11 @@ def _make_app_config(
 
 
 def _resolve(app_config):
-    return DialFilesModule()._provide_offload_config(app_config)
+    return DialFilesToolingModule()._provide_offload_config(app_config)
 
 
 def _exceptions(app_config) -> list[InitializationException]:
-    module = DialFilesModule()
+    module = DialFilesToolingModule()
     resolved = module._provide_offload_config(app_config)
     return module._provide_initialization_exceptions(resolved)
 
@@ -74,9 +74,9 @@ class TestOffloadConfigResolution:
         assert "internal_file_read_lines" in config.excluded_tools
         assert "internal_file_search" in config.excluded_tools
 
-    def test_enabled_when_write_only_list_unions_read_back_tools(self):
+    def test_disabled_when_read_back_tools_not_in_enabled_list(self):
         config = _resolve(_make_app_config(enabled_tools=["write", "edit"]))
-        assert config.enabled is True
+        assert config.enabled is False
 
     def test_disabled_when_only_one_read_back_tool_exposed(self):
         config = _resolve(_make_app_config(enabled_tools=["read_lines"]))
@@ -101,8 +101,11 @@ class TestOffloadInitializationExceptions:
         app_config = _make_app_config(enabled_tools=["read_lines", "search", "write"])
         assert _exceptions(app_config) == []
 
-    def test_no_exception_when_write_only_list_unions_read_back_tools(self):
-        assert _exceptions(_make_app_config(enabled_tools=["write"])) == []
+    def test_exception_when_read_back_tools_missing(self):
+        exceptions = _exceptions(_make_app_config(enabled_tools=["write"]))
+        assert len(exceptions) == 1
+        assert isinstance(exceptions[0], OffloadConfigurationException)
+        assert exceptions[0].missing_tools == ["read_lines", "search"]
 
     def test_exception_lists_only_missing_tool(self):
         exceptions = _exceptions(_make_app_config(enabled_tools=["read_lines"]))
@@ -112,5 +115,5 @@ class TestOffloadInitializationExceptions:
         assert exc.missing_tools == ["search"]
 
     def test_exception_is_soft(self):
-        exceptions = _exceptions(_make_app_config(enabled_tools=["read_lines"]))
+        exceptions = _exceptions(_make_app_config(enabled_tools=["write"]))
         assert exceptions[0].is_hard is False

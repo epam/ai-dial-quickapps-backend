@@ -23,7 +23,7 @@ class DialDownloader:
     next to the data — the ``DialFileService.download_file`` path reads metadata
     out of ``StateHolder`` on cache hits, so omitting it here would make the
     cached entry look like a metadata miss to that consumer and break
-    ``If-Match`` upload semantics in ``shared.dial_files``.
+    ``If-Match`` upload semantics in ``dial_files_tooling``.
     """
 
     def __init__(

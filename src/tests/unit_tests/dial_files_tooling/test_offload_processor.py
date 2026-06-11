@@ -6,8 +6,8 @@ from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.shared.dial_files._offload_config import ResolvedOffloadConfig
-from quickapp.shared.dial_files._offload_processor import ToolCallResultOffloadProcessor
+from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
+from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
 
 
 def _make_config(**overrides) -> ResolvedOffloadConfig:
