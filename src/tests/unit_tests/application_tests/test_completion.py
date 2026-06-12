@@ -8,14 +8,13 @@ from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
 import quickapp.core.application._quick_app_completion as quick_app_completion
-from quickapp.core.application import _MessagesSetup
-from quickapp.core.application import _RequestContext
-from quickapp.core.application._request_context_setup import _RequestContextSetup
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
 )
 from quickapp.config.config_template_resolver import ConfigResolver
+from quickapp.core.application import _MessagesSetup, _RequestContext
+from quickapp.core.application._request_context_setup import _RequestContextSetup
 
 
 class FakeChoice:

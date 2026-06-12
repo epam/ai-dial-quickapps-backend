@@ -8,9 +8,6 @@ from injector import ProviderOf, inject
 from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
-from quickapp.core.agent.assistant_invoker import AssistantInvoker
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
-from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.common import DeploymentUsage
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.chat_completion_recovery import (
@@ -31,6 +28,9 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
 logger = logging.getLogger(__name__)

@@ -3,9 +3,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.core.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
-from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common.exceptions import OrchestratorInitializationException
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDeploymentInitializer,
+)
 
 
 def _make_deployment(

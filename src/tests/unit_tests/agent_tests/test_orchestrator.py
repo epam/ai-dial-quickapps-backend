@@ -12,14 +12,14 @@ from aidial_sdk.chat_completion.request import (
     ToolCall,
 )
 
-from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
-from quickapp.core.agent import Orchestrator
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.core.agent import Orchestrator
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
 )

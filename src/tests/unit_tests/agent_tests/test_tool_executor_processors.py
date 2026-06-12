@@ -2,12 +2,12 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
     ToolCallResultProcessor,
 )
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.core.agent.tool_executor import ToolExecutor
 
 
 def _make_tool_call(name: str, tc_id: str = "id1", arguments: str = "{}") -> MagicMock:

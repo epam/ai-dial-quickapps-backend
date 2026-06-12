@@ -29,10 +29,7 @@ from fastapi_injector import RequestScopeFactory, RequestScopeOptions, attach_in
 from injector import Injector
 from pydantic import SecretStr
 
-from quickapp.core.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
-from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.app_factory import AppFactory
-from quickapp.core.application import _RequestContext
 from quickapp.common import StagedBaseTool
 from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.context import FileContextConfig
@@ -42,6 +39,11 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.config.tools.const import ALL_MIME_TYPES
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDeploymentInitializer,
+)
+from quickapp.core.application import _RequestContext
 
 
 def _set_env_if_empty(name: str, value: str) -> None:

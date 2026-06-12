@@ -15,7 +15,6 @@ from typing import Any
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
-from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.attachment_processing_utils import (
@@ -33,6 +32,7 @@ from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.internal import InternalTool
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_stage_wrapper import (
     _GetContentStageWrapper,
 )
