@@ -115,7 +115,7 @@ for i, (result, tc) in enumerate(zip(results, valid_calls)):
 return results
 ```
 
-**Owner:** `src/quickapp/agent/tool_executor.py`
+**Owner:** `src/quickapp/core/agent/tool_executor.py`
 
 **Change:** New constructor parameter (list of processors). Sorting happens **once in the constructor** (`ToolExecutor` is request-scoped → sorted list is reused for every `execute()` call within the request). New loop after enrichers.
 

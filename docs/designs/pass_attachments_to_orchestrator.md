@@ -208,7 +208,7 @@ Adding a **new** internal tool next to the list tool is **additive** if default 
 | Component / area | Addition or change |
 |------------------|---------------------|
 | Internal tools | New **`internal_attachments_get_content`** when orchestrator `input_attachment_types` supports at least one request-visible MIME among admin contexts or user attachments (`matches_type` from `quickapp/common/utils.py`); list tool keeps existing admin-context gate. |
-| Agent cache | New `CacheService[Deployment]` for orchestrator id under **`quickapp/agent/`**, independent of `DialDeploymentToolCacheService`. |
+| Agent cache | New `CacheService[Deployment]` for orchestrator id under **`quickapp/core/agent/`**, independent of `DialDeploymentToolCacheService`. |
 | Tool semantics | List remains admin-only; `internal_attachments_get_content` validates `attachment_url` against request-allowed admin/user URLs; returns one attachment or error text. |
 | Orchestrator input path | Narrow exception so **`internal_attachments_get_content`** results can retain allowed file types only when URL/MIME pass request-level admin/user checks and DialCore `input_attachment_types`; USER message `custom_content.attachments` are filtered out and represented as XML metadata + synthetic get-content history for the last USER turn. |
 | DialCore prefetch | Before first orchestrator completion call, load `Deployment` for orchestrator id via **agent** deployment cache; store `input_attachment_types` (request-scoped) for MIME-aware **`internal_attachments_get_content`** registration and filter behavior. |

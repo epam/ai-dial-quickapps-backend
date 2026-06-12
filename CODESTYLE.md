@@ -58,7 +58,7 @@ class AgentModule(Module):
 ### Rules
 
 - **One settings class per (injector) module** that needs config (e.g. `AgentSettings`, `InternalToolingSettings`, `LoggingSettings`). Name it `{ModuleName}Settings` when it belongs to a feature module.
-- **Define it in (or next to) that module** (e.g. `agent/agent_settings.py`, `internal_tooling/internal_tooling_settings.py`, `config/logging_settings.py`).
+- **Define it in (or next to) that module** (e.g. `core/agent/agent_settings.py`, `internal_tooling/internal_tooling_settings.py`, `config/logging_settings.py`). Settings shared across modules live in `config/` (e.g. `config/agent_settings.py`).
 - Use **pydantic-settings** (`BaseSettings`) for the class. Use `Field(..., alias="ENV_VAR_NAME")` so existing env var names (often with different prefixes) are supported.
 - **Bind the settings class in that module’s `configure()`** (e.g. `binder.bind(AgentSettings, to=AgentSettings, scope=singleton)`). Consumers receive the same instance via constructor injection.
 - **Do not** add `os.getenv` / `os.environ` in application or tooling code. The only place that should read env for app config is inside the settings classes (or a dedicated loader like `LoggingSettings.from_env()` when you need guaranteed env reads).
@@ -67,7 +67,7 @@ class AgentModule(Module):
 ### Example (settings class)
 
 ```python
-# agent/agent_settings.py
+# config/agent_settings.py
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
