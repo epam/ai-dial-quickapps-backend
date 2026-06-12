@@ -3,7 +3,7 @@ from unittest.mock import MagicMock
 
 from aidial_sdk.chat_completion import Stage, Status
 
-from quickapp.application._initialization_error_handler import _InitializationErrorHandler
+from quickapp.core.application import _InitializationErrorHandler
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     HookInitializationException,

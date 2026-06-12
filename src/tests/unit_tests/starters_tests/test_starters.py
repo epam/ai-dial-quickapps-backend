@@ -6,7 +6,7 @@ from injector import Binder
 from pydantic import ValidationError
 from starlette.testclient import TestClient
 
-from quickapp.application import Configuration
+from quickapp.core.application import Configuration
 from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.prompt import CustomSystemPromptConfig

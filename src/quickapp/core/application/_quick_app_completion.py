@@ -5,7 +5,7 @@ from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
 from injector import Injector, inject
 
-from quickapp.agent.orchestrator import Orchestrator
+from quickapp.core.agent import Orchestrator
 from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import ConfigResolutionException

@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,

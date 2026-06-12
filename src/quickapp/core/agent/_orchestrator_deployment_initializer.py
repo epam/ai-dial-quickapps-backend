@@ -2,9 +2,9 @@
 
 from injector import inject
 
-from quickapp.agent._orchestrator_static_tools_context import _OrchestratorStaticToolsContext
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
+from quickapp.core.agent._orchestrator_static_tools_context import _OrchestratorStaticToolsContext
+from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.config.application import ApplicationConfig
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService

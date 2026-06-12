@@ -29,10 +29,10 @@ from fastapi_injector import RequestScopeFactory, RequestScopeOptions, attach_in
 from injector import Injector
 from pydantic import SecretStr
 
-from quickapp.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent._orchestrator_deployment_initializer import _OrchestratorDeploymentInitializer
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.app_factory import AppFactory
-from quickapp.application._request_context import _RequestContext
+from quickapp.core.application import _RequestContext
 from quickapp.common import StagedBaseTool
 from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
 from quickapp.config.context import FileContextConfig

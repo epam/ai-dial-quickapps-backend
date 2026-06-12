@@ -1,7 +1,7 @@
 from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import inject
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.attachment_processing_utils import (
     attachment_mime_type,

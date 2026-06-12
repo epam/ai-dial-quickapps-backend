@@ -4,9 +4,9 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import openai
 import pytest
 
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent import AgentSettings
+from quickapp.core.agent import AssistantInvoker
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry

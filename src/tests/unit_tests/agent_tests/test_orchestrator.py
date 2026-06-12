@@ -12,8 +12,8 @@ from aidial_sdk.chat_completion.request import (
     ToolCall,
 )
 
-from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
-from quickapp.agent.orchestrator import Orchestrator
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.core.agent import Orchestrator
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall

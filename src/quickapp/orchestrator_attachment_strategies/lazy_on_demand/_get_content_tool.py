@@ -15,7 +15,7 @@ from typing import Any
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.attachment_processing_utils import (

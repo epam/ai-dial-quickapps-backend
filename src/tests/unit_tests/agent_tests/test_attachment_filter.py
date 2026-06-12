@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
-from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent._attachment_filter import _AttachmentFilter
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig

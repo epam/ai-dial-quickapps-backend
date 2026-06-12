@@ -3,7 +3,7 @@ from injector import inject
 from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.common import ORCHESTRATOR_AZURE_CLIENT
 from quickapp.common.chat_completion_recovery import (
     CHAT_COMPLETION_CREATE_RETRY_SCOPE,

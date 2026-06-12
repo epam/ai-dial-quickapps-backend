@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 
 
 def _deployment(

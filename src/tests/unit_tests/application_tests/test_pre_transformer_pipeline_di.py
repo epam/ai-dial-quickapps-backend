@@ -24,8 +24,8 @@ from fastapi_injector import Injected
 from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.application._messages_setup import _MessagesSetup
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.application import _MessagesSetup
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher

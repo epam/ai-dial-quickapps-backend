@@ -7,10 +7,10 @@ from aidial_sdk.chat_completion import Message, Request, Role
 from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
-import quickapp.application._quick_app_completion as quick_app_completion
-from quickapp.application._messages_setup import _MessagesSetup
-from quickapp.application._request_context import _RequestContext
-from quickapp.application._request_context_setup import _RequestContextSetup
+import quickapp.core.application._quick_app_completion as quick_app_completion
+from quickapp.core.application import _MessagesSetup
+from quickapp.core.application import _RequestContext
+from quickapp.core.application._request_context_setup import _RequestContextSetup
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,

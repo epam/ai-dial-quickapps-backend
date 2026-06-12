@@ -6,7 +6,7 @@ from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from injector import inject
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.attachment_processing_utils import attachment_mime_type
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import _make_call_id

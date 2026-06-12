@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import SecretStr
 
-from quickapp.agent.agent_module import AgentModule
+from quickapp.core.agent.agent_module import AgentModule
 
 
 def test_provide_openai_client_forwards_bearer_to_default_headers():

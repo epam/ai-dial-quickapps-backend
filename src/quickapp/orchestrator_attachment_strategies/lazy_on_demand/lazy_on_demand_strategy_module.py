@@ -4,7 +4,7 @@ from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy

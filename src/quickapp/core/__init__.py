@@ -1,7 +1,7 @@
 from injector import Module
 
-from quickapp.agent.agent_module import AgentModule
-from quickapp.application import AppModule
+from quickapp.core.agent.agent_module import AgentModule
+from quickapp.core.application import AppModule
 
 # The app's central DI modules. ``app_factory`` splices this array into its module list
 # instead of registering each entry individually. (Physically relocating the ``agent/``

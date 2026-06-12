@@ -5,20 +5,20 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
-from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_deployment_initializer import (
+from quickapp.core.agent._attachment_filter import _AttachmentFilter
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
     _OrchestratorStaticToolsContext,
 )
-from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
+from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent.agent_settings import AgentSettings
+from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.models import OpenAiToolConfigDict
+from quickapp.core.agent.orchestrator import Orchestrator
+from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,

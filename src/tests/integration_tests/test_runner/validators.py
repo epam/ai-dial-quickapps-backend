@@ -4,7 +4,7 @@ from typing import Any, NamedTuple
 
 from aidial_sdk.chat_completion.request import Message, Role
 
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.core.agent.models import TOOL_EXECUTION_HISTORY
 from tests.integration_tests.conftest import FailureReason, TestStats
 from tests.integration_tests.test_runner.models import Argument, AttachmentCheck, Failure, ToolCall
 from tests.integration_tests.test_runner.similarity_checker import (

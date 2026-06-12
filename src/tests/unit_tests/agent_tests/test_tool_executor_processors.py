@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.agent.tool_executor import ToolExecutor
+from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
     ToolCallResultProcessor,
