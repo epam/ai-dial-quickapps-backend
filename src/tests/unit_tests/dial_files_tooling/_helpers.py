@@ -27,5 +27,5 @@ def make_service(appdata: str | None = "appbucket") -> MagicMock:
     return service
 
 
-def make_config(agent_home_dir: str = "") -> DialFilesConfig:
-    return DialFilesConfig(agent_home_dir=agent_home_dir)
+def make_config(agent_home_dir: str = "", max_files_scanned: int = 200) -> DialFilesConfig:
+    return DialFilesConfig(agent_home_dir=agent_home_dir, max_files_scanned=max_files_scanned)

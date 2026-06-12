@@ -1060,6 +1060,7 @@
                   "list",
                   "read_lines",
                   "search",
+                  "find",
                   "write",
                   "edit",
                   "delete",
@@ -1084,6 +1085,13 @@
         "tool_call_result_offload": {
           "$ref": "#/$defs/ToolCallResultOffloadConfig",
           "description": "Offload oversized tool-call responses to a file, read back on demand via the read_lines / search file tools. Toggled by its `enabled` flag, whose default is governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. Requires read_lines and search to be exposed via enabled_tools."
+        },
+        "max_files_scanned": {
+          "default": 50,
+          "description": "Folder-mode 'search' cap: the maximum number of files downloaded and scanned in a single call before the search stops and appends a truncation notice. Bounds worst-case egress on large subtrees.",
+          "minimum": 1,
+          "title": "Max Files Scanned",
+          "type": "integer"
         }
       },
       "title": "DialFilesConfig",
