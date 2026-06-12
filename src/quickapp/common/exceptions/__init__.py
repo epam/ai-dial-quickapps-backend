@@ -1,4 +1,5 @@
 from .config_resolution import ConfigResolutionException
+from .hook_initialization import HookInitializationException
 from .initialization import InitializationException
 from .invalid_tool_call_parameter import InvalidToolCallParameterException
 from .offload_configuration import OffloadConfigurationException
@@ -23,4 +24,5 @@ __all__ = [
     "SkillInitializationException",
     "ToolInitializationException",
     "ToolTimeoutError",
+    "HookInitializationException",
 ]

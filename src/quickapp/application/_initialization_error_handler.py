@@ -5,6 +5,7 @@ from injector import ProviderOf, inject
 
 from quickapp.common.exceptions import (
     ConfigResolutionException,
+    HookInitializationException,
     InitializationException,
     OffloadConfigurationException,
     SkillCatastrophicInitializationException,
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 _STAGE_NAME = "Initialization issues"
 _TOOL_SECTION = "#### Tool initialization"
+_HOOK_SECTION = "#### Hook initialization"
 _SKILL_SECTION = "#### Skill loading"
 _OFFLOAD_SECTION = "#### Large tool-response offload"
 _CATASTROPHIC_HEADER = (
@@ -49,6 +51,7 @@ class _InitializationErrorHandler:
             return
 
         tool_lines: list[str] = []
+        hook_lines: list[str] = []
         catastrophic_lines: list[str] = []
         per_url_error_lines: list[str] = []
         per_url_warning_lines: list[str] = []
@@ -58,6 +61,10 @@ class _InitializationErrorHandler:
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
                 if exc.details:
                     tool_lines.append(f"```\n{exc.details}\n```")
+            elif isinstance(exc, HookInitializationException):
+                hook_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
+                if exc.details:
+                    hook_lines.append(f"```\n{exc.details}\n```")
             elif isinstance(exc, OffloadConfigurationException):
                 offload_lines.append(f"- {exc}")
             elif isinstance(exc, ConfigResolutionException):
@@ -81,6 +88,8 @@ class _InitializationErrorHandler:
         sections: list[list[str]] = []
         if tool_lines:
             sections.append([_TOOL_SECTION, *tool_lines])
+        if hook_lines:
+            sections.append([_HOOK_SECTION, *hook_lines])
         if catastrophic_lines or per_url_error_lines or per_url_warning_lines:
             skill_section = [_SKILL_SECTION]
             if catastrophic_lines:

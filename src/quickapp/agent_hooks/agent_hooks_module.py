@@ -1,10 +1,13 @@
 import logging
 
-from injector import Module, ProviderOf, multiprovider
+from fastapi_injector import request_scope
+from injector import Binder, Module, ProviderOf, multiprovider
 
+from quickapp.agent_hooks._agent_hooks_context import _AgentHooksContext
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.exceptions import InitializationException
 from quickapp.common.preview import preview_module
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import ApplicationConfig
@@ -16,6 +19,9 @@ logger = logging.getLogger(__name__)
 @preview_module
 class AgentHooksModule(Module):
 
+    def configure(self, binder: Binder) -> None:
+        binder.bind(_AgentHooksContext, to=_AgentHooksContext, scope=request_scope)
+
     @multiprovider
     def _provide_messages_transformers(
         self,
@@ -26,6 +32,12 @@ class AgentHooksModule(Module):
         return self._build_on_request_message_transformers(
             app_config_provider, tools_provider, HookEvent.ON_REQUEST_START, enrichers_provider
         )
+
+    @multiprovider
+    def __provide_initialization_exceptions(
+        self, context: _AgentHooksContext
+    ) -> list[InitializationException]:
+        return context.exceptions
 
     @staticmethod
     def _build_on_request_message_transformers(
