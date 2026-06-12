@@ -5,7 +5,7 @@ from typing import Any
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 
-from quickapp.core.agent.agent_settings import AgentSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders

@@ -5,7 +5,7 @@ import openai
 import pytest
 
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.core.agent import AgentSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent import AssistantInvoker
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.messages_mixin import MessagesMixin

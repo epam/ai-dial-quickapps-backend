@@ -10,7 +10,7 @@ from quickapp.core.application import _RequestContext
 from quickapp.core.application._request_context_setup import _RequestContextSetup
 
 _PATCH_MODEL_VALIDATE = patch(
-    "quickapp.application._request_context_setup.ApplicationConfig.model_validate",
+    "quickapp.core.application._request_context_setup.ApplicationConfig.model_validate",
     return_value=MagicMock(),
 )
 

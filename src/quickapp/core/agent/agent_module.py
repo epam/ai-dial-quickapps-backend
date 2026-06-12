@@ -13,7 +13,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorStaticToolsContext,
 )
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
-from quickapp.core.agent.agent_settings import AgentSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator

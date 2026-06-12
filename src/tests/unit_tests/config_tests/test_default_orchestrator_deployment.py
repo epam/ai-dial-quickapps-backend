@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic_core import PydanticUndefined
 
-from quickapp.core.agent import AgentSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import _orchestrator_deployment_field
 from quickapp.config.dial_deployment import DialDeploymentConfig
 
