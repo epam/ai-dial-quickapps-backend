@@ -5,13 +5,13 @@ from typing import Any
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
 
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.message_logger import format_openai_message_pipe_tree
-from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent.message_logger import format_openai_message_pipe_tree
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 
 logger = logging.getLogger(__name__)
 

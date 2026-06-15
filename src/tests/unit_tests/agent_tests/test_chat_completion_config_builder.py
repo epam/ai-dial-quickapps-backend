@@ -1,5 +1,5 @@
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR as ORCH
 
 
 def test_promote_orchestrator_state_to_top_level():
