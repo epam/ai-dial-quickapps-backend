@@ -5,6 +5,7 @@ from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.common import StagedBaseTool
+from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
 from quickapp.common.preview import preview_module
@@ -20,10 +21,12 @@ from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
 from quickapp.dial_files_tooling._find_files_tool import _FindFilesTool
+from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
+from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
@@ -48,6 +51,12 @@ class DialFilesToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_FileStageWrapper, to=_FileStageWrapper, scope=request_scope)
+        # Request-scoped so the agent home dir is resolved once per request and shared
+        # between the file tools and the path-argument transformer.
+        binder.bind(_HomePathResolver, to=_HomePathResolver, scope=request_scope)
+        binder.bind(
+            _AppdataHomePathTransformer, to=_AppdataHomePathTransformer, scope=request_scope
+        )
         binder.bind(_ListFilesTool, to=_ListFilesTool, scope=request_scope)
         binder.bind(_ReadFileLinesTool, to=_ReadFileLinesTool, scope=request_scope)
         binder.bind(_SearchInFileTool, to=_SearchInFileTool, scope=request_scope)
@@ -97,6 +106,8 @@ class DialFilesToolingModule(Module):
         delete_builder: AssistedBuilder[_DeleteFileTool],
         copy_builder: AssistedBuilder[_CopyFileTool],
         move_builder: AssistedBuilder[_MoveFileTool],
+        global_transformers: list[ToolArgumentTransformer],
+        path_transformer: _AppdataHomePathTransformer,
     ) -> list[StagedBaseTool]:
         cfg = app_config.features.dial_files if app_config.features else None
         if cfg is None:
@@ -122,11 +133,18 @@ class DialFilesToolingModule(Module):
             )
             return short_name in cfg.enabled_tools
 
+        # The new path transformer runs last so a file-reference already resolved to a
+        # `files/...` URL by the global transformers is relativized too. Injected only
+        # into the file tools (the global multiprovider must stay free of dial-files
+        # specifics so it does not run home-resolution for every other tool type).
+        argument_transformers = [*global_transformers, path_transformer]
+
         return [
             builder.build(
                 tool_config=config,
                 name=config.open_ai_tool.function.name,
                 description=config.open_ai_tool.function.description,
+                argument_transformers=argument_transformers,
             )
             for builder, config in tools
             if _is_enabled(config)

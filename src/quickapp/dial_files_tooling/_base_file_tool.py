@@ -14,6 +14,7 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
+from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 
@@ -37,6 +38,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         dial_files_config: DialFilesConfig,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
+        home_resolver: _HomePathResolver | None = None,
         **kwargs: Any,
     ):
         super().__init__(
@@ -49,7 +51,12 @@ class _DialFileTool(StagedBaseTool, ABC):
         )
         self._dial_file_service = dial_file_service
         self._dial_files_config = dial_files_config
-        self._resolved_home: str | None = None
+        # Falls back to a private resolver when not DI-supplied (e.g. tests that
+        # construct a tool directly); DI binds it request-scoped so the home dir is
+        # resolved once and shared with the path-argument transformer.
+        self._home_resolver = home_resolver or _HomePathResolver(
+            dial_file_service, dial_files_config
+        )
 
     async def _download_text(
         self, file_url: str, display_path: str
@@ -136,68 +143,21 @@ class _DialFileTool(StagedBaseTool, ABC):
         return max_depth
 
     async def _resolve_appdata_url(self, path: str) -> str:
-        if not isinstance(path, str) or path == "":
-            raise InvalidToolCallParameterException("path", "path must be a non-empty string")
-        if "\n" in path or "\r" in path:
-            raise InvalidToolCallParameterException(
-                "path", "path must not contain newline characters"
-            )
-        if path.startswith("files/"):
-            return path
-        self._validate_relative_path(path)
-        home = await self._resolve_home_dir()
-        return f"{home}{path}"
+        return await self._home_resolver.resolve_appdata_url(path)
 
     async def _resolve_home_dir(self) -> str:
-        if self._resolved_home is not None:
-            return self._resolved_home
-        appdata = await self._dial_file_service.my_appdata_home()
-        if appdata is None:
-            raise InvalidToolCallParameterException(
-                "path",
-                "appdata namespace is not available; cannot resolve agent home directory",
-            )
-        subdir = self._dial_files_config.agent_home_dir
-        self._resolved_home = f"files/{appdata}/{subdir}"
-        return self._resolved_home
+        return await self._home_resolver.resolve_home_dir()
 
     async def _to_display_path(self, url: str) -> str:
-        """Inverse of _resolve_appdata_url.
-
-        Async because home-dir resolution may require `my_appdata_home()` on first call;
-        subsequent calls return from cache.
-        """
-        try:
-            home = await self._resolve_home_dir()
-        except InvalidToolCallParameterException:
-            return url
-        if url.startswith(home):
-            return url[len(home) :]
-        return url
+        return await self._home_resolver.to_display_path(url)
 
     @staticmethod
     def _validate_relative_path(path: str) -> None:
-        if path != path.strip():
-            raise InvalidToolCallParameterException(
-                "path", "path must not have leading/trailing whitespace"
-            )
-        if path.startswith("/"):
-            raise InvalidToolCallParameterException("path", "path must not start with '/'")
-        segments = path.split("/")
-        if ".." in segments:
-            raise InvalidToolCallParameterException("path", "path must not contain '..'")
-        # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
-        if "" in segments[:-1]:
-            raise InvalidToolCallParameterException("path", "path must not contain empty segments")
+        _HomePathResolver.validate_relative_path(path)
 
     @staticmethod
     def _reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-        if value.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                parameter_name,
-                f"{tool_name} requires a relative path under agent_home_dir; "
-                "do not pass an absolute files/... URL",
-            )
+        _HomePathResolver.reject_absolute_path(parameter_name, tool_name, value)
 
     @staticmethod
     def _check_permission_denied(

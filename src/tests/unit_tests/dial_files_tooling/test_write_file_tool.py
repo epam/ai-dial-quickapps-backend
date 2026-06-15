@@ -114,5 +114,9 @@ class TestWriteFile:
             stage_wrapper=None, path="reports/x.md", content="hi"
         )
         assert result.content == "File written: reports/x.md"
+        # Content/title use the relative path; the attachment keeps the absolute URL so
+        # the stage/choice link stays a valid DIAL URL. The path-argument transformer
+        # relativizes any absolute path the model echoes back, keeping the stage clean.
         assert result.attachments is not None
+        assert result.attachments[0].url == "files/appbucket/reports/x.md"
         assert result.attachments[0].title == "reports/x.md"

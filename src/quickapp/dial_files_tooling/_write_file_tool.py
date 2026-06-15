@@ -47,7 +47,7 @@ class _WriteFileTool(_DialFileTool):
         attachment = Attachment(url=url, type=content_type, title=display_path)
         result = ToolCallResult(
             content=f"File written: {display_path}",
-            content_type="text/plain",
+            content_type=content_type,
             attachments=[attachment],
         )
         if stage_wrapper:
