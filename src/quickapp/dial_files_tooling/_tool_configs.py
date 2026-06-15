@@ -28,6 +28,12 @@ _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
 )
 
+# Long, free-form text values: wrap in a verbatim code block (so markdown is not
+# rendered) and push them to the end of the stage parameter list.
+_FILE_CONTENT_DISPLAY_CONFIG = ParameterDisplayConfig(
+    stage=FormattedParameterConfig(format="", order=1)
+)
+
 
 LIST_FILES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
@@ -245,6 +251,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
                     "content": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="UTF-8 text content of the file.",
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                     "content_type": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -295,10 +302,12 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
                             "Exact substring to replace. Must occur exactly once. "
                             "Include surrounding context to disambiguate."
                         ),
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                     "new_string": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="Replacement text. May be empty to delete the match.",
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                 },
                 required=["path", "old_string", "new_string"],

@@ -1,3 +1,4 @@
+import re
 from abc import ABC, abstractmethod
 from types import TracebackType
 from typing import Any, cast
@@ -129,10 +130,18 @@ class BaseStageWrapper(ABC):
             else param_value
         )
 
-        if display_config.format:
-            result_value = f"\n```{display_config.format}\n{result_value}\n\n```"
+        if display_config.format is not None:
+            fence = self._code_fence(str(result_value))
+            result_value = f"\n{fence}{display_config.format}\n{result_value}\n{fence}\n"
 
         return str(result_value)
+
+    @staticmethod
+    def _code_fence(value: str) -> str:
+        # Open the fence with one more backtick than the longest backtick run in the
+        # value (minimum 3) so embedded code fences cannot close the wrapper early.
+        longest = max((len(match) for match in re.findall(r"`+", value)), default=0)
+        return "`" * max(3, longest + 1)
 
     def add_result(self, result: ToolCallResult) -> None:
         debug_info = self._build_debug_info_from_result(result)
