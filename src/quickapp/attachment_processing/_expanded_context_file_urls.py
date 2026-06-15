@@ -9,7 +9,7 @@ class ExpandedContextFileUrls:
     ``folder_children`` deduplicates DIAL ``list_folder`` calls (keyed by
     ``files/`` URL and ``max_depth``). ``urls`` holds discovered file URLs.
     Populated by ``build_context_entries_async`` during message setup (before
-    orchestrator tool wiring) or by ``ensure_expanded_folder_file_urls``.
+    orchestrator tool wiring).
     """
 
     __slots__ = ("folder_children", "populated", "urls")

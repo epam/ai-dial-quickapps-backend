@@ -1,9 +1,10 @@
 from collections import deque
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, TypeVar, cast
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
@@ -315,6 +316,42 @@ def has_preview_marker(field_info: FieldInfo) -> bool:
 def mark_json_schema_preview(schema: dict[str, Any]) -> None:
     """Mark a JSON schema object (e.g. a ``$defs`` entry) as preview-only."""
     schema[_PREVIEW_MARKER] = True
+
+
+_TPreviewModel = TypeVar("_TPreviewModel", bound=type[BaseModel])
+
+
+def is_preview_model(model_type: type[BaseModel]) -> bool:
+    """Check whether a Pydantic model class is marked as a preview feature."""
+    if not isinstance(model_type, type) or not issubclass(model_type, BaseModel):
+        return False
+    extra = model_type.model_config.get("json_schema_extra")
+    if extra is None:
+        return False
+    if isinstance(extra, dict):
+        return bool(extra.get(_PREVIEW_MARKER, False))
+    tmp: dict[str, Any] = {}
+    cast(Callable[[dict[str, Any], type[BaseModel]], Any], extra)(tmp, model_type)
+    return bool(tmp.get(_PREVIEW_MARKER, False))
+
+
+def preview_model(cls: _TPreviewModel) -> _TPreviewModel:
+    """Class decorator equivalent to ``PreviewField`` for whole Pydantic models."""
+
+    existing_extra = cls.model_config.get("json_schema_extra")
+
+    def _merged_json_schema_extra(schema: dict[str, Any], _model: type[BaseModel]) -> None:
+        if callable(existing_extra) and not isinstance(existing_extra, dict):
+            cast(Callable[[dict[str, Any], type[BaseModel]], Any], existing_extra)(schema, _model)
+        elif isinstance(existing_extra, dict):
+            schema.update(existing_extra)
+        mark_json_schema_preview(schema)
+
+    cls.model_config = ConfigDict(
+        **cast(Any, dict(cls.model_config)),
+        json_schema_extra=_merged_json_schema_extra,
+    )
+    return cls
 
 
 def _preview_def_names(defs: dict[str, Any]) -> set[str]:

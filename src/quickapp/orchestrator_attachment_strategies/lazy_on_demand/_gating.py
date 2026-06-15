@@ -20,7 +20,7 @@ def should_enable_get_content_tool(
     """True when some admin file context's or attachment in user message
     inferred MIME is allowed on the orchestrator path.
 
-    Uses the same filename-based inference as ``build_context_entries`` in
+    Uses the same filename-based inference as ``build_context_entries_async`` in
     :mod:`quickapp.attachment_processing._context_entries` and DialCore
     ``input_attachment_types`` via :func:`quickapp.common.utils.matches_type`.
     Empty inferred MIME never matches unless the deployment patterns allow it.

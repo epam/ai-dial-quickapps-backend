@@ -1,13 +1,19 @@
 import logging
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.fields import FieldInfo
 
 from quickapp.agent.agent_settings import AgentSettings
-from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
+from quickapp.common.base_config import (
+    BaseApplicationTypeConfig,
+    PreviewField,
+    has_preview_marker,
+    is_preview_model,
+)
 from quickapp.common.feature_settings import FeatureSettings
-from quickapp.config.context import Context, FolderContextConfig
+from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
@@ -90,8 +96,8 @@ class OrchestratorConfig(BaseModel):
 def nullify_preview_fields(model: BaseModel) -> None:
     """Recursively nullify preview fields on a config model tree.
 
-    Recurses into nested BaseModel instances but not into lists or dicts —
-    preview fields are expected on config objects, not inside collections.
+    Recurses into nested BaseModel instances. Preview-marked model instances
+    inside lists are removed (with a warning).
     """
     for field_name, field_info in type(model).model_fields.items():
         value = getattr(model, field_name)
@@ -102,6 +108,25 @@ def nullify_preview_fields(model: BaseModel) -> None:
                 "(ENABLE_PREVIEW_FEATURES is not set). The feature has been deactivated.",
                 field_name,
             )
+        elif isinstance(value, list):
+            kept: list[Any] = []
+            removed = 0
+            for item in value:
+                if isinstance(item, BaseModel) and is_preview_model(type(item)):
+                    removed += 1
+                    continue
+                kept.append(item)
+            if removed:
+                entry_noun = "entry" if removed == 1 else "entries"
+                logger.warning(
+                    'Preview feature "%s" is configured (%d %s) but preview features are '
+                    "disabled (ENABLE_PREVIEW_FEATURES is not set). Those entries have been "
+                    "removed.",
+                    field_name,
+                    removed,
+                    entry_noun,
+                )
+                setattr(model, field_name, kept)
         elif isinstance(value, BaseModel):
             nullify_preview_fields(value)
 
@@ -225,15 +250,4 @@ class ApplicationConfig(BaseApplicationTypeConfig):
         if FeatureSettings().enable_preview_features:
             return self
         nullify_preview_fields(self)
-        folder_contexts = [ctx for ctx in self.contexts if isinstance(ctx, FolderContextConfig)]
-        if folder_contexts:
-            entry_noun = "entry" if len(folder_contexts) == 1 else "entries"
-            logger.warning(
-                'Preview feature "folder contexts" is configured (%d %s) but preview '
-                "features are disabled (ENABLE_PREVIEW_FEATURES is not set). "
-                "Folder context entries have been removed.",
-                len(folder_contexts),
-                entry_noun,
-            )
-        self.contexts = [ctx for ctx in self.contexts if not isinstance(ctx, FolderContextConfig)]
         return self

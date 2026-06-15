@@ -150,18 +150,13 @@ async def _expand_folder_context(
 async def build_context_entries_async(
     contexts: list[Context],
     seen_entries: dict[str, ContextEntry],
-    folder_listing: FolderListingProvider | None,
-    expanded_file_urls_holder: ExpandedContextFileUrls | None = None,
+    folder_listing: FolderListingProvider,
+    expanded_file_urls_holder: ExpandedContextFileUrls,
 ) -> tuple[set[str], list[ContextEntry]]:
     """Build context metadata entries, expanding folder contexts recursively."""
     current_urls: set[str] = set()
     entries: list[ContextEntry] = []
     expanded_file_urls: set[str] = set()
-    folder_listing_cache = (
-        expanded_file_urls_holder
-        if expanded_file_urls_holder is not None
-        else ExpandedContextFileUrls()
-    )
 
     for ctx in contexts:
         if isinstance(ctx, FileContextConfig):
@@ -175,25 +170,15 @@ async def build_context_entries_async(
                 entries=entries,
             )
         elif isinstance(ctx, FolderContextConfig):
-            if folder_listing is None:
-                _append_context_entry(
-                    url=ctx.url,
-                    mime_type=ctx.mime,
-                    description=ctx.description or None,
-                    seen_entries=seen_entries,
-                    current_urls=current_urls,
-                    entries=entries,
-                )
-            else:
-                await _expand_folder_context(
-                    ctx,
-                    folder_listing=folder_listing,
-                    seen_entries=seen_entries,
-                    current_urls=current_urls,
-                    entries=entries,
-                    expanded_file_urls=expanded_file_urls,
-                    folder_listing_cache=folder_listing_cache,
-                )
+            await _expand_folder_context(
+                ctx,
+                folder_listing=folder_listing,
+                seen_entries=seen_entries,
+                current_urls=current_urls,
+                entries=entries,
+                expanded_file_urls=expanded_file_urls,
+                folder_listing_cache=expanded_file_urls_holder,
+            )
 
     for removed_url in set(seen_entries) - current_urls:
         prev = seen_entries[removed_url]
@@ -207,79 +192,8 @@ async def build_context_entries_async(
             )
         )
 
-    if expanded_file_urls_holder is not None:
-        expanded_file_urls_holder.urls = expanded_file_urls
-        expanded_file_urls_holder.populated = True
-
-    return current_urls, entries
-
-
-async def ensure_expanded_folder_file_urls(
-    contexts: list[Context],
-    folder_listing: FolderListingProvider,
-    expanded_file_urls_holder: ExpandedContextFileUrls,
-) -> None:
-    """Collect folder-context file URLs for get-content allowlisting (cached per request)."""
-    if expanded_file_urls_holder.populated:
-        return
-    expanded_file_urls: set[str] = set()
-    for ctx in contexts:
-        if not isinstance(ctx, FolderContextConfig):
-            continue
-        files_url = metadata_folder_url_to_files_url(ctx.url)
-        children = await _list_folder_children(
-            files_url,
-            max_depth=ctx.max_depth,
-            folder_listing=folder_listing,
-            cache=expanded_file_urls_holder,
-        )
-        for child in children:
-            if not child.is_folder:
-                expanded_file_urls.add(child.url)
     expanded_file_urls_holder.urls = expanded_file_urls
     expanded_file_urls_holder.populated = True
-
-
-def build_context_entries(
-    contexts: list[Context],
-    seen_entries: dict[str, ContextEntry],
-) -> tuple[set[str], list[ContextEntry]]:
-    """Synchronous entry builder without folder expansion (tests / fallback)."""
-    current_urls: set[str] = set()
-    entries: list[ContextEntry] = []
-
-    for ctx in contexts:
-        if isinstance(ctx, FileContextConfig):
-            mime_type = mimetypes.guess_type(posix_path_last_segment(ctx.url))[0] or ""
-            _append_context_entry(
-                url=ctx.url,
-                mime_type=mime_type,
-                description=ctx.description or None,
-                seen_entries=seen_entries,
-                current_urls=current_urls,
-                entries=entries,
-            )
-        elif isinstance(ctx, FolderContextConfig):
-            _append_context_entry(
-                url=ctx.url,
-                mime_type=ctx.mime,
-                description=ctx.description or None,
-                seen_entries=seen_entries,
-                current_urls=current_urls,
-                entries=entries,
-            )
-
-    for removed_url in set(seen_entries) - current_urls:
-        prev = seen_entries[removed_url]
-        entries.append(
-            ContextEntry(
-                title=prev.title,
-                url=prev.url,
-                type=prev.type,
-                description=prev.description,
-                status=ContextEntryStatus.removed,
-            )
-        )
 
     return current_urls, entries
 

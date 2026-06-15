@@ -49,7 +49,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 
 **Trigger:** Operator deploys with `ENABLE_PREVIEW_FEATURES=false`. App manifest still lists a folder context (e.g. persisted from staging).
 
-**Behavior:** Preview validator nullifies folder context entries (logs warning). Available-context behaves as if folder contexts were absent. No folder expansion runs. `features.dial_files` is also nullified (existing preview behaviour).
+**Behavior:** `nullify_preview_fields()` removes `FolderContextConfig` entries from `contexts` (logs warning). Available-context behaves as if folder contexts were absent. No folder expansion runs. `features.dial_files` is also nullified (existing preview behaviour).
 
 **Outcome:** No folder-context or dial-files behaviour in production until the feature graduates from preview.
 
@@ -65,7 +65,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 
 **Trigger:** A new file is uploaded to a nested subfolder under an attached folder context.
 
-**Behavior:** `build_context_entries` (async, with expansion) produces an updated set of entries compared to history from prior available-context tool results. New file URLs produce `status: "new"`; removed URLs produce `status: "removed"`. Subfolder entries appear when subfolders are created. The attachment-notification injector surfaces the delta.
+**Behavior:** `build_context_entries_async` produces an updated set of entries compared to history from prior available-context tool results. New file URLs produce `status: "new"`; removed URLs produce `status: "removed"`. Subfolder entries appear when subfolders are created. The attachment-notification injector surfaces the delta.
 
 **Outcome:** The agent is notified when folder **membership** changes, not only when admin edits folder metadata in config.
 
@@ -91,10 +91,10 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 
 **Preview gating:**
 
-- Mark the `folder` variant as preview in schema generation (same mechanism as `PreviewField` — hidden from schema when `ENABLE_PREVIEW_FEATURES=false`).
-- At runtime, `_gate_preview_fields` / context validation strips `FolderContextConfig` entries from `contexts` when preview is off; log warning if present in persisted config.
+- Mark `FolderContextConfig` with the `@preview_model` class decorator in `base_config.py` (parallel to `PreviewField` for individual fields). Schema generation strips preview-marked `$defs` from the `Context` union when `ENABLE_PREVIEW_FEATURES=false`.
+- At runtime, `ApplicationConfig._gate_preview_fields` calls `nullify_preview_fields()`, which removes preview-marked model instances from lists (e.g. `FolderContextConfig` rows in `contexts`) and logs a warning when preview is off.
 
-**Change:** Implemented — `max_depth`, preview-gated discriminator, trailing-slash URL validation.
+**Change:** Implemented — `max_depth`, `@preview_model`, trailing-slash URL validation.
 
 ### Concern 2: Recursive folder expansion in available-context response
 
@@ -106,7 +106,7 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 
 - **No synthetic `internal_file_list` pairs.** Expansion results appear only inside the available-context JSON response (`AvailableContextToolResponse.entries`).
 - **Always expand for each folder context** whenever the available-context tool runs or when the notification injector builds content — there is no lazy "agent must call list first" path for admin folder contexts.
-- **Recursive listing:** For each `FolderContextConfig`, call `FolderListingProvider.expand_folder(files_url, max_depth=ctx.max_depth)` which returns a flat list of `(url, is_folder, mime, description)` entries:
+- **Recursive listing:** For each `FolderContextConfig`, call `FolderListingProvider.list_folder_entries(files_url, max_depth=ctx.max_depth)`, which returns a flat list of `ExpandedFolderEntry` (`url`, `is_folder`). Expansion logic in `_context_entries.py` maps each row to a `ContextEntry`:
   - Root folder row (metadata MIME + config `description`).
   - Each **child folder** row (metadata MIME; title = folder name; `description` null unless future instruction files apply).
   - Each **file** row (inferred MIME from extension; title = filename).
@@ -141,20 +141,20 @@ A single `FileContextConfig` can carry a `description` that tells the orchestrat
 }
 ```
 
-**Change:** Implemented — `build_context_entries_async` with `FolderListingProvider`; request-scoped listing cache on `ExpandedContextFileUrls`.
+**Change:** Implemented — `build_context_entries_async` (required `folder_listing` + `ExpandedContextFileUrls`); per-request listing cache on `ExpandedContextFileUrls`. No sync fallback builder in production code.
 
 ```mermaid
 sequenceDiagram
   participant Notif as notification_injector
   participant AC as _AvailableContextTool
-  participant BCE as build_context_entries
+  participant BCE as build_context_entries_async
   participant FLP as FolderListingProvider
   participant Orch as orchestrator
 
   Notif->>BCE: expand contexts (async)
   loop each FolderContextConfig
-    BCE->>FLP: expand_folder(files_url, max_depth)
-    FLP-->>BCE: root + subfolders + files
+    BCE->>FLP: list_folder_entries(files_url, max_depth)
+    FLP-->>BCE: ExpandedFolderEntry rows
   end
   BCE-->>Notif: entries with status
   Notif-->>Orch: synthetic available_context result
@@ -198,25 +198,25 @@ sequenceDiagram
 
 **What:** Both folder contexts and dial-files remain preview-gated for v1.
 
-**Owner:** `config/context.py`, `config/application.py`, `dial_files_tooling/dial_files_tooling_module.py`, schema generation
+**Owner:** `config/context.py`, `common/base_config.py` (`@preview_model`), `config/application.py` (`nullify_preview_fields`), `dial_files_tooling/dial_files_tooling_module.py`, schema generation
 
 **Semantics:**
 
 | Feature | Gating mechanism |
 |---------|------------------|
-| `FolderContextConfig` in `contexts` | Preview discriminator in schema; runtime strip + warn when preview off |
+| `FolderContextConfig` in `contexts` | `@preview_model` on the class; schema strips the `folder` discriminator when preview off; runtime removal via `nullify_preview_fields()` list filtering + warning |
 | `features.dial_files` | Existing `PreviewField` on `Features.dial_files` |
 | `DialFilesToolingModule` | Existing `@preview_module` |
 
 When `ENABLE_PREVIEW_FEATURES=false`:
 
-- Folder contexts in persisted configs are ignored (with warning).
+- `FolderContextConfig` entries in `contexts` are removed by `nullify_preview_fields()` (with warning naming the field, e.g. `contexts`).
 - `features.dial_files` nullified (existing behaviour).
 - `DialFilesToolingModule` not wired (existing behaviour).
 
 When preview is enabled, both features are fully functional.
 
-**Graduation path (future):** Remove preview marker from folder discriminator and/or remove `@preview_module` / `PreviewField` when stable — independent decisions.
+**Graduation path (future):** Remove `@preview_model` from `FolderContextConfig` and/or remove `@preview_module` / `PreviewField` when stable — independent decisions.
 
 ### Concern 7: UI — folder context picker
 
@@ -363,12 +363,12 @@ See [dial_files_tools.md](dial_files_tools.md) for full dial-files configuration
 
 | Component | Status | Change |
 |-----------|--------|--------|
-| **`FolderContextConfig`** | Done | `max_depth`, preview-gated discriminator, URL validation |
-| **`build_context_entries_async`** | Done | Recursive expansion via `FolderListingProvider`; per-request listing cache |
+| **`FolderContextConfig`** | Done | `max_depth`, `@preview_model`, URL validation |
+| **`build_context_entries_async`** | Done | Recursive expansion via `FolderListingProvider.list_folder_entries`; per-request `ExpandedContextFileUrls` cache |
 | **`_AvailableContextTool`** | Done | Async expansion path |
 | **`_AttachmentNotificationInjector`** | Done | Expanded membership diff; `InjectionFrequency.ALWAYS` |
 | **`DialFolderListingProvider`** | Done | `FolderListingProvider` in `dial_core_services` |
-| **Preview gating** | Done | Folder discriminator strip + warning; existing dial-files preview |
+| **Preview gating** | Done | `@preview_model` + generalized `nullify_preview_fields()` list filtering; existing dial-files preview |
 | **Configuration UI** | **TODO** (frontend) | Folder picker (preview schema) |
 | **Folder instruction files** | Future | `agents.md` etc. |
 | **Dropped:** synthetic `internal_file_list` injection | — | Enriched available-context instead |
@@ -386,6 +386,7 @@ See [dial_files_tools.md](dial_files_tools.md) for full dial-files configuration
 | `dial_files_tooling` | LLM-facing file tools (unchanged location; optional via `features.dial_files`) |
 | `dial_core_services` | `DialFileService` + `DialFolderListingProvider` (`FolderListingProvider` impl) |
 | `common/abstract` | `FolderListingProvider` port; `folder_context_urls.py` URL helper |
+| `common/base_config` | `@preview_model`, `is_preview_model`, `PreviewField`; schema stripping for preview `$defs` |
 | `attachment_processing` | Available-context expansion + notification injector |
 
 ### Dependency diagram (as built)
@@ -430,4 +431,4 @@ flowchart TB
 
 ### Future: `agents.md`
 
-Extend `FolderListingProvider.expand_folder` (or post-process step in `build_context_entries_async`) to merge instruction file content into folder entry descriptions. Still no synthetic tool pairs.
+Extend `FolderListingProvider.list_folder_entries` (or a post-process step in `build_context_entries_async`) to merge instruction file content into folder entry descriptions. Still no synthetic tool pairs.
