@@ -9,6 +9,11 @@ class TestDialFilesConfig:
         cfg = DialFilesConfig()
         assert cfg.enabled_tools == "all"
         assert cfg.agent_home_dir == ""
+        assert cfg.max_files_scanned == 50
+
+    def test_max_files_scanned_must_be_positive(self):
+        with pytest.raises(ValidationError):
+            DialFilesConfig(max_files_scanned=0)
 
     def test_list_of_tools_accepted(self):
         cfg = DialFilesConfig(enabled_tools=["read_lines", "search"])

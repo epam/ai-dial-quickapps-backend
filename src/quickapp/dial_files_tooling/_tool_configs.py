@@ -2,6 +2,7 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_COPY_TOOL_NAME,
     INTERNAL_FILE_DELETE_TOOL_NAME,
     INTERNAL_FILE_EDIT_TOOL_NAME,
+    INTERNAL_FILE_FIND_TOOL_NAME,
     INTERNAL_FILE_LIST_TOOL_NAME,
     INTERNAL_FILE_MOVE_TOOL_NAME,
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
@@ -21,6 +22,7 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
+from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH
 
 _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
@@ -51,7 +53,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.integer,
                         description=(
                             "Recursion depth. 1 = immediate children only. "
-                            "Range: [1, 10]. Default: 1."
+                            f"Range: [1, {_MAX_DEPTH}]. Default: 1."
                         ),
                     ),
                 },
@@ -109,8 +111,11 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_FILE_SEARCH_TOOL_NAME,
             description=(
-                "Search for a substring in a file stored in DIAL. "
-                "Returns matching lines with optional surrounding context."
+                "Search for a substring in a single file or a whole folder tree stored "
+                "in DIAL. For a folder, end the path with '/' to search recursively "
+                "(e.g. 'reports/'); omit the trailing slash to search one file "
+                "(e.g. 'reports/summary.md'). Returns matching lines with optional "
+                "surrounding context."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -118,8 +123,10 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                     "path": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description=(
-                            "Relative path under the agent's home dir, or absolute "
-                            "DIAL file URL starting with 'files/'."
+                            "File or folder. Relative under the agent's home dir, or "
+                            "absolute DIAL URL starting with 'files/'. Folder mode (recursive "
+                            "content search) when the path ends with '/' or is a root-of-home "
+                            "reference (''); otherwise a single file is searched."
                         ),
                         display=_PATH_IN_TITLE,
                     ),
@@ -135,12 +142,80 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.boolean,
                         description="If true, search is case-insensitive. Default: false.",
                     ),
+                    "output_mode": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder mode only. Either 'content' (matching lines with "
+                            "context, default) or 'files_with_matches' (matching paths only, "
+                            "for cheap triage before pulling content)."
+                        ),
+                    ),
+                    "name_filter": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder mode only. Glob (**, *, ?) matched against each "
+                            "candidate's path relative to the search folder; non-matching "
+                            "files are excluded before download (e.g. '**/*.csv')."
+                        ),
+                    ),
+                    "max_depth": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Folder mode only. Recursion depth. 1 = immediate children "
+                            f"only. Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
+                        ),
+                    ),
                 },
                 required=["path", "pattern"],
             ),
         )
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Search in file")),
+)
+
+FIND_FILES_TOOL_CONFIG = InternalTool(
+    open_ai_tool=OpenAiToolConfig(
+        function=OpenAiToolFunction(
+            name=INTERNAL_FILE_FIND_TOOL_NAME,
+            description=(
+                "Find files by name or path glob in DIAL storage, walking the folder "
+                "tree via metadata only (no file contents are downloaded). Returns "
+                "matching paths with sizes, ready to feed into read_lines, search, or "
+                "edit."
+            ),
+            parameters=OpenAiToolFunctionParameters(
+                type=JsonTypeEnum.object,
+                properties={
+                    "pattern": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Glob (**, *, ?) matched against each entry's path relative "
+                            "to the search folder, e.g. '**/*.py', 'report-*.csv', "
+                            "'data/**/*.json'. '*' and '?' do not cross '/'; '**' does."
+                        ),
+                    ),
+                    "path": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder to search under. Relative under the agent's home dir, "
+                            "or absolute DIAL folder URL starting with 'files/'. "
+                            "Default: '' (home root)."
+                        ),
+                        display=_PATH_IN_TITLE,
+                    ),
+                    "max_depth": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Recursion depth. 1 = immediate children only. "
+                            f"Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
+                        ),
+                    ),
+                },
+                required=["pattern"],
+            ),
+        )
+    ),
+    display=ToolDisplayConfig(stage=ToolStageConfig(name="Find files")),
 )
 
 WRITE_FILE_TOOL_CONFIG = InternalTool(
@@ -347,6 +422,7 @@ ALL_FILE_TOOL_CONFIGS = [
     LIST_FILES_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
+    FIND_FILES_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
     EDIT_FILE_TOOL_CONFIG,
     DELETE_FILE_TOOL_CONFIG,

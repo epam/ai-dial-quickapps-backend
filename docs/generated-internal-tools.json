@@ -97,6 +97,34 @@
     ]
   },
   {
+    "name": "internal_file_find",
+    "description": "Find files by name or path glob in DIAL storage, walking the folder tree via metadata only (no file contents are downloaded). Returns matching paths with sizes, ready to feed into read_lines, search, or edit.",
+    "properties": {
+      "pattern": {
+        "type": "string",
+        "description": "Glob (**, *, ?) matched against each entry's path relative to the search folder, e.g. '**/*.py', 'report-*.csv', 'data/**/*.json'. '*' and '?' do not cross '/'; '**' does."
+      },
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true
+          }
+        },
+        "type": "string",
+        "description": "Folder to search under. Relative under the agent's home dir, or absolute DIAL folder URL starting with 'files/'. Default: '' (home root)."
+      },
+      "max_depth": {
+        "type": "integer",
+        "description": "Recursion depth. 1 = immediate children only. Range: [1, 10]. Default: 10."
+      }
+    },
+    "required": [
+      "pattern"
+    ]
+  },
+  {
     "name": "internal_file_list",
     "description": "List entries (files and folders) under a folder in DIAL storage. Depth-bounded recursion.",
     "properties": {
@@ -181,7 +209,7 @@
   },
   {
     "name": "internal_file_search",
-    "description": "Search for a substring in a file stored in DIAL. Returns matching lines with optional surrounding context.",
+    "description": "Search for a substring in a single file or a whole folder tree stored in DIAL. For a folder, end the path with '/' to search recursively (e.g. 'reports/'); omit the trailing slash to search one file (e.g. 'reports/summary.md'). Returns matching lines with optional surrounding context.",
     "properties": {
       "path": {
         "display": {
@@ -192,7 +220,7 @@
           }
         },
         "type": "string",
-        "description": "Relative path under the agent's home dir, or absolute DIAL file URL starting with 'files/'."
+        "description": "File or folder. Relative under the agent's home dir, or absolute DIAL URL starting with 'files/'. Folder mode (recursive content search) when the path ends with '/' or is a root-of-home reference (''); otherwise a single file is searched."
       },
       "pattern": {
         "type": "string",
@@ -205,6 +233,18 @@
       "case_insensitive": {
         "type": "boolean",
         "description": "If true, search is case-insensitive. Default: false."
+      },
+      "output_mode": {
+        "type": "string",
+        "description": "Folder mode only. Either 'content' (matching lines with context, default) or 'files_with_matches' (matching paths only, for cheap triage before pulling content)."
+      },
+      "name_filter": {
+        "type": "string",
+        "description": "Folder mode only. Glob (**, *, ?) matched against each candidate's path relative to the search folder; non-matching files are excluded before download (e.g. '**/*.csv')."
+      },
+      "max_depth": {
+        "type": "integer",
+        "description": "Folder mode only. Recursion depth. 1 = immediate children only. Range: [1, 10]. Default: 10."
       }
     },
     "required": [

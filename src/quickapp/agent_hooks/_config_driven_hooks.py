@@ -20,6 +20,12 @@ class _BaseConfigDrivenHook(ABC):
     """Abstract base for all config-driven hook variants."""
 
 
+def resolve_hook_tool_name(config: ToolCallHookConfig) -> str:
+    if config.toolset_name is not None:
+        return sanitize_toolname(f"{config.toolset_name}_{config.tool_name}")
+    return config.tool_name
+
+
 class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector):
     """Resolves a StagedBaseTool by name, calls it, and injects the result pair.
 
@@ -37,9 +43,7 @@ class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInject
         self._config = config
 
     async def get_tool_name(self) -> str:
-        if self._config.toolset_name is not None:
-            return sanitize_toolname(f"{self._config.toolset_name}_{self._config.tool_name}")
-        return self._config.tool_name
+        return resolve_hook_tool_name(self._config)
 
     async def get_arguments(self) -> dict:
         return self._config.arguments
