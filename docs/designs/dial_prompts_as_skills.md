@@ -598,8 +598,8 @@ subclasses uniformly — no extra wiring at the handler.
 
 #### 4.4 `_InitializationErrorHandler` — generalized via merged multiprovider
 
-**Owner:** `application/`. The existing handler at
-`src/quickapp/application/_initialization_error_handler.py` is generalized in place; no new handler class
+**Owner:** `core/application/`. The existing handler at
+`src/quickapp/core/application/_initialization_error_handler.py` is generalized in place; no new handler class
 is introduced, and no separate skill-specific handler exists.
 
 Today the handler injects `ProviderOf[list[ToolInitializationException]]` and renders a dedicated

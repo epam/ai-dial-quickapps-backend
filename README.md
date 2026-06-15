@@ -332,7 +332,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
     ```bash
     make format                                        # Format all source files + regenerate app schema
-    make format FILES="src/quickapp/agent/orchestrator.py"  # Format specific files (skips schema dump)
+    make format FILES="src/quickapp/core/agent/orchestrator.py"  # Format specific files (skips schema dump)
     ```
 
 2. Run linters:

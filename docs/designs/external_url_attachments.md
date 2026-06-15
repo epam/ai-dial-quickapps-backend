@@ -26,7 +26,7 @@ DIAL itself already provides both pieces of the contract that would make this wo
 - A `reference_url` field exists on both inbound `Attachment` (validated SDK model, `aidial_sdk/chat_completion/request.py:21-49`) and outbound `AttachmentParam` (TypedDict, `aidial_client/types/chat/request_param.py:13-19`). On the validated inbound side, the model's `data XOR url` validator (lines 29-46) requires either `data` or `url`; `reference_url` is an additional descriptor, never the sole handle. On the wire-out side, `AttachmentParam` has no validator, so an attachment shaped `{reference_url: <external>, url: <external>, type: ..., title: ...}` is permissible. (In practice the external URL is carried on **both** `reference_url` and `url` — see [Capability-aware deployment-attachment resolution](#capability-aware-deployment-attachment-resolution) for why `url` is not left unset.)
 - A deployment advertises whether it accepts URL-based attachments via `Deployment.features.url_attachments` (`aidial_client/types/deployment.py:19`).
 
-QuickApps never consults that capability flag and never sets `reference_url` on its outbound `AttachmentParam`s. The inbound `Attachment.reference_url` is read (`_AttachmentFilter` surfaces it in the LLM-visible XML, `src/quickapp/agent/_attachment_filter.py:36-40`) but the outbound side always emits `AttachmentParam(url=...)` instead.
+QuickApps never consults that capability flag and never sets `reference_url` on its outbound `AttachmentParam`s. The inbound `Attachment.reference_url` is read (`_AttachmentFilter` surfaces it in the LLM-visible XML, `src/quickapp/core/agent/_attachment_filter.py:36-40`) but the outbound side always emits `AttachmentParam(url=...)` instead.
 
 The agent-facing skill `tool-call-file-parameter-formatting` already documents `file:url::https://...` examples (Example 9 in `config/predefined/skills/tool-call-file-parameter-formatting/SKILL.md` shows a multi-file upload tool fed external `https://` URLs); the runtime is the only thing that doesn't deliver.
 
@@ -660,7 +660,7 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 - `src/quickapp/dial_core_services/attachment_service.py` — upload body factored into an internal helper `_upload_bytes(bytes, content_type, filename) -> FileMetadata`, exposed via a public alias `upload_bytes` for callers (today: `DialFilePromoter`) that want the raw upload without `upload_attachment_to_core`'s "swallow exception, return original attachment" branch. Public `upload_attachment_to_core` signature unchanged.
 - `src/quickapp/internal_tooling/py_interpreter_tooling/_py_interpreter_tool.py`, `handlers/input_file_handler.py` — external branch added; routes through `DialFilePromoter`.
 - `src/quickapp/file_transfer/file_transfer_module.py` — bind `_FileArgumentTransformer` and `FileLoaderService` at request scope.
-- `src/quickapp/application/app_module.py` — no longer binds the external-fetch trio; those bindings now live in `ExternalFetchModule` (`shared/external_fetch/external_fetch_module.py`), registered via the `shared_module` array that `app_factory` splices into the DI module list.
+- `src/quickapp/core/application/app_module.py` — no longer binds the external-fetch trio; those bindings now live in `ExternalFetchModule` (`shared/external_fetch/external_fetch_module.py`), registered via the `shared_module` array that `app_factory` splices into the DI module list.
 - `src/quickapp/dial_core_services/dial_core_services_module.py` — bind `DialFilePromoter` at request scope, alongside `AttachmentService` / `DialDownloader`.
 - `src/quickapp/dial_deployment_tooling/dial_deployment_tooling_module.py` — bind `AttachmentResolver` at request scope, alongside `DialCompletionService`.
 - `config/predefined/skills/tool-call-file-parameter-formatting/SKILL.md` — note the operator-egress-disabled fallback in "Common Mistakes."
@@ -670,7 +670,7 @@ None for application configs, agent-facing schemas, or callers. `DialDeploymentT
 **Unchanged:**
 
 - `aidial_sdk` and `aidial_client` types (`Attachment`, `AttachmentParam`, `Deployment`, `Features`). The fields the design relies on (`reference_url`, `url_attachments`, `input_attachment_types`) are already in the SDKs.
-- `_AttachmentFilter` (`src/quickapp/agent/_attachment_filter.py`) — already reads and surfaces `reference_url` to the LLM.
+- `_AttachmentFilter` (`src/quickapp/core/agent/_attachment_filter.py`) — already reads and surfaces `reference_url` to the LLM.
 - The `file:` prefix grammar and `FILE_PATTERN` (`src/quickapp/common/file_reference_pattern.py`).
 - `RestApiTool`, `_PyInterpreterClient`, `InteractiveLoginService` egress paths — out of scope; their HTTP clients are not migrated.
 - `AttachmentService.upload_attachment_to_core` public signature — its body is factored into an internal `_upload_bytes` helper (exposed via the public `upload_bytes` alias for the promoter), but the public method continues to accept `Attachment(data=..., url=None)` and persist it; existing callers (`internal_tooling/py_interpreter_tooling/handlers/display_content_processor.py:67`) need no change.

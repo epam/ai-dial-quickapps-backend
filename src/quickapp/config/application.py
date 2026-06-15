@@ -4,9 +4,9 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.fields import FieldInfo
 
-from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
