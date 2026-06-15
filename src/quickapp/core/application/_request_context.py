@@ -1,4 +1,5 @@
 from aidial_sdk.chat_completion import Choice, ResponseFormat
+from aidial_sdk.chat_completion.request import ToolChoice
 from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders
@@ -46,6 +47,7 @@ class _RequestContext(MessagesMixin):
     _response_format: ResponseFormat | None = None
     _forwarded_headers: ForwardedHeaders | None = None
     _client_channel_id: CLIENT_CHANNEL_ID = None
+    _tool_choice: ToolChoice | str | None = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -127,3 +129,13 @@ class _RequestContext(MessagesMixin):
         if self._client_channel_id is not None:
             raise RuntimeError("Client channel ID is already set")
         self._client_channel_id = value
+
+    @property
+    def tool_choice(self) -> ToolChoice | str | None:
+        return self._tool_choice
+
+    @tool_choice.setter
+    def tool_choice(self, value: ToolChoice | str | None) -> None:
+        if self._tool_choice is not None:
+            raise RuntimeError("Tool choice is already set")
+        self._tool_choice = value

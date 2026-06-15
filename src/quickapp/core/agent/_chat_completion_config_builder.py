@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from aidial_sdk.chat_completion.request import Message
+from aidial_sdk.exceptions import InvalidRequestError
 from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
@@ -10,6 +11,7 @@ from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 
@@ -23,6 +25,7 @@ class _ChatCompletionConfigBuilder:
         config: ApplicationConfig,
         tools: list[OpenAiToolConfigDict],
         response_format: RESPONSE_FORMAT,
+        tool_choice_holder: _ToolChoiceHolder,
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
@@ -31,6 +34,7 @@ class _ChatCompletionConfigBuilder:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
         self.__response_format = response_format
+        self.__tool_choice_holder = tool_choice_holder
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
@@ -61,6 +65,24 @@ class _ChatCompletionConfigBuilder:
                     "Unsupported response format type: %s. The response format will not be applied.",
                     type(self.__response_format),
                 )
+
+        tool_choice = self.__tool_choice_holder.consume()
+        if tool_choice is not None:
+            requires_tool = tool_choice == "required" or (
+                hasattr(tool_choice, "type") and tool_choice.type == "function"
+            )
+            if requires_tool and not self.__tools:
+                raise InvalidRequestError(
+                    message="tool_choice requires at least one tool to be configured",
+                    display_message=(
+                        "Cannot enforce tool_choice: no tools are available. "
+                        "Configure at least one tool set or use tool_choice='auto'."
+                    ),
+                )
+            if hasattr(tool_choice, "model_dump"):
+                payload["tool_choice"] = tool_choice.model_dump(exclude_none=True, mode="json")
+            else:
+                payload["tool_choice"] = tool_choice
 
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}

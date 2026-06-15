@@ -9,6 +9,7 @@ from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
     RESPONSE_FORMAT,
+    TOOL_CHOICE,
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
@@ -78,6 +79,10 @@ class AppModule(Module):
     @provider
     def __provide_response_format(self, context: _RequestContext) -> RESPONSE_FORMAT:
         return context.response_format
+
+    @provider
+    def __provide_tool_choice(self, context: _RequestContext) -> TOOL_CHOICE:
+        return context.tool_choice
 
     @provider
     def __provide_forwarded_headers(self, context: _RequestContext) -> ForwardedHeaders:
