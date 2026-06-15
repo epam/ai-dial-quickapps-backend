@@ -1,7 +1,6 @@
 from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import inject
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.attachment_processing_utils import (
@@ -12,6 +11,7 @@ from quickapp.common.attachment_processing_utils import (
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent import OrchestratorCapabilities
 
 
 @inject

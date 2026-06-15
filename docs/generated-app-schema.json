@@ -1530,8 +1530,14 @@
             }
           ],
           "default": null,
-          "description": "The format of the parameter value. If present then the value will be wrapped in ```{format} {parameter value}```.",
+          "description": "Controls whether the value is wrapped in a fenced code block (so it is shown verbatim, not rendered as markdown). None: render raw. Empty string: plain code block with no language. Non-empty: code block with that language (e.g. 'json'). The fence auto-sizes to survive backtick runs in the value.",
           "title": "Format"
+        },
+        "order": {
+          "default": 0,
+          "description": "Sort position of the parameter in the stage content. Lower values come first; equal values keep their original order. Use a positive value to push long parameters to the end.",
+          "title": "Order",
+          "type": "integer"
         }
       },
       "title": "FormattedParameterConfig",

@@ -24,8 +24,6 @@ from fastapi_injector import Injected
 from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
@@ -33,6 +31,8 @@ from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnr
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.application import _MessagesSetup
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )

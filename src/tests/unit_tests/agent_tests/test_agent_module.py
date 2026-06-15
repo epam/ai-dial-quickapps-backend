@@ -2,7 +2,7 @@ from unittest.mock import MagicMock, patch
 
 from pydantic import SecretStr
 
-from quickapp.agent.agent_module import AgentModule
+from quickapp.core.agent.agent_module import AgentModule
 
 
 def test_provide_openai_client_forwards_bearer_to_default_headers():
@@ -11,7 +11,7 @@ def test_provide_openai_client_forwards_bearer_to_default_headers():
     config = MagicMock()
     config.orchestrator.deployment.deployment_id = "orchestrator-model"
 
-    with patch("quickapp.agent.agent_module.AsyncAzureOpenAI") as openai_client:
+    with patch("quickapp.core.agent.agent_module.AsyncAzureOpenAI") as openai_client:
         openai_client.return_value = MagicMock()
 
         module.provide_openai_client(
@@ -34,7 +34,7 @@ def test_provide_openai_client_handles_missing_bearer_without_authorization_head
     config = MagicMock()
     config.orchestrator.deployment.deployment_id = "orchestrator-model"
 
-    with patch("quickapp.agent.agent_module.AsyncAzureOpenAI") as openai_client:
+    with patch("quickapp.core.agent.agent_module.AsyncAzureOpenAI") as openai_client:
         openai_client.return_value = MagicMock()
 
         module.provide_openai_client(

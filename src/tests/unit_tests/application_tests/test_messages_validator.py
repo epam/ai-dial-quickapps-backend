@@ -4,7 +4,7 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.exceptions import InvalidRequestError
 
-from quickapp.application._messages_validator import validate_messages_shape
+from quickapp.core.application import validate_messages_shape
 
 
 def _msg(role: Role, content: str = "x") -> Message:

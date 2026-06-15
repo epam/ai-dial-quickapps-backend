@@ -87,8 +87,8 @@ This is the correct place for prefixing because `ToolExecutor.__build_tool_dict`
 **What:** Remove the `sanitize_toolname` call from `AgentModule.provide_openai_tools` and from `ToolExecutor.__build_tool_dict`. Both sites currently sanitize names at consumption time; with sanitization moved to step 2, names are already final when these functions run.
 
 **Owners:**
-- `AgentModule.provide_openai_tools` in `src/quickapp/agent/agent_module.py`
-- `ToolExecutor.__build_tool_dict` in `src/quickapp/agent/tool_executor.py`
+- `AgentModule.provide_openai_tools` in `src/quickapp/core/agent/agent_module.py`
+- `ToolExecutor.__build_tool_dict` in `src/quickapp/core/agent/tool_executor.py`
 
 **Semantics:** Tool names are immutable after creation. No mutation side effects in the agent layer; downstream consumers (`provide_openai_tools`, `__build_tool_dict`, `_extract_tool_history`) see the final name from the start.
 
@@ -218,10 +218,10 @@ None — no changes to the JSON config schema or public API.
 ### `src/quickapp/dial_deployment_tooling/_deployment_tool_initializer.py`
 - **Modified:** `initialize` — prefixes `function.name` with the toolset name at tool-creation time.
 
-### `src/quickapp/agent/agent_module.py`
+### `src/quickapp/core/agent/agent_module.py`
 - **Modified:** `provide_openai_tools` — remove `sanitize_toolname` call (names are already sanitized at creation time).
 
-### `src/quickapp/agent/tool_executor.py`
+### `src/quickapp/core/agent/tool_executor.py`
 - **Modified:** `__build_tool_dict` — remove `sanitize_toolname` call (names are already sanitized at creation time).
 
 ### `src/quickapp/config/tools/internal.py`
