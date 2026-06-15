@@ -26,7 +26,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -55,7 +56,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -75,17 +77,36 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
         "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'). Absolute files/... URLs are rejected."
       },
       "old_string": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": false,
+            "format": "",
+            "order": 1
+          }
+        },
         "type": "string",
         "description": "Exact substring to replace. Must occur exactly once. Include surrounding context to disambiguate."
       },
       "new_string": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": false,
+            "format": "",
+            "order": 1
+          }
+        },
         "type": "string",
         "description": "Replacement text. May be empty to delete the match."
       }
@@ -109,7 +130,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -133,7 +155,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -157,7 +180,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -186,7 +210,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -216,7 +241,8 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
@@ -261,13 +287,23 @@
           "stage": {
             "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
         "description": "Relative path under the agent's home dir. Forward slashes for nesting. Rejected: leading '/', '..' segments, '../' substring, empty segments, absolute 'files/...' URLs."
       },
       "content": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": false,
+            "format": "",
+            "order": 1
+          }
+        },
         "type": "string",
         "description": "UTF-8 text content of the file."
       },
@@ -294,7 +330,8 @@
           "stage": {
             "ignore": true,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true
+            "show_value_in_stage_title": true,
+            "order": 0
           }
         },
         "type": "string",
