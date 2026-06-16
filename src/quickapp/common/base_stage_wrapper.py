@@ -1,4 +1,3 @@
-import re
 from abc import ABC, abstractmethod
 from types import TracebackType
 from typing import Any, cast
@@ -6,6 +5,7 @@ from typing import Any, cast
 from aidial_sdk.chat_completion import Attachment, Stage
 
 from quickapp.common import ToolCallResult
+from quickapp.common.utils import fenced_code_block
 from quickapp.config.tools.base import BaseOpenAITool, BaseTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
@@ -131,17 +131,10 @@ class BaseStageWrapper(ABC):
         )
 
         if display_config.format is not None:
-            fence = self._code_fence(str(result_value))
-            result_value = f"\n{fence}{display_config.format}\n{result_value}\n{fence}\n"
+            block = fenced_code_block(str(result_value), display_config.format)
+            result_value = f"\n{block}\n"
 
         return str(result_value)
-
-    @staticmethod
-    def _code_fence(value: str) -> str:
-        # Open the fence with one more backtick than the longest backtick run in the
-        # value (minimum 3) so embedded code fences cannot close the wrapper early.
-        longest = max((len(match) for match in re.findall(r"`+", value)), default=0)
-        return "`" * max(3, longest + 1)
 
     def add_result(self, result: ToolCallResult) -> None:
         debug_info = self._build_debug_info_from_result(result)

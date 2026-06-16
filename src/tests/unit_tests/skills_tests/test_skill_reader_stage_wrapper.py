@@ -45,3 +45,14 @@ def test_build_debug_info_from_exception_wraps_message_in_code_fence(wrapper):
     output = wrapper._build_debug_info_from_exception(exception)
 
     assert output == "Error:\n```\nskill not found\n```\n"
+
+
+def test_build_debug_info_from_result_uses_longer_fence_for_nested_fences(wrapper):
+    # A skill body that itself contains a ``` code fence must not break out of
+    # the wrapping fence, otherwise the rendered stage in the UI is corrupted.
+    skill_content = "intro\n```python\nprint('hi')\n```\noutro"
+    result = ToolCallResult(content=skill_content, content_type="text/markdown")
+
+    output = wrapper._build_debug_info_from_result(result)
+
+    assert output == f"Skill Content:\n````\n{skill_content}\n````\n"
