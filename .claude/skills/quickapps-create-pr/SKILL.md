@@ -1,0 +1,163 @@
+---
+name: quickapps-create-pr
+description: Use when the user asks to "create a PR", "open a pull request", "raise a PR", "ship this", or "/quickapps-create-pr" in this repo. Drives the project's end-to-end PR flow — feature branch, conventional-commit title/body, the pre-PR format+lint gate, push, and `gh pr create --base development` with the repo's PR template filled in.
+allowed-tools: Read Grep Glob LSP Write(/tmp/*) Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git rev-parse:*) Bash(git branch:*) Bash(git checkout:*) Bash(git switch:*) Bash(git add:*) Bash(git commit:*) Bash(git push:*) Bash(gh pr create:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(make format:*) Bash(make lint:*) Bash(make test:*) Bash(date:*)
+argument-hint: "[issue-number]"
+arguments: issue
+model: opus
+effort: high
+---
+
+# quickapps-create-pr
+
+Take the change on the current working tree all the way to an open pull request, the way this team does it: a `<type>/<desc>` branch, a Conventional-Commits title and a "why"-first body, the format+lint gate green, then `gh pr create --base development` with the repo's template filled in.
+
+This skill **mutates state** (commits, pushes, opens a PR). Run it in the main conversation — never in a fork. Invoking it *is* the user's authorization to commit and push the current change; you still **always** show the proposed branch name, commit title, and PR body and get a quick confirmation before the commit, and you never force-push or touch `development` directly.
+
+## When to use
+
+- The user says "create a PR", "open/raise a pull request", "ship this", or runs `/quickapps-create-pr`.
+- A feature or fix is finished and ready to submit.
+
+Do **not** use this to push half-finished work, to commit on `development`, or to amend/force-push an existing PR branch.
+
+## Arguments
+
+`issue` = `$issue` (optional GitHub issue number). If provided, it seeds the branch name and the `fixes #<n>` line. If empty, look for an issue number in the user's message or the diff/commit; if you find a likely one, confirm it with the user. Otherwise leave `fixes #` blank for the author to fill.
+
+## Preflight
+
+1. `git status --short` and `git diff --stat` — confirm there *are* changes (uncommitted, or already committed on a feature branch). If the tree is clean **and** nothing is committed on the branch beyond the base, report "nothing to PR" and stop.
+2. `git rev-parse --abbrev-ref HEAD` — note the current branch. Being on `development` (or `main`/`master`) is **not** an error here; it just means you must cut a feature branch in Step 1 before committing. Only an *already-pushed feature branch* lets you skip Step 1.
+3. Decide the branch name now (Step 1's convention), then check for an existing PR: `gh pr list --head <branch> --state open`. If one exists, tell the user and stop — this skill opens new PRs, it doesn't update them.
+
+## Workflow
+
+### 0. Self-review gate
+
+Before committing, run the team's pre-submit self-review. **REQUIRED SUB-SKILL:** invoke `quickapps-code-review` (scope `uncommitted` if changes aren't committed yet, else `pr`). Surface any **Blocking** findings to the user and resolve or explicitly waive them before proceeding. Don't open a PR over an unaddressed blocker.
+
+### 1. Branch
+
+If still on the base branch, cut a feature branch. Naming follows the commit type:
+
+```bash
+git checkout -b <type>/<short-kebab-desc>
+# with an issue number:
+git checkout -b <type>/<issue>-<short-kebab-desc>
+```
+
+`<type>` ∈ `feat` | `fix` | `chore` | `refactor` | `docs` | `test` (see the table below). Examples from this repo: `feat/353-wrap-file-stage-content`, `fix/write-overwrite-missing-file`, `chore/core_module`.
+
+### 2. Pre-PR gate — format + lint must be green
+
+```bash
+make format        # autoflake → black → isort → schema dump
+make lint          # poetry check --lock + flake8 + black/isort/autoflake --check + mypy + schema check
+```
+
+Both must pass before committing. If a config model changed, `make format` regenerates schema artifacts (via `make dump_app_schema`) — those belong **in this PR**, so stage them. Run `make test ARGS="-k <relevant-pattern>"` (scoped to the changed modules) **only if the user asks** or the change touches core agent/orchestration logic; the full and integration suites otherwise run in CI and on the review environment, not locally.
+
+### 3. Commit (Conventional Commits)
+
+Stage everything and commit with a `<type>: <subject>` title and a body that explains **why**, not just what. Always show the user the title and body and get a quick confirmation before running the commit (see the header rule). Keep the branch `<type>` and the commit `<type>` identical.
+
+```bash
+git add -A
+git commit -F - <<'EOF'
+<type>: <imperative, lowercase subject, no trailing period>
+
+<1–3 short paragraphs or bullets explaining the why and the key
+implementation points. Reference the issue if applicable.>
+EOF
+```
+
+Title rules: imperative mood, lowercase after the colon, no period, optional scope `<type>(scope):`. The PR title will reuse this exact subject.
+
+### 4. Push
+
+```bash
+git push -u origin <branch>
+```
+
+`-u` sets upstream on the first push. Never `--force`.
+
+### 5. Compose the PR body
+
+Fill the repo template (`.github/pull_request_template.md`) — keep the section order, fill real content, tick only the boxes that genuinely apply, and **keep the license line**:
+
+```markdown
+### Applicable issues
+
+- fixes #<issue>        <!-- or leave `fixes #` if none -->
+
+### Description of changes
+
+<Why this change exists and what it does. Lead with the problem/motivation,
+then the key implementation points. Mirror the commit body but expand it.
+Add screenshots for user-visible/stage-rendering changes.>
+
+### Checklist
+
+- [x] Title of the pull request follows [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/)
+- [ ] Design documented is updated/created and approved by the team (if applicable)
+- [ ] Documentation is updated/created (if applicable)
+- [ ] Changes are tested on review environment
+- [ ] App schema changes are backward compatible, or breaking changes are documented with a migration guide
+- [ ] Integration tests pass
+
+By submitting this pull request, I confirm that my contribution is made under the terms of the Apache 2.0 license.
+```
+
+Tick only what you've actually verified — `Title follows Conventional Commits` is safe to tick; **leave `Integration tests pass` and `tested on review environment` unticked** unless they really ran (they're CI/reviewer responsibilities, and Step 2 doesn't run them locally). Remove checklist rows that don't apply rather than leaving them unchecked-and-irrelevant. If a config/schema model changed, the schema-compat row is load-bearing — address it.
+
+Write this filled body with the **Write** tool to `/tmp/quickapp_pr_body.md` (not a shell heredoc).
+
+### 6. Open the PR
+
+With the body already written to `/tmp/quickapp_pr_body.md` (Step 5):
+
+```bash
+gh pr create \
+  --base development \
+  --head <branch> \
+  --assignee @me \
+  --title "<type>: <subject>" \
+  --body-file /tmp/quickapp_pr_body.md
+```
+
+`--base development` is non-negotiable — this repo's default base is `development`, never `main`/`master`.
+
+### 7. Report back
+
+Print the PR URL `gh` returns. Give the user a 3-line summary: branch, title, and the URL.
+
+## Commit / branch types
+
+| `<type>` | Use for |
+|---|---|
+| `feat` | New user-facing capability |
+| `fix` | Bug fix |
+| `chore` | Maintenance, deps, tooling, no behavior change |
+| `refactor` | Internal restructure, no behavior change |
+| `docs` | Docs / design docs only |
+| `test` | Tests only |
+
+## Red flags — stop and reconsider
+
+| Thought | Reaction |
+|---|---|
+| "I'll commit on `development`, it's faster" | No. Branch first. |
+| "lint is failing but it's unrelated" | Gate is red — fix it before the PR. |
+| "I'll target `main`" | Base is always `development`. |
+| "Schema dump changed, I'll commit it later" | It belongs in this PR — stage it now. |
+| "I'll skip the self-review" | Run `quickapps-code-review` first; resolve blockers. |
+| "Force-push to fix the branch" | Never. Open the PR clean or make a new commit. |
+| "The title can be a sentence" | Conventional Commits: `<type>: lowercase imperative`. |
+
+## Common mistakes
+
+- **Empty `fixes #`** left when an issue exists — pass `$issue` or infer it.
+- **Body that only says *what*** — reviewers want the *why*. Lead with motivation.
+- **Unstaged schema/cache regen** from `make format`/`make dump_app_schema` — always commit regenerated artifacts.
+- **Leaving every checklist box unchecked** — tick the ones that apply, delete the rest.
