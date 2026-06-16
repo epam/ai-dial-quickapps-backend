@@ -9,6 +9,7 @@ from httpx import HTTPStatusError, RequestError
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.utils import fenced_code_block
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ class _RestApiStageWrapper(TimedStageWrapper):
             response_text = exception.response.text or "No response text available"
             return (
                 f"> ##### Status Code:\n{status_code}\n"
-                f"> ##### Response:\n```text\n{response_text}\n```"
+                f"> ##### Response:\n{fenced_code_block(response_text, 'text')}"
             )
 
         if isinstance(exception, RequestError):
@@ -66,10 +67,10 @@ class _RestApiStageWrapper(TimedStageWrapper):
         }
         try:
             formatted = formatters.get(main_type, lambda x: x)(result.content)
-            return formatted if 'csv' in main_type else f"```{main_type}\n{formatted}\n```"
+            return formatted if 'csv' in main_type else fenced_code_block(formatted, main_type)
         except Exception as e:
             logger.exception(e)
-            return f"```{main_type}\n{result.content}\n```"
+            return fenced_code_block(result.content, main_type)
 
     @staticmethod
     def __format_json(content: str) -> str:

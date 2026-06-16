@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
 from quickapp.common.response_formatter import ResponseFormatter
+from quickapp.common.utils import fenced_code_block
 
 logger = logging.getLogger(__name__)
 
@@ -53,16 +54,16 @@ class _MCPStageWrapper(TimedStageWrapper):
             "xml": ResponseFormatter.format_xml,
             "html": ResponseFormatter.format_html,
             "csv": ResponseFormatter.format_csv,
-            "plain": lambda x: f"```{x}\n```",
         }
 
         main_type = result.content_type.split(";")[0].split("/")[1].lower()
         try:
             formatted = formatters.get(main_type, lambda x: x)(result.content)
-            if main_type in ("csv", "plain"):
+            # csv is rendered as a Markdown table, not a fenced code block.
+            if main_type == "csv":
                 return formatted
-            else:
-                return f"```{main_type}\n{formatted}\n```"
+            language = "" if main_type == "plain" else main_type
+            return fenced_code_block(formatted, language)
         except Exception as e:
             logger.exception(str(e))
-            return f"```{main_type}\n{result.content}\n```"
+            return fenced_code_block(result.content, main_type)
