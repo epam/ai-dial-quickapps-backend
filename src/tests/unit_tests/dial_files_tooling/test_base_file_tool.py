@@ -1,10 +1,10 @@
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
 from aidial_client._exception import DialException
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 # Home-resolution / display-path / path-validation logic lives in
 # `_HomePathResolver` and `_utils` and is covered by test_home_path_resolver.py.
@@ -21,13 +21,7 @@ class TestPermissionDeniedWrapper:
         service.list_folder = AsyncMock(
             side_effect=DialException(message="forbidden", status_code=403)
         )
-        tool = _ListFilesTool(
-            stage_wrapper_builder=MagicMock(),
-            tool_config=LIST_FILES_TOOL_CONFIG,
-            perf_timer=MagicMock(),
-            dial_file_service=service,
-            dial_files_config=make_config(),
-        )
+        tool = make_tool(_ListFilesTool, LIST_FILES_TOOL_CONFIG, service=service)
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, path="reports/")
         assert exc.value.parameter_name == "path"
@@ -43,12 +37,6 @@ class TestPermissionDeniedWrapper:
         service.list_folder = AsyncMock(
             side_effect=DialException(message="server error", status_code=500)
         )
-        tool = _ListFilesTool(
-            stage_wrapper_builder=MagicMock(),
-            tool_config=LIST_FILES_TOOL_CONFIG,
-            perf_timer=MagicMock(),
-            dial_file_service=service,
-            dial_files_config=make_config(),
-        )
+        tool = make_tool(_ListFilesTool, LIST_FILES_TOOL_CONFIG, service=service)
         with pytest.raises(DialException):
             await tool._run_in_stage_async(stage_wrapper=None, path="reports/")

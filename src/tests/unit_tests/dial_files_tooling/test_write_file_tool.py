@@ -1,12 +1,10 @@
-from unittest.mock import MagicMock
-
 import pytest
 from aidial_client._exception import EtagMismatchError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._tool_configs import WRITE_FILE_TOOL_CONFIG
 from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(
@@ -18,13 +16,7 @@ def _make_tool(
         service.write_file.side_effect = raise_on_write
     else:
         service.write_file.return_value = upload_url
-    return _WriteFileTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=WRITE_FILE_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_WriteFileTool, WRITE_FILE_TOOL_CONFIG, service=service)
 
 
 class TestWriteFile:
@@ -96,13 +88,7 @@ class TestWriteFile:
     @pytest.mark.asyncio
     async def test_appdata_missing_raises(self):
         service = make_service(appdata=None)
-        tool = _WriteFileTool(
-            stage_wrapper_builder=MagicMock(),
-            tool_config=WRITE_FILE_TOOL_CONFIG,
-            perf_timer=MagicMock(),
-            dial_file_service=service,
-            dial_files_config=make_config(),
-        )
+        tool = make_tool(_WriteFileTool, WRITE_FILE_TOOL_CONFIG, service=service)
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, path="x.md", content="x")
         assert "appdata" in exc.value.message

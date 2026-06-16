@@ -36,9 +36,9 @@ class _DialFileTool(StagedBaseTool, ABC):
         perf_timer: PerformanceTimer,
         dial_file_service: DialFileService,
         dial_files_config: DialFilesConfig,
+        home_resolver: _HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
-        home_resolver: _HomePathResolver | None = None,
         **kwargs: Any,
     ):
         super().__init__(
@@ -51,12 +51,9 @@ class _DialFileTool(StagedBaseTool, ABC):
         )
         self._dial_file_service = dial_file_service
         self._dial_files_config = dial_files_config
-        # Falls back to a private resolver when not DI-supplied (e.g. tests that
-        # construct a tool directly); DI binds it request-scoped so the home dir is
-        # resolved once and shared with the path-argument transformer.
-        self._home_resolver = home_resolver or _HomePathResolver(
-            dial_file_service, dial_files_config
-        )
+        # DI binds this request-scoped, so all file tools and the path-argument
+        # transformer share one resolver and the home dir is resolved once per request.
+        self._home_resolver = home_resolver
 
     async def _download_text(
         self, file_url: str, display_path: str

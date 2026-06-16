@@ -1,25 +1,17 @@
-from unittest.mock import MagicMock
-
 import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.dial_files_tooling._tool_configs import DELETE_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(delete_side_effect: Exception | None = None) -> _DeleteFileTool:
     service = make_service()
     if delete_side_effect:
         service.delete.side_effect = delete_side_effect
-    return _DeleteFileTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=DELETE_FILE_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_DeleteFileTool, DELETE_FILE_TOOL_CONFIG, service=service)
 
 
 class TestDeleteFile:

@@ -8,7 +8,7 @@ from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
 from quickapp.dial_files_tooling._utils import code_block
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service, make_tool
 
 
 def _make_tool(content: str) -> _SearchInFileTool:
@@ -18,12 +18,11 @@ def _make_tool(content: str) -> _SearchInFileTool:
 
 
 def _build(service: MagicMock, max_files_scanned: int = 200) -> _SearchInFileTool:
-    return _SearchInFileTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=SEARCH_IN_FILE_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(max_files_scanned=max_files_scanned),
+    return make_tool(
+        _SearchInFileTool,
+        SEARCH_IN_FILE_TOOL_CONFIG,
+        service=service,
+        config=make_config(max_files_scanned=max_files_scanned),
     )
 
 
