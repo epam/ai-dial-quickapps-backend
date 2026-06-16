@@ -27,9 +27,17 @@ Do **not** use this to push half-finished work, to commit on `development`, or t
 
 ## Preflight
 
-1. `git status --short` and `git diff --stat` — confirm there *are* changes (uncommitted, or already committed on a feature branch). If the tree is clean **and** nothing is committed on the branch beyond the base, report "nothing to PR" and stop.
-2. `git rev-parse --abbrev-ref HEAD` — note the current branch. Being on `development` (or `main`/`master`) is **not** an error here; it just means you must cut a feature branch in Step 1 before committing. Only an *already-pushed feature branch* lets you skip Step 1.
-3. Decide the branch name now (Step 1's convention), then check for an existing PR: `gh pr list --head <branch> --state open`. If one exists, tell the user and stop — this skill opens new PRs, it doesn't update them.
+1. **List everything that changed:** `git status --short` (includes untracked) and `git diff --stat`. If the tree is clean **and** nothing is committed on the branch beyond the base, report "nothing to PR" and stop.
+
+2. **Scope the change — this is the load-bearing step.** A working tree routinely holds *several parallel, unrelated changes* (e.g. a `create-pr-skill` edit **and** an unrelated `review-skill` edit sitting dirty at the same time). Decide exactly which paths belong to **the change this PR is about** — the one named in the user's request / this session — and treat every other modified or untracked path as **out of scope**. Write the in-scope path list down and reuse it verbatim when staging (Step 3). When the tree mixes scopes, list the in-scope files back to the user and confirm before staging anything. Never assume "everything dirty belongs to this PR."
+
+3. **Branch must match the change.** `git rev-parse --abbrev-ref HEAD`:
+   - On `development`/`main`/`master`, **or on a branch that belongs to a *different* change** → put this change on its own branch (Step 1), cut from `development`, carrying only the in-scope files. Do **not** pile this change onto an unrelated feature branch just because you happen to be sitting on it.
+   - Reuse the current branch only if it already belongs to *this* change (e.g. an already-pushed branch you're adding follow-up commits to).
+
+4. Decide the branch name (Step 1's convention), then check for an existing PR: `gh pr list --head <branch> --state open`. If one exists, tell the user and stop — this skill opens new PRs, it doesn't update them.
+
+> When the in-scope files are tangled into a branch/commit that also holds parallel work, isolate them first: branch off `development` and bring over only the in-scope paths (`git checkout <other-branch> -- <in-scope-path>`, or stash the rest with `git stash push -- <out-of-scope-path>`). Verify with `git diff --stat origin/development...HEAD` that the branch carries **only** this change before opening the PR.
 
 ## Workflow
 
@@ -60,10 +68,16 @@ Both must pass before committing. If a config model changed, `make format` regen
 
 ### 3. Commit (Conventional Commits)
 
-Stage everything and commit with a `<type>: <subject>` title and a body that explains **why**, not just what. Always show the user the title and body and get a quick confirmation before running the commit (see the header rule). Keep the branch `<type>` and the commit `<type>` identical.
+Stage **only the in-scope paths** from Preflight §2 — list them explicitly. **Never `git add -A` / `git add .`** when the tree also holds parallel, unrelated changes; that sweeps the other change into this PR.
 
 ```bash
-git add -A
+git add <in-scope-path> [<more-in-scope-paths>]   # explicit paths, never -A when scopes are mixed
+git status --short                                 # verify: staged (left column) = in-scope only; nothing unrelated leaked in
+```
+
+Then commit with a `<type>: <subject>` title and a body that explains **why**, not just what. Always show the user **the staged file list, the title, and the body**, and get a quick confirmation before running the commit (see the header rule). Keep the branch `<type>` and the commit `<type>` identical.
+
+```bash
 git commit -F - <<'EOF'
 <type>: <imperative, lowercase subject, no trailing period>
 
@@ -71,6 +85,8 @@ git commit -F - <<'EOF'
 implementation points. Reference the issue if applicable.>
 EOF
 ```
+
+After committing, run `git diff --stat origin/development...HEAD` and confirm it lists **only** the in-scope files before pushing.
 
 Title rules: imperative mood, lowercase after the colon, no period, optional scope `<type>(scope):`. The PR title will reuse this exact subject.
 
@@ -147,6 +163,9 @@ Print the PR URL `gh` returns. Give the user a 3-line summary: branch, title, an
 
 | Thought | Reaction |
 |---|---|
+| "Everything dirty is probably part of this PR" | No — scope it (Preflight §2). Stage only this change's paths. |
+| "`git add -A` is faster" | It sweeps parallel unrelated work into the PR. Stage explicit paths. |
+| "I'll just reuse the branch I'm on" | Only if it's *this* change's branch. Otherwise branch off `development`. |
 | "I'll commit on `development`, it's faster" | No. Branch first. |
 | "lint is failing but it's unrelated" | Gate is red — fix it before the PR. |
 | "I'll target `main`" | Base is always `development`. |
@@ -157,6 +176,8 @@ Print the PR URL `gh` returns. Give the user a 3-line summary: branch, title, an
 
 ## Common mistakes
 
+- **`git add -A` sweeping in parallel work** — when several unrelated changes sit dirty at once (e.g. two different skill edits), `-A` stages all of them. Stage explicit in-scope paths and verify with `git status --short` before committing, and with `git diff --stat origin/development...HEAD` after.
+- **PR'd from the wrong branch** — committing this change onto whatever feature branch you happened to be on drags that branch's commits into the PR diff. Branch off `development` and carry only the in-scope files.
 - **Empty `fixes #`** left when an issue exists — pass `$issue` or infer it.
 - **Body that only says *what*** — reviewers want the *why*. Lead with motivation.
 - **Unstaged schema/cache regen** from `make format`/`make dump_app_schema` — always commit regenerated artifacts.
