@@ -51,8 +51,6 @@ class _DialFileTool(StagedBaseTool, ABC):
         )
         self._dial_file_service = dial_file_service
         self._dial_files_config = dial_files_config
-        # DI binds this request-scoped, so all file tools and the path-argument
-        # transformer share one resolver and the home dir is resolved once per request.
         self._home_resolver = home_resolver
 
     async def _download_text(

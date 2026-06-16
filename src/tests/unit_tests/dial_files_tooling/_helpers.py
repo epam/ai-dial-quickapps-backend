@@ -1,12 +1,10 @@
 from pathlib import PurePosixPath
-from typing import Any, TypeVar
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
-
-_ToolT = TypeVar("_ToolT")
 
 
 def make_dial_client(appdata: str | None = "appbucket") -> MagicMock:
@@ -35,13 +33,13 @@ def make_config(agent_home_dir: str = "", max_files_scanned: int = 200) -> DialF
     return DialFilesConfig(agent_home_dir=agent_home_dir, max_files_scanned=max_files_scanned)
 
 
-def make_tool(
-    tool_cls: type[_ToolT],
+def make_tool[ToolT](
+    tool_cls: type[ToolT],
     tool_config: Any,
     *,
     service: MagicMock | None = None,
     config: DialFilesConfig | None = None,
-) -> _ToolT:
+) -> ToolT:
     """Build a file tool with its DI dependencies (mirrors production wiring).
 
     The home resolver is built from the same service/config the tool gets, so the
