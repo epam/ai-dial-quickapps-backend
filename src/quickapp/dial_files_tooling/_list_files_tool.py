@@ -19,7 +19,9 @@ class _ListFilesTool(_DialFileTool):
 
         _, entries = await self._list_folder_entries(path, max_depth)
 
-        rendered_entries = [(await self._to_display_path(entry.url), entry) for entry in entries]
+        rendered_entries = [
+            (await self._home_resolver.to_display_path(entry.url), entry) for entry in entries
+        ]
         content = render_listing(rendered_entries)
 
         result = ToolCallResult(content=content, content_type="text/plain")

@@ -99,10 +99,10 @@ class _DialFileTool(StagedBaseTool, ABC):
         './' into 'files/.../.'.
         """
         if is_root_reference(path):
-            return await self._resolve_home_dir()
+            return await self._home_resolver.resolve_home_dir()
         if not path.endswith("/"):
             path = path + "/"
-        return await self._resolve_appdata_url(path)
+        return await self._home_resolver.resolve_appdata_url(path)
 
     async def _list_folder_entries(
         self, path: str, max_depth: int
@@ -125,10 +125,10 @@ class _DialFileTool(StagedBaseTool, ABC):
         except ResourceNotFoundError as e:
             if is_root_reference(path):
                 return folder_url, []
-            display = await self._to_display_path(folder_url)
+            display = await self._home_resolver.to_display_path(folder_url)
             raise InvalidToolCallParameterException("path", f"folder not found: {display}") from e
         except ValueError as e:
-            display = await self._to_display_path(folder_url)
+            display = await self._home_resolver.to_display_path(folder_url)
             raise InvalidToolCallParameterException("path", f"not a folder: {display}") from e
         except DialException as e:
             self._check_permission_denied(e, path)
@@ -141,23 +141,6 @@ class _DialFileTool(StagedBaseTool, ABC):
         if max_depth < 1 or max_depth > _MAX_DEPTH:
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
         return max_depth
-
-    async def _resolve_appdata_url(self, path: str) -> str:
-        return await self._home_resolver.resolve_appdata_url(path)
-
-    async def _resolve_home_dir(self) -> str:
-        return await self._home_resolver.resolve_home_dir()
-
-    async def _to_display_path(self, url: str) -> str:
-        return await self._home_resolver.to_display_path(url)
-
-    @staticmethod
-    def _validate_relative_path(path: str) -> None:
-        _HomePathResolver.validate_relative_path(path)
-
-    @staticmethod
-    def _reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-        _HomePathResolver.reject_absolute_path(parameter_name, tool_name, value)
 
     @staticmethod
     def _check_permission_denied(

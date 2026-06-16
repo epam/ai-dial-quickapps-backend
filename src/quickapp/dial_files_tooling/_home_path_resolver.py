@@ -3,6 +3,7 @@ from injector import inject
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.dial_files_tooling._utils import validate_relative_path
 
 
 @inject
@@ -33,7 +34,7 @@ class _HomePathResolver:
             )
         if path.startswith("files/"):
             return path
-        self.validate_relative_path(path)
+        validate_relative_path(path)
         home = await self.resolve_home_dir()
         return f"{home}{path}"
 
@@ -63,27 +64,3 @@ class _HomePathResolver:
         if url.startswith(home):
             return url[len(home) :]
         return url
-
-    @staticmethod
-    def validate_relative_path(path: str) -> None:
-        if path != path.strip():
-            raise InvalidToolCallParameterException(
-                "path", "path must not have leading/trailing whitespace"
-            )
-        if path.startswith("/"):
-            raise InvalidToolCallParameterException("path", "path must not start with '/'")
-        segments = path.split("/")
-        if ".." in segments:
-            raise InvalidToolCallParameterException("path", "path must not contain '..'")
-        # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
-        if "" in segments[:-1]:
-            raise InvalidToolCallParameterException("path", "path must not contain empty segments")
-
-    @staticmethod
-    def reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-        if value.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                parameter_name,
-                f"{tool_name} requires a relative path under agent_home_dir; "
-                "do not pass an absolute files/... URL",
-            )

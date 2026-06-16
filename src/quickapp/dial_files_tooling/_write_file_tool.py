@@ -7,6 +7,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
+from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _WriteFileTool(_DialFileTool):
@@ -22,10 +23,10 @@ class _WriteFileTool(_DialFileTool):
         content_type: str = kwargs.get("content_type") or "text/plain"
         overwrite: bool = bool(kwargs.get("overwrite", False))
 
-        self._reject_absolute_path("path", "write_file", path)
+        reject_absolute_path("path", "write_file", path)
 
-        url = await self._resolve_appdata_url(path)
-        display_path = await self._to_display_path(url)
+        url = await self._home_resolver.resolve_appdata_url(path)
+        display_path = await self._home_resolver.to_display_path(url)
 
         try:
             await self._dial_file_service.write_file(
