@@ -100,34 +100,14 @@ git push -u origin <branch>
 
 ### 5. Compose the PR body
 
-Fill the repo template (`.github/pull_request_template.md`) — keep the section order, fill real content, tick only the boxes that genuinely apply, and **keep the license line**:
+**Read [`.github/pull_request_template.md`](../../../.github/pull_request_template.md)** and use it verbatim as the skeleton — it is the source of truth for the body, so don't reproduce it from memory (it changes). Then:
 
-```markdown
-### Applicable issues
+- Fill `### Applicable issues` with `fixes #<issue>` (or leave `fixes #` if none).
+- Fill `### Description of changes` with the **why** first (problem/motivation), then the key implementation points — expand on the commit body. Add screenshots for user-visible / stage-rendering changes.
+- **Keep every checklist point** from the template — do not delete rows. Tick `[x]` only the ones you've actually verified, leave the rest `[ ]`. `Title follows Conventional Commits` is safe to tick; **leave `Integration tests pass` and `Changes are tested on review environment` unticked** unless they really ran (they're CI/reviewer responsibilities, and Step 2 doesn't run them locally). If a config/schema model changed, the schema-compat row is load-bearing — address it.
+- Keep the license confirmation line at the bottom.
 
-- fixes #<issue>        <!-- or leave `fixes #` if none -->
-
-### Description of changes
-
-<Why this change exists and what it does. Lead with the problem/motivation,
-then the key implementation points. Mirror the commit body but expand it.
-Add screenshots for user-visible/stage-rendering changes.>
-
-### Checklist
-
-- [x] Title of the pull request follows [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/)
-- [ ] Design documented is updated/created and approved by the team (if applicable)
-- [ ] Documentation is updated/created (if applicable)
-- [ ] Changes are tested on review environment
-- [ ] App schema changes are backward compatible, or breaking changes are documented with a migration guide
-- [ ] Integration tests pass
-
-By submitting this pull request, I confirm that my contribution is made under the terms of the Apache 2.0 license.
-```
-
-Tick only what you've actually verified — `Title follows Conventional Commits` is safe to tick; **leave `Integration tests pass` and `tested on review environment` unticked** unless they really ran (they're CI/reviewer responsibilities, and Step 2 doesn't run them locally). Remove checklist rows that don't apply rather than leaving them unchecked-and-irrelevant. If a config/schema model changed, the schema-compat row is load-bearing — address it.
-
-Write this filled body with the **Write** tool to `/tmp/quickapp_pr_body.md` (not a shell heredoc).
+Write the filled body with the **Write** tool to `/tmp/quickapp_pr_body.md` (not a shell heredoc).
 
 ### 6. Open the PR
 
@@ -181,4 +161,5 @@ Print the PR URL `gh` returns. Give the user a 3-line summary: branch, title, an
 - **Empty `fixes #`** left when an issue exists — pass `$issue` or infer it.
 - **Body that only says *what*** — reviewers want the *why*. Lead with motivation.
 - **Unstaged schema/cache regen** from `make format`/`make dump_app_schema` — always commit regenerated artifacts.
-- **Leaving every checklist box unchecked** — tick the ones that apply, delete the rest.
+- **Deleting checklist rows** — keep every point from `.github/pull_request_template.md`; tick the ones you verified, leave the rest unchecked. Don't remove rows.
+- **Reproducing the PR template from memory** — read `.github/pull_request_template.md` each time; it's the source of truth and it changes.
