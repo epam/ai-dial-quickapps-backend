@@ -1,7 +1,7 @@
 ---
 name: quickapps-create-pr
 description: Use when the user asks to "create a PR", "open a pull request", "raise a PR", "ship this", or "/quickapps-create-pr" in this repo. Drives the project's end-to-end PR flow — feature branch, conventional-commit title/body, the pre-PR format+lint gate, push, and `gh pr create --base development` with the repo's PR template filled in.
-allowed-tools: Read Grep Glob LSP Write(/tmp/*) Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git rev-parse:*) Bash(git branch:*) Bash(git checkout:*) Bash(git switch:*) Bash(git add:*) Bash(git commit:*) Bash(git push:*) Bash(gh pr create:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(make format:*) Bash(make lint:*) Bash(make test:*) Bash(date:*)
+allowed-tools: Read Grep Glob LSP Write(/tmp/*) Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git rev-parse:*) Bash(git branch:*) Bash(git checkout:*) Bash(git switch:*) Bash(git stash:*) Bash(git add:*) Bash(git commit:*) Bash(git push:*) Bash(gh pr create:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(make format:*) Bash(make lint:*) Bash(make test:*) Bash(date:*)
 argument-hint: "[issue-number]"
 arguments: issue
 model: opus
@@ -40,6 +40,20 @@ Do **not** use this to push half-finished work, to commit on `development`, or t
 > When the in-scope files are tangled into a branch/commit that also holds parallel work, isolate them first: branch off `development` and bring over only the in-scope paths (`git checkout <other-branch> -- <in-scope-path>`, or stash the rest with `git stash push -- <out-of-scope-path>`). Verify with `git diff --stat origin/development...HEAD` that the branch carries **only** this change before opening the PR.
 
 ## Workflow
+
+Copy this checklist into your response and tick items as you go:
+
+```
+PR progress:
+- [ ] Preflight — scoped the change, branch matches it, no existing PR
+- [ ] Self-review (quickapps-code-review) — blockers resolved
+- [ ] Branch cut from development (if not already on this change's branch)
+- [ ] make format + make lint green
+- [ ] Staged only in-scope paths, committed (Conventional Commits)
+- [ ] Pushed with -u
+- [ ] PR body composed from .github/pull_request_template.md
+- [ ] gh pr create --base development; reported the URL
+```
 
 ### 0. Self-review gate
 
