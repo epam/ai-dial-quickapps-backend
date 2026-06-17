@@ -198,6 +198,23 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
     mock_stage.append_content.assert_any_call(expected_exception)
 
 
+def test_plain_text_response_is_fenced_without_language(mock_stage, wrapper):
+    result = ToolCallResult(content="line1\nline2", content_type="text/plain")
+
+    output = wrapper._build_debug_info_from_result(result)
+
+    assert output == "> ##### Response:\n```\nline1\nline2\n```\n"
+
+
+def test_response_with_embedded_fence_uses_longer_wrapping_fence(mock_stage, wrapper):
+    content = "intro\n```python\nprint('hi')\n```\noutro"
+    result = ToolCallResult(content=content, content_type="text/plain")
+
+    output = wrapper._build_debug_info_from_result(result)
+
+    assert output == f"> ##### Response:\n````\n{content}\n````\n"
+
+
 def test_exception_handling_in_format_response(mock_stage, wrapper, params):
     result = ToolCallResult(
         content="{'content': 'response content'}", content_type="application/json"
