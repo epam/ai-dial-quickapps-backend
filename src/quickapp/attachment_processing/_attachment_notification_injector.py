@@ -6,11 +6,13 @@ from injector import ProviderOf, inject
 
 from quickapp.attachment_processing._context_entries import (
     AvailableContextToolResponse,
-    build_context_entries,
+    build_context_entries_async,
     extract_seen_entries_from_messages,
     should_activate_context_tool,
 )
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
+from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
@@ -30,9 +32,13 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
         self,
         config_provider: ProviderOf[ApplicationConfig],
         enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
+        folder_listing: FolderListingProvider,
+        expanded_file_urls: ExpandedContextFileUrls,
     ):
         super().__init__(enrichers_provider)
         self.__config_provider: ProviderOf[ApplicationConfig] = config_provider
+        self.__folder_listing: FolderListingProvider = folder_listing
+        self.__expanded_file_urls: ExpandedContextFileUrls = expanded_file_urls
 
     async def get_tool_name(self) -> str:
         return AVAILABLE_CONTEXT_TOOL_NAME
@@ -47,7 +53,12 @@ class _AttachmentNotificationInjector(SyntheticToolCallInjector):
     async def get_content(self, messages: list[Message]) -> str | None:
         contexts = list(self.__config_provider.get().contexts)
         seen_entries = extract_seen_entries_from_messages(messages)
-        current_urls, entries = build_context_entries(contexts, seen_entries)
+        current_urls, entries = await build_context_entries_async(
+            contexts,
+            seen_entries,
+            self.__folder_listing,
+            self.__expanded_file_urls,
+        )
 
         if current_urls == set(seen_entries) and not any(e.status for e in entries):
             return None

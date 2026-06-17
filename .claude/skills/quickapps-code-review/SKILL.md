@@ -35,10 +35,11 @@ If the resolved diff is empty (or whitespace-only), report **"nothing to review"
 ## How to run
 
 1. Resolve the diff using **only** the command listed for `$scope` above. If `$scope` is empty, treat it as `pr`. Never mix scopes in one run.
-2. Walk the checklist below **per file changed**. For each hit, report: file:line, the rule, and a concrete suggested fix.
-3. Group findings as **Blocking** (would get a "change requested") vs **Nit** (would get a `nit:` tag). Render each finding as a markdown checkbox (`- [ ]`) so they can be ticked off as they are addressed.
-4. End with a short verdict: ship / fix-then-ship / split.
-5. **Save the review** to `docs/reviews/<branch>__<YYYYMMDD-HHMM>.md`:
+2. For every **new or renamed** function, method, or class in the diff: verify call sites with `findReferences` / `Grep` (production + tests). Flag zero production callers unless the symbol is explicitly test-only.
+3. Walk the checklist below **per file changed**. For each hit, report: file:line, the rule, and a concrete suggested fix.
+4. Group findings as **Blocking** (would get a "change requested") vs **Nit** (would get a `nit:` tag). Render each finding as a markdown checkbox (`- [ ]`) so they can be ticked off as they are addressed.
+5. End with a short verdict: ship / fix-then-ship / split.
+6. **Save the review** to `docs/reviews/<branch>__<YYYYMMDD-HHMM>.md`:
    - `<branch>`: current branch from `git rev-parse --abbrev-ref HEAD`, with `/` replaced by `-`. Keep prefixes (`feat-`, `fix-`, `chore-`) as-is.
    - `<YYYYMMDD-HHMM>`: short local datetime from `date +%Y%m%d-%H%M`.
    - Create `docs/reviews/` if missing, then write the file (both pre-approved).
@@ -54,6 +55,8 @@ The single most common review comment is some form of **"why is this here?"** �
 
 ### 1. Necessity — "why is this here?"
 - [ ] Any new field, parameter, import, file, or comment that isn't load-bearing? Delete it.
+- [ ] **New function with no production call sites?** Grep/`findReferences` every new symbol. Delete it, inline it, or mark test-only in the name/docstring. *e.g. a helper left behind after a refactor path was removed.*
+- [ ] Sync fallback kept alongside a new async production path, used only by unit tests? Prefer async tests with a fake/stub, or document `test-only` explicitly — don't leave ambiguous dual APIs.
 - [ ] Unused subclass parameter required by parent interface? Mark intent explicitly (e.g. `del param`) — don't silently leave it.
 - [ ] Self-explanatory code annotated with a redundant comment? Drop the comment.
 - [ ] Redundant control flow (e.g. `else` after a branch that already returns/handles)? Drop it.
@@ -61,6 +64,7 @@ The single most common review comment is some form of **"why is this here?"** �
 ### 2. PR scope
 - [ ] Diff contains unrelated renames, refactors, test scaffolding, or fixtures? Split into a separate PR.
 - [ ] Whitespace-only or "replace all" bleed in schemas / design docs? Revert those hunks.
+- [ ] **PR title/body still describes reverted or dropped work?** Compare the description bullet list to the actual diff (e.g. a move/preset called out in the PR text but absent from the branch). Update before submit.
 
 ### 3. Module boundaries / imports
 - [ ] Upward imports against the documented dependency direction (shared layers must not import from feature layers)? Fix the direction. *Example: `common/` importing from `agent/`.*
@@ -71,6 +75,7 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] Service instantiated directly (`Foo()`) where another site injects it? Unify on constructor injection.
 - [ ] New DI binding added? It must be wired into **every** assembly point (prod entry + integration-test container).
 - [ ] Duplicate bindings of the same protocol/type? Pick one.
+- [ ] **Request-scoped type bound in a module but parameter typed `T | None = None`?** If every production call site injects it, make the parameter required — optional-only-for-tests confuses, as this project uses injector for dependencies. Use a test double via DI, not `None` defaults.
 
 ### 5. Settings
 - [ ] Any `os.getenv` in app code? **Reject.** Move to a `pydantic-settings` `BaseSettings`. To check if an env var was actually set, use `"field_name" in settings.model_fields_set`.
@@ -122,6 +127,12 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] Attachment/file/context pipelines must treat user-provided and admin-configured sources symmetrically — don't silently drop one.
 - [ ] Don't re-stream the same bytes to the model on every agent iteration; honor the lazy-loading contract.
 
+### 16. Preview feature consistency
+- [ ] **Preview-gated config field?** Use `PreviewField(...)` from `base_config` — not ad-hoc `json_schema_extra` / `mark_json_schema_preview` on a field unless there is no field-level hook.
+- [ ] **Preview-gated model variant** (e.g. a new `$defs` entry in a discriminated union)? Prefer the same preview-marker machinery the codebase already uses (`PreviewField`, `has_preview_marker`, `_strip_preview_fields`) — e.g. a `@preview_model` / class decorator parallel to `PreviewField`, not a one-off `model_config = ConfigDict(json_schema_extra=mark_json_schema_preview)` unless that helper is the established pattern. Reviewers ask: "maybe decorator? as it is done for fields?"
+- [ ] **Runtime strip when preview is off?** Extend `nullify_preview_fields` (or shared preview validation) instead of bespoke `isinstance` + filter logic in `_gate_preview_fields`. Special-casing one preview type in `ApplicationConfig` will get "can you make it general, like `nullify_preview_fields`?"
+- [ ] Preview-off behaviour must log a warning when configured values are dropped — but through the shared preview path when possible, not duplicate warning strings.
+
 ## Red flags — stop and reconsider
 
 If you find yourself thinking any of these while reviewing your own change, treat it as a blocker:
@@ -135,6 +146,10 @@ If you find yourself thinking any of these while reviewing your own change, trea
 | "common/ importing from agent/ is fine for now" | It is not. Fix the direction. |
 | "The cached tool-call responses still work" | If you renamed a tool, regenerate caches. |
 | "`Any` is fine here" | Use the concrete type. |
+| "Optional `None` default makes tests easier" | Injector always provides it in prod — require the type. |
+| "I'll add a helper now in case we need it later" | Grep for callers first — dead code gets "is it used anywhere?" |
+| "Special-case preview strip in the validator" | Extend `nullify_preview_fields` / shared preview machinery instead. |
+| "PR description is close enough" | Every bullet must match the diff after any revert/split. |
 
 ## Output format
 
