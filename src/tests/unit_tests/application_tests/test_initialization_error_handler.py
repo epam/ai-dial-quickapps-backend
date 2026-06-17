@@ -44,6 +44,22 @@ class TestConfigResolutionExceptionRendering:
         assert "/deployment/name: must be string" in rendered
         stage.close.assert_called_once_with(Status.FAILED)
 
+    def test_details_with_embedded_fence_uses_longer_wrapping_fence(self):
+        stage = MagicMock(spec=Stage)
+        details = "trace:\n```\nboom\n```"
+        exc = ConfigResolutionException(
+            message="value is not a string",
+            template_name="dial_rag",
+            json_path="/deployment/name",
+            details=details,
+        )
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert f"````\n{details}\n````" in rendered
+
     def test_no_exceptions_does_not_render_stage(self):
         stage = MagicMock(spec=Stage)
         handler = _make_handler(stage, [])

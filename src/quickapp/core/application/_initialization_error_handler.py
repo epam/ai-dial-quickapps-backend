@@ -12,6 +12,7 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
     ToolInitializationException,
 )
+from quickapp.common.utils import fenced_code_block
 
 logger = logging.getLogger(__name__)
 
@@ -60,17 +61,17 @@ class _InitializationErrorHandler:
             if isinstance(exc, ToolInitializationException):
                 tool_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
                 if exc.details:
-                    tool_lines.append(f"```\n{exc.details}\n```")
+                    tool_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, HookInitializationException):
                 hook_lines.append(f"- **{exc.tool_name}{exc.toolset_name}**: {exc}")
                 if exc.details:
-                    hook_lines.append(f"```\n{exc.details}\n```")
+                    hook_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, OffloadConfigurationException):
                 offload_lines.append(f"- {exc}")
             elif isinstance(exc, ConfigResolutionException):
                 tool_lines.append(f"- **template '{exc.template_name}'**: {exc}")
                 if exc.details:
-                    tool_lines.append(f"```\n{exc.details}\n```")
+                    tool_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, SkillCatastrophicInitializationException):
                 catastrophic_lines.append(f"- {exc.reason}")
             elif isinstance(exc, SkillInitializationException) and exc.url is not None:
