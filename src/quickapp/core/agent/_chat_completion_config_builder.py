@@ -66,23 +66,7 @@ class _ChatCompletionConfigBuilder:
                     type(self.__response_format),
                 )
 
-        tool_choice = self.__tool_choice_holder.consume()
-        if tool_choice is not None:
-            requires_tool = tool_choice == "required" or (
-                hasattr(tool_choice, "type") and tool_choice.type == "function"
-            )
-            if requires_tool and not self.__tools:
-                raise InvalidRequestError(
-                    message="tool_choice requires at least one tool to be configured",
-                    display_message=(
-                        "Cannot enforce tool_choice: no tools are available. "
-                        "Configure at least one tool set or use tool_choice='auto'."
-                    ),
-                )
-            if hasattr(tool_choice, "model_dump"):
-                payload["tool_choice"] = tool_choice.model_dump(exclude_none=True, mode="json")
-            else:
-                payload["tool_choice"] = tool_choice
+        self._apply_tool_choice(payload)
 
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}
@@ -96,6 +80,26 @@ class _ChatCompletionConfigBuilder:
                 "Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False)
             )
         return chat_completion_config
+
+    def _apply_tool_choice(self, payload: dict[str, Any]) -> None:
+        tool_choice = self.__tool_choice_holder.consume()
+        if tool_choice is None:
+            return
+        requires_tool = tool_choice == "required" or (
+            hasattr(tool_choice, "type") and tool_choice.type == "function"
+        )
+        if requires_tool and not self.__tools:
+            raise InvalidRequestError(
+                message="tool_choice requires at least one tool to be configured",
+                display_message=(
+                    "Cannot enforce tool_choice: no tools are available. "
+                    "Configure at least one tool set or use tool_choice='auto'."
+                ),
+            )
+        if hasattr(tool_choice, "model_dump"):
+            payload["tool_choice"] = tool_choice.model_dump(exclude_none=True, mode="json")
+        else:
+            payload["tool_choice"] = tool_choice
 
     def _prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         transformed_messages = messages
