@@ -2889,6 +2889,26 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "TTLRefreshCondition": {
+      "properties": {
+        "kind": {
+          "const": "ttl",
+          "default": "ttl",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ttl_minutes": {
+          "exclusiveMinimum": 0,
+          "title": "Ttl Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ttl_minutes"
+      ],
+      "title": "TTLRefreshCondition",
+      "type": "object"
+    },
     "ToolCallHookConfig": {
       "properties": {
         "event": {
@@ -2936,6 +2956,17 @@
         "frequency": {
           "$ref": "#/$defs/InjectionFrequency",
           "default": "append_if_changed"
+        },
+        "refresh_condition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TTLRefreshCondition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [

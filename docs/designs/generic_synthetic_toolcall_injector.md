@@ -79,7 +79,7 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 ```python
 class InjectionFrequency(StrEnum):
     ALWAYS            = "always"             # always append a new pair at END; accumulates across turns
-    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; append at END if content changed
+    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; replace in place if content unchanged (re-stamps call_id); append at END if content changed
 ```
 
 Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
@@ -123,21 +123,53 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         ...
 ```
 
-The base `transform` implementation:
+Three overridable methods control `call_id` generation and parsing:
+
+```python
+def _make_call_id_prefix(self, tool_name: str, arguments: dict) -> str:
+    # stable prefix for a tool+args pair — used for prefix-based history scanning
+    # format: {call_id_prefix}t_{hash6(tool_name)}_a_{hash6(args_json)}_
+    ...
+
+def make_call_id(self, tool_name, arguments, content, ttl_expiry_seconds=None) -> str:
+    # full structured call_id
+    # format: {prefix}t_{tool_hash6}_a_{args_hash6}_c_{content_hash6}[_ttl_{expiry:08x}]
+    # max length ≤ 45 chars for the default "synth_" prefix — well under OpenAI's 64-char limit
+    ...
+
+@staticmethod
+def _parse_call_id_ttl_expiry(call_id: str) -> int | None:
+    # extracts the Unix expiry from the _ttl_ segment, or returns None
+    ...
+```
+
+Subclasses (e.g. `_ConfigDrivenToolCallHook`) override `make_call_id` to inject additional
+metadata (TTL expiry) into the `call_id` before delegating to `super()`. The tool name is
+always hashed, so call_id length is bounded regardless of how long the tool name is.
+
+The base `transform` implementation is a two-stage dispatcher:
 
 1. **Precondition gate**: calls `should_inject(messages)`. Returns messages unchanged if `False`.
    Use this for coarse preconditions (e.g. feature flags, missing config) that are independent
    of content. Conditional injection logic that depends on content belongs in `get_content`.
-2. **Content fetch**: calls `get_content(messages)`. Returns messages unchanged if `None`.
-3. **Frequency gate + implicit position**: determines whether and how to inject, and where.
-   - `ALWAYS`: proceeds unconditionally; uses a random `call_id`; appends at **END**.
-   - `APPEND_IF_CHANGED`: computes `call_id = synth_{tool_name}_{args_hash[:6]}_{content_hash[:6]}`.
-     Skips if that exact `call_id` already exists in history. On first injection (no prior pair for
-     this tool+args) inserts **after the first USER message**. On subsequent injections when content
-     changed, appends at **END** so the updated content appears after all prior history.
-   - All modes fall back to appending at END when no USER message exists.
-4. **Pair construction**: builds `(ASSISTANT/tool_calls, TOOL)` message pair using the computed
-   `call_id`.
+2. **Frequency dispatch**: calls `get_frequency(messages)` and routes to one of three private
+   methods, each responsible for fetching content and determining position:
+
+| Frequency | Private method | Behavior |
+|---|---|---|
+| `ALWAYS` | `_inject_always` | Fetches content; uses a random `call_id`; appends at **END**. |
+| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id` via `make_call_id(tool, args, content)`. If a pair with matching tool+args+content already exists, **replaces it in place** (re-stamps call_id — e.g. updates TTL expiry). If content changed, appends at **END**. On first injection inserts **after the first USER message**. |
+
+All methods return messages unchanged if `get_content()` returns `None`. All fall back to
+appending at END when no USER message exists.
+
+**`_inject_at` helper:** both private methods converge on
+`_inject_at(messages, idx, tool_name, call_id, arguments, content)`, which:
+
+1. Calls `_enrich_state(call_id, content)` — runs enrichers to build the `state` dict.
+2. Calls `_build_pair(tool_name, call_id, arguments, content, state)` — constructs the
+   `(ASSISTANT/tool_calls, TOOL)` message pair.
+3. Splices the pair into `messages` at position `idx`.
 
 **Change:** New file. Replaces duplicated logic in all three existing injectors.
 
@@ -353,8 +385,8 @@ class VersionedSkillInjector(SyntheticToolCallInjector):
 
 ### `common/synthetic_injection/` (new package)
 - `__init__.py`
-- `_injection_enums.py` — `InjectionFrequency`
-- `synthetic_tool_call_injector.py` — `SyntheticToolCallInjector`
+- `_injection_enums.py` — `InjectionFrequency` (`ALWAYS`, `APPEND_IF_CHANGED`)
+- `synthetic_tool_call_injector.py` — `SyntheticToolCallInjector`; exposes `make_call_id`, `_make_call_id_prefix`, `_parse_call_id_ttl_expiry` as overridable hooks; `APPEND_IF_CHANGED` replaces existing pairs in place when content is unchanged
 - `staged_tool_synthetic_injector.py` — `StagedToolSyntheticInjector`
 
 ### `application/_messages_setup.py`

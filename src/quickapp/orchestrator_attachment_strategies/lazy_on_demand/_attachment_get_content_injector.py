@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 from typing import Any
 
@@ -8,12 +9,19 @@ from injector import inject
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.attachment_processing_utils import attachment_mime_type
-from quickapp.common.synthetic_injection.synthetic_tool_call_injector import _make_call_id
 from quickapp.common.utils import matches_type
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
+
+
+def _make_call_id(call_id_prefix: str, tool_name: str, arguments: dict, content: str) -> str:
+    def _hash6(value: str) -> str:
+        return hashlib.sha256(value.encode()).hexdigest()[:6]
+
+    args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+    return f"{call_id_prefix}{tool_name}_{args_hash}_{_hash6(content)}"
 
 
 @inject
@@ -141,7 +149,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
                 continue
 
             payload = self._build_tool_result_payload(attachment)
-            call_id, _args_hash = _make_call_id(self.call_id_prefix, tool_name, arguments, payload)
+            call_id = _make_call_id(self.call_id_prefix, tool_name, arguments, payload)
             assistant_msg, tool_msg = self._build_pair(
                 tool_name=tool_name,
                 call_id=call_id,
