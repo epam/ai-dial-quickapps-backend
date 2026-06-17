@@ -238,7 +238,7 @@ class TestAppendIfChanged:
             await injector.transform([_user("hi")]), 1, "append_tool", "append content"
         )
         assert id1 == id2
-        assert id1.startswith("synth_append_tool_")
+        assert id1.startswith("synth_t_")
 
     @pytest.mark.asyncio
     async def test_no_user_message_appends_at_end(self):
@@ -407,3 +407,80 @@ class TestCustomCallIdPrefix:
         result = await injector.transform([_user("hi")])
         call_id = _assert_synthetic_pair(result, 1, "prefixed_tool", "content")
         assert call_id.startswith("my_prefix_")
+
+
+# ---------------------------------------------------------------------------
+# Tests: replace-in-place (same args+content, different call_id — e.g. TTL re-stamp)
+# ---------------------------------------------------------------------------
+
+
+class _TTLStampingInjector(SyntheticToolCallInjector):
+    """Injector that embeds an explicit TTL expiry in the call_id for testing."""
+
+    def __init__(self, content: str = "ttl content", ttl_expiry_seconds: int | None = None):
+        super().__init__()
+        self._content = content
+        self._ttl_expiry_seconds = ttl_expiry_seconds
+
+    async def get_tool_name(self) -> str:
+        return "timed_tool"
+
+    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
+        return InjectionFrequency.APPEND_IF_CHANGED
+
+    async def get_content(self, messages: list[Message]) -> str | None:
+        return self._content
+
+    def make_call_id(
+        self, tool_name: str, arguments: dict, content: str, ttl_expiry_seconds: int | None = None
+    ) -> str:
+        return super().make_call_id(tool_name, arguments, content, self._ttl_expiry_seconds)
+
+
+class TestReplaceInPlace:
+    @pytest.mark.asyncio
+    async def test_replace_in_place_when_content_same_but_call_id_differs(self):
+        injector = _TTLStampingInjector(content="same", ttl_expiry_seconds=1000)
+        messages = [_user("hi")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+        old_call_id = _assert_synthetic_pair(result, 1, "timed_tool", "same")
+        assert "_ttl_" in old_call_id
+
+        injector._ttl_expiry_seconds = 2000  # different expiry → different call_id
+        result2 = await injector.transform(result)
+
+        assert len(result2) == 3  # replaced in place, not appended
+        new_call_id = _assert_synthetic_pair(result2, 1, "timed_tool", "same")
+        assert new_call_id != old_call_id  # call_id updated with new expiry
+
+    @pytest.mark.asyncio
+    async def test_appends_when_content_changes_regardless_of_ttl(self):
+        injector = _TTLStampingInjector(content="v1", ttl_expiry_seconds=1000)
+        messages = [_user("hi")]
+
+        result = await injector.transform(messages)
+        assert len(result) == 3
+
+        injector._content = "v2"
+        injector._ttl_expiry_seconds = 2000
+        result2 = await injector.transform(result)
+
+        assert len(result2) == 5  # old pair kept, new appended
+        _assert_synthetic_pair(result2, 1, "timed_tool", "v1")
+        _assert_synthetic_pair(result2, 3, "timed_tool", "v2")
+
+    @pytest.mark.asyncio
+    async def test_call_id_contains_ttl_marker_when_expiry_set(self):
+        injector = _TTLStampingInjector(content="data", ttl_expiry_seconds=9999)
+        result = await injector.transform([_user("hi")])
+        call_id = _assert_synthetic_pair(result, 1, "timed_tool", "data")
+        assert "_ttl_" in call_id
+
+    @pytest.mark.asyncio
+    async def test_call_id_has_no_ttl_marker_when_expiry_not_set(self):
+        injector = _TTLStampingInjector(content="data", ttl_expiry_seconds=None)
+        result = await injector.transform([_user("hi")])
+        call_id = _assert_synthetic_pair(result, 1, "timed_tool", "data")
+        assert "_ttl_" not in call_id
