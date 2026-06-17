@@ -1,9 +1,10 @@
 from collections import deque
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, TypeVar, cast
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
@@ -312,6 +313,86 @@ def has_preview_marker(field_info: FieldInfo) -> bool:
     return bool(tmp.get(_PREVIEW_MARKER, False))
 
 
+def mark_json_schema_preview(schema: dict[str, Any]) -> None:
+    """Mark a JSON schema object (e.g. a ``$defs`` entry) as preview-only."""
+    schema[_PREVIEW_MARKER] = True
+
+
+_TPreviewModel = TypeVar("_TPreviewModel", bound=type[BaseModel])
+
+
+def is_preview_model(model_type: type[BaseModel]) -> bool:
+    """Check whether a Pydantic model class is marked as a preview feature."""
+    if not isinstance(model_type, type) or not issubclass(model_type, BaseModel):
+        return False
+    extra = model_type.model_config.get("json_schema_extra")
+    if extra is None:
+        return False
+    if isinstance(extra, dict):
+        return bool(extra.get(_PREVIEW_MARKER, False))
+    tmp: dict[str, Any] = {}
+    cast(Callable[[dict[str, Any], type[BaseModel]], Any], extra)(tmp, model_type)
+    return bool(tmp.get(_PREVIEW_MARKER, False))
+
+
+def preview_model(cls: _TPreviewModel) -> _TPreviewModel:
+    """Class decorator equivalent to ``PreviewField`` for whole Pydantic models."""
+
+    existing_extra = cls.model_config.get("json_schema_extra")
+
+    def _merged_json_schema_extra(schema: dict[str, Any], _model: type[BaseModel]) -> None:
+        if callable(existing_extra) and not isinstance(existing_extra, dict):
+            cast(Callable[[dict[str, Any], type[BaseModel]], Any], existing_extra)(schema, _model)
+        elif isinstance(existing_extra, dict):
+            schema.update(existing_extra)
+        mark_json_schema_preview(schema)
+
+    cls.model_config = ConfigDict(
+        **cast(Any, dict(cls.model_config)),
+        json_schema_extra=_merged_json_schema_extra,
+    )
+    return cls
+
+
+def _preview_def_names(defs: dict[str, Any]) -> set[str]:
+    return {name for name, definition in defs.items() if definition.get(_PREVIEW_MARKER)}
+
+
+def _strip_preview_discriminated_unions(obj: dict, preview_defs: set[str]) -> None:
+    """Remove ``oneOf`` variants that reference preview-marked ``$defs`` entries."""
+    if not preview_defs:
+        return
+    one_of = obj.get("oneOf")
+    if isinstance(one_of, list):
+        filtered = [
+            variant
+            for variant in one_of
+            if not (
+                isinstance(variant, dict) and variant.get("$ref", "").split("/")[-1] in preview_defs
+            )
+        ]
+        if len(filtered) != len(one_of):
+            if filtered:
+                obj["oneOf"] = filtered
+            else:
+                obj.pop("oneOf", None)
+        discriminator = obj.get("discriminator")
+        if isinstance(discriminator, dict):
+            mapping = discriminator.get("mapping")
+            if isinstance(mapping, dict):
+                for key, ref in list(mapping.items()):
+                    if isinstance(ref, str) and ref.split("/")[-1] in preview_defs:
+                        del mapping[key]
+
+    for value in obj.values():
+        if isinstance(value, dict):
+            _strip_preview_discriminated_unions(value, preview_defs)
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    _strip_preview_discriminated_unions(item, preview_defs)
+
+
 def _strip_preview_properties(obj: dict) -> None:
     """Remove preview-marked properties and clean up required list in-place."""
     properties = obj.get("properties")
@@ -331,12 +412,18 @@ def _strip_preview_fields(schema: dict) -> dict:
     """Remove preview-marked properties from a JSON schema dict."""
     schema = deepcopy(schema)
 
+    defs = schema.get("$defs", {})
+    preview_defs = _preview_def_names(defs)
+
     # Strip at root level
     _strip_preview_properties(schema)
 
     # Strip within $defs
-    for definition in schema.get("$defs", {}).values():
+    for definition in defs.values():
         _strip_preview_properties(definition)
+
+    # Strip preview variants from discriminated unions (e.g. folder context type)
+    _strip_preview_discriminated_unions(schema, preview_defs)
 
     # Prune unreferenced $defs
     defs = schema.get("$defs", {})

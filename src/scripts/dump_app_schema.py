@@ -14,6 +14,7 @@ if __name__ == '__main__':
     # The env value is a per-deployment operator choice; it must not bake into the
     # checked-in schema that `make lint` validates against.
     os.environ.pop("DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID", None)
+    os.environ.pop("DEFAULT_AGENT_MAX_ITERATIONS", None)
 
 import json
 

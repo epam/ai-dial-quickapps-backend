@@ -12,6 +12,9 @@ from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
 )
+from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
+    empty_expanded_context_file_urls,
+)
 
 
 def _make_filter(
@@ -23,7 +26,11 @@ def _make_filter(
     caps = OrchestratorCapabilities(
         deployment=MagicMock(id="orch", input_attachment_types=patterns)
     )
-    keep_policy = _GetContentKeepPolicy(app_config=app, orchestrator_capabilities=caps)
+    keep_policy = _GetContentKeepPolicy(
+        app_config=app,
+        orchestrator_capabilities=caps,
+        expanded_file_urls=empty_expanded_context_file_urls(),
+    )
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 
