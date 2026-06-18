@@ -16,7 +16,7 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.context import FileContextConfig
+from quickapp.config.context import FileContextConfig, Context
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
@@ -582,7 +582,7 @@ def e2e_test(
 
             app = TestApp.get_app(port=unique_port)
             client = TestClient(app)
-            headers = create_request_headers(TestConfig.REMOTE_DIAL_API_KEY)
+            headers = create_request_headers(TestDialCoreConfig.REMOTE_DIAL_API_KEY_SECRET)
 
             skill_urls: list[str] = []
             for skill_file in TestRunner.resolve_skill_files(skills):
@@ -649,7 +649,7 @@ def e2e_test(
                 # TestClient is synchronous and doesn't need async close
                 # Don't shutdown async generators while loop is running
 
-        async def prepare_contexts(contexts: list[FileContextConfig]):
+        async def prepare_contexts(contexts: list[Context]):
             upload_headers = {
                 API_KEY_HEADER: TestDialCoreConfig.REMOTE_DIAL_API_KEY,
                 CONTENT_TYPE_HEADER: "application/json",
