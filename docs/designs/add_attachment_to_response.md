@@ -14,7 +14,7 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 - Give the agent a callable tool to explicitly promote any DIAL file URL to the response attachments array, regardless of MIME type.
 - Gate the tool behind a per-app feature flag so operators control whether agents can use it.
-- Follow the `SomeConfig | None = None` config pattern used by `dial_files` and other features.
+- Follow the `SomeConfig | None = None` field shape used by other features (same as `dial_files`, but with a plain `Field` rather than `PreviewField` — this feature is not preview-gated).
 
 ---
 
@@ -131,7 +131,7 @@ a `StagedBaseTool` subclass.
 |------|------|----------|-------------|
 | `url` | string | yes | DIAL file URL (e.g. `files/bucket/path/report.csv`) |
 | `title` | string | no | Display name shown to the user |
-| `type` | string | no | MIME type. Default: `text/plain` |
+| `type` | string | no | MIME type. Default: `text/plain` (see Out of Scope for known limitation) |
 
 **Runtime behaviour:**
 
@@ -140,7 +140,10 @@ a `StagedBaseTool` subclass.
    - `content`: a short confirmation string (e.g. `"Attachment added to response: <title or url>"`)
    - `content_type`: `"text/plain"`
    - `propagate_to_choice`: `[attachment]`
+   - `attachments`: left unset (`None`)
 3. A minimal stage named "Add attachment" is rendered (consistent with `_CurrentTimestampTool`); no network I/O occurs.
+
+`attachments` is intentionally left unset. `StagedBaseTool._run_in_stage_report_success` only post-processes `result.attachments` when it is non-empty — leaving it `None` causes the `propagate_types_to_choice` type-gate, `attachment.supported_types` filter, and media-type substitution to be skipped entirely. This is the desired behaviour: the tool promotes arbitrary types unconditionally. As a consequence, the attachment also receives no media-type substitution.
 
 ### 5. Dedicated module and app_factory registration
 
@@ -240,7 +243,6 @@ None.
 
 - New `add_attachment` field in `Features` — defaults to `null`, so existing apps are unaffected.
 - New tool is only registered when `features.add_attachment` is set and `enabled` is `true`.
-- No changes to `ToolCallResult`, the orchestrator, or `choice.add_attachment` — the existing propagation path is used as-is.
 
 ---
 
@@ -284,3 +286,33 @@ None.
 ### Nits
 
 1. **Out of Scope** — Note added about silent broken-attachment risk for unreachable URLs. ✅ Addressed in Round 2.
+
+---
+
+## Review Notes — Round 2
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-06-18
+
+### Verdict
+
+`Ready for approval pending minor suggestions`. The Round-1 blocking issues are all genuinely resolved — the Problem Statement now describes the real, narrow gap (explicit on-demand promotion of an arbitrary URL/type past the per-tool type-gating), §3 carries a complete `InternalTool` / OpenAI function definition, and §5 wires a dedicated `AddAttachmentToolingModule` that matches the `TimestampModule` / `DialFilesToolingModule` precedent verbatim. The proposed propagation mechanism is sound against the actual code. What remains is a precision issue in one cited precedent, one piece of non-change prose to cut, and one subtle runtime behavior worth making explicit so an implementer doesn't trip on it.
+
+### Suggestions
+
+1. **Proposed Design §4 (Runtime behaviour)** — The design returns `ToolCallResult` with `propagate_to_choice=[attachment]` and leaves `attachments` unset. This works *only because* `StagedBaseTool._run_in_stage_report_success` (`src/quickapp/common/staged_base_tool.py:174-186`) guards its post-processing with `if result.attachments:` — so an empty/`None` `attachments` skips the loop entirely, and the directly-set `propagate_to_choice` survives untouched. The consequence is that this tool's attachment bypasses the `attachment.supported_types` filter, `media_type_substitution`, and the `propagate_types_to_choice` gate that every other tool's attachments pass through. That is exactly the intent (the whole point is to promote arbitrary types), but it is non-obvious and load-bearing. **Suggestion:** add one sentence to §4 stating that the attachment is set on `propagate_to_choice` and *not* on `attachments` precisely so it skips the type-gating in `_run_in_stage_report_success`, and that it therefore receives no media-type substitution.
+
+2. **Design Goals / Feature config §1** — The doc says it follows "the `SomeConfig | None = None` config pattern used by `dial_files`," but `dial_files` is declared with `PreviewField(...)` in `Features` (`src/quickapp/config/application.py:189`), i.e. it *is* preview-gated — whereas this design deliberately is not (§1, last paragraph). Citing `dial_files` as the shape precedent while diverging on the most salient axis (preview gating) is mildly misleading. **Suggestion:** either cite a non-preview `| None`-defaulting precedent, or keep `dial_files` but add a half-sentence noting "same `| None = None` shape, but a plain `Field` rather than `dial_files`' `PreviewField`."
+
+### Nits
+
+1. **Migration — Non-breaking changes** — The third bullet ("No changes to `ToolCallResult`, the orchestrator, or `choice.add_attachment` — the existing propagation path is used as-is.") is "what is NOT changing" prose. The reuse-the-existing-path fact is already conveyed by the Problem Statement and §4. **Suggestion:** drop the bullet (the first two non-breaking bullets describe actual additions and suffice).
+
+2. **Proposed Design §4 / Out of Scope** — The `text/plain` default for `type` is a reasonable fallback, but a non-text file (CSV/PDF) tagged `text/plain` may render or download oddly in the DIAL client. Out of Scope already defers MIME inference; consider a one-line forward-reference from §4's `type` row to that Out-of-Scope item so the default's known limitation isn't easy to miss.
+
+### Changes since previous round
+
+- **Round-1 Blocking #1 (Problem Statement false claim about `propagate_to_choice`)** — **resolved.** The statement now correctly frames the gap as explicit on-demand promotion of an arbitrary URL/type and acknowledges the existing automatic allowlist path. Verified against `staged_base_tool.py:174-186` and `_write_file_tool.py:48`.
+- **Round-1 Blocking #2 (missing `InternalTool` / OpenAI function definition)** — **resolved.** New §3 supplies `ADD_ATTACHMENT_TOOL_CONFIG` with full `OpenAiToolFunction` parameters; Summary of Changes adds the `_tool_configs.py` row. Types (`InternalTool`, `ConfigurableSchemaSimpleType`) verified to exist.
+- **Round-1 Blocking #3 (wiring into existing `InternalToolModule`)** — **resolved.** §5 now defines a dedicated `AddAttachmentToolingModule` with a feature-gated `@multiprovider`, matching `TimestampModule._provide_timestamp_tools` closely, plus an `app_factory.py` registration row.
+- **Round-1 Suggestions 1–3 and Nit 1** — **resolved / addressed** as annotated in Round 1.
