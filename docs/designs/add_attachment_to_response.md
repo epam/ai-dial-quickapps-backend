@@ -1,6 +1,7 @@
 # Design: Add Attachment to Response Tool
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-06-18
 - **Dependencies:**
   - None
 
