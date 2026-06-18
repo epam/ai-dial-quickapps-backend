@@ -146,7 +146,7 @@ integration_test: install_integration
 	$(MAKE) stop_test_server
 
 integration_test_run:
-	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} -m "integration" $(ARGS)
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
 
 e2e_test: install_integration
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)

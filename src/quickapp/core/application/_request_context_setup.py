@@ -68,6 +68,9 @@ class _RequestContextSetup:
         if isinstance(request, Request) and request.response_format:
             context.response_format = request.response_format
 
+        if isinstance(request, Request) and request.tool_choice is not None:
+            context.tool_choice = request.tool_choice
+
     async def setup_messages(self, messages: list[Message]) -> None:
         """Populate ``context.messages`` from the raw request messages and
         run the transformer chain over them. Called after initializers so

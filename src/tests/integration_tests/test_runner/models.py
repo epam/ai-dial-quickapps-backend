@@ -196,6 +196,7 @@ class TstCase:
         description: str,
         similarity_threshold: float = SimilarityThreshold.DEFAULT.value,
         response_format: dict[str, Any] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
     ):
         self.name = name
         self.description = description
@@ -204,6 +205,7 @@ class TstCase:
         self.similarity_threshold = similarity_threshold
         self.py_interpreter_session_flow = False
         self.response_format = response_format
+        self.tool_choice = tool_choice
 
     def add_user_message(
         self,
