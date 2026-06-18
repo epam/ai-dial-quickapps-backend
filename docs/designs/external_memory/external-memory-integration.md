@@ -2,7 +2,7 @@
 
 - **Status:** Draft
 - **Dependencies:**
-  - [Config-Driven Hooks](config_driven_hooks.md)
+  - [Config-Driven Hooks](../config_driven_hooks.md)
   - [Memory Architecture](memory_architecture.md) *(feat/memory_desighn_doc)*
 
 ---
@@ -21,23 +21,32 @@ Graphiti, etc.) and wire it into a QuickApp without modifying application code.
 
 - An operator can configure an external memory backend by editing the app's JSON manifest only.
 - User isolation is preserved: each DIAL user's memories are separate regardless of the backend.
-- The predefined memory skill works across backends, or at least a clear path exists to achieve that.
+- No skill is required for basic integration — the LLM understands provider tools from their native MCP descriptions, as in Claude Code and Cursor. Skills remain available as an optional layer for operators who need to enforce specific memory behaviors.
 - Adding support for a new provider in the future requires minimal effort.
 
 ---
 
 ## Background: How QuickApps Memory Works Today
 
-QuickApps memory uses three interlocking mechanisms:
+QuickApps memory uses three mechanisms:
 
 **1. MCP toolset** — the memory server is declared in `ApplicationConfig.tool_sets` as a `dial-mcp` entry.
 The agent calls `store_memory` and `search_archive` tools during conversation.
 
-**2. Hook-based context injection** — the `on_request_start` hook calls a retrieval tool before the first
-LLM turn and injects the result as a synthetic `(ASSISTANT tool_call / TOOL response)` pair into the
-message history via `_ConfigDrivenToolCallHook`. TTL caching prevents redundant calls.
+**2. Hook-based context injection** *(optional pattern)* — the `on_request_start` hook calls a retrieval
+tool before the first LLM turn and injects the result as a synthetic `(ASSISTANT tool_call / TOOL
+response)` pair into the message history via `_ConfigDrivenToolCallHook`. TTL caching prevents redundant
+calls.
 
-**3. Skill** — a predefined Markdown skill tells the LLM which tools exist and when to use them.
+**3. Skill** *(optional)* — a predefined Markdown skill tells the LLM which tools exist and when to
+use them. For QuickApps' own memory server this is predefined. For external providers it is not
+required — the LLM infers tool purpose from native MCP descriptions, the same way Claude Code and
+Cursor work with MCP memory servers without any skill.
+
+The hook-based injection is **one retrieval pattern, not a requirement**. The alternative is reactive
+retrieval: the LLM calls memory tools (`search`, `list`) when it decides past context is relevant. This
+is how every standard MCP client (Claude Code, Cursor) works. Both patterns can be used with external
+providers; hooks add value but are not a prerequisite for integration.
 
 **User isolation** is implicit: the memory MCP server authenticates via the user's DIAL API key, which
 scopes all reads and writes to that user's DIAL file storage bucket. No `user_id` appears in tool
@@ -46,7 +55,7 @@ arguments — isolation is handled entirely by the auth layer.
 ```
 Request arrives (DIAL API key = user A)
   → MCPToolInitializer connects to memory-server via DIAL (DIAL forwards user's key)
-  → Hook fires → calls memory-server_get_memories → injects top-N memories into history
+  → [Optional] Hook fires → calls memory-server_get_memories → injects top-N memories into history
   → Agent runs, calls store_memory / search_archive as needed
   → Memory server reads/writes user A's DIAL bucket (enforced by auth)
 ```
@@ -78,9 +87,12 @@ The `user_id` / `group_id` parameters that some providers expose were added as a
 cloud tiers (mem0 cloud serves thousands of customers), not for the typical local use case. Several
 providers (Official MCP Memory, basic-memory) have no user scoping at all.
 
-**Multi-user isolation is not a built-in property of these providers.** It must be layered on top — either
-through an adapter (Model 1, Approach A), injected via config variables (Model 1, Approach B), or solved
-structurally by giving each user their own isolated server instance (Model 2: containers).
+**Multi-user isolation is not a built-in property of these providers.** For providers that run as a
+shared server (mem0, Graphiti), isolation must be layered on top — through an adapter (Approach A) or
+injected via config variables (Approach B). For file-based providers (basic-memory, Official MCP Memory),
+isolation is already available today: DIAL already provides per-user file storage, and pointing the
+provider's data path at the user's DIAL bucket is sufficient. Containers make this even simpler (the
+bucket is mounted as a volume) but are not a prerequisite.
 
 ### MCP has no pre-turn injection
 
@@ -101,13 +113,16 @@ There is no naming standard. Three semantic roles appear consistently across all
 | **Search** | Retrieve by semantic query | `search_memories`, `search_nodes`, `search` |
 | **List** | Get all/top memories without a query | `get_memories`, `list_memories`, `read_graph`, `get_user_context` |
 
-The **list** tool is the correct hook point for `on_request_start` context injection — it requires no
-query and returns the most relevant memories for the current user.
+The **list** tool is the correct hook point if proactive `on_request_start` injection is configured — it
+requires no query and returns the most relevant memories for the current user. It is not required for
+reactive retrieval, where the LLM calls **search** directly when it needs context.
 
 ### Provider storage backends
 
-For the container model (see Model 2), storage type is the deciding factor: only file-based providers
-can write to a mounted DIAL bucket and survive container restarts.
+Storage type determines whether a provider can use DIAL's per-user file storage for isolation. File-based
+providers can write to a path inside the user's DIAL bucket — this works both today (current shared-service
+model) and in the future container model. Providers backed by external databases cannot use DIAL file
+storage and require a separate isolation mechanism.
 
 | Provider | Storage | File-based? | Notes |
 |---|---|---|---|
@@ -123,9 +138,26 @@ can write to a mounted DIAL bucket and survive container restarts.
 
 ## Model 1: Current Shared-Service Deployment
 
-Today, QuickApps runs as a single shared deployment: one process serves all users. When an external
-memory provider is connected, it too is a shared service — a single mem0 or Graphiti server handling
-requests from many different DIAL users simultaneously.
+Today, QuickApps runs as a single shared deployment: one process serves all users.
+
+The integration approach depends on the provider's storage model:
+
+**File-based providers** (basic-memory, Official MCP Memory, mem0 with Chroma) — user isolation is
+already solved by DIAL's per-user file storage. QuickApps already writes `memory.lance/` into each
+user's DIAL bucket for its own memory implementation; the same mechanism applies to any external
+file-based provider. No `user_id`, no adapter. The provider is configured with a data path inside the
+user's DIAL bucket, and the DIAL auth layer enforces isolation.
+
+```
+DIAL
+  ├── User A ──► QuickApps ──► file-based memory server (path = user A's DIAL bucket)
+  ├── User B ──► QuickApps ──► file-based memory server (path = user B's DIAL bucket)
+  └── ...          ← isolation is structural; no user_id in tool calls
+```
+
+**Server-based providers** (mem0 with pgvector, Graphiti) — a single shared service instance handles
+requests from many different DIAL users simultaneously. The memory server must never let one user's
+memories bleed into another's context. This requires explicit `user_id` scoping at every tool call.
 
 ```
 DIAL
@@ -134,10 +166,7 @@ DIAL
   └── User C ──►                               must isolate A/B/C
 ```
 
-The central challenge: the memory server must never let one user's memories bleed into another's context.
-This requires explicit `user_id` scoping at every tool call.
-
-Two approaches address this.
+Two approaches address server-based isolation.
 
 ---
 
@@ -150,8 +179,7 @@ regardless of which backend is underneath.
 ```
 QuickApp config (identical for all backends)
   └── tool_sets: [{ type: "dial-mcp", dial_id: "memory-adapter" }]
-  └── hooks:    [{ tool: "memory-adapter_memory_get_context" }]
-  └── skills:   ["memory"]   ← single portable skill
+  └── hooks:    [{ tool: "memory-adapter_memory_get_context" }]  ← optional
 
 DIAL routes the call → adapter receives X-DIAL-API-Key header
   └── Adapter resolves user_id from header
@@ -164,15 +192,20 @@ server. The adapter can extract user identity from these headers with no changes
 
 #### Standard tool contract
 
+The adapter exposes a normalized interface so every Class 2 backend looks identical to QuickApps.
+No skill is needed — the LLM understands these tools from their MCP descriptions.
+
 | Tool | Parameters | Description |
 |---|---|---|
-| `memory_get_context` | *(none)* | Top-N memories for context injection. Called by the hook. |
-| `memory_store` | `content: str` | Store a new fact. Called by the agent. |
-| `memory_search` | `query: str`, `limit?: int` | Semantic search. Called by the agent. |
+| `memory_store` | `content: str` | Store a new fact. |
+| `memory_search` | `query: str`, `limit?: int` | Semantic search. |
+| `memory_get_context` | *(none)* | *(optional)* Top-N memories without a query. Only needed if proactive hook injection is configured. |
 | `memory_delete` | `memory_id: str` | *(optional)* Delete a specific memory. |
 | `memory_clear` | *(none)* | *(optional)* Wipe all memories for the current user. |
 
-The predefined memory skill references only these names. Every compliant adapter gets the same skill.
+Normalization here serves a different goal than skills: it means every Class 2 adapter is wired by
+the same one-line toolset config, and a single optional skill covers all of them if the operator
+wants to enforce specific behavior.
 
 #### Example: mem0 adapter
 
@@ -230,6 +263,14 @@ QuickApp config (same for every operator using any compliant adapter):
 
 ```json
 {
+  "tool_sets": [{ "type": "dial-mcp", "dial_id": "memory-adapter-mem0" }]
+}
+```
+
+Optionally, add a hook for proactive injection and/or a skill for enforced behaviors:
+
+```json
+{
   "tool_sets": [{ "type": "dial-mcp", "dial_id": "memory-adapter-mem0" }],
   "hooks": [{
     "kind": "tool_call",
@@ -239,8 +280,7 @@ QuickApp config (same for every operator using any compliant adapter):
     "arguments": {},
     "frequency": "append_if_changed",
     "refresh_condition": { "kind": "ttl", "ttl_minutes": 5 }
-  }],
-  "skills": ["memory"]
+  }]
 }
 ```
 
@@ -311,19 +351,19 @@ def _resolve_arguments(self, arguments: dict, context: RequestContext) -> dict:
     "arguments": { "filters": { "user_id": "{{dial_user_id}}" }, "limit": 20 },
     "frequency": "append_if_changed",
     "refresh_condition": { "kind": "ttl", "ttl_minutes": 5 }
-  }],
-  "skills": ["memory-mem0"]
+  }]
 }
 ```
 
-The skill (`memory-mem0`) must hardcode mem0's tool names. Different providers require different skill
-variants. The LLM must also pass `"user_id": "{{dial_user_id}}"` correctly in write and search calls —
-this relies on prompt engineering, not infrastructure.
+No skill required — the LLM understands mem0's tools from their MCP descriptions. The LLM must pass
+`"user_id": "{{dial_user_id}}"` correctly in write and search calls; this relies on the tool
+descriptions making the argument mandatory and obvious, not on a skill.
 
 #### Open problems in Approach B
 
 1. **Template variable support doesn't exist yet** — code change required in QuickApps core.
-2. **Skill is not portable** — each provider needs its own skill variant with its own tool names.
+2. **No skill portability** — without a normalized adapter, each provider has different tool names
+   and argument shapes. If an operator wants a skill, they must write one per provider.
 3. **Nested JSON injection** — mem0's `user_id` lives inside `{"filters": {"user_id": "..."}}`. Simple
    string substitution risks JSON injection if the user ID contains special characters.
 4. **Weak isolation** — the memory server trusts whatever `user_id` the caller sends. A misconfigured
@@ -338,10 +378,10 @@ this relies on prompt engineering, not infrastructure.
 | Dimension | Approach A: Adapter | Approach B: Dynamic Variables |
 |---|---|---|
 | Operator config | Identical for all backends | Different per provider |
-| Memory skill | Single portable skill | Per-provider variant |
+| Skill required | No (optional) | No (optional, but non-portable across providers) |
 | User isolation | Strong — enforced in adapter | Weak — trusts config |
 | QuickApps code changes | None | Yes — template expansion in hooks |
-| New provider support | Build an adapter (~150 lines) | Write skill variant + document config |
+| New provider support | Build an adapter (~150 lines) | Document config per provider |
 | Risk of user data leak | Low | Higher — wrong template = data leak |
 
 ---
@@ -353,11 +393,16 @@ one user × one QuickApp**. The user's DIAL storage bucket is mounted as a volum
 
 This changes everything.
 
-### How the container model eliminates the multi-tenancy problem
+### How the container model works for file-based providers
 
 A memory server running inside a per-user container is, by definition, serving exactly one user. It is
 back to being the single-user tool it was designed to be. There is no shared state, no `user_id` needed
 anywhere, no isolation machinery.
+
+Note: the isolation principle is not new — DIAL's per-user file storage already enforces it in the
+current shared-service model. The container model makes it structurally impossible to misconfigure
+(a wrong data path can't accidentally reach another user's bucket), and removes the need for any process
+lifecycle management to keep per-user server instances separated.
 
 ```
 User starts a QuickApp session
@@ -386,21 +431,22 @@ filesystem. Spinning it up and down has zero data loss.
 `memory.lance/` in the user's DIAL bucket. The container model makes this the universal convention for
 any provider.
 
-### Which providers fit the container model
+### Which providers fit the file-based / DIAL-bucket pattern
 
-Only file-based providers that can point their data directory at a configurable mount path are compatible.
-Providers requiring external database services (PostgreSQL, Neo4j, FalkorDB) cannot participate — they
-need a long-running server outside the container, which reintroduces multi-tenancy and defeats the purpose.
+File-based providers that accept a configurable data path can use DIAL's per-user file storage for
+isolation. This applies to both the current shared-service model (path resolves to the user's DIAL
+bucket) and the container model (path is a mounted volume from the same bucket). Providers backed by
+external database services cannot participate.
 
-| Provider | Fits container model? | Data path config | Notes |
+| Provider | File-based? | Data path config | Notes |
 |---|---|---|---|
-| **Official MCP Memory** | ✅ Yes | `MCP_MEMORY_FILE_PATH=/data/memory/graph.json` | Simplest option; no LLM needed; keyword search only |
-| **basic-memory** | ✅ Yes | Vault path env var | Markdown notes; keyword search; no LLM needed |
-| **mem0** (Chroma + SQLite) | ✅ Yes (non-default config) | `path: /data/memory/chroma` + `path: /data/memory/mem0.db` | Semantic search; LLM needed for fact extraction |
-| **mem0** (default pgvector) | ❌ No | — | PostgreSQL lives outside the container |
-| **Graphiti** | ❌ No | — | Neo4j / FalkorDB lives outside the container |
+| **Official MCP Memory** | ✅ Yes | `MCP_MEMORY_FILE_PATH=<dial-bucket>/memory.jsonl` | Simplest option; no LLM needed; keyword search only |
+| **basic-memory** | ✅ Yes | Vault path env var | Markdown notes; hybrid search; no LLM needed |
+| **mem0** (Chroma + SQLite) | ✅ Yes (non-default config) | `path: <dial-bucket>/chroma` + `path: <dial-bucket>/mem0.db` | Semantic search; LLM needed for fact extraction |
+| **mem0** (default pgvector) | ❌ No | — | PostgreSQL lives outside QuickApps' storage model |
+| **Graphiti** | ❌ No | — | Neo4j / FalkorDB lives outside QuickApps' storage model |
 | **Zep** | ❌ No | — | Zep server has its own persistent storage |
-| **mcp-obsidian** | ❌ No | — | Requires Obsidian desktop app — incompatible with headless containers |
+| **mcp-obsidian** | ❌ No | — | Requires Obsidian desktop app — incompatible with any server deployment |
 
 ### mem0 with file-based backends
 
@@ -439,30 +485,36 @@ Even in the container model, there are open design questions:
    - Extending the existing toolset config with a `"type": "sidecar-mcp"` variant
    - The orchestration layer (whatever manages containers) handles sidecar injection separately from the app config
 
-2. **Standard tool names still help** — even without `user_id` concerns, a common tool interface
-   (`memory_store`, `memory_search`, `memory_get_context`) means the same predefined skill works for all
-   sidecar providers. Otherwise each provider needs its own skill variant.
+2. **Standard tool names help for Class 2 adapters, not required for sidecars** — in the container
+   model, the sidecar's native tool names are sufficient: the LLM reads their MCP descriptions and
+   uses them without a skill. Normalized names only matter if the operator wants a single optional
+   skill that works across multiple providers.
 
-3. **Startup latency** — the memory sidecar must be ready before QuickApps' first `on_request_start` hook
-   fires. The container orchestrator needs a health-check / readiness gate before routing traffic.
+3. **Startup latency** — if proactive hook injection is configured, the memory sidecar must be ready
+   before the first `on_request_start` hook fires. With reactive retrieval only, startup latency is
+   less critical — the first tool call simply fails gracefully if the sidecar is still initialising.
 
 ---
 
 ## Recommendation: Sequencing
 
-The container model is the simpler and cleaner long-term path. The multi-tenancy machinery in Model 1
-(adapters or dynamic variables) becomes dead weight once containers ship.
+Three paths exist, with meaningfully different cost profiles:
 
-| Option | Build now | Consequence when containers ship |
-|---|---|---|
-| **Wait for containers** | Nothing for external memory | Implement sidecar model once, cleanly |
-| **Model 1 bridge now** | Adapter (A) or dynamic vars (B) | Multi-tenancy code becomes dead weight |
-| **Define sidecar interface now, implement later** | Spec the config format + tool contract | Smooth handoff; no wasted code |
+| Option | Build now | Works today? | Becomes dead weight? |
+|---|---|---|---|
+| **File-based provider via DIAL bucket** | Per-user process lifecycle mechanism; provider config | ✅ Yes | No — same mechanism works in container model |
+| **Server-based adapter (Approach A)** | Adapter per provider (~150 lines each) | ✅ Yes | Partially — adapter becomes unnecessary once containers ship; but low code volume |
+| **Wait for containers, then sidecar** | Spec the config format + tool contract | ❌ Not yet | No — cleanest long-term path |
 
-**Suggested path:** define the sidecar interface today (provider image, data path convention,
-`memory_store` / `memory_search` / `memory_get_context` contract), implement Model 1 bridge only if
-external memory is needed before containers ship. If the container timeline is within one or two
-quarters, the bridge is unlikely to be worth the investment.
+**Suggested path:**
+- If external memory is needed today: start with a **file-based provider** (basic-memory or Official
+  MCP Memory) wired to the user's DIAL bucket. No `user_id`, no adapter, no QuickApps core changes.
+  This investment carries forward cleanly to the container model.
+- If a server-based provider (mem0 pgvector) is specifically required: build an adapter. It is a small
+  investment and the multi-tenancy isolation is straightforward.
+- The Dynamic Variable Injection approach (Approach B) is the highest-risk option and adds a
+  QuickApps core change; avoid unless there is a strong reason to connect directly to a provider's
+  native API without an adapter.
 
 ---
 
@@ -481,8 +533,11 @@ quarters, the bridge is unlikely to be worth the investment.
 
 ## Open Questions
 
-1. **Model 1 bridge: is it needed at all?** If containers ship within one or two quarters, building
-   Approach A adapters or Approach B dynamic variables may not be worth the investment.
+1. **Which integration path first?** File-based providers (basic-memory, Official MCP Memory) are viable
+   today via DIAL bucket access, with no adapter and no QuickApps core changes. Server-based adapters
+   (Approach A) are still worth building if a provider with richer semantics (mem0 pgvector) is
+   specifically requested. Approach B (dynamic variables) is the highest-risk option and should be
+   deprioritised.
 
 2. **Container granularity:** confirmed as per-user (one container = one user × one QuickApp). This
    completely eliminates the `user_id` problem for Model 2.
