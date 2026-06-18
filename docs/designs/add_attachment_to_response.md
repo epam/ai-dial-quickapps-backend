@@ -1,7 +1,6 @@
 # Design: Add Attachment to Response Tool
 
-- **Status:** Approved
-- **Approved:** 2026-06-18
+- **Status:** Draft
 - **Dependencies:**
   - None
 
@@ -13,9 +12,9 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 ## Design Goals
 
-- Give the agent a callable tool to explicitly promote any DIAL file URL to the response attachments array, regardless of MIME type.
+- Give the agent a callable tool to explicitly promote any URL (DIAL or external) to the response attachments array, regardless of MIME type.
 - Gate the tool behind a per-app feature flag so operators control whether agents can use it.
-- Follow the `SomeConfig | None = None` field shape used by other features (same as `dial_files`, but with a plain `Field` rather than `PreviewField` — this feature is not preview-gated).
+- Follow the `PreviewField` + `SomeConfig | None = None` shape used by `dial_files` — this is a preview feature.
 
 ---
 
@@ -29,19 +28,19 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 ### UC-2: Agent attaches a URL received from an external tool
 
-**Trigger:** An MCP or REST tool returns a DIAL file URL. The agent calls `internal_attachments_add` with that URL.
+**Trigger:** An MCP or REST tool returns a DIAL or external file URL. The agent calls `internal_attachments_add` with that URL.
 **Behavior:** The URL is placed in `propagate_to_choice` and forwarded to the choice.
-**Outcome:** The user sees the externally-produced file as a response attachment.
+**Outcome:** The user sees the file as a response attachment.
 
-### UC-3: Agent promotes an admin-attached file
+### UC-3: Agent promotes an admin-attached file on user request
 
-**Trigger:** An operator pre-attaches a file to the application configuration (e.g. a reference document). The agent receives its URL and calls `internal_attachments_add` to re-surface it in the reply.
+**Trigger:** The user asks about a file the operator pre-attached to the application (e.g. "show me the reference document"). The agent locates the file URL from the app context and calls `internal_attachments_add` to surface it in the reply.
 **Behavior:** The attachment URL is placed in `propagate_to_choice` and forwarded to the choice.
-**Outcome:** The user sees the admin-supplied file as a response attachment without the agent needing to re-upload or copy it.
+**Outcome:** The user receives the admin-supplied file as a response attachment without the agent re-uploading or copying it.
 
-### UC-4: Agent re-attaches a file from conversation history
+### UC-4: Agent re-attaches a file from conversation history on user request
 
-**Trigger:** A previous turn's response contained an attachment (e.g. a chart generated earlier). The agent extracts the URL from the conversation history and calls `internal_attachments_add` to include it again in the current reply.
+**Trigger:** The user asks about a file that appeared in a previous response (e.g. "can you send me that chart again?"). The agent finds the URL in conversation history and calls `internal_attachments_add` to include it in the current reply.
 **Behavior:** The URL is promoted to `propagate_to_choice` exactly as in UC-1.
 **Outcome:** The user receives the previously generated file as an attachment in the new response without the agent regenerating it.
 
@@ -61,10 +60,10 @@ class AddAttachmentToolConfig(BaseModel):
     )
 ```
 
-`Features` gets a new field:
+`Features` gets a new field declared with `PreviewField` (same as `dial_files`):
 
 ```python
-add_attachment: AddAttachmentToolConfig | None = Field(
+add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[assignment]
     default=None,
     description=(
         "Enables the internal_attachments_add tool. "
@@ -74,18 +73,18 @@ add_attachment: AddAttachmentToolConfig | None = Field(
 )
 ```
 
-The tool is active when `features.add_attachment` is not `null` **and** `features.add_attachment.enabled` is `true`. The two-level gate is intentional: `null` means "not configured" (tool absent from schema), while `{"enabled": false}` means "configured but deliberately off" — useful when an operator wants to keep the config block while temporarily disabling the tool.
-
-The feature is **not** preview-gated (`@preview_module` / `PreviewField` are not applied). UC-1 depends on `internal_file_write` which is a preview feature, but UC-2–4 work without preview, and the tool itself should be available in non-preview deployments.
+The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment` is not `null`, **and** `features.add_attachment.enabled` is `true`. The two-level gate is intentional: `null` means "not configured", while `{"enabled": false}` means "configured but deliberately off" — useful when an operator wants to keep the config block while temporarily disabling the tool.
 
 ### 2. Tool name constant
 
 `INTERNAL_ATTACHMENTS_ADD_TOOL_NAME = "internal_attachments_add"` is added to
-`src/quickapp/common/tool_names.py`.
+`src/quickapp/common/tool_names.py`, alongside the existing `internal_attachments_*` family.
 
 ### 3. Tool config (`InternalTool` definition)
 
-A new file `src/quickapp/add_attachment_tooling/_tool_configs.py` defines the `InternalTool` config that exposes the tool to the LLM (all unlisted `ConfigurableSchemaSimpleType` fields default, yielding a valid OpenAI function schema):
+A new file `src/quickapp/internal_tooling/_add_attachment_tool_config.py` defines the `InternalTool` config that exposes the tool to the LLM (all unlisted `ConfigurableSchemaSimpleType` fields default, yielding a valid OpenAI function schema).
+
+`propagate_types_to_choice` is explicitly set to `[]` to disable automatic type-based propagation from `attachments`. This allows the tool to set both `attachments` (for stage display) and `propagate_to_choice` (for response) without any risk of duplication — see §4.
 
 ```python
 ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
@@ -94,7 +93,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
             name=INTERNAL_ATTACHMENTS_ADD_TOOL_NAME,
             description=(
                 "Add a file to the attachments of the current response. "
-                "The file must already exist as a DIAL URL (e.g. files/bucket/path/file.csv). "
+                "The file must be accessible via a URL (DIAL URL or external link). "
                 "Use this to surface a file to the user in the final reply."
             ),
             parameters=OpenAiToolFunctionParameters(
@@ -102,7 +101,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
                 properties={
                     "url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="DIAL file URL (e.g. files/bucket/path/report.csv).",
+                        description="File URL — DIAL (e.g. files/bucket/path/report.csv) or external.",
                     ),
                     "title": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -118,19 +117,20 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
         )
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Add attachment")),
+    propagate_types_to_choice=[],
 )
 ```
 
 ### 4. Tool implementation
 
-A new file `src/quickapp/add_attachment_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
+A new file `src/quickapp/internal_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
 a `StagedBaseTool` subclass.
 
 **Parameters (LLM-facing):**
 
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
-| `url` | string | yes | DIAL file URL (e.g. `files/bucket/path/report.csv`) |
+| `url` | string | yes | File URL — DIAL or external |
 | `title` | string | no | Display name shown to the user |
 | `type` | string | no | MIME type. Default: `text/plain` (see Out of Scope for known limitation) |
 
@@ -140,41 +140,23 @@ a `StagedBaseTool` subclass.
 2. Returns `ToolCallResult` with:
    - `content`: a short confirmation string (e.g. `"Attachment added to response: <title or url>"`)
    - `content_type`: `"text/plain"`
-   - `propagate_to_choice`: `[attachment]`
-   - `attachments`: left unset (`None`)
-3. A minimal stage named "Add attachment" is rendered (consistent with `_CurrentTimestampTool`); no network I/O occurs.
+   - `attachments`: `[attachment]` — shown in the stage
+   - `propagate_to_choice`: `[attachment]` — forwarded to the final response
+3. A minimal stage named "Add attachment" is rendered; no network I/O occurs.
 
-`attachments` is intentionally left unset. `StagedBaseTool._run_in_stage_report_success` only post-processes `result.attachments` when it is non-empty — leaving it `None` causes the `propagate_types_to_choice` type-gate, `attachment.supported_types` filter, and media-type substitution to be skipped entirely. This is the desired behaviour: the tool promotes arbitrary types unconditionally. As a consequence, the attachment also receives no media-type substitution.
+`attachments` and `propagate_to_choice` are both set deliberately. Because `ADD_ATTACHMENT_TOOL_CONFIG` sets `propagate_types_to_choice=[]`, `StagedBaseTool._run_in_stage_report_success` will not auto-append anything from `attachments` to `propagate_to_choice` — eliminating any duplication risk for any MIME type. The attachment is shown in the stage via `attachments` and promoted to the response via `propagate_to_choice`.
 
-### 5. Dedicated module and app_factory registration
+### 5. Module wiring
 
-A new `AddAttachmentToolingModule` (following the `DialFilesToolingModule` / `TimestampModule` precedent) is added to `src/quickapp/add_attachment_tooling/add_attachment_tooling_module.py`:
+A new `@multiprovider` method is added to the existing `InternalToolModule`
+(`src/quickapp/internal_tooling/internal_tooling_module.py`). It checks
+`app_config.features.add_attachment` and, if the config is present and `enabled` is `true`,
+returns `_AddAttachmentTool`. This provider is independent of the existing
+`_provide_internal_tools` method (which is tool_sets-driven) — the two methods contribute
+to the same `list[StagedBaseTool]` multibinding independently.
 
-```python
-class AddAttachmentToolingModule(Module):
-
-    def configure(self, binder: Binder) -> None:
-        binder.bind(_AddAttachmentTool, to=_AddAttachmentTool, scope=request_scope)
-
-    @multiprovider
-    def _provide_add_attachment_tool(
-        self,
-        app_config: ApplicationConfig,
-        builder: AssistedBuilder[_AddAttachmentTool],
-    ) -> list[StagedBaseTool]:
-        cfg = app_config.features.add_attachment if app_config.features else None
-        if cfg is None or not cfg.enabled:
-            return []
-        return [
-            builder.build(
-                tool_config=ADD_ATTACHMENT_TOOL_CONFIG,
-                name=INTERNAL_ATTACHMENTS_ADD_TOOL_NAME,
-                description=ADD_ATTACHMENT_TOOL_CONFIG.open_ai_tool.function.description,
-            )
-        ]
-```
-
-`AddAttachmentToolingModule` is registered in `src/quickapp/app_factory.py` alongside the other feature modules.
+`_AddAttachmentTool` is bound at `request_scope` in `configure()`.
+No new module or `app_factory.py` registration is needed.
 
 ---
 
@@ -184,6 +166,7 @@ class AddAttachmentToolingModule(Module):
 - **`reference_url` / `reference_type`** — niche fields not needed for the primary use case.
 - **Validating that the URL is accessible** — the tool does not verify the URL is reachable before adding it. Silently adding an unreachable URL results in a broken attachment in the response; a future `verify` flag could guard against this.
 - **MIME type inference** — when `type` is omitted the attachment defaults to `text/plain` (see §4 parameter table), even for files whose extension implies another type (e.g. `.csv`, `.pdf`). The LLM is expected to supply the correct MIME type; automatic inference from the URL extension is deferred.
+- **External URL access control** — the tool accepts any URL including external links; it makes no network request itself (unlike `ExternalUrlFetcher`), so `EXTERNAL_URL_FETCH_ENABLED` does not apply. Whether the DIAL client can actually render or download an external URL is outside the backend's responsibility.
 
 ---
 
@@ -198,6 +181,8 @@ class AddAttachmentToolingModule(Module):
   }
 }
 ```
+
+Requires `ENABLE_PREVIEW_FEATURES=true` on the deployment.
 
 ### Explicitly disabling while keeping config
 
@@ -242,8 +227,8 @@ None.
 
 ### Non-breaking changes
 
-- New `add_attachment` field in `Features` — defaults to `null`, so existing apps are unaffected.
-- New tool is only registered when `features.add_attachment` is set and `enabled` is `true`.
+- New `add_attachment` field in `Features` — defaults to `null` and is preview-gated, so existing apps are unaffected.
+- New tool is only registered when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment` is set, and `enabled` is `true`.
 
 ---
 
@@ -252,9 +237,8 @@ None.
 | Component | Change |
 |-----------|--------|
 | `src/quickapp/common/tool_names.py` | Add `INTERNAL_ATTACHMENTS_ADD_TOOL_NAME` |
-| `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` field to `Features` |
-| `src/quickapp/add_attachment_tooling/_tool_configs.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
-| `src/quickapp/add_attachment_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
-| `src/quickapp/add_attachment_tooling/add_attachment_tooling_module.py` | New file — `AddAttachmentToolingModule` with feature-gated `@multiprovider` |
-| `src/quickapp/app_factory.py` | Register `AddAttachmentToolingModule` |
+| `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` `PreviewField` to `Features` |
+| `src/quickapp/internal_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
+| `src/quickapp/internal_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
+| `src/quickapp/internal_tooling/internal_tooling_module.py` | New `@multiprovider` + `configure()` binding to register the tool when feature is enabled |
 | `make dump_app_schema` | Re-run after config changes to regenerate JSON schema |
