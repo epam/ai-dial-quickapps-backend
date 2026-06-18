@@ -3,6 +3,7 @@ from enum import Enum
 
 class ToolNames(Enum):
     INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT = "internal_attachments_available_context"
+    INTERNAL_ATTACHMENTS_GET_CONTENT = "internal_attachments_get_content"
     INTERNAL_SKILLS_READ_SKILL = "internal_skills_read_skill"
     INTERNAL_FILE_READ_LINES = "internal_file_read_lines"
 

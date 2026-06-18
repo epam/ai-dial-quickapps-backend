@@ -4,8 +4,8 @@ import pytest
 from aidial_sdk.chat_completion import CustomContent, FunctionCall, ToolCall
 from aidial_sdk.chat_completion.request import Message, Role
 
-from quickapp.agent.models import TOOL_EXECUTION_HISTORY
-from quickapp.application._messages_setup import _MessagesSetup
+from quickapp.core.agent.models import TOOL_EXECUTION_HISTORY
+from quickapp.core.application import _MessagesSetup
 
 
 def make_tool_call(id: str, name: str = "test_tool", arguments: str = "{}") -> ToolCall:
@@ -237,6 +237,37 @@ class TestExtractToolCallsFromStateProcessor:
         assert final_msg.custom_content.state is not None
         assert TOOL_EXECUTION_HISTORY not in final_msg.custom_content.state
         assert final_msg.custom_content.state.get("other_key") == "preserved"
+
+    @pytest.mark.asyncio
+    async def test_new_format_tool_message_with_stripped_attachments_restores_normally(self):
+        """Persisted history may omit tool attachments but keep other custom_content fields."""
+        msgs_setup = _MessagesSetup([])
+        tc = make_tool_call("tc-1", "my_tool")
+
+        tool_history = [
+            {"role": "assistant", "content": "", "tool_calls": [tc.model_dump(mode="json")]},
+            {
+                "role": "tool",
+                "content": '{"ok": true}',
+                "tool_call_id": "tc-1",
+                "custom_content": {"state": {"marker": "kept"}},
+            },
+        ]
+
+        messages = [
+            Message(
+                role=Role.ASSISTANT,
+                content="done",
+                custom_content=CustomContent(state={TOOL_EXECUTION_HISTORY: tool_history}),
+            )
+        ]
+
+        result = msgs_setup.extract_tool_calls(messages)
+
+        assert len(result) == 3
+        assert result[1].role == Role.TOOL
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.state == {"marker": "kept"}
 
     def test_is_legacy_format_detection(self):
         """Test format detection helper."""

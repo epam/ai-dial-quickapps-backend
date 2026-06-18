@@ -24,7 +24,6 @@ from injector import ProviderOf
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.file_loading_size_limit_resolver import FileLoadingSizeLimitResolver
 from quickapp.common.state_holder import StateHolder
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
@@ -34,6 +33,9 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetNotFoundException,
 )
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
 from quickapp.usage_statistics._pricing_registry import _PricingRegistry
 from quickapp.usage_statistics._pricing_service import _PricingService
 from tests.unit_tests.common.common import noop_timeout_resolver_provider

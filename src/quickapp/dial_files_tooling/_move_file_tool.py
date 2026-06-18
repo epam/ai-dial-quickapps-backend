@@ -36,10 +36,11 @@ class _MoveFileTool(_DialFileTool):
         except EtagMismatchError as e:
             raise InvalidToolCallParameterException(
                 "destination",
-                f"destination already exists: {dest_display}; pass overwrite=True to replace",
+                f"destination already exists: {dest_display}. Ask the user whether to "
+                "replace it; only if they approve, retry with overwrite=True.",
             ) from e
         except DialException as e:
-            self._check_permission_denied(e, source_url, parameter_name="source")
+            self._check_permission_denied(e, source, parameter_name="source")
             raise
 
         result = ToolCallResult(content=f"Moved to: {dest_display}", content_type="text/plain")

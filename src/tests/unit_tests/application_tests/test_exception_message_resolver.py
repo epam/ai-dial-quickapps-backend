@@ -2,8 +2,8 @@ import httpx
 import openai
 import pytest
 
-from quickapp.application._exception_message_resolver import resolve_exception_message
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.core.application._exception_message_resolver import resolve_exception_message
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,

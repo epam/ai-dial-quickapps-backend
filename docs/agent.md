@@ -201,8 +201,9 @@ Quick Apps supports several tool types:
   response body is wrapped as a file attachment. Defaults to disabled — responses are returned as text only.
 - **DIAL Deployment Tools**: Invocations of other DIAL deployments (models, applications)
 - **MCP Tools**: Tools from Model Context Protocol servers
-- **Internal Tools**: Built-in tools like Python interpreter and content downloader. The context notification tool is
-  registered conditionally (see [Attachment Notification](#attachment-notification))
+- **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
+  tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
+  conditionally (see [Attachment Notification](#attachment-notification)).
 
 ### Parallel Execution
 
@@ -290,7 +291,7 @@ The setup pipeline runs the following steps in order:
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
-   using the `available_context` tool. Returns messages unchanged when inactive.
+   using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
 
 4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
    `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
@@ -335,7 +336,7 @@ The system uses two separate mechanisms to inform the agent about available file
   originated from the model's own prior output, and re-presenting them as XML conditions the model to
   mimic the format in its responses.
 - **Admin context files**: The Attachment Notification Injector uses synthetic tool call/result messages via the
-  `available_context` internal tool. This provides structured metadata without modifying user messages.
+  `internal_attachments_available_context` internal tool. This provides structured metadata without modifying user messages.
 
 ### Activation Conditions
 
@@ -355,7 +356,7 @@ both the tool provider and the injector see fully expanded messages and are alwa
 
 ### Context Notification Tool
 
-The **`available_context`** internal tool returns metadata about admin-configured context files attached to the
+The **`internal_attachments_available_context`** internal tool returns metadata about admin-configured context files attached to the
 application. Each entry contains:
 
 - **Title**: File name
@@ -365,8 +366,11 @@ application. Each entry contains:
 - **Change Status**: Whether the file is `new` (added), `updated` (metadata changed), or `removed` since the last
   notification
 
-Only metadata is returned — actual file content is not included. The agent can use the content downloader tool to fetch
-file contents when needed.
+Only metadata is returned — actual file content is not included. When the orchestrator deployment accepts the file MIME
+(per DialCore `input_attachment_types`) and the lazy materialization gate passes, the **`internal_attachments_get_content`** tool
+may appear in the tool list; the model passes the exact `url` from the list response to retrieve **one** configured file
+as a tool-result attachment. Otherwise the orchestrator must rely on other configured tools (for example RAG) or answer
+without that native attachment path.
 
 ### Algorithmic Injection
 
@@ -375,7 +379,7 @@ have changed since the last notification was injected.
 
 If changes are detected, synthetic message pairs are appended to the message history:
 
-1. An **assistant message** containing a tool call to `available_context`
+1. An **assistant message** containing a tool call to `internal_attachments_available_context`
 2. A **tool result message** with the current metadata and change indicators
 
 These synthetic messages appear to the LLM as if the tool was already called, giving it up-to-date context awareness
@@ -396,7 +400,36 @@ LLM. The agent can call it at any point during the conversation to re-check avai
   Runs inside `AssistantInvoker` as a `PreInvocationTransformer`, not as a message-history pre-transformer.
 - **Python Interpreter Tool**: Continues to access attachments from user messages via `custom_content` for file
   transfer to the interpreter session.
-- **Content Downloader Tool**: The agent can use this tool to fetch actual file content when needed.
+- **Admin context content (`internal_attachments_get_content`)**: Registered only when the
+  [lazy-on-demand attachment strategy](#orchestrator-attachment-strategies) is active. Supplies a single
+  admin-configured (or user-uploaded) file as a tool attachment after list-then-get-content; see
+  `docs/designs/pass_attachments_to_orchestrator.md`.
+
+---
+
+## Orchestrator attachment strategies
+
+`OrchestratorConfig.attachment_strategy` (preview field, gated by `ENABLE_PREVIEW_FEATURES`) selects how
+the orchestrator receives request-scoped attachments. The field is **opt-in per app**: when unset, the
+orchestrator gets no admin/user attachments on the native path — USER `image/*` passes through (legacy
+behaviour preserved by `_LegacyUserImageKeepPolicy`), other MIMEs are surfaced as XML metadata only.
+
+### `lazy_on_demand` strategy
+
+Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_strategies/lazy_on_demand/`).
+The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
+no-op unless both gates pass. When active it contributes:
+
+- `_GetContentTool` (`internal_attachments_get_content`) — registered when at least one admin context or
+  user attachment passes the orchestrator's `input_attachment_types` MIME gate.
+- `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
+  pairs for attachments on the last USER message.
+- `_GetContentKeepPolicy`, `_GetContentHistoryPolicy`, `_GetContentRecoveryPolicy` — keep, persist, and
+  recover get-content tool messages and their attachments.
+
+The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
+`OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future
+module that needs DialCore deployment metadata, not only this strategy.
 
 ---
 
@@ -409,9 +442,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 The application is composed of 15 specialized DI modules. Rather than registering each module
 individually, `app_factory` splices in two package-level arrays:
 
-- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`).
-  (Physically relocating the `agent/` and `application/` source into `core/` is a follow-up; for now the
-  array aggregates them from their current packages.)
+- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`). Both `agent/` and `application/` physically live under `core/`.
 - `quickapp.shared` exposes `shared_module` — cross-cutting utility modules. Today it holds a single
   entry, `ExternalFetchModule` (the external-URL fetch egress envelope, see module 11), and is the seam
   future utility modules join by appending.
@@ -426,7 +457,7 @@ individually, `app_factory` splices in two package-level arrays:
    `/v1/deployments/{deployment_id}/mcp`) or a customised `DialDeploymentTool` to the MCP / Deployment
    initializers for execution.
 6. **MCP Tooling Module**: MCP server tool construction
-7. **Internal Tool Module**: Python interpreter, content downloader
+7. **Internal Tool Module**: Python interpreter and other built-in tools configured per application
 8. **Starters Module**: UI starter button configuration
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
@@ -439,7 +470,8 @@ individually, `app_factory` splices in two package-level arrays:
     feature modules outside `file_transfer/` can consume it without an upward import. External egress is gated by
     a two-tier policy: `EXTERNAL_URL_FETCH_ENABLED` (admin) and per-app `features.external_url_fetch.enabled`
     (builder), composed by `ExternalUrlFetchPolicyResolver`.
-12. **Attachment Processing Module**: Context notification tool, attachment change detection injector
+12. **Attachment Processing Module**: `internal_attachments_available_context`, optional `internal_attachments_get_content`
+  (when gated), attachment change detection injector
 13. **Timestamp Module**: Timestamp tool, injection/annotation transformers, metadata enricher
 14. **Skills Module**: Skill reader tool, agent skills provider, skills registry
 15. **DIAL Prompt Skills Module**: Resolver for DIAL-prompt-sourced skills
@@ -483,6 +515,8 @@ The root configuration contains:
 - **Deployment**: Which LLM model/deployment to use, with optional parameters
 - **System Prompt**: Predefined or custom instructions for the agent
 - **Max Iterations**: Limit on agent loop iterations to prevent runaway execution
+- **Attachment Strategy** (preview): How the orchestrator receives request-scoped
+  attachments. See [Orchestrator attachment strategies](#orchestrator-attachment-strategies).
 
 ### Tool Sets
 
@@ -518,9 +552,10 @@ For implementation details, refer to:
 
 | Area                  | Directory                             |
 |-----------------------|---------------------------------------|
-| Agent and processors  | `src/quickapp/agent/`                 |
+| Agent and processors  | `src/quickapp/core/agent/`            |
 | Base abstractions     | `src/quickapp/common/`                |
-| Request handling      | `src/quickapp/application/`           |
+| Request handling      | `src/quickapp/core/application/`      |
 | Configuration schemas | `src/quickapp/config/`                |
 | Attachment processing | `src/quickapp/attachment_processing/` |
+| Attachment strategies | `src/quickapp/orchestrator_attachment_strategies/` |
 | Tool implementations  | `src/quickapp/*_tooling/`             |

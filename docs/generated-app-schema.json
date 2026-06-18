@@ -1060,6 +1060,7 @@
                   "list",
                   "read_lines",
                   "search",
+                  "find",
                   "write",
                   "edit",
                   "delete",
@@ -1080,6 +1081,17 @@
           "description": "Optional sub-directory inside the agent's appdata folder used as the root for relative paths. Empty (default) means the appdata root. Must be a relative path; absolute 'files/...' URLs, leading '/', and '..' segments are rejected. Example: 'workspace/'.",
           "title": "Agent Home Dir",
           "type": "string"
+        },
+        "tool_call_result_offload": {
+          "$ref": "#/$defs/ToolCallResultOffloadConfig",
+          "description": "Offload oversized tool-call responses to a file, read back on demand via the read_lines / search file tools. Toggled by its `enabled` flag, whose default is governed by TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT. Requires read_lines and search to be exposed via enabled_tools."
+        },
+        "max_files_scanned": {
+          "default": 50,
+          "description": "Folder-mode 'search' cap: the maximum number of files downloaded and scanned in a single call before the search stops and appends a truncation notice. Bounds worst-case egress on large subtrees.",
+          "minimum": 1,
+          "title": "Max Files Scanned",
+          "type": "integer"
         }
       },
       "title": "DialFilesConfig",
@@ -1468,8 +1480,14 @@
             }
           ],
           "default": null,
-          "description": "The format of the parameter value. If present then the value will be wrapped in ```{format} {parameter value}```.",
+          "description": "Controls whether the value is wrapped in a fenced code block (so it is shown verbatim, not rendered as markdown). None: render raw. Empty string: plain code block with no language. Non-empty: code block with that language (e.g. 'json'). The fence auto-sizes to survive backtick runs in the value.",
           "title": "Format"
+        },
+        "order": {
+          "default": 0,
+          "description": "Sort position of the parameter in the stage content. Lower values come first; equal values keep their original order. Use a positive value to push long parameters to the end.",
+          "title": "Order",
+          "type": "integer"
         }
       },
       "title": "FormattedParameterConfig",
@@ -1779,6 +1797,20 @@
         "type"
       ],
       "title": "JsonSchemaSimpleType",
+      "type": "object"
+    },
+    "LazyOnDemandAttachmentStrategy": {
+      "description": "Orchestrator receives admin/user files only on explicit\n``internal_attachments_get_content`` tool calls (not as default-prompt\nattachments). MIME gating uses the orchestrator deployment's\n``input_attachment_types`` from DialCore.",
+      "properties": {
+        "type": {
+          "const": "lazy_on_demand",
+          "default": "lazy_on_demand",
+          "description": "Strategy discriminator.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "LazyOnDemandAttachmentStrategy",
       "type": "object"
     },
     "MCPApiKeyAuthorization": {
@@ -2857,6 +2889,26 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "TTLRefreshCondition": {
+      "properties": {
+        "kind": {
+          "const": "ttl",
+          "default": "ttl",
+          "title": "Kind",
+          "type": "string"
+        },
+        "ttl_minutes": {
+          "exclusiveMinimum": 0,
+          "title": "Ttl Minutes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "ttl_minutes"
+      ],
+      "title": "TTLRefreshCondition",
+      "type": "object"
+    },
     "ToolCallHookConfig": {
       "properties": {
         "event": {
@@ -2904,6 +2956,17 @@
         "frequency": {
           "$ref": "#/$defs/InjectionFrequency",
           "default": "append_if_changed"
+        },
+        "refresh_condition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TTLRefreshCondition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -2911,6 +2974,33 @@
         "tool_name"
       ],
       "title": "ToolCallHookConfig",
+      "type": "object"
+    },
+    "ToolCallResultOffloadConfig": {
+      "description": "Per-app config for offloading oversized tool-call responses to DIAL files.\n\nToggled by the explicit `enabled` flag; `size_threshold` / `excluded_tools`\nare carried regardless so an app can disable offload without losing its\noverrides. Field defaults come from `ToolCallResultOffloadSettings` so env\nvars set the global baseline.",
+      "properties": {
+        "enabled": {
+          "description": "Whether to offload oversized tool-call responses to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT env var. Requires read_lines and search to be exposed via enabled_tools.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "size_threshold": {
+          "description": "Byte threshold above which a tool-call response is offloaded to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var.",
+          "exclusiveMinimum": 0,
+          "title": "Size Threshold",
+          "type": "integer"
+        },
+        "excluded_tools": {
+          "description": "Additional tool names exempt from offloading. Defaults to the TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Excluded Tools",
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "title": "ToolCallResultOffloadConfig",
       "type": "object"
     },
     "ToolCallTimestampConfig": {
@@ -3140,6 +3230,19 @@
           "description": "When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
           "title": "Propagate Stages",
           "type": "boolean"
+        },
+        "attachment_strategy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LazyOnDemandAttachmentStrategy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only).",
+          "x-preview": true
         }
       },
       "required": [

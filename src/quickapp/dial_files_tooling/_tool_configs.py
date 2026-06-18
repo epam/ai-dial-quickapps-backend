@@ -1,3 +1,14 @@
+from quickapp.common.tool_names import (
+    INTERNAL_FILE_COPY_TOOL_NAME,
+    INTERNAL_FILE_DELETE_TOOL_NAME,
+    INTERNAL_FILE_EDIT_TOOL_NAME,
+    INTERNAL_FILE_FIND_TOOL_NAME,
+    INTERNAL_FILE_LIST_TOOL_NAME,
+    INTERNAL_FILE_MOVE_TOOL_NAME,
+    INTERNAL_FILE_READ_LINES_TOOL_NAME,
+    INTERNAL_FILE_SEARCH_TOOL_NAME,
+    INTERNAL_FILE_WRITE_TOOL_NAME,
+)
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -11,18 +22,23 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
-
-TOOL_NAME_PREFIX = "internal_file_"
+from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH
 
 _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
+)
+
+# Long, free-form text values: wrap in a verbatim code block (so markdown is not
+# rendered) and push them to the end of the stage parameter list.
+_FILE_CONTENT_DISPLAY_CONFIG = ParameterDisplayConfig(
+    stage=FormattedParameterConfig(format="", order=1)
 )
 
 
 LIST_FILES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}list",
+            name=INTERNAL_FILE_LIST_TOOL_NAME,
             description=(
                 "List entries (files and folders) under a folder in DIAL storage. "
                 "Depth-bounded recursion."
@@ -43,7 +59,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.integer,
                         description=(
                             "Recursion depth. 1 = immediate children only. "
-                            "Range: [1, 10]. Default: 1."
+                            f"Range: [1, {_MAX_DEPTH}]. Default: 1."
                         ),
                     ),
                 },
@@ -57,7 +73,7 @@ LIST_FILES_TOOL_CONFIG = InternalTool(
 READ_FILE_LINES_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}read_lines",
+            name=INTERNAL_FILE_READ_LINES_TOOL_NAME,
             description=(
                 "Read a range of lines from a file stored in DIAL. "
                 "Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. "
@@ -99,10 +115,13 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
 SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}search",
+            name=INTERNAL_FILE_SEARCH_TOOL_NAME,
             description=(
-                "Search for a substring in a file stored in DIAL. "
-                "Returns matching lines with optional surrounding context."
+                "Search for a substring in a single file or a whole folder tree stored "
+                "in DIAL. For a folder, end the path with '/' to search recursively "
+                "(e.g. 'reports/'); omit the trailing slash to search one file "
+                "(e.g. 'reports/summary.md'). Returns matching lines with optional "
+                "surrounding context."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -110,8 +129,10 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                     "path": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description=(
-                            "Relative path under the agent's home dir, or absolute "
-                            "DIAL file URL starting with 'files/'."
+                            "File or folder. Relative under the agent's home dir, or "
+                            "absolute DIAL URL starting with 'files/'. Folder mode (recursive "
+                            "content search) when the path ends with '/' or is a root-of-home "
+                            "reference (''); otherwise a single file is searched."
                         ),
                         display=_PATH_IN_TITLE,
                     ),
@@ -127,6 +148,29 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.boolean,
                         description="If true, search is case-insensitive. Default: false.",
                     ),
+                    "output_mode": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder mode only. Either 'content' (matching lines with "
+                            "context, default) or 'files_with_matches' (matching paths only, "
+                            "for cheap triage before pulling content)."
+                        ),
+                    ),
+                    "name_filter": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder mode only. Glob (**, *, ?) matched against each "
+                            "candidate's path relative to the search folder; non-matching "
+                            "files are excluded before download (e.g. '**/*.csv')."
+                        ),
+                    ),
+                    "max_depth": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Folder mode only. Recursion depth. 1 = immediate children "
+                            f"only. Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
+                        ),
+                    ),
                 },
                 required=["path", "pattern"],
             ),
@@ -135,15 +179,62 @@ SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Search in file")),
 )
 
+FIND_FILES_TOOL_CONFIG = InternalTool(
+    open_ai_tool=OpenAiToolConfig(
+        function=OpenAiToolFunction(
+            name=INTERNAL_FILE_FIND_TOOL_NAME,
+            description=(
+                "Find files by name or path glob in DIAL storage, walking the folder "
+                "tree via metadata only (no file contents are downloaded). Returns "
+                "matching paths with sizes, ready to feed into read_lines, search, or "
+                "edit."
+            ),
+            parameters=OpenAiToolFunctionParameters(
+                type=JsonTypeEnum.object,
+                properties={
+                    "pattern": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Glob (**, *, ?) matched against each entry's path relative "
+                            "to the search folder, e.g. '**/*.py', 'report-*.csv', "
+                            "'data/**/*.json'. '*' and '?' do not cross '/'; '**' does."
+                        ),
+                    ),
+                    "path": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Folder to search under. Relative under the agent's home dir, "
+                            "or absolute DIAL folder URL starting with 'files/'. "
+                            "Default: '' (home root)."
+                        ),
+                        display=_PATH_IN_TITLE,
+                    ),
+                    "max_depth": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Recursion depth. 1 = immediate children only. "
+                            f"Range: [1, {_MAX_DEPTH}]. Default: {_MAX_DEPTH}."
+                        ),
+                    ),
+                },
+                required=["pattern"],
+            ),
+        )
+    ),
+    display=ToolDisplayConfig(stage=ToolStageConfig(name="Find files")),
+)
+
 WRITE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}write",
+            name=INTERNAL_FILE_WRITE_TOOL_NAME,
             description=(
-                "Create or overwrite a UTF-8 text file under the agent's home dir. "
+                "Create a UTF-8 text file under the agent's home dir. "
                 "Relative path only (absolute files/... URLs are rejected). "
                 "Nested paths allowed; '..' rejected. Default content_type is text/plain. "
-                "overwrite=False fails on collision; overwrite=True replaces with ETag guard."
+                "Always call with overwrite=false first. If it reports the file already "
+                "exists, ask the user whether to replace it and only retry with "
+                "overwrite=true once they approve — never set overwrite=true on your own."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -160,6 +251,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
                     "content": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="UTF-8 text content of the file.",
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                     "content_type": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
@@ -170,7 +262,12 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing file. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous write failed because the file exists AND the user has "
+                            "explicitly approved replacing it. When true, the file is created "
+                            "if missing or replaced if it exists."
+                        ),
                     ),
                 },
                 required=["path", "content"],
@@ -183,7 +280,7 @@ WRITE_FILE_TOOL_CONFIG = InternalTool(
 EDIT_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}edit",
+            name=INTERNAL_FILE_EDIT_TOOL_NAME,
             description=(
                 "Replace a unique substring in an existing UTF-8 text file. "
                 "old_string must occur exactly once. Fails if the file changed concurrently."
@@ -205,10 +302,12 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
                             "Exact substring to replace. Must occur exactly once. "
                             "Include surrounding context to disambiguate."
                         ),
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                     "new_string": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description="Replacement text. May be empty to delete the match.",
+                        display=_FILE_CONTENT_DISPLAY_CONFIG,
                     ),
                 },
                 required=["path", "old_string", "new_string"],
@@ -221,7 +320,7 @@ EDIT_FILE_TOOL_CONFIG = InternalTool(
 DELETE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}delete",
+            name=INTERNAL_FILE_DELETE_TOOL_NAME,
             description="Delete a file from DIAL storage. Hard delete; no undo.",
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -245,7 +344,7 @@ DELETE_FILE_TOOL_CONFIG = InternalTool(
 COPY_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}copy",
+            name=INTERNAL_FILE_COPY_TOOL_NAME,
             description=(
                 "Copy a file server-side in DIAL storage. Source can be relative "
                 "(agent's home dir) or absolute files/... URL. Destination must be "
@@ -271,7 +370,11 @@ COPY_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing destination. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous copy failed because the destination exists AND the user "
+                            "has explicitly approved replacing it. Never set true on your own."
+                        ),
                     ),
                 },
                 required=["source", "destination"],
@@ -284,7 +387,7 @@ COPY_FILE_TOOL_CONFIG = InternalTool(
 MOVE_FILE_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=f"{TOOL_NAME_PREFIX}move",
+            name=INTERNAL_FILE_MOVE_TOOL_NAME,
             description=(
                 "Move (rename) a file within the agent's home dir in DIAL storage. "
                 "Both source and destination must be relative paths. The original file "
@@ -310,7 +413,11 @@ MOVE_FILE_TOOL_CONFIG = InternalTool(
                     ),
                     "overwrite": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.boolean,
-                        description="If true, replace an existing destination. Default: false.",
+                        description=(
+                            "Default and strongly preferred: false. Leave false unless a "
+                            "previous move failed because the destination exists AND the user "
+                            "has explicitly approved replacing it. Never set true on your own."
+                        ),
                     ),
                 },
                 required=["source", "destination"],
@@ -324,6 +431,7 @@ ALL_FILE_TOOL_CONFIGS = [
     LIST_FILES_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
+    FIND_FILES_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
     EDIT_FILE_TOOL_CONFIG,
     DELETE_FILE_TOOL_CONFIG,

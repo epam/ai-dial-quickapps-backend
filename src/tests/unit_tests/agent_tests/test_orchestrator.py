@@ -3,15 +3,26 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import openai
 import pytest
-from aidial_sdk.chat_completion.request import FunctionCall, Message, Role, ToolCall
+from aidial_sdk.chat_completion.request import (
+    Attachment,
+    CustomContent,
+    FunctionCall,
+    Message,
+    Role,
+    ToolCall,
+)
 
-from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
-from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.core.agent import Orchestrator
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
+    _GetContentHistoryPolicy,
+)
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
 
@@ -662,3 +673,239 @@ class TestBuildToolExecutionHistory:
         # Final ASSISTANT without tool_calls is excluded
         assert len(result) == 2
         assert all(r["role"] != "assistant" or "tool_calls" in r for r in result)
+
+    def test_history_includes_synthetic_get_content_pair_in_current_turn(self):
+        messages = [
+            Message(role=Role.USER, content="first"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-old", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(role=Role.TOOL, content='{"ok": true}', tool_call_id="tc-old"),
+            Message(role=Role.ASSISTANT, content="answer one"),
+            Message(role=Role.USER, content="second"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-synth", name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME)
+                ],
+            ),
+            Message(
+                role=Role.TOOL,
+                content='{"ok": true, "url": "files/bucket/new.pdf"}',
+                tool_call_id="tc-synth",
+                custom_content=CustomContent(
+                    attachments=[
+                        Attachment(
+                            title="new.pdf",
+                            type="application/pdf",
+                            url="files/bucket/new.pdf",
+                        )
+                    ]
+                ),
+            ),
+            Message(role=Role.ASSISTANT, content="answer two"),
+        ]
+        orchestrator = _make_orchestrator(messages)
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-synth"
+        assert result[1]["role"] == "tool"
+        assert result[1]["tool_call_id"] == "tc-synth"
+
+
+@pytest.mark.asyncio
+async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_history():
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[
+            _make_accumulated_tool_call(
+                id="tc-1",
+                name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                arguments='{"attachment_url":"files/bucket/report.pdf"}',
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
+        state=None,
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(
+        role=Role.TOOL,
+        content='{"ok": true}',
+        tool_call_id="tc-1",
+        custom_content=CustomContent(
+            attachments=[
+                Attachment(
+                    title="report.pdf",
+                    type="application/pdf",
+                    url="files/bucket/report.pdf",
+                )
+            ],
+            state={"marker": "keep"},
+        ),
+    )
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.propagate_to_choice = []
+    tool_result.usage = []
+
+    tool_executor = Mock()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=SpyChoice(),
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[_GetContentHistoryPolicy()],
+    )
+
+    await orchestrator.invoke()
+
+    state_holder.add_state.assert_called_once()
+    key, value = state_holder.add_state.call_args[0]
+    assert key == TOOL_EXECUTION_HISTORY
+    assert isinstance(value, list)
+    tool_entry = value[1]
+    assert tool_entry["role"] == "tool"
+    custom_content = tool_entry.get("custom_content")
+    assert isinstance(custom_content, dict)
+    assert "attachments" not in custom_content
+    assert custom_content.get("state") == {"marker": "keep"}
+
+
+@pytest.mark.asyncio
+async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_history():
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[
+            _make_accumulated_tool_call(
+                id="tc-1",
+                name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                arguments='{"attachment_url":"files/bucket/report.pdf"}',
+            )
+        ],
+        usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
+        state=None,
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, RuntimeError("interrupted")]
+    )
+
+    state_holder = Mock()
+    state_holder.get_state = Mock(return_value={})
+    state_holder.add_state = Mock()
+
+    tool_message = Message(
+        role=Role.TOOL,
+        content='{"ok": true}',
+        tool_call_id="tc-1",
+        custom_content=CustomContent(
+            attachments=[
+                Attachment(
+                    title="report.pdf",
+                    type="application/pdf",
+                    url="files/bucket/report.pdf",
+                )
+            ]
+        ),
+    )
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.propagate_to_choice = []
+    tool_result.usage = []
+
+    tool_executor = Mock()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    orchestrator = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=SpyChoice(),
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[_GetContentHistoryPolicy()],
+    )
+
+    with pytest.raises(RuntimeError, match="interrupted"):
+        await orchestrator.invoke()
+
+    state_holder.add_state.assert_called_once()
+    key, value = state_holder.add_state.call_args[0]
+    assert key == TOOL_EXECUTION_HISTORY
+    assert isinstance(value, list)
+    tool_entry = value[1]
+    custom_content = tool_entry.get("custom_content")
+    assert isinstance(custom_content, dict)
+    assert "attachments" in custom_content

@@ -4,13 +4,14 @@ from enum import Enum
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.fields import FieldInfo
 
-from quickapp.agent.agent_settings import AgentSettings
 from quickapp.common.base_config import BaseApplicationTypeConfig, PreviewField, has_preview_marker
 from quickapp.common.feature_settings import FeatureSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import AgentSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
@@ -68,6 +69,15 @@ class OrchestratorConfig(BaseModel):
     propagate_stages: bool = Field(
         default=True,
         description="When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
+    )
+    attachment_strategy: LazyOnDemandAttachmentStrategy | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "How the orchestrator receives request-scoped attachments. "
+            "When unset, the orchestrator gets no admin/user attachments on the "
+            "native path (legacy behaviour: USER `image/*` passes through, other "
+            "MIMEs are surfaced as XML metadata only)."
+        ),
     )
 
 

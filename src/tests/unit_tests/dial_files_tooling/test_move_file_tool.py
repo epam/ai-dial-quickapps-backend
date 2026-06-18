@@ -60,6 +60,8 @@ class TestMoveFile:
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, source="a.md", destination="b.md")
         assert exc.value.parameter_name == "destination"
+        assert "Ask the user" in exc.value.message
+        assert "overwrite=True" in exc.value.message
 
     @pytest.mark.asyncio
     async def test_source_not_found_raises(self):

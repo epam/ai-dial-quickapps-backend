@@ -11,16 +11,7 @@ def _builder():
 
 
 def _make_builders():
-    return (
-        _builder(),
-        _builder(),
-        _builder(),
-        _builder(),
-        _builder(),
-        _builder(),
-        _builder(),
-        _builder(),
-    )
+    return tuple(_builder() for _ in range(9))
 
 
 class TestDialFilesToolingModule:
@@ -31,12 +22,12 @@ class TestDialFilesToolingModule:
         result = module._provide_dial_files_tools(app_config, *_make_builders())
         assert result == []
 
-    def test_enabled_all_returns_eight_tools(self):
+    def test_enabled_all_returns_all_tools(self):
         module = DialFilesToolingModule()
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools="all")
         result = module._provide_dial_files_tools(app_config, *_make_builders())
-        assert len(result) == 8
+        assert len(result) == 9
 
     def test_enabled_subset_filters_tools(self):
         module = DialFilesToolingModule()
@@ -48,3 +39,13 @@ class TestDialFilesToolingModule:
         # read is builder[1] (after list)
         builders[1].build.assert_called_once()
         builders[0].build.assert_not_called()
+
+    def test_find_is_gated_by_enabled_tools(self):
+        module = DialFilesToolingModule()
+        app_config = MagicMock()
+        app_config.features.dial_files = DialFilesConfig(enabled_tools=["find"])
+        builders = _make_builders()
+        result = module._provide_dial_files_tools(app_config, *builders)
+        assert len(result) == 1
+        # find is builder[3] (list, read, search, find)
+        builders[3].build.assert_called_once()

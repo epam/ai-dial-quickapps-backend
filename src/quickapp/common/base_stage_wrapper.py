@@ -5,6 +5,7 @@ from typing import Any, cast
 from aidial_sdk.chat_completion import Attachment, Stage
 
 from quickapp.common import ToolCallResult
+from quickapp.common.utils import fenced_code_block
 from quickapp.config.tools.base import BaseOpenAITool, BaseTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
@@ -129,8 +130,9 @@ class BaseStageWrapper(ABC):
             else param_value
         )
 
-        if display_config.format:
-            result_value = f"\n```{display_config.format}\n{result_value}\n\n```"
+        if display_config.format is not None:
+            block = fenced_code_block(str(result_value), display_config.format)
+            result_value = f"\n{block}\n"
 
         return str(result_value)
 

@@ -19,7 +19,6 @@ from quickapp.common.chat_completion_stream.handler import (
 )
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
-from quickapp.common.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
@@ -28,6 +27,7 @@ from quickapp.dial_deployment_tooling.constants import (
     EXTRA_BODY,
     EXTRA_HEADERS,
 )
+from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
 

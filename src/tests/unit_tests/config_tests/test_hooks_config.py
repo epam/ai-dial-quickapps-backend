@@ -2,7 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
-from quickapp.config.hooks import HookConfig, HookEvent, ToolCallHookConfig
+from quickapp.config.hooks import HookConfig, HookEvent, ToolCallHookConfig, TTLRefreshCondition
 from tests.unit_tests.common.common import create_app_configuration
 
 
@@ -46,6 +46,29 @@ class TestToolCallHookConfig:
         cfg = ToolCallHookConfig.model_validate(data)
         assert cfg.tool_name == "fetch_prefs"
         assert cfg.frequency == InjectionFrequency.ALWAYS
+
+    def test_refresh_condition_defaults_to_none(self):
+        cfg = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
+        assert cfg.refresh_condition is None
+
+    def test_refresh_condition_accepts_ttl(self):
+        rc = TTLRefreshCondition(ttl_minutes=30)
+        cfg = ToolCallHookConfig(
+            event=HookEvent.ON_REQUEST_START, tool_name="my_tool", refresh_condition=rc
+        )
+        assert isinstance(cfg.refresh_condition, TTLRefreshCondition)
+        assert cfg.refresh_condition.ttl_minutes == 30
+
+    def test_refresh_condition_parses_ttl_from_dict(self):
+        data = {
+            "kind": "tool_call",
+            "event": "on_request_start",
+            "tool_name": "fetch_memories",
+            "refresh_condition": {"kind": "ttl", "ttl_minutes": 1440},
+        }
+        cfg = ToolCallHookConfig.model_validate(data)
+        assert isinstance(cfg.refresh_condition, TTLRefreshCondition)
+        assert cfg.refresh_condition.ttl_minutes == 1440
 
     def test_hook_config_parses_tool_call_variant(self):
         data = {
