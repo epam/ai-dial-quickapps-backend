@@ -22,25 +22,25 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 ### UC-1: Agent promotes a written file to the response
 
-**Trigger:** The agent writes a CSV report with `internal_file_write` (preview feature) and then calls `internal_add_attachment` with the returned DIAL URL.
+**Trigger:** The agent writes a CSV report with `internal_file_write` (preview feature) and then calls `internal_attachments_add` with the returned DIAL URL.
 **Behavior:** The orchestrator adds the attachment to the choice via `propagate_to_choice`. Note: `text/csv` is not in the automatic propagation allowlist, so without this tool the file would not appear in the response.
 **Outcome:** The user sees the CSV as a downloadable attachment in the final response, not only in the stage.
 
 ### UC-2: Agent attaches a URL received from an external tool
 
-**Trigger:** An MCP or REST tool returns a DIAL file URL. The agent calls `internal_add_attachment` with that URL.
+**Trigger:** An MCP or REST tool returns a DIAL file URL. The agent calls `internal_attachments_add` with that URL.
 **Behavior:** The URL is placed in `propagate_to_choice` and forwarded to the choice.
 **Outcome:** The user sees the externally-produced file as a response attachment.
 
 ### UC-3: Agent promotes an admin-attached file
 
-**Trigger:** An operator pre-attaches a file to the application configuration (e.g. a reference document). The agent receives its URL and calls `internal_add_attachment` to re-surface it in the reply.
+**Trigger:** An operator pre-attaches a file to the application configuration (e.g. a reference document). The agent receives its URL and calls `internal_attachments_add` to re-surface it in the reply.
 **Behavior:** The attachment URL is placed in `propagate_to_choice` and forwarded to the choice.
 **Outcome:** The user sees the admin-supplied file as a response attachment without the agent needing to re-upload or copy it.
 
 ### UC-4: Agent re-attaches a file from conversation history
 
-**Trigger:** A previous turn's response contained an attachment (e.g. a chart generated earlier). The agent extracts the URL from the conversation history and calls `internal_add_attachment` to include it again in the current reply.
+**Trigger:** A previous turn's response contained an attachment (e.g. a chart generated earlier). The agent extracts the URL from the conversation history and calls `internal_attachments_add` to include it again in the current reply.
 **Behavior:** The URL is promoted to `propagate_to_choice` exactly as in UC-1.
 **Outcome:** The user receives the previously generated file as an attachment in the new response without the agent regenerating it.
 
@@ -56,7 +56,7 @@ A new `AddAttachmentToolConfig` model is added to `src/quickapp/config/applicati
 class AddAttachmentToolConfig(BaseModel):
     enabled: bool = Field(
         default=True,
-        description="Set to false to disable the internal_add_attachment tool.",
+        description="Set to false to disable the internal_attachments_add tool.",
     )
 ```
 
@@ -66,7 +66,7 @@ class AddAttachmentToolConfig(BaseModel):
 add_attachment: AddAttachmentToolConfig | None = Field(
     default=None,
     description=(
-        "Enables the internal_add_attachment tool. "
+        "Enables the internal_attachments_add tool. "
         "Omit or set to null to disable. "
         "Set to {} or {\"enabled\": true} to enable."
     ),
@@ -79,7 +79,7 @@ The feature is **not** preview-gated (`@preview_module` / `PreviewField` are not
 
 ### 2. Tool name constant
 
-`INTERNAL_ADD_ATTACHMENT_TOOL_NAME = "internal_add_attachment"` is added to
+`INTERNAL_ATTACHMENTS_ADD_TOOL_NAME = "internal_attachments_add"` is added to
 `src/quickapp/common/tool_names.py`.
 
 ### 3. Tool config (`InternalTool` definition)
@@ -90,7 +90,7 @@ A new file `src/quickapp/add_attachment_tooling/_tool_configs.py` defines the `I
 ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=INTERNAL_ADD_ATTACHMENT_TOOL_NAME,
+            name=INTERNAL_ATTACHMENTS_ADD_TOOL_NAME,
             description=(
                 "Add a file to the attachments of the current response. "
                 "The file must already exist as a DIAL URL (e.g. files/bucket/path/file.csv). "
@@ -167,7 +167,7 @@ class AddAttachmentToolingModule(Module):
         return [
             builder.build(
                 tool_config=ADD_ATTACHMENT_TOOL_CONFIG,
-                name=INTERNAL_ADD_ATTACHMENT_TOOL_NAME,
+                name=INTERNAL_ATTACHMENTS_ADD_TOOL_NAME,
                 description=ADD_ATTACHMENT_TOOL_CONFIG.open_ai_tool.function.description,
             )
         ]
@@ -182,7 +182,7 @@ class AddAttachmentToolingModule(Module):
 - **`data` field support** — passing raw base64 data through the LLM is impractical for files of any size. Deferred until there is a concrete use case.
 - **`reference_url` / `reference_type`** — niche fields not needed for the primary use case.
 - **Validating that the URL is accessible** — the tool does not verify the URL is reachable before adding it. Silently adding an unreachable URL results in a broken attachment in the response; a future `verify` flag could guard against this.
-- **MIME type inference** — when `type` is omitted the attachment defaults to `text/plain`, even for files whose extension implies another type (e.g. `.csv`, `.pdf`). The LLM is expected to supply the correct MIME type; automatic inference from the URL extension is deferred.
+- **MIME type inference** — when `type` is omitted the attachment defaults to `text/plain` (see §4 parameter table), even for files whose extension implies another type (e.g. `.csv`, `.pdf`). The LLM is expected to supply the correct MIME type; automatic inference from the URL extension is deferred.
 
 ---
 
@@ -212,7 +212,7 @@ class AddAttachmentToolingModule(Module):
 
 ```json
 {
-  "name": "internal_add_attachment",
+  "name": "internal_attachments_add",
   "arguments": {
     "url": "files/appdata/report.csv",
     "title": "Monthly Report",
@@ -250,7 +250,7 @@ None.
 
 | Component | Change |
 |-----------|--------|
-| `src/quickapp/common/tool_names.py` | Add `INTERNAL_ADD_ATTACHMENT_TOOL_NAME` |
+| `src/quickapp/common/tool_names.py` | Add `INTERNAL_ATTACHMENTS_ADD_TOOL_NAME` |
 | `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` field to `Features` |
 | `src/quickapp/add_attachment_tooling/_tool_configs.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
 | `src/quickapp/add_attachment_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
