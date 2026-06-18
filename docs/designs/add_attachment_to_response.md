@@ -84,7 +84,7 @@ The feature is **not** preview-gated (`@preview_module` / `PreviewField` are not
 
 ### 3. Tool config (`InternalTool` definition)
 
-A new file `src/quickapp/internal_tooling/_tool_configs.py` (or equivalent, e.g. alongside `_add_attachment_tool.py`) defines the `InternalTool` config that exposes the tool to the LLM:
+A new file `src/quickapp/add_attachment_tooling/_tool_configs.py` defines the `InternalTool` config that exposes the tool to the LLM (all unlisted `ConfigurableSchemaSimpleType` fields default, yielding a valid OpenAI function schema):
 
 ```python
 ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
@@ -122,7 +122,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
 
 ### 4. Tool implementation
 
-A new file `src/quickapp/internal_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
+A new file `src/quickapp/add_attachment_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
 a `StagedBaseTool` subclass.
 
 **Parameters (LLM-facing):**
@@ -140,11 +140,11 @@ a `StagedBaseTool` subclass.
    - `content`: a short confirmation string (e.g. `"Attachment added to response: <title or url>"`)
    - `content_type`: `"text/plain"`
    - `propagate_to_choice`: `[attachment]`
-3. No network I/O, no stage output — the tool is instantaneous.
+3. A minimal stage named "Add attachment" is rendered (consistent with `_CurrentTimestampTool`); no network I/O occurs.
 
 ### 5. Dedicated module and app_factory registration
 
-A new `AddAttachmentToolingModule` (following the `DialFilesToolingModule` / `AttachmentProcessingModule` precedent) is added to `src/quickapp/internal_tooling/add_attachment_tooling_module.py`:
+A new `AddAttachmentToolingModule` (following the `DialFilesToolingModule` / `TimestampModule` precedent) is added to `src/quickapp/add_attachment_tooling/add_attachment_tooling_module.py`:
 
 ```python
 class AddAttachmentToolingModule(Module):
@@ -179,6 +179,7 @@ class AddAttachmentToolingModule(Module):
 - **`data` field support** — passing raw base64 data through the LLM is impractical for files of any size. Deferred until there is a concrete use case.
 - **`reference_url` / `reference_type`** — niche fields not needed for the primary use case.
 - **Validating that the URL is accessible** — the tool does not verify the URL is reachable before adding it. Silently adding an unreachable URL results in a broken attachment in the response; a future `verify` flag could guard against this.
+- **MIME type inference** — when `type` is omitted the attachment defaults to `text/plain`, even for files whose extension implies another type (e.g. `.csv`, `.pdf`). The LLM is expected to supply the correct MIME type; automatic inference from the URL extension is deferred.
 
 ---
 
@@ -249,9 +250,9 @@ None.
 |-----------|--------|
 | `src/quickapp/common/tool_names.py` | Add `INTERNAL_ADD_ATTACHMENT_TOOL_NAME` |
 | `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` field to `Features` |
-| `src/quickapp/internal_tooling/_tool_configs.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
-| `src/quickapp/internal_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
-| `src/quickapp/internal_tooling/add_attachment_tooling_module.py` | New file — `AddAttachmentToolingModule` with feature-gated `@multiprovider` |
+| `src/quickapp/add_attachment_tooling/_tool_configs.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
+| `src/quickapp/add_attachment_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
+| `src/quickapp/add_attachment_tooling/add_attachment_tooling_module.py` | New file — `AddAttachmentToolingModule` with feature-gated `@multiprovider` |
 | `src/quickapp/app_factory.py` | Register `AddAttachmentToolingModule` |
 | `make dump_app_schema` | Re-run after config changes to regenerate JSON schema |
 
