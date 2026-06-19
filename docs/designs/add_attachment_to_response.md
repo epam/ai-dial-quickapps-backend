@@ -1,7 +1,6 @@
 # Design: Add Attachment to Response Tool
 
-- **Status:** Approved
-- **Approved:** 2026-06-18
+- **Status:** Draft
 - **Dependencies:**
   - None
 
@@ -45,7 +44,14 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 **Behavior:** The URL is promoted to `propagate_to_choice` exactly as in UC-1.
 **Outcome:** The user receives the previously generated file as an attachment in the new response without the agent regenerating it.
 
+### UC-5: Agent attaches a URL that was already propagated to the current response
+
+**Trigger:** A URL was already added to the response's attachments — either by the automatic `propagate_types_to_choice` path (e.g. an image written by `internal_file_write`) or by an earlier `internal_add_attachment` call in the same turn. The agent calls `internal_add_attachment` again for the same URL.
+**Behavior:** `choice.add_attachment()` has no deduplication — it streams each attachment as a new chunk with an incrementing index. The URL is added a second time.
+**Outcome:** The attachment appears **twice** in the response. Agents must avoid calling `internal_add_attachment` for URLs they know are already propagated in the current turn.
+
 ---
+
 
 ## Proposed Design
 
