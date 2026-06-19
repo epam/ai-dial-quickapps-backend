@@ -38,6 +38,7 @@ def _make_chat_request(headers: dict | None = None) -> MagicMock:
     request.bearer_token = "test-bearer"
     request.messages = []
     request.response_format = None
+    request.tool_choice = None
     request.headers = headers or {}
     request.request_dial_application_properties = AsyncMock(return_value={})
     return request

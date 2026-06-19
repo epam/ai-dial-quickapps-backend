@@ -199,6 +199,11 @@ class TestRunner:
                 request_payload["response_format"] = test_case.response_format
                 logger.debug(f"Using response_format: {test_case.response_format}")
 
+            # Add tool_choice if specified in test case
+            if test_case.tool_choice is not None:
+                request_payload["tool_choice"] = test_case.tool_choice
+                logger.debug(f"Using tool_choice: {test_case.tool_choice}")
+
             response = client.post(
                 TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
                 headers=headers,

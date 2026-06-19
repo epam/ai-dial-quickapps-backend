@@ -48,6 +48,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorStaticToolsContext,
 )
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator
@@ -77,6 +78,7 @@ class AgentModule(Module):
     def configure(self, binder: Binder) -> None:
         # FIXME: mypy warning:
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
+        binder.bind(_ToolChoiceHolder, to=_ToolChoiceHolder, scope=request_scope)
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(
             DeferredStageCloseRegistry,
