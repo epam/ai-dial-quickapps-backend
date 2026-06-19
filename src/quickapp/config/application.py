@@ -186,7 +186,7 @@ class Features(BaseModel):
         default_factory=StageDisplayConfig,
         description="Controls which stage levels are rendered to the user.",
     )
-    dial_files: DialFilesConfig | None = PreviewField(  # type: ignore[assignment]
+    dial_files: DialFilesConfig | None = Field(
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
