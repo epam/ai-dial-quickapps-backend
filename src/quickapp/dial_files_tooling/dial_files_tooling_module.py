@@ -7,7 +7,6 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
-from quickapp.common.preview import preview_module
 from quickapp.common.tool_names import (
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
     INTERNAL_FILE_SEARCH_TOOL_NAME,
@@ -43,7 +42,6 @@ from quickapp.dial_files_tooling._write_file_tool import _WriteFileTool
 logger = logging.getLogger(__name__)
 
 
-@preview_module
 class DialFilesToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
@@ -145,8 +143,7 @@ class DialFilesToolingModule(Module):
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )
         offload = cfg.tool_call_result_offload
-        if not offload.enabled:
-            # Operator explicitly turned offload off: stay inline, no warning.
+        if offload is None or not offload.enabled:
             return ResolvedOffloadConfig(
                 enabled=False, size_threshold=0, excluded_tools=frozenset()
             )

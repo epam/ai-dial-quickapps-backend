@@ -3,6 +3,8 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from quickapp.common.base_config import PreviewField
+
 DialFilesToolName = Literal[
     "list",
     "read_lines",
@@ -77,7 +79,7 @@ class DialFilesConfig(BaseModel):
             "and '..' segments are rejected. Example: 'workspace/'."
         ),
     )
-    tool_call_result_offload: ToolCallResultOffloadConfig = Field(
+    tool_call_result_offload: ToolCallResultOffloadConfig | None = PreviewField(  # type: ignore[assignment]
         default_factory=ToolCallResultOffloadConfig,
         description=(
             "Offload oversized tool-call responses to a file, read back on demand via the "
