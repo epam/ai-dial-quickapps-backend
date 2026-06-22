@@ -81,7 +81,7 @@ add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[a
 )
 ```
 
-The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment` is not `null`, **and** `features.add_attachment.enabled` is `true`. The `enabled` flag supplements the presence gate: `null` means "not configured at all", while `{"enabled": false}` means "configured block present but deliberately off" — useful for operators who want to temporarily disable the tool without losing their config.
+The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment` is not `null`, **and** `features.add_attachment.enabled` is `true`. The `enabled` flag supplements the presence gate: `null` means "not configured at all", while `{"enabled": false}` means "configured block present but deliberately off" — useful for operators who want to temporarily disable the tool without losing their config. (`dial_files` is the `PreviewField` + `| None` shape precedent; the nested `enabled` toggle follows `ToolCallResultOffloadConfig`, which uses the same pattern.)
 
 ### 2. Tool name constant
 
@@ -97,9 +97,9 @@ A new file `src/quickapp/internal_tooling/_add_attachment_tool_config.py` define
 `InternalTool` config (all unlisted `ConfigurableSchemaSimpleType` fields default, yielding
 a valid OpenAI function schema).
 
-Two config choices are load-bearing:
-- `propagate_types_to_choice=[]` — disables automatic type-based propagation from `attachments`, eliminating any duplication risk when both `attachments` and `propagate_to_choice` are set (see §4).
-- `supported_types` is left at its default `[ALL_MIME_TYPES]` — so the stage renders the attachment for any MIME type the agent supplies.
+Two `attachment` (`AttachmentConfig`) choices matter:
+- `propagate_types_to_choice=[]` — disables the automatic type-based auto-append from `attachments` to `propagate_to_choice` in `StagedBaseTool`. The tool sets `propagate_to_choice` directly (§4), so this avoids a same-result double-add. (Cross-tool / cross-source duplicates are handled authoritatively by §6.)
+- `supported_types` is left at its default — so the stage renders the attachment for any MIME type the agent supplies.
 
 ```python
 ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
@@ -132,7 +132,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
         )
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Add attachment")),
-    propagate_types_to_choice=[],
+    attachment=AttachmentConfig(propagate_types_to_choice=[]),
 )
 ```
 
@@ -147,7 +147,7 @@ a `StagedBaseTool` subclass.
 |------|------|----------|-------------|
 | `url` | string | yes | File URL — DIAL or external |
 | `title` | string | no | Display name shown to the user |
-| `type` | string | no | MIME type. Default: `text/plain` (see Out of Scope for known limitation) |
+| `type` | string | no | MIME type. Default: `text/plain` — a deliberate choice matching `internal_file_write`, not the SDK's `text/markdown` default (see Out of Scope for the inference limitation) |
 
 **Runtime behaviour:**
 
@@ -159,7 +159,7 @@ a `StagedBaseTool` subclass.
    - `propagate_to_choice`: `[attachment]` — forwarded to the final response
 3. A minimal stage named "Add attachment" is rendered; no network I/O occurs.
 
-`attachments` and `propagate_to_choice` are both set deliberately. Because `propagate_types_to_choice=[]`, `StagedBaseTool._run_in_stage_report_success` will not auto-append anything from `attachments` to `propagate_to_choice`, eliminating any duplication risk for any MIME type. The attachment is shown in the stage via `attachments` and promoted to the response via `propagate_to_choice`.
+`attachments` and `propagate_to_choice` are both set deliberately: the attachment is shown in the stage via `attachments` and promoted to the response via `propagate_to_choice`. The `propagate_types_to_choice=[]` config (§3) stops `StagedBaseTool._run_in_stage_report_success` from auto-appending the same attachment a second time within this one tool result. Duplicates that span multiple tool calls or the automatic propagation path are handled by the orchestrator-level URL dedup in §6, which is the authoritative guard.
 
 ### 5. Module wiring
 
@@ -199,7 +199,7 @@ The orchestrator's propagation loop (`src/quickapp/core/agent/orchestrator.py:17
 
 To guarantee Design Goal "never surface the same URL twice," the orchestrator tracks already-propagated URLs across all iterations of a single `invoke()` and skips repeats:
 
-- A request-scoped instance attribute `self.__propagated_attachment_urls: set[str]` is added in `Orchestrator.__init__` (alongside the existing per-request counters like `__iterations_counter`).
+- A `self.__propagated_attachment_urls: set[str]` instance attribute is added in `Orchestrator.__init__`. `Orchestrator` is `request_scope`-bound, so a fresh instance (and a fresh empty set) exists per request.
 - In the propagation loop, before calling `choice.add_attachment(...)`, the orchestrator checks the attachment's `url`. If the URL is already in the set, the attachment is skipped (logged at debug). Otherwise the URL is added to the set and the attachment is streamed.
 - Attachments without a `url` (e.g. `data`-only attachments) are never deduplicated — they are always streamed, since there is no stable key to compare.
 
@@ -275,7 +275,7 @@ None.
 ### Non-breaking changes
 
 - New preview-gated `add_attachment` field in `Features` — existing apps are unaffected.
-- Orchestrator attachment deduplication (§6) applies to all apps, not just those using this tool. It can only *remove* duplicate streamed attachments, never drop a distinct URL, so any observable change is the disappearance of a pre-existing duplicate — an improvement, not a regression.
+- Orchestrator attachment deduplication (§6) applies to all apps. It only collapses repeated URLs; distinct URLs are never dropped.
 
 ---
 
