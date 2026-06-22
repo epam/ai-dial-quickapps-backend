@@ -21,9 +21,9 @@ _LAZY_CONTEXT_MODELS = [
 
 @pytest.mark.integration
 @e2e_test(
-    config_file_set="lazy_admin_context",
+    config_file_set="no_additional_tools",
     models_applicable_for_test=_LAZY_CONTEXT_MODELS,
-    runs=1,
+    runs=2,
     include_rest_toolset=False,
     application_context_files=[
         _DOCS / "ontologies.pdf",
@@ -36,12 +36,36 @@ _LAZY_CONTEXT_MODELS = [
         similarity_threshold=0.8,
     )
     .add_user_message(
-        user_message="enlist all tools that you have",
-        answer=[
-            "I have access to internal_attachments_available_context and "
-            "internal_attachments_get_content tools for listing and loading admin context files.",
-            "Available tools: internal_attachments_available_context (lists admin files) and "
-            "internal_attachments_get_content (loads a specific file).",
+        user_message="enlist tool names that you have",
+        answer=["""
+Tool names I have access to (with what they do):
+
+- `functions.internal_attachments_available_context` — list admin-configured context attachments available to load
+- `functions.internal_attachments_get_content` — load one attachment by its provided `url`
+- `functions.internal_skills_read_skill` — read the full content of an agent skill/instructions
+
+DIAL file storage tools:
+
+- `functions.internal_file_list` — list files/folders under a path (optionally recursive to a depth)
+- `functions.internal_file_find` — find files by glob pattern (metadata-only walk)
+- `functions.internal_file_read_lines` — read specific line ranges from a text file
+- `functions.internal_file_search` — search for a substring across a file or folder tree
+- `functions.internal_file_write` — create a new UTF-8 text file
+- `functions.internal_file_edit` — replace a unique substring in an existing UTF-8 text file
+- `functions.internal_file_copy` — copy a file server-side
+- `functions.internal_file_move` — move/rename a file
+- `functions.internal_file_delete` — delete a file
+
+Parallel wrapper:
+
+- `multi_tool_use.parallel` — run multiple tool calls in parallel (only for the developer-defined tools above)
+
+If you tell me what you want to do (e.g., “search all files for X”, “read a PDF attachment”, “create/edit a report file”), I’ll suggest the best tool(s) to use.
+"""],
+        tool_calls=[
+            ToolCall(
+                ToolNames.INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT.value, min_calls=0, max_calls=4
+            ),
         ],
     )
     .add_user_message(
@@ -71,6 +95,15 @@ _LAZY_CONTEXT_MODELS = [
             8. TopBraid Composer
             9. OntoGraf
             10. VOWL""",
+            """
+            1. Protégé
+            2. Topbraid Composer
+            3. Ontostudio
+            4. Fluent Editor
+            5. VocBench
+            6. Swoop
+            7. Obo-edit
+            """,
         ],
     ),
 )

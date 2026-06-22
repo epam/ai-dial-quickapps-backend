@@ -1,7 +1,7 @@
 from typing import Any
 
 from fastmcp.utilities.json_schema import dereference_refs
-from jsonref import replace_refs  # type: ignore[import-untyped]
+from jsonref import JsonRefError, replace_refs  # type: ignore[import-untyped]
 
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
@@ -21,6 +21,23 @@ class JsonSchemaConverter:
     Handles $ref resolution internally via fastmcp dereference_refs(), falling back
     to jsonref.replace_refs() for schemas with circular references.
     """
+
+    @staticmethod
+    def _contains_ref(obj: Any) -> bool:
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                return True
+            return any(JsonSchemaConverter._contains_ref(v) for v in obj.values())
+        if isinstance(obj, list):
+            return any(JsonSchemaConverter._contains_ref(v) for v in obj)
+        return False
+
+    @staticmethod
+    def _dereference_with_jsonref(schema_dict: dict[str, Any]) -> dict[str, Any]:
+        dereferenced = replace_refs(schema_dict, proxies=False, lazy_load=False)
+        if not isinstance(dereferenced, dict):
+            raise TypeError(f"Expected dict from replace_refs, got {type(dereferenced).__name__}")
+        return dereferenced
 
     @staticmethod
     def _normalize_type(type_field: str | list[str] | None) -> str | None:
@@ -206,14 +223,15 @@ class JsonSchemaConverter:
         try:
             schema_dict = dereference_refs(schema_dict)
         except RecursionError:
-            # Circular inline $ref (e.g. "#/properties/node") causes RecursionError
-            # in fastmcp 3.x's _strip_discriminator. Fall back to bare jsonref which
-            # produces circular Python dicts that _convert_properties handles via id().
-            dereferenced = replace_refs(schema_dict, proxies=False, lazy_load=False)
-            if not isinstance(dereferenced, dict):
-                raise TypeError(
-                    f"Expected dict from replace_refs, got {type(dereferenced).__name__}"
-                )
-            schema_dict = dereferenced
+            # Circular inline $ref can blow the stack in fastmcp post-processing.
+            schema_dict = JsonSchemaConverter._dereference_with_jsonref(schema_dict)
+        else:
+            if JsonSchemaConverter._contains_ref(schema_dict):
+                # fastmcp may leave inline circular $ref unresolved; jsonref materializes
+                # circular Python dicts that _convert_properties handles via id().
+                try:
+                    schema_dict = JsonSchemaConverter._dereference_with_jsonref(schema_dict)
+                except JsonRefError:
+                    pass  # broken refs -> ValueError during conversion
 
         return JsonSchemaConverter._convert_properties(schema_dict)

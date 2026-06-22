@@ -189,6 +189,19 @@ class UserMessage(BaseModel):
             object.__setattr__(self, "attachment_checks", [])
 
 
+class SkillFileConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+
+
+class TestContextConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    path: Path
+    description: str | None = None
+
+
 class TstCase:
     def __init__(
         self,

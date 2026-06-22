@@ -1,0 +1,7 @@
+Admin-configured integration test context.
+
+The three items are:
+
+- AlphaReader
+- BetaIndexer
+- GammaMapper

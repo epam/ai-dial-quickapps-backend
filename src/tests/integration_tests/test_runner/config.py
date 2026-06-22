@@ -2,7 +2,6 @@ import json
 import logging
 import os
 from enum import Enum
-from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic.type_adapter import TypeAdapter
@@ -13,7 +12,9 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import PredefinedSystemPromptConfig
+from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from tests.integration_tests.test_runner.paths import TOOLSETS_DIR
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ file_sets = {
     "integration": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter", "test_mcp_tool"],
     "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
-    "lazy_admin_context": [],
+    "no-additional-tools": [],
 }
 
 
@@ -65,6 +66,7 @@ class TestConfig:
         cls,
         toolsets: list[ToolSet],
         model: str,
+        skill_urls: list[str] | None = None,
         contexts: list[Context] | None = None,
         attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
     ) -> ApplicationConfig:
@@ -78,6 +80,8 @@ class TestConfig:
                 temperature = 1
             template = "gpt_prompt"
 
+        skills = [DialPromptSkillConfig(url=url) for url in skill_urls] if skill_urls else None
+
         return ApplicationConfig(
             orchestrator=OrchestratorConfig(
                 deployment=DialDeploymentConfig(
@@ -87,8 +91,9 @@ class TestConfig:
                 system_prompt=PredefinedSystemPromptConfig(template=template),
                 attachment_strategy=attachment_strategy,
             ),
-            contexts=list(contexts or []),
+            contexts=contexts or [],
             tool_sets=toolsets,
+            skills=skills,
             features=Features(dial_files=DialFilesConfig()),
         )
 
@@ -102,7 +107,7 @@ class TestConfig:
         files_list = file_sets.get(config_file_set) or []
         tool_set_list: list[ToolSet] = []
         for file in files_list:
-            file_path = Path(__file__).parent / f"{file}.json"
+            file_path = TOOLSETS_DIR / f"{file}.json"
             data = json.loads(file_path.read_text())
             tool_set: ToolSet = TypeAdapter(ToolSet).validate_python(data)
             tool_set_list.append(tool_set)
