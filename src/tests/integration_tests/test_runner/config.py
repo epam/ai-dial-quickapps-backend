@@ -26,7 +26,6 @@ file_sets = {
     "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
     "no-additional-tools": [],
-    "lazy_admin_context": [],
 }
 
 

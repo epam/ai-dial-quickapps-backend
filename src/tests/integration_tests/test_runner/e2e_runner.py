@@ -575,15 +575,7 @@ def e2e_test(
             test_stats,
             run_index,
         ):
-            contexts: list[FileContextConfig] = []
-            if _application_context_files:
-                await prepare_contexts(contexts)
-
             tool_sets = TestConfig.load_tools_config(unique_port, config_file_set, include_rest_toolset=_include_rest_toolset)
-            app_config: ApplicationConfig = TestConfig.create_app_configuration(
-                toolsets=tool_sets, model=execution_model,                contexts=contexts,
-                attachment_strategy=_attachment_strategy,
-            )
 
             app = TestApp.get_app(port=unique_port)
             client = TestClient(app)
@@ -605,12 +597,12 @@ def e2e_test(
                 test_file_path = Path(str(request.node.fspath))
             test_file_dir = test_file_path.parent
             normalized_contexts = TestRunner.normalize_context_configs(
-                contexts, test_file_dir=test_file_dir
+                _application_context_files, test_file_dir=test_file_dir
             )
             app_contexts = await TestRunner.resolve_application_contexts(
                 dial_url=TestDialCoreConfig.REMOTE_DIAL_URL,
                 headers=headers,
-                contexts=normalized_contexts,
+                contexts=normalized_contexts
             )
 
             app_config: ApplicationConfig = TestConfig.create_app_configuration(
@@ -618,6 +610,7 @@ def e2e_test(
                 model=execution_model,
                 skill_urls=skill_urls or None,
                 contexts=app_contexts,
+                attachment_strategy=_attachment_strategy
             )
 
             # Combine CLI flag with decorator parameter - CLI takes precedence
