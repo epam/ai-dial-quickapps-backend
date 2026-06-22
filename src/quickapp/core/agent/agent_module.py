@@ -1,6 +1,7 @@
 import copy
 
 from aidial_sdk.chat_completion.request import StaticTool
+from aidial_sdk.exceptions import InvalidRequestError
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
@@ -9,6 +10,7 @@ from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
     ORCHESTRATOR_AZURE_CLIENT,
+    TOOL_NAMES,
     ForwardedHeaders,
     StagedBaseTool,
 )
@@ -57,6 +59,7 @@ from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabiliti
 from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
+from quickapp.core.application._request_context import _RequestContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -179,6 +182,37 @@ class AgentModule(Module):
         self, orchestrator_static_tools_context: _OrchestratorStaticToolsContext
     ) -> list[StaticTool]:
         return orchestrator_static_tools_context.static_tools
+
+    @multiprovider
+    def provide_extra_openai_tools(
+        self,
+        context: _RequestContext,
+        tools: list[StagedBaseTool],
+        static_tools: list[StaticTool],
+    ) -> list[OpenAiToolConfigDict]:
+        extra_tools = context.extra_tools
+        if not extra_tools:
+            return []
+        server_names: set[str] = {
+            tool.tool_config.open_ai_tool.function.name
+            for tool in tools
+            if issubclass(type(tool.tool_config), BaseOpenAITool)
+        } | {st.static_function.name for st in static_tools}
+        for t in extra_tools:
+            if t.function.name in server_names:
+                raise InvalidRequestError(
+                    message=f"Tool name '{t.function.name}' conflicts with a server-configured tool",
+                    display_message=(
+                        f"The tool name '{t.function.name}' conflicts with a server-configured tool."
+                        " Use a different name."
+                    ),
+                )
+        return [t.model_dump(mode="json", exclude_none=True) for t in extra_tools]
+
+    @provider
+    @request_scope
+    def provide_tool_names(self, context: _RequestContext) -> TOOL_NAMES:
+        return frozenset(t.function.name for t in context.extra_tools)
 
     @staticmethod
     def _remove_const_params(open_ai_tool):

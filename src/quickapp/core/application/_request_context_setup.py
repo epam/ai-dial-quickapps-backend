@@ -1,6 +1,7 @@
 import logging
 
 from aidial_sdk.chat_completion import Choice, Message, Request
+from aidial_sdk.chat_completion.request import Tool
 from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
@@ -62,14 +63,14 @@ class _RequestContextSetup:
         if isinstance(request, Request):
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
+            if request.response_format:
+                context.response_format = request.response_format
+            if request.tool_choice is not None:
+                context.tool_choice = request.tool_choice
+            if request.tools:
+                context.extra_tools = [t for t in request.tools if isinstance(t, Tool)]
         if choice:
             context.choice = choice
-
-        if isinstance(request, Request) and request.response_format:
-            context.response_format = request.response_format
-
-        if isinstance(request, Request) and request.tool_choice is not None:
-            context.tool_choice = request.tool_choice
 
     async def setup_messages(self, messages: list[Message]) -> None:
         """Populate ``context.messages`` from the raw request messages and
