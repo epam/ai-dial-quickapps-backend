@@ -1,7 +1,6 @@
 # Design: Add Attachment to Response Tool
 
-- **Status:** Approved
-- **Approved:** 2026-06-19
+- **Status:** Draft
 - **Dependencies:**
   - None
 
@@ -16,6 +15,7 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 - Give the agent a callable tool to explicitly promote any URL (DIAL or external) to the response attachments array, regardless of MIME type.
 - Gate the tool behind a per-app feature flag so operators control whether agents can use it.
 - Follow the `PreviewField` + `SomeConfig | None = None` shape used by `dial_files` — this is a preview feature.
+- Never surface the same attachment URL twice in a response, regardless of how many propagation sources reference it.
 
 ---
 
@@ -48,8 +48,8 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 ### UC-5: Agent attaches a URL that was already propagated to the current response
 
 **Trigger:** A URL was already added to the response's attachments — either by the automatic `propagate_types_to_choice` path (e.g. an image written by `internal_file_write`) or by an earlier `internal_add_attachment` call in the same turn. The agent calls `internal_add_attachment` again for the same URL.
-**Behavior:** `choice.add_attachment()` has no deduplication — it streams each attachment as a new chunk with an incrementing index. The URL is added a second time.
-**Outcome:** The attachment appears **twice** in the response. Agents must avoid calling `internal_add_attachment` for URLs they know are already propagated in the current turn.
+**Behavior:** The orchestrator deduplicates by URL before streaming to the choice (see §6). The second occurrence is silently skipped.
+**Outcome:** The attachment appears **once** in the response, regardless of how many tools (or the automatic path) tried to propagate it. The agent does not need to track what has already been attached.
 
 ---
 
@@ -193,6 +193,18 @@ def _provide_add_attachment_tool(
 
 This provider is independent of `_provide_internal_tools` (which is tool_sets-driven) — both contribute to the same `list[StagedBaseTool]` multibinding.
 
+### 6. Orchestrator-level deduplication
+
+The orchestrator's propagation loop (`src/quickapp/core/agent/orchestrator.py:172-176`) currently calls `choice.add_attachment(...)` for every entry in every tool result's `propagate_to_choice` with no deduplication. `choice.add_attachment()` itself does not dedup — it streams each call as a new chunk with an incrementing index. So the same URL can be streamed to the response multiple times across a single turn (UC-5): once via the automatic `propagate_types_to_choice` path and again via an `internal_add_attachment` call, or via two tool calls referencing the same file.
+
+To guarantee Design Goal "never surface the same URL twice," the orchestrator tracks already-propagated URLs across all iterations of a single `invoke()` and skips repeats:
+
+- A request-scoped instance attribute `self.__propagated_attachment_urls: set[str]` is added in `Orchestrator.__init__` (alongside the existing per-request counters like `__iterations_counter`).
+- In the propagation loop, before calling `choice.add_attachment(...)`, the orchestrator checks the attachment's `url`. If the URL is already in the set, the attachment is skipped (logged at debug). Otherwise the URL is added to the set and the attachment is streamed.
+- Attachments without a `url` (e.g. `data`-only attachments) are never deduplicated — they are always streamed, since there is no stable key to compare.
+
+This is a single, source-agnostic guard: it covers the new tool, the automatic propagation path, and any other tool that propagates attachments. It also fixes a latent duplication bug that exists today, independent of this feature.
+
 ---
 
 ## Out of Scope
@@ -263,6 +275,7 @@ None.
 ### Non-breaking changes
 
 - New preview-gated `add_attachment` field in `Features` — existing apps are unaffected.
+- Orchestrator attachment deduplication (§6) applies to all apps, not just those using this tool. It can only *remove* duplicate streamed attachments, never drop a distinct URL, so any observable change is the disappearance of a pre-existing duplicate — an improvement, not a regression.
 
 ---
 
@@ -275,4 +288,5 @@ None.
 | `src/quickapp/internal_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
 | `src/quickapp/internal_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
 | `src/quickapp/internal_tooling/internal_tooling_module.py` | Add `configure()` binding + `@multiprovider _provide_add_attachment_tool` |
+| `src/quickapp/core/agent/orchestrator.py` | Add per-request `__propagated_attachment_urls` set; dedup by URL in the `propagate_to_choice` loop |
 | `make dump_app_schema` | Re-run after config changes to regenerate JSON schema |
