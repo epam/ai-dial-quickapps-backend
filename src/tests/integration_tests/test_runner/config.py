@@ -2,13 +2,11 @@ import json
 import logging
 import os
 from enum import Enum
-from pathlib import Path
 
 from pydantic import SecretStr
 from pydantic.type_adapter import TypeAdapter
 
 from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
-from quickapp.config.context import FileContextConfig
 from quickapp.config.context import Context
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.dial_files import DialFilesConfig

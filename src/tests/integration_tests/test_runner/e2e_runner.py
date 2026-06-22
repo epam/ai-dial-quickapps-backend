@@ -16,7 +16,7 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.context import FileContextConfig, Context
+from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
@@ -67,6 +67,7 @@ INTEGRATION_PROMPTS_FOLDER = "quickapps-integration-tests"
 def _create_request_headers(api_key: SecretStr) -> dict[str, str]:
     return {API_KEY_HEADER: api_key.get_secret_value(), CONTENT_TYPE_HEADER: "application/json"}
 
+
 def _dial_relative_file_url(url: str) -> str:
     """Normalize a DIAL file URL to ``files/...`` form for :class:`FileContextConfig`."""
     s = str(url).strip()
@@ -77,7 +78,7 @@ def _dial_relative_file_url(url: str) -> str:
 
 
 def create_request_headers(
-        api_key: SecretStr, app_config: ApplicationConfig | None = None
+    api_key: SecretStr, app_config: ApplicationConfig | None = None
 ) -> dict[str, str]:
     headers = _create_request_headers(api_key)
     if app_config:
@@ -575,7 +576,9 @@ def e2e_test(
             test_stats,
             run_index,
         ):
-            tool_sets = TestConfig.load_tools_config(unique_port, config_file_set, include_rest_toolset=_include_rest_toolset)
+            tool_sets = TestConfig.load_tools_config(
+                unique_port, config_file_set, include_rest_toolset=_include_rest_toolset
+            )
 
             app = TestApp.get_app(port=unique_port)
             client = TestClient(app)
@@ -602,7 +605,7 @@ def e2e_test(
             app_contexts = await TestRunner.resolve_application_contexts(
                 dial_url=TestDialCoreConfig.REMOTE_DIAL_URL,
                 headers=headers,
-                contexts=normalized_contexts
+                contexts=normalized_contexts,
             )
 
             app_config: ApplicationConfig = TestConfig.create_app_configuration(
@@ -610,7 +613,7 @@ def e2e_test(
                 model=execution_model,
                 skill_urls=skill_urls or None,
                 contexts=app_contexts,
-                attachment_strategy=_attachment_strategy
+                attachment_strategy=_attachment_strategy,
             )
 
             # Combine CLI flag with decorator parameter - CLI takes precedence

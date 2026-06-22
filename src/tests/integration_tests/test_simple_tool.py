@@ -226,7 +226,9 @@ def test_rag_search(client):
     runs=2,
     config_file_set="no-additional-tools",
     skills="numbered-list-only.md",
-    application_context_files=[Path(__file__).parent / "test_documents/integration_context_items.txt"],
+    application_context_files=[
+        Path(__file__).parent / "test_documents/integration_context_items.txt"
+    ],
     test_case=TstCase(
         "Dial skill format and admin context content",
         "Read dial-prompt skill for list format and admin context via internal_file_read_lines",

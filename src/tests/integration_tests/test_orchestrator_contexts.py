@@ -37,8 +37,7 @@ _LAZY_CONTEXT_MODELS = [
     )
     .add_user_message(
         user_message="enlist tool names that you have",
-        answer=[
-"""
+        answer=["""
 Tool names I have access to (with what they do):
 
 - `functions.internal_attachments_available_context` — list admin-configured context attachments available to load
@@ -62,13 +61,12 @@ Parallel wrapper:
 - `multi_tool_use.parallel` — run multiple tool calls in parallel (only for the developer-defined tools above)
 
 If you tell me what you want to do (e.g., “search all files for X”, “read a PDF attachment”, “create/edit a report file”), I’ll suggest the best tool(s) to use.
-"""
-        ],
+"""],
         tool_calls=[
             ToolCall(
                 ToolNames.INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT.value, min_calls=0, max_calls=4
             ),
-        ]
+        ],
     )
     .add_user_message(
         user_message=(
@@ -105,7 +103,7 @@ If you tell me what you want to do (e.g., “search all files for X”, “read 
             5. VocBench
             6. Swoop
             7. Obo-edit
-            """
+            """,
         ],
     ),
 )
