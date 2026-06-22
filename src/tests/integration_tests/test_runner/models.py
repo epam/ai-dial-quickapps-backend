@@ -179,6 +179,7 @@ class UserMessage(BaseModel):
     tool_calls: list[ToolCall] | None = None
     attachment_checks: list[AttachmentCheck] | None = None
     answer: list[str] | None = None
+    external_tool_calls: list[ToolCall] | None = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.attachments is None:
@@ -187,6 +188,8 @@ class UserMessage(BaseModel):
             object.__setattr__(self, "tool_calls", [])
         if self.attachment_checks is None:
             object.__setattr__(self, "attachment_checks", [])
+        if self.external_tool_calls is None:
+            object.__setattr__(self, "external_tool_calls", [])
 
 
 class TstCase:
@@ -197,6 +200,7 @@ class TstCase:
         similarity_threshold: float = SimilarityThreshold.DEFAULT.value,
         response_format: dict[str, Any] | None = None,
         tool_choice: str | dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
     ):
         self.name = name
         self.description = description
@@ -206,6 +210,7 @@ class TstCase:
         self.py_interpreter_session_flow = False
         self.response_format = response_format
         self.tool_choice = tool_choice
+        self.tools = tools
 
     def add_user_message(
         self,
@@ -214,8 +219,11 @@ class TstCase:
         tool_calls: list[ToolCall] | None = None,
         attachment_checks: list[AttachmentCheck] | None = None,
         answer: list[str] | None = None,
+        external_tool_calls: list[ToolCall] | None = None,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
+        if external_tool_calls:
+            external_tool_calls, _ = self._adjust_thresholds(external_tool_calls, None)
         self.messages.append(
             UserMessage(
                 user_message=user_message,
@@ -223,6 +231,7 @@ class TstCase:
                 tool_calls=tool_calls,
                 attachment_checks=attachment_checks,
                 answer=answer,
+                external_tool_calls=external_tool_calls,
             )
         )
         return self

@@ -204,6 +204,11 @@ class TestRunner:
                 request_payload["tool_choice"] = test_case.tool_choice
                 logger.debug(f"Using tool_choice: {test_case.tool_choice}")
 
+            # Add extra client-side tools if specified in test case
+            if test_case.tools is not None:
+                request_payload["tools"] = test_case.tools
+                logger.debug(f"Using tools: {test_case.tools}")
+
             response = client.post(
                 TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
                 headers=headers,
@@ -269,6 +274,13 @@ class TestRunner:
             all_failures.extend(
                 ResponseValidator.check_tool_calls(state, test_message_data.tool_calls, ts)
             )
+            if test_message_data.external_tool_calls:
+                raw_tool_calls = response_data["choices"][0]["message"].get("tool_calls")
+                all_failures.extend(
+                    ResponseValidator.check_external_tool_calls(
+                        raw_tool_calls, test_message_data.external_tool_calls, ts
+                    )
+                )
             attachments = (
                 getattr(response_message.custom_content, "attachments", None)
                 if response_message.custom_content
