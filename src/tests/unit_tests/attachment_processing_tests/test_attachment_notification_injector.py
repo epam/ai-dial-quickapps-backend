@@ -12,6 +12,10 @@ from quickapp.config.application import ApplicationConfig, OrchestratorConfig
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.prompt import CustomSystemPromptConfig
+from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
+    NoopFolderListing,
+    empty_expanded_context_file_urls,
+)
 from tests.unit_tests.common.common import make_provider
 
 
@@ -38,6 +42,8 @@ def _make_injector(contexts: list[Context] = None) -> _AttachmentNotificationInj
     return _AttachmentNotificationInjector(
         config_provider=provider,
         enrichers_provider=make_provider([]),
+        folder_listing=NoopFolderListing(),
+        expanded_file_urls=empty_expanded_context_file_urls(),
     )
 
 

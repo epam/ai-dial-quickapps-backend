@@ -57,6 +57,7 @@ def collect_get_content_allowed_urls(
     contexts: Sequence[Context],
     messages: Sequence[Message],
     input_attachment_types: list[str] | None,
+    expanded_folder_file_urls: set[str] | None = None,
 ) -> set[str]:
     """Collect normalized URLs get-content is allowed to fetch.
 
@@ -71,6 +72,12 @@ def collect_get_content_allowed_urls(
         mime = inferred_mime_type_for_file_context_url(ctx.url)
         if matches_type(mime, input_attachment_types):
             allowed_urls.add(normalize_attachment_url_argument(ctx.url))
+
+    if expanded_folder_file_urls:
+        for url in expanded_folder_file_urls:
+            mime = inferred_mime_type_for_file_context_url(url)
+            if matches_type(mime, input_attachment_types):
+                allowed_urls.add(normalize_attachment_url_argument(url))
 
     for attachment in user_attachments_from_messages(messages):
         if not attachment.url:
