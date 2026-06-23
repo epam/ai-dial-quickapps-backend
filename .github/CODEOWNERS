@@ -20,11 +20,11 @@ src/quickapp/rest_api_tooling/ @korotaav48 @ypldan
 src/quickapp/dial_files_tooling/ @andrii-novikov
 
 # --- File services & DIAL infra ---
-src/quickapp/dial_core_services/ @VinShurik
+src/quickapp/dial_core_services/ @VinShurik @korotaav48
 src/quickapp/attachment_processing/ @VinShurik
 src/quickapp/file_transfer/ @korotaav48
 src/quickapp/shared/external_fetch/ @andrii-novikov @ypldan
 
 # --- Skills: skill loading/runtime + DIAL prompt-skill resolution ---
 src/quickapp/skills/ @korotaav48
-src/quickapp/dial_prompt_skills/ @korotaav48 @ypldan
+src/quickapp/dial_prompt_skills/ @korotaav48 @VinShurik @ypldan
