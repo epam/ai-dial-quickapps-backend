@@ -1162,48 +1162,79 @@ standard = ["fastapi (>=0.70.0)"]
 
 [[package]]
 name = "fastmcp"
-version = "3.2.4"
+version = "3.4.0"
 description = "The fast, Pythonic way to build MCP servers and clients."
 optional = false
 python-versions = ">=3.10"
 groups = ["main"]
 files = [
-    {file = "fastmcp-3.2.4-py3-none-any.whl", hash = "sha256:e6c9c429171041455e47ab94bb3f83c4657622a0ec28922f6940053959bd58a9"},
-    {file = "fastmcp-3.2.4.tar.gz", hash = "sha256:083ecb75b44a4169e7fc0f632f94b781bdb0ff877c6b35b9877cbb566fd4d4d1"},
+    {file = "fastmcp-3.4.0-py3-none-any.whl", hash = "sha256:34523083d6149400a0655a8aa769eb34f85b1ce6dac6d66efb07503ebbe5f44b"},
+    {file = "fastmcp-3.4.0.tar.gz", hash = "sha256:29055fb6816f4862c615aabaf0112ae8feb8b469740db13403a0ce5b799ec1dc"},
 ]
 
 [package.dependencies]
-authlib = ">=1.6.5"
-cyclopts = ">=4.0.0"
-exceptiongroup = ">=1.2.2"
-griffelib = ">=2.0.0"
-httpx = ">=0.28.1,<1.0"
-jsonref = ">=1.1.0"
-jsonschema-path = ">=0.3.4"
-mcp = ">=1.24.0,<2.0"
-openapi-pydantic = ">=0.5.1"
-opentelemetry-api = ">=1.20.0"
-packaging = ">=24.0"
+fastmcp-slim = {version = "3.4.0", extras = ["client", "server"]}
+
+[package.extras]
+anthropic = ["fastmcp-slim[anthropic] (==3.4.0)"]
+apps = ["fastmcp-slim[apps] (==3.4.0)"]
+azure = ["fastmcp-slim[azure] (==3.4.0)"]
+code-mode = ["fastmcp-slim[code-mode] (==3.4.0)"]
+gemini = ["fastmcp-slim[gemini] (==3.4.0)"]
+openai = ["fastmcp-slim[openai] (==3.4.0)"]
+tasks = ["fastmcp-slim[tasks] (==3.4.0)"]
+
+[[package]]
+name = "fastmcp-slim"
+version = "3.4.0"
+description = "The dependency-slim FastMCP package."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "fastmcp_slim-3.4.0-py3-none-any.whl", hash = "sha256:17cd0a1535972d3748d8c2416f0826dfc86c18df7a6cbc38602373277d44baa6"},
+    {file = "fastmcp_slim-3.4.0.tar.gz", hash = "sha256:faa0ccf16e85ec4b9f79c006fed3546b866d7e6dba3f60cd32cd98e84753a496"},
+]
+
+[package.dependencies]
+authlib = {version = ">=1.6.11", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+cyclopts = {version = ">=4.0.0", optional = true, markers = "extra == \"server\""}
+exceptiongroup = {version = ">=1.2.2", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+griffelib = {version = ">=2.0.0", optional = true, markers = "extra == \"server\""}
+httpx = {version = ">=0.28.1,<1.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+joserfc = {version = ">=1.1.0", optional = true, markers = "extra == \"server\""}
+jsonref = {version = ">=1.1.0", optional = true, markers = "extra == \"server\""}
+jsonschema-path = {version = ">=0.3.4", optional = true, markers = "extra == \"server\""}
+mcp = {version = ">=1.24.0,<2.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+openapi-pydantic = {version = ">=0.5.1", optional = true, markers = "extra == \"server\""}
+opentelemetry-api = {version = ">=1.20.0", optional = true, markers = "extra == \"client\" or extra == \"server\""}
+packaging = {version = ">=24.0", optional = true, markers = "extra == \"server\""}
 platformdirs = ">=4.0.0"
-py-key-value-aio = {version = ">=0.4.4,<0.5.0", extras = ["filetree", "keyring", "memory"]}
+py-key-value-aio = {version = ">=0.4.4,<0.5.0", extras = ["filetree", "keyring", "memory"], optional = true, markers = "extra == \"client\" or extra == \"server\""}
 pydantic = {version = ">=2.11.7", extras = ["email"]}
-pyperclip = ">=1.9.0"
+pydantic-settings = ">=2.0.0"
+pyperclip = {version = ">=1.9.0", optional = true, markers = "extra == \"server\""}
 python-dotenv = ">=1.1.0"
-pyyaml = ">=6.0,<7.0"
+python-multipart = {version = ">=0.0.26", optional = true, markers = "extra == \"server\""}
+pyyaml = {version = ">=6.0,<7.0", optional = true, markers = "extra == \"server\""}
 rich = ">=13.9.4"
-uncalled-for = ">=0.2.0"
-uvicorn = ">=0.35"
-watchfiles = ">=1.0.0"
-websockets = ">=15.0.1"
+typing-extensions = ">=4.0.0"
+uncalled-for = {version = ">=0.2.0", optional = true, markers = "extra == \"server\""}
+uvicorn = {version = ">=0.35", optional = true, markers = "extra == \"server\""}
+watchfiles = {version = ">=1.0.0", optional = true, markers = "extra == \"server\""}
+websockets = {version = ">=15.0.1", optional = true, markers = "extra == \"server\""}
 
 [package.extras]
 anthropic = ["anthropic (>=0.48.0)"]
 apps = ["prefab-ui (>=0.18.0)"]
 azure = ["azure-identity (>=1.16.0)", "pyjwt (>=2.12.0)"]
-code-mode = ["pydantic-monty (==0.0.11)"]
-gemini = ["google-genai (>=1.18.0)"]
+client = ["authlib (>=1.6.11)", "exceptiongroup (>=1.2.2)", "httpx (>=0.28.1,<1.0)", "mcp (>=1.24.0,<2.0)", "opentelemetry-api (>=1.20.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)"]
+code-mode = ["pydantic-monty (==0.0.17)"]
+gemini = ["google-genai (>=1.18.0)", "jsonref (>=1.1.0)"]
+mcp = ["exceptiongroup (>=1.2.2)", "httpx (>=0.28.1,<1.0)", "mcp (>=1.24.0,<2.0)", "opentelemetry-api (>=1.20.0)"]
 openai = ["openai (>=1.102.0)"]
-tasks = ["pydocket (>=0.19.0)"]
+server = ["authlib (>=1.6.11)", "cyclopts (>=4.0.0)", "exceptiongroup (>=1.2.2)", "griffelib (>=2.0.0)", "httpx (>=0.28.1,<1.0)", "joserfc (>=1.1.0)", "jsonref (>=1.1.0)", "jsonschema-path (>=0.3.4)", "mcp (>=1.24.0,<2.0)", "openapi-pydantic (>=0.5.1)", "opentelemetry-api (>=1.20.0)", "packaging (>=24.0)", "py-key-value-aio[filetree,keyring,memory] (>=0.4.4,<0.5.0)", "pyperclip (>=1.9.0)", "python-multipart (>=0.0.26)", "pyyaml (>=6.0,<7.0)", "uncalled-for (>=0.2.0)", "uvicorn (>=0.35)", "watchfiles (>=1.0.0)", "websockets (>=15.0.1)"]
+tasks = ["pydocket (>=0.20.0)"]
 
 [[package]]
 name = "filelock"
@@ -1923,6 +1954,24 @@ files = [
     {file = "joblib-1.5.3-py3-none-any.whl", hash = "sha256:5fc3c5039fc5ca8c0276333a188bbd59d6b7ab37fe6632daa76bc7f9ec18e713"},
     {file = "joblib-1.5.3.tar.gz", hash = "sha256:8561a3269e6801106863fd0d6d84bb737be9e7631e33aaed3fb9ce5953688da3"},
 ]
+
+[[package]]
+name = "joserfc"
+version = "1.7.1"
+description = "The ultimate Python library for JOSE RFCs, including JWS, JWE, JWK, JWA, JWT"
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "joserfc-1.7.1-py3-none-any.whl", hash = "sha256:b3e3d655612e2e1ef67b2600f2f420e12e537b020208fab1761fad647319c164"},
+    {file = "joserfc-1.7.1.tar.gz", hash = "sha256:77d0b76514879c68c6f433bc5b7357a4ab72008ff1e33d8379fd11d72bd8ca81"},
+]
+
+[package.dependencies]
+cryptography = ">=45.0.1"
+
+[package.extras]
+drafts = ["pycryptodome"]
 
 [[package]]
 name = "jsonref"
@@ -5810,4 +5859,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "aef1d05033e11ff9bc0fcf307b8fb84e738eed924b73ffc950a6c695e55c8b22"
+content-hash = "08f54ceb31471268cb0093c90a65b79a93bc014f73092de5d0968c78e5927c98"
