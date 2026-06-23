@@ -406,6 +406,60 @@ class TestCircularRefs:
         assert isinstance(nested_ref, ConfigurableSchemaObject)
         assert nested_ref.properties == {}
 
+    def test_defs_array_self_reference_condition_schema(self):
+        """Recursive $defs refs are expanded enough for OpenAI tool params."""
+        schema = {
+            "type": "object",
+            "properties": {
+                "conditions": {
+                    "type": "array",
+                    "description": "List of nested conditions",
+                    "items": {"$ref": "#/$defs/condition"},
+                }
+            },
+            "$defs": {
+                "condition": {
+                    "type": "object",
+                    "description": "A condition",
+                    "properties": {
+                        "field": {"type": "string"},
+                        "operator": {"type": "string"},
+                        "conditions": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/condition"},
+                        },
+                    },
+                    "required": ["field", "operator"],
+                }
+            },
+        }
+
+        result = JsonSchemaConverter.convert_schema_to_properties(schema)
+
+        conditions = result["conditions"]
+        assert isinstance(conditions, ConfigurableSchemaArray)
+        assert isinstance(conditions.items, ConfigurableSchemaObject)
+
+        condition_props = conditions.items.properties
+        assert isinstance(condition_props["field"], ConfigurableSchemaSimpleType)
+        assert isinstance(condition_props["operator"], ConfigurableSchemaSimpleType)
+
+        nested_conditions = condition_props["conditions"]
+        assert isinstance(nested_conditions, ConfigurableSchemaArray)
+        assert isinstance(nested_conditions.items, ConfigurableSchemaObject)
+
+        nested_condition_props = nested_conditions.items.properties
+        assert isinstance(nested_condition_props["field"], ConfigurableSchemaSimpleType)
+        assert isinstance(nested_condition_props["operator"], ConfigurableSchemaSimpleType)
+        nested_nested_conditions = nested_condition_props["conditions"]
+        assert isinstance(nested_nested_conditions, ConfigurableSchemaArray)
+        assert isinstance(nested_nested_conditions.items, ConfigurableSchemaObject)
+        truncated_condition_props = nested_nested_conditions.items.properties
+        assert isinstance(truncated_condition_props["field"], ConfigurableSchemaSimpleType)
+        assert isinstance(truncated_condition_props["operator"], ConfigurableSchemaSimpleType)
+        assert isinstance(truncated_condition_props["conditions"], ConfigurableSchemaObject)
+        assert truncated_condition_props["conditions"].properties == {}
+
     def test_indirect_circular_reference(self):
         """A -> B -> A cycle (mirrors OneNote parentNotebook <-> sectionGroups pattern)."""
         schema = {
