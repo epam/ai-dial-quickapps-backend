@@ -13,7 +13,7 @@ dependencies = [
     "aidial-client (>=0.8.0,<0.9.0)",                # DIAL API client
     "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
-    "pydantic-settings>=2.12.0,<3.0.0",           # Settings management
+    "pydantic-settings>=2.14.2,<3.0.0",           # Settings management
     "injector>=0.23.0,<0.24.0",                   # Dependency injection
     "fastapi-injector>=0.9.0,<0.10.0",            # FastAPI + injector integration
 
