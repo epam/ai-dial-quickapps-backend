@@ -279,6 +279,77 @@ Providers are never fetched at runtime — the image is the contract. An operato
 a provider that is not installed in the image without a new image build. This is intentional:
 providers are vetted and pinned, not pulled from the internet on demand.
 
+### Alternative: Installing Providers Without Modifying the Dockerfile
+
+If modifying the Dockerfile is not possible (e.g. the image is owned by another team or released
+separately), there are three approaches for delivering MCP server binaries to the container.
+
+#### Option A — Init container (Kubernetes)
+
+A dedicated init container installs providers into a shared `emptyDir` volume before the main
+container starts. The main container adds the volume's `bin/` directory to `PATH` via an env var.
+
+```yaml
+initContainers:
+  - name: install-mcp-providers
+    image: node:20-alpine
+    command: ["npm", "install", "-g", "--prefix", "/mcp-tools",
+              "@modelcontextprotocol/server-memory@2026.1.26"]
+    volumeMounts:
+      - name: mcp-tools
+        mountPath: /mcp-tools
+containers:
+  - name: quick-apps
+    env:
+      - name: PATH
+        value: "/mcp-tools/bin:/usr/local/bin:/usr/bin:/bin"
+    volumeMounts:
+      - name: mcp-tools
+        mountPath: /mcp-tools
+```
+
+**Pros:** QuickApps image stays clean; provider versions are declared in the deployment manifest,
+not baked into the image; no Dockerfile changes required.  
+**Cons:** Requires Node.js (or uv) in the init container image; `PATH` must be explicitly forwarded
+to the main container.
+
+#### Option B — `npx` / `uvx` on first spawn
+
+Instead of pre-installing, run providers through `npx -y` (Node.js) or `uvx` (Python), which
+download and cache the package on first invocation:
+
+```json
+{
+  "type": "subprocess-mcp",
+  "command": "npx",
+  "args": ["-y", "@modelcontextprotocol/server-memory@2026.1.26"]
+}
+```
+
+**Pros:** Zero changes to the image (only Node.js or uv must be present); the provider version is
+declared directly in the app config.  
+**Cons:** First start incurs a network request and download latency; does not work in air-gapped
+environments; the npm cache lives inside the container and is lost on restart.
+
+#### Option C — Pre-populated volume mount
+
+The operator maintains a host path or persistent volume with pre-installed npm packages and mounts
+it into the container. The container adds the volume's `bin/` to `PATH`.
+
+**Pros:** Fully offline after initial setup; providers can be updated without rebuilding or
+redeploying the image.  
+**Cons:** Requires an out-of-band process to populate and update the volume; adds operational
+complexity for the platform team.
+
+#### Recommendation
+
+| Scenario | Recommended option |
+|---|---|
+| Kubernetes, image not owned by this team | **A** — init container |
+| Development / quick validation | **B** — `npx -y` / `uvx` |
+| Air-gapped production, no Dockerfile access | **C** — pre-populated volume |
+| Full control over image | Dockerfile (original approach) |
+
 ### Graceful Subprocess Shutdown
 
 Currently, subprocesses spawned by `_StdioConnectionRegistry` are not explicitly stopped when the
