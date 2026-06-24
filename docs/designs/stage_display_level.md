@@ -112,7 +112,7 @@ class Features(BaseModel):
 
 ### 3. DI binding for `StageDisplayLevel`
 
-A new request-scoped provider in `src/quickapp/application/app_module.py`:
+A new request-scoped provider in `src/quickapp/core/application/app_module.py`:
 
 ```python
 @provider
@@ -314,7 +314,7 @@ None. `suppress_stage` is an internal `arun()` parameter, not part of the public
 | Component | Change |
 |---|---|
 | `src/quickapp/config/application.py` | Add `StageDisplayLevel` enum; add `StageDisplayConfig` class; add `stage_display: StageDisplayConfig` field to `Features` |
-| `src/quickapp/application/app_module.py` | Add `@provider @request` for `StageDisplayLevel` |
+| `src/quickapp/core/application/app_module.py` | Add `@provider @request` for `StageDisplayLevel` |
 | `src/quickapp/common/staged_base_tool.py` | Accept `stage_display_level` as a constructor param (not injected — see note in §4); replace `suppress_stage: bool` with `stage_level: StageDisplayLevel` on `arun()`; rewrite suppression condition |
 | Each concrete tool subclass (`RestApiTool`, `McpTool`, `DialDeploymentTool`, `AvailableContextTool`, `SkillReaderTool`, `CurrentTimestampTool`, `PyInterpreterTool`) | Add `stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO` to `__init__` (DI entry point); forward to `super().__init__()` |
 | `src/quickapp/common/synthetic_injection/staged_tool_synthetic_injector.py` | Replace `suppress_stage=True` with `stage_level=StageDisplayLevel.DEBUG` |

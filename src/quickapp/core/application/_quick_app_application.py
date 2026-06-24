@@ -8,9 +8,9 @@ from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
 from injector import Injector, inject
 
-from quickapp.application._otel_settings import _OtelSettings
 from quickapp.common.base_initializer import InitializerType, invoke_initializers
 from quickapp.common.dial_settings import DialSettings
+from quickapp.core.application._otel_settings import _OtelSettings
 
 logger = logging.getLogger(__name__)
 

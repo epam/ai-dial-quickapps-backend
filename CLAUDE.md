@@ -21,7 +21,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Run app (dev) | `make run_chat` | |
 | Run a Python script | `make run_python SCRIPT=path/to/script.py` | |
 | Format code | `make format` | Runs: `autoflake` → `black` → `isort` → schema dump (schema dump only when formatting all `SRC_DIRS`) |
-| Format specific files/dirs | `make format FILES="src/quickapp/agent"` | |
+| Format specific files/dirs | `make format FILES="src/quickapp/core/agent"` | |
 | Lint (all checks) | `make lint` | Runs: `poetry check --lock` + `flake8` + `black --check` + `isort --check` + `autoflake --check` + `mypy` + schema check |
 | Type check only | `make mypy` | |
 | Unit tests | `make test` | |

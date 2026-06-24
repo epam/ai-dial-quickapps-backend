@@ -3,15 +3,17 @@ import logging
 from typing import Any
 
 from aidial_sdk.chat_completion.request import Message
+from aidial_sdk.exceptions import InvalidRequestError
 from injector import inject
 
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.message_logger import format_openai_message_pipe_tree
-from quickapp.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.message_logger import format_openai_message_pipe_tree
+from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +25,7 @@ class _ChatCompletionConfigBuilder:
         config: ApplicationConfig,
         tools: list[OpenAiToolConfigDict],
         response_format: RESPONSE_FORMAT,
+        tool_choice_holder: _ToolChoiceHolder,
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
@@ -31,6 +34,7 @@ class _ChatCompletionConfigBuilder:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
         self.__response_format = response_format
+        self.__tool_choice_holder = tool_choice_holder
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
@@ -62,6 +66,8 @@ class _ChatCompletionConfigBuilder:
                     type(self.__response_format),
                 )
 
+        self._apply_tool_choice(payload)
+
         if self.__presentation_settings.show_usage_statistics:
             payload["stream_options"] = {"include_usage": True}
 
@@ -74,6 +80,26 @@ class _ChatCompletionConfigBuilder:
                 "Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False)
             )
         return chat_completion_config
+
+    def _apply_tool_choice(self, payload: dict[str, Any]) -> None:
+        tool_choice = self.__tool_choice_holder.consume()
+        if tool_choice is None:
+            return
+        requires_tool = tool_choice == "required" or (
+            hasattr(tool_choice, "type") and tool_choice.type == "function"
+        )
+        if requires_tool and not self.__tools:
+            raise InvalidRequestError(
+                message="tool_choice requires at least one tool to be configured",
+                display_message=(
+                    "Cannot enforce tool_choice: no tools are available. "
+                    "Configure at least one tool set or use tool_choice='auto'."
+                ),
+            )
+        if hasattr(tool_choice, "model_dump"):
+            payload["tool_choice"] = tool_choice.model_dump(exclude_none=True, mode="json")
+        else:
+            payload["tool_choice"] = tool_choice
 
     def _prepare_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         transformed_messages = messages

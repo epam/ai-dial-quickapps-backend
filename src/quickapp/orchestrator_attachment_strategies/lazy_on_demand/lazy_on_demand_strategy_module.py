@@ -4,7 +4,7 @@ from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
@@ -13,6 +13,7 @@ from quickapp.common.abstract.tool_execution_history_policy import ToolExecution
 from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
@@ -66,13 +67,17 @@ class LazyOnDemandStrategyModule(Module):
         messages: list[Message],
         get_content_builder: AssistedBuilder[_GetContentTool],
         orchestrator_capabilities: OrchestratorCapabilities,
+        expanded_file_urls: ExpandedContextFileUrls,
     ) -> list[StagedBaseTool]:
         if not _is_active(app_config):
             return []
+        # ``ExpandedContextFileUrls`` is populated during ``setup_messages`` (notification
+        # injector) before the orchestrator resolves tools; reuse that cache here.
         if not should_enable_get_content_tool(
             app_config.contexts,
             messages,
             orchestrator_capabilities.input_attachment_types,
+            expanded_file_urls.urls,
         ):
             return []
         rendered_tool_config = render_get_content_tool_config(

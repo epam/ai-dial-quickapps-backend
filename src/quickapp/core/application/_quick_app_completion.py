@@ -5,12 +5,12 @@ from aidial_sdk.chat_completion.choice import Choice
 from aidial_sdk.deployment.configuration import ConfigurationRequest, ConfigurationResponse
 from injector import Injector, inject
 
-from quickapp.agent.orchestrator import Orchestrator
 from quickapp.common import InitializerType
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.core.agent import Orchestrator
 
 from ._exception_message_resolver import resolve_exception_message
 from ._initialization_error_handler import _InitializationErrorHandler

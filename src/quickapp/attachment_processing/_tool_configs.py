@@ -13,8 +13,10 @@ AVAILABLE_CONTEXT_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
             description=(
-                "Returns metadata about admin-configured context files."
-                " **IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
+                "Returns metadata about admin-configured context files and folders. "
+                "Folder contexts expand recursively into subfolder and file entries in this response "
+                "(subfolders use metadata MIME; files use inferred MIME). "
+                "**IMPORTANT**: this tool is not applicable to user-attached files or files from tool results, "
                 "and will not return any information about them. If you see file in <attachments> section of user "
                 "message, it means that the file was attached by the user, and is available for you to use."
             ),

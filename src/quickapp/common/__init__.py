@@ -7,6 +7,7 @@ from ._di_types import (
     ForwardedHeaders,
     ORCHESTRATOR_AZURE_CLIENT,
     RESPONSE_FORMAT,
+    TOOL_CHOICE,
 )
 from quickapp.common.base_initializer import BaseInitializer, InitializerType
 from .tool_call_result import ToolCallResult

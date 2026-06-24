@@ -5,20 +5,6 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
 
-from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.agent._messages_transformers import _AddSystemPromptTransformer
-from quickapp.agent._orchestrator_deployment_initializer import (
-    _OrchestratorDeploymentInitializer,
-    _OrchestratorStaticToolsContext,
-)
-from quickapp.agent._prompt_providers import ConfigBasedPromptProvider
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.assistant_invoker import AssistantInvoker
-from quickapp.agent.models import OpenAiToolConfigDict
-from quickapp.agent.orchestrator import Orchestrator
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.agent.orchestrator_deployment_cache_service import OrchestratorDeploymentCacheService
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -39,6 +25,7 @@ from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamH
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -52,6 +39,22 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
+)
+from quickapp.core.agent._attachment_filter import _AttachmentFilter
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
+from quickapp.core.agent._orchestrator_deployment_initializer import (
+    _OrchestratorDeploymentInitializer,
+    _OrchestratorStaticToolsContext,
+)
+from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.models import OpenAiToolConfigDict
+from quickapp.core.agent.orchestrator import Orchestrator
+from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+from quickapp.core.agent.orchestrator_deployment_cache_service import (
+    OrchestratorDeploymentCacheService,
 )
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
@@ -75,6 +78,7 @@ class AgentModule(Module):
     def configure(self, binder: Binder) -> None:
         # FIXME: mypy warning:
         binder.bind(Orchestrator, to=Orchestrator)  # type: ignore[type-abstract]
+        binder.bind(_ToolChoiceHolder, to=_ToolChoiceHolder, scope=request_scope)
         binder.bind(StateHolder, to=StateHolder, scope=request_scope)
         binder.bind(
             DeferredStageCloseRegistry,

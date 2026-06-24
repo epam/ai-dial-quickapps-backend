@@ -3,14 +3,17 @@ from unittest.mock import MagicMock
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
-from quickapp.agent._attachment_filter import _AttachmentFilter
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
+)
+from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
+    empty_expanded_context_file_urls,
 )
 
 
@@ -23,7 +26,11 @@ def _make_filter(
     caps = OrchestratorCapabilities(
         deployment=MagicMock(id="orch", input_attachment_types=patterns)
     )
-    keep_policy = _GetContentKeepPolicy(app_config=app, orchestrator_capabilities=caps)
+    keep_policy = _GetContentKeepPolicy(
+        app_config=app,
+        orchestrator_capabilities=caps,
+        expanded_file_urls=empty_expanded_context_file_urls(),
+    )
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 

@@ -2,9 +2,9 @@ import logging
 
 from injector import Module, inject, multiprovider
 
-from quickapp.application import Configuration
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.starters import ConversationStartersConfig
+from quickapp.core.application import Configuration
 
 from ._button import _Button, _create_buttons
 from ._utils import create_starters_configuration

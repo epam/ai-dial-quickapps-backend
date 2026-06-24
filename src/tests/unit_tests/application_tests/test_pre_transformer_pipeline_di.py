@@ -24,20 +24,22 @@ from fastapi_injector import Injected
 from injector import Binder, Module, multiprovider
 from starlette.testclient import TestClient
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
-from quickapp.application._messages_setup import _MessagesSetup
 from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_NAME
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
+from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.core.application import _MessagesSetup
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
     LazyOnDemandStrategyModule,
 )
+from tests.unit_tests.attachment_processing_tests._folder_context_helpers import NoopFolderListing
 from tests.unit_tests.common.common import create_app_configuration, create_test_app
 
 
@@ -78,6 +80,7 @@ def _make_context_app(ctx_url: str, *, lazy_strategy: bool = False):
         caps.input_attachment_types = ["application/pdf", "text/csv", "image/*"]
         caps.deployment_id = "test-orchestrator"
         binder.bind(OrchestratorCapabilities, to=caps)
+        binder.bind(FolderListingProvider, to=NoopFolderListing)  # type: ignore[type-abstract]
 
     modules: list = [AttachmentProcessingModule, _EmptyEnrichersModule, configure]
     if lazy_strategy:

@@ -4,9 +4,10 @@ from typing import Any
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.utils import fenced_code_block
 from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH, _DialFileTool
 from quickapp.dial_files_tooling._glob import _glob_to_regex
-from quickapp.dial_files_tooling._utils import code_block, is_root_reference, relative_to
+from quickapp.dial_files_tooling._utils import is_root_reference, relative_to
 
 _OUTPUT_MODES = ("content", "files_with_matches")
 
@@ -73,7 +74,7 @@ class _SearchInFileTool(_DialFileTool):
         indices = self._matching_line_indices(lines, pattern, case_insensitive)
         if not indices:
             return "No matches found."
-        return code_block(self._format_matches(lines, indices, context_lines))
+        return fenced_code_block(self._format_matches(lines, indices, context_lines))
 
     async def _search_folder(
         self,
@@ -134,12 +135,12 @@ class _SearchInFileTool(_DialFileTool):
         if not matches:
             return "No matches found."
         if output_mode == "files_with_matches":
-            return code_block("\n".join(display for display, _, _ in matches))
+            return fenced_code_block("\n".join(display for display, _, _ in matches))
         blocks = [
             f"{display}\n{self._format_matches(lines, indices, context_lines)}"
             for display, lines, indices in matches
         ]
-        return code_block("\n\n".join(blocks))
+        return fenced_code_block("\n\n".join(blocks))
 
     @staticmethod
     def _matching_line_indices(lines: list[str], pattern: str, case_insensitive: bool) -> list[int]:

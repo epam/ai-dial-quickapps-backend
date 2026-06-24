@@ -428,7 +428,7 @@ no-op unless both gates pass. When active it contributes:
   recover get-content tool messages and their attachments.
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
-`OrchestratorDeploymentCacheService`) lives in `src/quickapp/agent/` as a shared facility for any future
+`OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future
 module that needs DialCore deployment metadata, not only this strategy.
 
 ---
@@ -442,9 +442,7 @@ Quick Apps uses dependency injection extensively to manage component lifecycle a
 The application is composed of 15 specialized DI modules. Rather than registering each module
 individually, `app_factory` splices in two package-level arrays:
 
-- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`).
-  (Physically relocating the `agent/` and `application/` source into `core/` is a follow-up; for now the
-  array aggregates them from their current packages.)
+- `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`). Both `agent/` and `application/` physically live under `core/`.
 - `quickapp.shared` exposes `shared_module` — cross-cutting utility modules. Today it holds a single
   entry, `ExternalFetchModule` (the external-URL fetch egress envelope, see module 11), and is the seam
   future utility modules join by appending.
@@ -554,9 +552,9 @@ For implementation details, refer to:
 
 | Area                  | Directory                             |
 |-----------------------|---------------------------------------|
-| Agent and processors  | `src/quickapp/agent/`                 |
+| Agent and processors  | `src/quickapp/core/agent/`            |
 | Base abstractions     | `src/quickapp/common/`                |
-| Request handling      | `src/quickapp/application/`           |
+| Request handling      | `src/quickapp/core/application/`      |
 | Configuration schemas | `src/quickapp/config/`                |
 | Attachment processing | `src/quickapp/attachment_processing/` |
 | Attachment strategies | `src/quickapp/orchestrator_attachment_strategies/` |

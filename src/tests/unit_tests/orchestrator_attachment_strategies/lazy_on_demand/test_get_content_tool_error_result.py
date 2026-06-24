@@ -12,13 +12,16 @@ from unittest.mock import MagicMock
 import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
-from quickapp.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
+)
+from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
+    empty_expanded_context_file_urls,
 )
 
 
@@ -42,6 +45,7 @@ def _make_tool(
         orchestrator_capabilities=caps,
         messages_mixin=messages_mixin,
         deferred_stage_close_registry=MagicMock(),
+        expanded_file_urls=empty_expanded_context_file_urls(),
     )
 
 

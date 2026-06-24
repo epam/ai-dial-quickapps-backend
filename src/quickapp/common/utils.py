@@ -34,6 +34,20 @@ def matches_type(mime_type: str | None, allowed_mime_types: list[str] | None) ->
     return False
 
 
+def fenced_code_block(text: str, language: str = "") -> str:
+    """Wrap ``text`` in a Markdown fenced code block that survives nested fences.
+
+    Per CommonMark, a fenced block is closed by a line with at least as many
+    backticks as its opening fence. Content that itself contains ``` runs (a skill
+    body, a markdown file) would otherwise break out of a fixed triple-backtick
+    fence and corrupt the rendered stage. Open with a fence one backtick longer
+    than the longest backtick run in ``text`` (minimum three).
+    """
+    longest_run = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * max(3, longest_run + 1)
+    return f"{fence}{language}\n{text}\n{fence}"
+
+
 def posix_path_last_segment(path: str) -> str:
     """Return the final segment of a POSIX-style path (``/`` separators only).
 

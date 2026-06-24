@@ -59,6 +59,28 @@ class TestNullifyPreviewFields:
         assert "feat" in caplog.records[0].message
         assert "preview features are disabled" in caplog.records[0].message
 
+    def test_preview_model_entries_removed_from_list(self, caplog):
+        from quickapp.config.context import FileContextConfig, FolderContextConfig
+
+        class Cfg(BaseModel):
+            contexts: list[FileContextConfig | FolderContextConfig]
+
+        model = Cfg.model_construct(
+            contexts=[
+                FileContextConfig(url="files/bucket/a.pdf"),
+                FolderContextConfig(url="metadata/files/bucket/docs/"),
+            ]
+        )
+        with caplog.at_level(logging.WARNING):
+            nullify_preview_fields(model)
+
+        assert len(model.contexts) == 1
+        assert isinstance(model.contexts[0], FileContextConfig)
+        assert any(
+            "contexts" in r.message and "preview features are disabled" in r.message
+            for r in caplog.records
+        )
+
 
 class TestApplicationConfigPreviewValidator:
     """Integration tests with the real ApplicationConfig model_validator."""

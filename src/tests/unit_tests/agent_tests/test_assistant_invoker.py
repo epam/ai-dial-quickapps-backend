@@ -4,12 +4,13 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 import openai
 import pytest
 
-from quickapp.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.agent.agent_settings import AgentSettings
-from quickapp.agent.assistant_invoker import AssistantInvoker
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.config.agent_settings import AgentSettings
+from quickapp.core.agent import AssistantInvoker
+from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 
 
 def _presentation_settings(show_usage: bool):
@@ -59,11 +60,13 @@ def _make_config_builder(
     show_usage: bool = False,
     forwarded_headers=None,
     response_format=None,
+    tool_choice=None,
 ) -> _ChatCompletionConfigBuilder:
     return _ChatCompletionConfigBuilder(
         config=config or DummyConfig(),
         tools=tools or [{"name": "t1"}],
         response_format=response_format,
+        tool_choice_holder=_ToolChoiceHolder(tool_choice=tool_choice),
         pre_invocation_transformers=[mock_filter],
         presentation_settings=_presentation_settings(show_usage),
         forwarded_headers=forwarded_headers,

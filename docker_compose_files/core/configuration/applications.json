@@ -1,5 +1,61 @@
 {
   "applications": {
+    "test_folder_app": {
+      "displayName": "TestFolderAppPreConfigured",
+      "description": "Application with rag and folder in contexts",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "maxInputAttachments": 1,
+      "features": {
+        "folderAttachmentsSupported": true,
+        "assistantAttachmentsInRequestSupported": true
+      },
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "deployment_id": "anthropic.claude-sonnet-4-20250514-v1:0",
+            "parameters": {
+              "temperature": 1
+            }
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": ""
+          }
+        },
+        "contexts": [
+          {
+            "type": "folder",
+            "description": "Some folder context description",
+            "url": "metadata/files/684f6Lz7ubje66aoCRsa5c/testFolder/"
+          }
+        ],
+        "tool_sets": [
+          {
+            "name": "dial-deployment-tool-set",
+            "type": "dial-deployment",
+            "tools": [
+              {
+                "type": "dial-deployment-simple",
+                "deployment_id": "dial-rag"
+              }
+            ]
+          }
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          },
+          "dial_files": {
+            "enabled_tools": "all",
+            "agent_home_dir": ""
+          }
+        }
+      }
+    },
     "quick_app_2": {
       "displayName": "Quick App 2",
       "description": "The sample of Quick App v2",
