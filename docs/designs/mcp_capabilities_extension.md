@@ -473,3 +473,44 @@ behave as before.
 | ~ `_mcp_tool_initializer.py` | Load resources and prompts after tools in `_process_toolset`; extend `_convert_to_openai_tool` to handle annotations |
 | ~ `mcp_tooling_module.py` | Wire `_MCPResourceContextBuilder` |
 | ~ `_mcp_tool.py` | Surface `structuredContent` as text in success path when no text blocks present |
+
+---
+
+## Review Notes — Round 1
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-06-24
+
+### Verdict
+
+`Blocking issues must be addressed`
+
+The doc is thorough, well-structured, and well-grounded in the codebase. The resources design is production-ready; the secondary fixes section is accurate and code-verified. Two issues require resolution before approval: an unresolved integration decision (§3.3) that should either be decided here or its deferral explicitly committed in Out of Scope, and an uncovered concurrency / session-lifetime concern that emerges from §3.2 Loading. A small number of other gaps follow.
+
+### Blocking issues
+
+1. **§3.3 Prompts — open integration decision left inline** — The doc acknowledges that the P1 vs P2 decision is unresolved and defers it, but this appears in the middle of the *Proposed Design* section rather than being handled cleanly. The *Proposed Design* section describes what will be built; a design that defers its own core decision is incomplete. Either (a) make the decision here (P2 is described as fully implementable without further design), or (b) move the entire §3.3 prose to *Out of Scope* — which already contains "Prompts with argument resolution (Option P1 full implementation)" — and replace §3.3 with a single placeholder sentence explaining that prompts loading is deferred. As written, the doc mixes deferred and decided work in the same section, which will confuse implementers.
+   **Suggestion:** Either decide P1 vs P2 and write the section completely, or retire §3.3 from *Proposed Design* and fold everything into *Out of Scope*.
+
+2. **§3.2 Resources — Loading: session-per-resource opens N+1 MCP sessions** — `get_resources_list()` and `read_resource(uri)` are described as methods on `_MCPConnectionManager`, which opens a new `ClientSession` (via `__session_context`) for every call. `_process_toolset` would call `read_resource(uri)` once per retained resource URI. For a server exposing 20 resources, this is 21 MCP sessions (1 list + 20 reads). SSE sessions are especially expensive. The design should specify whether (a) all resource reads happen within a single session, (b) a separate single-session helper method handles both list + reads, or (c) the existing single-session approach is preserved by adding an in-session helper. This also applies to `get_prompts_list`. Currently `get_tools_list` opens one session; extending `_process_toolset` with per-call methods would silently balloon session count.
+   **Suggestion:** Specify that resource listing and all reads happen within a single `__session_context` span — e.g., a new `get_resources_with_contents(uris)` method that lists, filters, and reads inside one session — rather than describing them as independent callable methods.
+
+### Suggestions
+
+1. **§3.2 Resources — Injection into system context: `_MCPResourceContextBuilder` integration path not specified** — The doc states the orchestrator "prepends these blocks to the system context" and that `_MCPResourceContextBuilder` is "wired in `MCPToolingModule`", but the actual wiring mechanism is not described. The system prompt is assembled by `_AddSystemPromptTransformer` consuming all `PromptPartProvider` multibindings (see `core/agent/_messages_transformers.py`). The doc should state that `_MCPResourceContextBuilder` implements `PromptPartProvider` and is registered as a `PromptPartProvider` in `MCPToolingModule` via `@multiprovider`, or describe an alternative approach. Without this, an implementer will not know how to wire it.
+   **Suggestion:** Add one sentence to §3.2 Injection: "`_MCPResourceContextBuilder` implements `PromptPartProvider` and is registered via `@multiprovider` in `MCPToolingModule.configure`, consistent with how `SkillsRegistry` contributes its skills XML to the system prompt."
+
+2. **§3.3 Prompts — `_MCPToolingContext.prompts` stores `Prompt` alongside `toolset_name` but the data model doesn't show this** — §3.3 says "stored in `_MCPToolingContext.prompts: list[Prompt]` alongside their originating `toolset_name`", but a `list[Prompt]` cannot carry `toolset_name` per element. The design should introduce a small wrapper (similar to `MCPFetchedResource`) or clarify that `toolset_name` is stored separately. This mismatch between prose and proposed type will cause an implementation ambiguity.
+   **Suggestion:** Either define a `MCPPromptEntry` wrapper (name, toolset_name, prompt) analogous to `MCPFetchedResource`, or clarify the data model.
+
+3. **§3.4 Tool annotations — `_convert_to_openai_tool` signature change not called out** — The current method signature is `_convert_to_openai_tool(name, description, input_schema)` and is a `@staticmethod`. Adding annotation support requires either passing the `Tool` object or the `AnnotatedTool.annotations` field. The doc says the method is "extended to incorporate `tool.annotations` when present" but doesn't address what its new signature looks like. The Summary of Changes table notes only the semantic effect, not the interface change.
+   **Suggestion:** Add a note to §3.4 clarifying that the `@staticmethod` will receive a `tool: Tool` parameter (replacing the current three-argument form) and that the `# todo add Title to config` comment in `_mcp_tool_initializer.py:135` is resolved by this change.
+
+4. **§3.2 Resources — blob handling detail is disproportionate and partially speculative** — The paragraph about uploading blob resources to DIAL via `AttachmentService` (last paragraph of §3.2 Loading) is an edge-case concern that goes down to implementation detail. It also contradicts the `MCPFetchedResource` data model table, which says `blob` holds "base64" content — but then states the DIAL URL "replaces the raw base64 `blob` field in the stored `MCPFetchedResource`", meaning the field has a semantically ambiguous dual role (raw base64 vs DIAL URL). This needs either a clearer data model (separate `dial_url` field?) or simpler scoping (defer blob resource handling entirely).
+   **Suggestion:** Clarify the `MCPFetchedResource.blob` field semantics when it is replaced by a DIAL URL, or defer blob resource support to a follow-up and note it in *Out of Scope*.
+
+### Nits
+
+1. **§3.2 Resources — Injection: description attribution logic** — The prose says "when `resource_description` and `toolset_description` are both present, `resource_description` takes precedence." But the Markdown template shows only one of the two, not both. If only one is ever rendered, the precedence rule is the full behavior — calling it "whichever is more specific" without showing both being rendered simultaneously is slightly misleading. Minor wording cleanup recommended.
+
+2. **Migration — Non-breaking changes: "no migration required" prose** — The non-breaking changes subsection says "Running `make dump_app_schema` ... regenerates the JSON manifest schema ... Existing manifests that omit these fields continue to validate and behave as before." Per project documentation conventions, this section is the one sanctioned home for such facts, so the placement is correct — but the sentence about existing manifests is a restatement of what was already said in Design Goals ("Existing `MCPToolSet` and `DialMCPToolSet` manifests without the new fields behave identically to today"). Consider trimming to avoid repetition.
