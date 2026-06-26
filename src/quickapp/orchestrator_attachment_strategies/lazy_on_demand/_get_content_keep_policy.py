@@ -12,22 +12,32 @@ from quickapp.common.tool_message_utils import tool_function_name_for_tool_messa
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
+    PromotedAttachmentUrls,
+)
 
 
 @inject
 class _GetContentKeepPolicy(AttachmentKeepPolicy):
     """Keep an attachment when it belongs to an ``internal_attachments_get_content``
-    TOOL message and its URL/MIME pass the request-allowed admin/user gate."""
+    TOOL message and its URL/MIME pass the request-allowed admin/user gate.
+
+    The allow-set also includes urls promoted this request
+    (:class:`PromotedAttachmentUrls`) so a promoted attachment isn't stripped right
+    after being attached.
+    """
 
     def __init__(
         self,
         app_config: ApplicationConfig,
         orchestrator_capabilities: OrchestratorCapabilities,
         expanded_file_urls: ExpandedContextFileUrls,
+        promoted_urls: PromotedAttachmentUrls,
     ) -> None:
         self.__app_config: ApplicationConfig = app_config
         self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
         self.__expanded_file_urls: ExpandedContextFileUrls = expanded_file_urls
+        self.__promoted_urls: PromotedAttachmentUrls = promoted_urls
         self.__allowed_urls: set[str] = set()
         self.__get_content_tool_indices: set[int] = set()
 
@@ -45,7 +55,7 @@ class _GetContentKeepPolicy(AttachmentKeepPolicy):
                 messages=messages,
                 input_attachment_types=self.__orchestrator_capabilities.input_attachment_types,
                 expanded_folder_file_urls=self.__expanded_file_urls.urls,
-            )
+            ) | set(self.__promoted_urls.urls)
         else:
             self.__allowed_urls = set()
 

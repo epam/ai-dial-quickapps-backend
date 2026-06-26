@@ -26,14 +26,19 @@ from quickapp.common.attachment_processing_utils import (
     user_attachments_from_messages,
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.common.url_classification import UrlScheme
 from quickapp.common.utils import posix_path_last_segment
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
+    _AttachmentMaterializer,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_stage_wrapper import (
     _GetContentStageWrapper,
 )
@@ -66,6 +71,7 @@ class _GetContentTool(StagedBaseTool):
         messages_mixin: MessagesMixin,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         expanded_file_urls: ExpandedContextFileUrls,
+        materializer: _AttachmentMaterializer,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -83,6 +89,7 @@ class _GetContentTool(StagedBaseTool):
         self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__expanded_file_urls: ExpandedContextFileUrls = expanded_file_urls
+        self.__materializer: _AttachmentMaterializer = materializer
 
     def _error_result(self, message: str) -> ToolCallResult:
         payload = json.dumps(
@@ -126,32 +133,52 @@ class _GetContentTool(StagedBaseTool):
                 "Unknown or disallowed attachment_url; use exact admin context or user attachment url."
             )
 
-        if not normalized_url.startswith("files/"):
-            logger.info("get_content tool rejected: URL does not start with files/")
-            return self._error_result("Invalid storage path for attachment file.")
+        # External urls are promoted to a durable DIAL file the deployment can fetch;
+        # the promoted url rides only on the attachment, while the payload keeps
+        # echoing the original url the model passed.
+        scheme = self.__materializer.classify(normalized_url)
+        if scheme == UrlScheme.EXTERNAL:
+            try:
+                promoted = await self.__materializer.materialize_external(normalized_url)
+            except InvalidToolCallParameterException as exc:
+                logger.info("get_content tool rejected: external promotion failed (%s)", exc)
+                return self._error_result(str(exc))
+            attachment_file_url = normalize_attachment_url_argument(str(promoted.url))
+            mime = promoted.type or inferred_mime_type_for_file_context_url(attachment_file_url)
+            title = (
+                str(promoted.title) if promoted.title else attachment_file_url.rsplit("/", 1)[-1]
+            )
+        elif scheme == UrlScheme.DIAL:
+            if not normalized_url.startswith("files/"):
+                logger.info("get_content tool rejected: URL does not start with files/")
+                return self._error_result("Invalid storage path for attachment file.")
+            matched_context = _configured_file_context_by_url(self.__contexts, normalized_url)
+            matched_user_attachment = None
+            for user_attachment in user_attachments_from_messages(self.__messages_mixin.messages):
+                if (
+                    user_attachment.url
+                    and normalize_attachment_url_argument(str(user_attachment.url))
+                    == normalized_url
+                ):
+                    matched_user_attachment = user_attachment
+                    break
 
-        matched_context = _configured_file_context_by_url(self.__contexts, normalized_url)
-        matched_user_attachment = None
-        for user_attachment in user_attachments_from_messages(self.__messages_mixin.messages):
-            if (
-                user_attachment.url
-                and normalize_attachment_url_argument(str(user_attachment.url)) == normalized_url
-            ):
-                matched_user_attachment = user_attachment
-                break
-
-        if matched_context is not None:
-            mime = inferred_mime_type_for_file_context_url(matched_context.url)
-            title = matched_context.url.rsplit("/", 1)[-1]
-        elif matched_user_attachment is not None:
-            mime = attachment_mime_type(matched_user_attachment)
-            if matched_user_attachment.title:
-                title = str(matched_user_attachment.title)
+            if matched_context is not None:
+                mime = inferred_mime_type_for_file_context_url(matched_context.url)
+                title = matched_context.url.rsplit("/", 1)[-1]
+            elif matched_user_attachment is not None:
+                mime = attachment_mime_type(matched_user_attachment)
+                if matched_user_attachment.title:
+                    title = str(matched_user_attachment.title)
+                else:
+                    title = normalized_url.rsplit("/", 1)[-1]
             else:
-                title = normalized_url.rsplit("/", 1)[-1]
+                logger.info("get_content tool rejected: URL not found in request messages/config")
+                return self._error_result("Attachment URL is not available in this request.")
+            attachment_file_url = normalized_url
         else:
-            logger.info("get_content tool rejected: URL not found in request messages/config")
-            return self._error_result("Attachment URL is not available in this request.")
+            logger.info("get_content tool rejected: unsupported url scheme")
+            return self._error_result("Invalid storage path for attachment file.")
 
         if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(mime):
             logger.info(
@@ -162,7 +189,7 @@ class _GetContentTool(StagedBaseTool):
             return self._error_result("Orchestrator deployment does not accept this file type.")
 
         attachment = Attachment(
-            title=title, type=mime or "application/octet-stream", url=normalized_url
+            title=title, type=mime or "application/octet-stream", url=attachment_file_url
         )
         payload = json.dumps(
             {"ok": True, "url": normalized_url, "title": title, "type": attachment.type},

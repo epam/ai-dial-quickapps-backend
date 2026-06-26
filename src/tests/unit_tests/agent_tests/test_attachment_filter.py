@@ -12,13 +12,18 @@ from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
+    PromotedAttachmentUrls,
+)
 from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
     empty_expanded_context_file_urls,
 )
 
 
 def _make_filter(
-    contexts: list | None = None, input_attachment_types: list[str] | None = None
+    contexts: list | None = None,
+    input_attachment_types: list[str] | None = None,
+    promoted_urls: PromotedAttachmentUrls | None = None,
 ) -> _AttachmentFilter:
     app = MagicMock(spec=ApplicationConfig)
     app.contexts = contexts if contexts is not None else []
@@ -30,6 +35,7 @@ def _make_filter(
         app_config=app,
         orchestrator_capabilities=caps,
         expanded_file_urls=empty_expanded_context_file_urls(),
+        promoted_urls=promoted_urls if promoted_urls is not None else PromotedAttachmentUrls(),
     )
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
@@ -297,6 +303,43 @@ class Test_AttachmentFilter:
         result = transformer.transform([assistant, tool_msg])
         assert len(result[1].custom_content.attachments) == 1
         assert result[1].custom_content.attachments[0].type == "application/pdf"
+
+    def test_fetch_tool_promoted_external_attachment_retained(self):
+        # A promoted DIAL url is neither an admin context nor a user attachment; it
+        # is allowed only because it was minted this request and recorded in
+        # PromotedAttachmentUrls. The model-facing tool call still references the
+        # original external url.
+        promoted_url = "files/bucket/promoted-report.pdf"
+        promoted = PromotedAttachmentUrls()
+        promoted.urls.add(promoted_url)
+        transformer = _make_filter(
+            input_attachment_types=["application/pdf"], promoted_urls=promoted
+        )
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_promote_1",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "https://example.com/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_promote_1",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", promoted_url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].url == promoted_url
 
     def test_fetch_tool_attachment_with_empty_type_kept_via_url_fallback(self):
         """The keep policy must use the same MIME inference (URL-filename

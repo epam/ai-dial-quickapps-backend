@@ -17,6 +17,9 @@ from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
+    _AttachmentMaterializer,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._gating import (
     should_enable_get_content_tool,
 )
@@ -31,6 +34,9 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_rec
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
+    PromotedAttachmentUrls,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     render_get_content_tool_config,
@@ -59,6 +65,8 @@ class LazyOnDemandStrategyModule(Module):
             scope=request_scope,
         )
         binder.bind(_GetContentKeepPolicy, to=_GetContentKeepPolicy, scope=request_scope)
+        binder.bind(PromotedAttachmentUrls, to=PromotedAttachmentUrls, scope=request_scope)
+        binder.bind(_AttachmentMaterializer, to=_AttachmentMaterializer, scope=request_scope)
 
     @multiprovider
     def _provide_internal_tools(

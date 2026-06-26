@@ -7,15 +7,24 @@ must always emit an ``accepted_types`` JSON array so the model learns the live
 """
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
+from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
+    _AttachmentMaterializer,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
+    PromotedAttachmentUrls,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -28,6 +37,7 @@ from tests.unit_tests.attachment_processing_tests._folder_context_helpers import
 def _make_tool(
     input_attachment_types: list[str] | None,
     messages: list[Message] | None = None,
+    promoter: DialFilePromoter | None = None,
 ) -> _GetContentTool:
     caps = MagicMock(spec=OrchestratorCapabilities)
     caps.input_attachment_types = input_attachment_types
@@ -37,6 +47,16 @@ def _make_tool(
     )
     messages_mixin = MagicMock(spec=MessagesMixin)
     messages_mixin.messages = messages or []
+    settings = MagicMock(spec=DialSettings)
+    settings.url = "https://dial.local"
+    if promoter is None:
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock()
+    materializer = _AttachmentMaterializer(
+        dial_promoter=promoter,
+        dial_settings=settings,
+        promoted_urls=PromotedAttachmentUrls(),
+    )
     return _GetContentTool(
         stage_wrapper_builder=MagicMock(),
         contexts=[],
@@ -46,6 +66,15 @@ def _make_tool(
         messages_mixin=messages_mixin,
         deferred_stage_close_registry=MagicMock(),
         expanded_file_urls=empty_expanded_context_file_urls(),
+        materializer=materializer,
+    )
+
+
+def _user_msg_with(attachment: Attachment) -> Message:
+    return Message(
+        role=Role.USER,
+        content="hi",
+        custom_content=CustomContent(attachments=[attachment]),
     )
 
 
@@ -75,23 +104,40 @@ class TestErrorResultPayload:
         assert payload["accepted_types"] == ["application/pdf"]
 
     @pytest.mark.asyncio
-    async def test_invalid_storage_path_includes_accepted_types(self):
-        url = "https://example.com/foo.pdf"
+    async def test_unsupported_scheme_includes_accepted_types(self):
+        # An allowed user attachment whose url scheme is neither DIAL nor http(s)
+        # (e.g. ftp:) cannot be materialised — funnels through the storage-path error.
+        url = "ftp://example.com/foo.pdf"
         attachment = Attachment(title="foo.pdf", url=url, type="application/pdf")
-        messages = [
-            Message(
-                role=Role.USER,
-                content="hi",
-                custom_content=CustomContent(attachments=[attachment]),
-            ),
-        ]
-        tool = _make_tool(["application/pdf"], messages=messages)
+        tool = _make_tool(["application/pdf"], messages=[_user_msg_with(attachment)])
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
 
         payload = json.loads(result.content)
         assert payload["ok"] is False
         assert payload["error"] == "Invalid storage path for attachment file."
+        assert payload["accepted_types"] == ["application/pdf"]
+
+    @pytest.mark.asyncio
+    async def test_external_promotion_blocked_includes_accepted_types(self):
+        url = "https://example.com/foo.pdf"
+        attachment = Attachment(title="foo.pdf", url=url, type="application/pdf")
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock(
+            side_effect=InvalidToolCallParameterException(
+                parameter_name="attachment_url",
+                message="External URL fetching is disabled by operator policy.",
+            )
+        )
+        tool = _make_tool(
+            ["application/pdf"], messages=[_user_msg_with(attachment)], promoter=promoter
+        )
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
+
+        payload = json.loads(result.content)
+        assert payload["ok"] is False
+        assert payload["error"] == "External URL fetching is disabled by operator policy."
         assert payload["accepted_types"] == ["application/pdf"]
 
     @pytest.mark.asyncio
