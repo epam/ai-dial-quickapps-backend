@@ -180,6 +180,7 @@ class UserMessage(BaseModel):
     attachment_checks: list[AttachmentCheck] | None = None
     answer: list[str] | None = None
     external_tool_calls: list[ToolCall] | None = None
+    external_tool_results: dict[str, str] | None = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.attachments is None:
@@ -220,6 +221,7 @@ class TstCase:
         attachment_checks: list[AttachmentCheck] | None = None,
         answer: list[str] | None = None,
         external_tool_calls: list[ToolCall] | None = None,
+        external_tool_results: dict[str, str] | None = None,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         if external_tool_calls:
@@ -232,6 +234,7 @@ class TstCase:
                 attachment_checks=attachment_checks,
                 answer=answer,
                 external_tool_calls=external_tool_calls,
+                external_tool_results=external_tool_results,
             )
         )
         return self
