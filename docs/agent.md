@@ -420,8 +420,11 @@ Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_str
 The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
 no-op unless both gates pass. When active it contributes:
 
-- `_GetContentTool` (`internal_attachments_get_content`) — registered when at least one admin context or
-  user attachment passes the orchestrator's `input_attachment_types` MIME gate.
+- `_GetContentTool` (`internal_attachments_get_content`) — registered when the orchestrator accepts input
+  attachments (`input_attachment_types` non-empty) **and** either external URL fetching is policy-enabled
+  (an attachment url may then arrive through any channel — system prompt, skill, user message, tool result —
+  so it can't be predicted from request-visible files) **or** at least one admin context / expanded folder
+  file / user attachment passes the `input_attachment_types` MIME gate (`should_enable_get_content_tool`).
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
 - `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL

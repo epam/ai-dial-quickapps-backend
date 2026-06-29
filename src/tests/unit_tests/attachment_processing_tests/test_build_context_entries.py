@@ -217,6 +217,28 @@ class TestShouldGetContentTool:
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
         assert should_enable_get_content_tool(contexts, [], []) is False
 
+    def test_true_when_external_fetch_enabled_and_no_request_visible_files(self):
+        # No admin contexts, no user attachments — the url may still arrive via the
+        # system prompt, a skill, or a tool result, so the tool must be offered.
+        assert (
+            should_enable_get_content_tool([], [], ["application/pdf"], external_fetch_enabled=True)
+            is True
+        )
+
+    def test_false_when_external_fetch_enabled_but_deployment_accepts_no_attachments(self):
+        # External fetch on, but the orchestrator accepts no input attachments → the
+        # tool could deliver nothing, so it stays unregistered.
+        assert should_enable_get_content_tool([], [], None, external_fetch_enabled=True) is False
+        assert should_enable_get_content_tool([], [], [], external_fetch_enabled=True) is False
+
+    def test_false_when_external_fetch_disabled_and_no_request_visible_files(self):
+        assert (
+            should_enable_get_content_tool(
+                [], [], ["application/pdf"], external_fetch_enabled=False
+            )
+            is False
+        )
+
 
 class TestGetContentEligibility:
     def test_enable_get_content_when_user_attachment_supported(self):
