@@ -13,7 +13,8 @@ DisabledReason = Literal["admin", "builder", "admin_allowlist", "builder_allowli
 
 @inject
 class ExternalUrlFetchPolicyResolver:
-    """Combines admin (env) and builder (per-app) gates into a single effective flag."""
+    """Resolves the admin (env) and builder (per-app) external-fetch gates into a
+    policy reason, with ``is_enabled()`` / ``resolve_host()`` as derived views."""
 
     def __init__(
         self,
@@ -30,6 +31,11 @@ class ExternalUrlFetchPolicyResolver:
         if features is not None and features.external_url_fetch.enabled is False:
             return "builder"
         return "allowed"
+
+    def is_enabled(self) -> bool:
+        """Whether external URL fetching is permitted for this request (both the
+        admin and builder gates pass)."""
+        return self.resolve_reason() == "allowed"
 
     def resolve_host(self, host: str) -> HostReason:
         admin_list = self.__settings.host_allowlist
