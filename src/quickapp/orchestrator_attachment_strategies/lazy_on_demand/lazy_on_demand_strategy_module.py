@@ -38,7 +38,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     render_get_content_tool_config,
 )
-from quickapp.shared.external_fetch._external_url_fetch_policy_resolver import (
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
     ExternalUrlFetchPolicyResolver,
 )
 
