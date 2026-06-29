@@ -12,6 +12,7 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
@@ -38,6 +39,16 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_sta
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _ResolvedAttachment(BaseModel):
+    """The fetchable DIAL ``url`` plus display ``mime``/``title`` for one attachment."""
+
+    model_config = ConfigDict(frozen=True)
+
+    url: str
+    mime: str
+    title: str
 
 
 @inject
@@ -95,65 +106,86 @@ class _GetContentTool(StagedBaseTool):
             return self._error_result("Missing or empty attachment_url.")
 
         normalized_url = normalize_attachment_url_argument(str(attachment_url))
-        # External urls are promoted to a durable DIAL file the deployment can fetch;
-        # the promoted url rides only on the attachment, while the payload keeps
-        # echoing the original url the model passed.
         scheme = self.__materializer.classify(normalized_url)
         if scheme == UrlScheme.EXTERNAL:
+            # Promote to a durable DIAL file the deployment can fetch; the promoted url
+            # rides only on the attachment, while the payload echoes the original url.
             try:
-                promoted = await self.__materializer.materialize_external(normalized_url)
+                resolved = await self._resolve_external(normalized_url)
             except InvalidToolCallParameterException as exc:
                 logger.info("get_content tool rejected: external promotion failed (%s)", exc)
                 return self._error_result(str(exc))
-            attachment_file_url = normalize_attachment_url_argument(str(promoted.url))
-            mime = promoted.type or inferred_mime_type_for_file_context_url(attachment_file_url)
-            title = (
-                str(promoted.title) if promoted.title else attachment_file_url.rsplit("/", 1)[-1]
-            )
         elif scheme == UrlScheme.DIAL:
             if not normalized_url.startswith("files/"):
                 logger.info("get_content tool rejected: URL does not start with files/")
                 return self._error_result("Invalid storage path for attachment file.")
-            # Honor an explicit type/title when the url matches a user attachment;
-            # otherwise infer from the filename. DIAL Core authorizes the fetch by the
-            # caller's permissions either way. (A matching admin context carries no
-            # explicit type/title, so it yields the same inference as the fallback.)
-            matched_user_attachment = next(
-                (
-                    att
-                    for att in user_attachments_from_messages(self.__messages_mixin.messages)
-                    if att.url and normalize_attachment_url_argument(str(att.url)) == normalized_url
-                ),
-                None,
-            )
-            if matched_user_attachment is not None:
-                mime = attachment_mime_type(matched_user_attachment)
-                title = (
-                    str(matched_user_attachment.title)
-                    if matched_user_attachment.title
-                    else normalized_url.rsplit("/", 1)[-1]
-                )
-            else:
-                mime = inferred_mime_type_for_file_context_url(normalized_url)
-                title = normalized_url.rsplit("/", 1)[-1]
-            attachment_file_url = normalized_url
+            resolved = self._resolve_dial(normalized_url)
         else:
             logger.info("get_content tool rejected: unsupported url scheme")
             return self._error_result("Invalid storage path for attachment file.")
 
-        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(mime):
+        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(resolved.mime):
             logger.info(
                 "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
-                mime,
+                resolved.mime,
                 self.__orchestrator_capabilities.deployment_id,
             )
             return self._error_result("Orchestrator deployment does not accept this file type.")
 
+        return self._build_result(
+            stage_wrapper,
+            tool_call_id,
+            payload_url=normalized_url,
+            resolved=resolved,
+        )
+
+    async def _resolve_external(self, normalized_url: str) -> _ResolvedAttachment:
+        """Promote an external url to a durable DIAL file and resolve its display
+        metadata. Raises ``InvalidToolCallParameterException`` if promotion is blocked.
+        """
+        promoted = await self.__materializer.materialize_external(normalized_url)
+        attachment_file_url = normalize_attachment_url_argument(str(promoted.url))
+        mime = promoted.type or inferred_mime_type_for_file_context_url(attachment_file_url)
+        title = str(promoted.title) if promoted.title else attachment_file_url.rsplit("/", 1)[-1]
+        return _ResolvedAttachment(url=attachment_file_url, mime=mime, title=title)
+
+    def _resolve_dial(self, normalized_url: str) -> _ResolvedAttachment:
+        """Resolve display metadata for a DIAL ``files/`` url. Honors an explicit
+        type/title when the url matches a user attachment; otherwise infers from the
+        filename. (A matching admin context carries no explicit type/title, so it
+        yields the same inference as the fallback.)
+        """
+        matched = next(
+            (
+                att
+                for att in user_attachments_from_messages(self.__messages_mixin.messages)
+                if att.url and normalize_attachment_url_argument(str(att.url)) == normalized_url
+            ),
+            None,
+        )
+        if matched is not None:
+            mime = attachment_mime_type(matched)
+            title = str(matched.title) if matched.title else normalized_url.rsplit("/", 1)[-1]
+        else:
+            mime = inferred_mime_type_for_file_context_url(normalized_url)
+            title = normalized_url.rsplit("/", 1)[-1]
+        return _ResolvedAttachment(url=normalized_url, mime=mime, title=title)
+
+    def _build_result(
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        tool_call_id: str | None,
+        *,
+        payload_url: str,
+        resolved: _ResolvedAttachment,
+    ) -> ToolCallResult:
         attachment = Attachment(
-            title=title, type=mime or "application/octet-stream", url=attachment_file_url
+            title=resolved.title,
+            type=resolved.mime or "application/octet-stream",
+            url=resolved.url,
         )
         payload = json.dumps(
-            {"ok": True, "url": normalized_url, "title": title, "type": attachment.type},
+            {"ok": True, "url": payload_url, "title": resolved.title, "type": attachment.type},
             ensure_ascii=False,
         )
         result = ToolCallResult(
@@ -164,24 +196,30 @@ class _GetContentTool(StagedBaseTool):
         logger.debug(
             "get_content tool allowed: deployment_id=%s url_basename=%s type=%s",
             self.__orchestrator_capabilities.deployment_id,
-            title,
+            resolved.title,
             attachment.type,
         )
         if stage_wrapper:
-            display = self._tool_config.display
-            defer_close = bool(display and display.stage and display.stage.defer_close)
-            if defer_close:
-                sw = stage_wrapper
-                res = result
-
-                def apply_success_to_stage() -> None:
-                    sw.add_result(res)
-
-                self.__stage_close_registry.register_stage_ui_before_close(
-                    stage_wrapper,
-                    apply_success_to_stage,
-                    tool_call_id=tool_call_id,
-                )
-            else:
-                stage_wrapper.add_result(result)
+            self._apply_to_stage(result, stage_wrapper, tool_call_id)
         return result
+
+    def _apply_to_stage(
+        self,
+        result: ToolCallResult,
+        stage_wrapper: BaseStageWrapper,
+        tool_call_id: str | None,
+    ) -> None:
+        display = self._tool_config.display
+        defer_close = bool(display and display.stage and display.stage.defer_close)
+        if not defer_close:
+            stage_wrapper.add_result(result)
+            return
+
+        def apply_success_to_stage() -> None:
+            stage_wrapper.add_result(result)
+
+        self.__stage_close_registry.register_stage_ui_before_close(
+            stage_wrapper,
+            apply_success_to_stage,
+            tool_call_id=tool_call_id,
+        )

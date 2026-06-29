@@ -145,21 +145,27 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         if scheme == UrlScheme.DIAL:
             return attachment
         if scheme == UrlScheme.EXTERNAL:
-            try:
-                promoted = await self.__materializer.materialize_external(url)
-            except InvalidToolCallParameterException as exc:
-                logger.info(
-                    "get_content injector: skipping external attachment, promotion blocked (%s)",
-                    exc,
-                )
-                return None
-            return Attachment(
-                url=promoted.url,
-                type=promoted.type or attachment.type,
-                title=attachment.title or promoted.title,
-            )
+            return await self._promote_external(attachment, url)
         logger.info("get_content injector: skipping attachment with unsupported url scheme")
         return None
+
+    async def _promote_external(self, attachment: Attachment, url: str) -> Attachment | None:
+        """Promote an external attachment url to a DIAL file, or ``None`` if promotion
+        is blocked (policy / SSRF / size) so the caller emits no misleading pair.
+        """
+        try:
+            promoted = await self.__materializer.materialize_external(url)
+        except InvalidToolCallParameterException as exc:
+            logger.info(
+                "get_content injector: skipping external attachment, promotion blocked (%s)",
+                exc,
+            )
+            return None
+        return Attachment(
+            url=promoted.url,
+            type=promoted.type or attachment.type,
+            title=attachment.title or promoted.title,
+        )
 
     async def transform(self, messages: list[Message]) -> list[Message]:
         last_user_msg_with_attachments = self._last_user_with_attachments(messages)
