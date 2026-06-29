@@ -443,12 +443,26 @@ Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_str
 The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
 no-op unless both gates pass. When active it contributes:
 
-- `_GetContentTool` (`internal_attachments_get_content`) — registered when at least one admin context or
-  user attachment passes the orchestrator's `input_attachment_types` MIME gate.
+- `_GetContentTool` (`internal_attachments_get_content`) — registered when the orchestrator accepts input
+  attachments (`input_attachment_types` non-empty) **and** either external URL fetching is policy-enabled
+  (an attachment url may then arrive through any channel — system prompt, skill, user message, tool result —
+  so it can't be predicted from request-visible files) **or** at least one admin context / expanded folder
+  file / user attachment passes the `input_attachment_types` MIME gate (`should_enable_get_content_tool`).
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
+- `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL
+  `files/` urls pass through; **external `http(s)` urls are downloaded and promoted to a durable DIAL file**
+  via `DialFilePromoter` (which enforces the two-tier external-fetch policy, the SSRF guard, the redirect cap,
+  and the size limit). Both the synthetic injector and the explicit tool call route external urls through it,
+  so the orchestrator deployment receives a fetchable DIAL url even though the model only ever sees and passes
+  the original url. There is no in-app url allow-set — authorization of the underlying fetch is enforced
+  upstream: DIAL Core gates `files/` access by the caller's bucket permissions, and the external-fetch policy
+  gates `http(s)`.
 - `_GetContentKeepPolicy`, `_GetContentHistoryPolicy`, `_GetContentRecoveryPolicy` — keep, persist, and
-  recover get-content tool messages and their attachments.
+  recover get-content tool messages and their attachments. The keep policy retains any attachment that rides
+  an `internal_attachments_get_content` TOOL message, points at a DIAL `files/` path, and whose MIME the
+  orchestrator accepts (the `files/` prefix is the storage-path validity check; it covers both DIAL
+  passthrough and promoted-external attachments).
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future

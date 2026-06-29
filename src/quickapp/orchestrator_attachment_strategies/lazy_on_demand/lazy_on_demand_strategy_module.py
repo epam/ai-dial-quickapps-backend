@@ -17,6 +17,9 @@ from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
+    _AttachmentMaterializer,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._gating import (
     should_enable_get_content_tool,
 )
@@ -34,6 +37,9 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     render_get_content_tool_config,
+)
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
+    ExternalUrlFetchPolicyResolver,
 )
 
 logger = logging.getLogger(__name__)
@@ -59,6 +65,7 @@ class LazyOnDemandStrategyModule(Module):
             scope=request_scope,
         )
         binder.bind(_GetContentKeepPolicy, to=_GetContentKeepPolicy, scope=request_scope)
+        binder.bind(_AttachmentMaterializer, to=_AttachmentMaterializer, scope=request_scope)
 
     @multiprovider
     def _provide_internal_tools(
@@ -68,6 +75,7 @@ class LazyOnDemandStrategyModule(Module):
         get_content_builder: AssistedBuilder[_GetContentTool],
         orchestrator_capabilities: OrchestratorCapabilities,
         expanded_file_urls: ExpandedContextFileUrls,
+        external_fetch_policy: ExternalUrlFetchPolicyResolver,
     ) -> list[StagedBaseTool]:
         if not _is_active(app_config):
             return []
@@ -78,6 +86,7 @@ class LazyOnDemandStrategyModule(Module):
             messages,
             orchestrator_capabilities.input_attachment_types,
             expanded_file_urls.urls,
+            external_fetch_enabled=external_fetch_policy.is_enabled(),
         ):
             return []
         rendered_tool_config = render_get_content_tool_config(
@@ -88,7 +97,6 @@ class LazyOnDemandStrategyModule(Module):
                 tool_config=rendered_tool_config,
                 name=rendered_tool_config.open_ai_tool.function.name,
                 description=rendered_tool_config.open_ai_tool.function.description,
-                contexts=list(app_config.contexts),
             )
         ]
 

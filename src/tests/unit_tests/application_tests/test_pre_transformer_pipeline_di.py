@@ -17,7 +17,7 @@ so the final list ordering is invariant to execution order.
 """
 
 import json
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 from fastapi_injector import Injected
@@ -28,11 +28,13 @@ from quickapp.attachment_processing._tool_configs import AVAILABLE_CONTEXT_TOOL_
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common.abstract.folder_listing_provider import FolderListingProvider
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
+from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.application import _MessagesSetup
+from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
@@ -75,6 +77,15 @@ def _make_context_app(ctx_url: str, *, lazy_strategy: bool = False):
         app_config.contexts = [ctx]
         if lazy_strategy:
             app_config.orchestrator.attachment_strategy = LazyOnDemandAttachmentStrategy()
+            # The lazy strategy wires _AttachmentMaterializer, which depends on the
+            # file promoter and DIAL settings. DIAL-relative context/attachment urls
+            # never trigger promotion, so a stub promoter is sufficient here.
+            promoter = MagicMock(spec=DialFilePromoter)
+            promoter.promote = AsyncMock()
+            binder.bind(DialFilePromoter, to=promoter)
+            dial_settings = MagicMock(spec=DialSettings)
+            dial_settings.url = "https://dial.local"
+            binder.bind(DialSettings, to=dial_settings)
         binder.bind(ApplicationConfig, to=app_config)
         caps = MagicMock(spec=OrchestratorCapabilities)
         caps.input_attachment_types = ["application/pdf", "text/csv", "image/*"]
