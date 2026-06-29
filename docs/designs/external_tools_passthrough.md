@@ -75,6 +75,45 @@ Clients can't contribute their own tools to the agent loop. `request.tools` para
 
 Client executes the tool, sends the result back in a follow-up request (same `tools` array + a `tool` message with `tool_call_id: "call_abc"`). QuickApps resumes the loop and produces the final answer.
 
+## Error Handling: Missing Tool Results
+
+When QuickApps responds with `finish_reason: tool_calls` (external tool calls surfaced), the client
+**must** include the corresponding tool results in the follow-up request. Specifically:
+
+- The follow-up `messages` array must contain the assistant message (with `tool_calls`) followed
+  immediately by one `role: "tool"` message per surfaced tool call, each carrying the matching
+  `tool_call_id`.
+- If the client omits tool results (e.g., sends a plain user message instead), QuickApps returns
+  `InvalidRequestError` (HTTP 400).
+
+### Validation Rules
+
+| Condition | Error |
+|---|---|
+| ASSISTANT with external tool_calls followed by USER (no tool results) | "Missing tool result messages for external tool calls: {names}. Expected role 'tool' messages with matching tool_call_ids." |
+| TOOL message with `tool_call_id` not matching any preceding ASSISTANT tool_call | "Tool message at index {i}: tool_call_id '{id}' does not match any tool call in the preceding assistant message." |
+| Fewer TOOL messages than external tool_calls | "Missing tool results for tool_call_ids: {ids}." |
+
+### Valid Follow-up Shape
+
+```
+..., user, assistant(tool_calls=[ext1, ext2]), tool(ext1_result), tool(ext2_result)
+```
+
+The request may end with tool messages (QuickApps resumes the loop) or continue
+with a user message after all tool results are provided:
+
+```
+..., assistant(tool_calls=[ext]), tool(ext_result), user
+```
+
+### Changes
+
+| Component | Change |
+|---|---|
+| `_messages_validator.py` | Allow TOOL messages after ASSISTANT with `tool_calls`; validate `tool_call_id` correspondence |
+| `_messages_setup.py` | +`validate_external_tool_results()` — after knowing external tool names, ensures all external tool_call_ids have matching TOOL messages |
+
 ## Out of Scope
 
 - `StaticTool` in `request.tools` — unclear semantics as client-provided tools, deferred.

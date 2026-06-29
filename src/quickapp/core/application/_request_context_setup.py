@@ -78,6 +78,8 @@ class _RequestContextSetup:
         transformers can see feature contexts populated during initialization.
         """
         context = self.__context_provider.get()
+        external_tool_names = frozenset(t.function.name for t in context.extra_tools if t.function)
+        self.__messages_setup.validate_external_tool_results(messages, external_tool_names)
         context.messages = self.__messages_setup.extract_tool_calls(messages)
         transformed = await self.__messages_setup.run_transformers(context.messages)
         context.replace_messages(transformed)
