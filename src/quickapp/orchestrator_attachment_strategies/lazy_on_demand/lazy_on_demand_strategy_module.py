@@ -35,9 +35,6 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_rec
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
 )
-from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
-    PromotedAttachmentUrls,
-)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     render_get_content_tool_config,
 )
@@ -65,7 +62,6 @@ class LazyOnDemandStrategyModule(Module):
             scope=request_scope,
         )
         binder.bind(_GetContentKeepPolicy, to=_GetContentKeepPolicy, scope=request_scope)
-        binder.bind(PromotedAttachmentUrls, to=PromotedAttachmentUrls, scope=request_scope)
         binder.bind(_AttachmentMaterializer, to=_AttachmentMaterializer, scope=request_scope)
 
     @multiprovider
@@ -96,7 +92,6 @@ class LazyOnDemandStrategyModule(Module):
                 tool_config=rendered_tool_config,
                 name=rendered_tool_config.open_ai_tool.function.name,
                 description=rendered_tool_config.open_ai_tool.function.description,
-                contexts=list(app_config.contexts),
             )
         ]
 

@@ -15,9 +15,6 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
-from quickapp.orchestrator_attachment_strategies.lazy_on_demand._promoted_attachment_urls import (
-    PromotedAttachmentUrls,
-)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
@@ -42,7 +39,6 @@ def _file_meta(url: str, name: str, content_type: str) -> SimpleNamespace:
 def _materializer(
     promoter: DialFilePromoter | None = None,
     dial_url: str = "https://dial.local",
-    holder: PromotedAttachmentUrls | None = None,
 ) -> _AttachmentMaterializer:
     settings = MagicMock(spec=DialSettings)
     settings.url = dial_url
@@ -52,7 +48,6 @@ def _materializer(
     return _AttachmentMaterializer(
         dial_promoter=promoter,
         dial_settings=settings,
-        promoted_urls=holder if holder is not None else PromotedAttachmentUrls(),
     )
 
 
@@ -233,14 +228,13 @@ class TestAttachmentGetContentInjector:
 class TestExternalUrlPromotion:
     @pytest.mark.asyncio
     async def test_external_attachment_promoted_into_synthetic_pair(self):
-        holder = PromotedAttachmentUrls()
         promoter = MagicMock(spec=DialFilePromoter)
         promoter.promote = AsyncMock(
             return_value=_file_meta("files/bucket/report.pdf", "report.pdf", "application/pdf")
         )
         injector = _injector(
             ["application/pdf"],
-            materializer=_materializer(promoter=promoter, holder=holder),
+            materializer=_materializer(promoter=promoter),
         )
         ext = _attachment("report.pdf", "https://example.com/report.pdf", "application/pdf")
         messages = [_user_msg("latest", [ext])]
@@ -267,8 +261,6 @@ class TestExternalUrlPromotion:
         assert tool.custom_content.attachments[0].type == "application/pdf"
         # the tool-result text echoes the original url the model passed
         assert json.loads(str(tool.content))["url"] == "https://example.com/report.pdf"
-        # promoted url recorded so _GetContentKeepPolicy retains the attachment
-        assert "files/bucket/report.pdf" in holder.urls
 
     @pytest.mark.asyncio
     async def test_external_attachment_skipped_when_promotion_blocked(self):
