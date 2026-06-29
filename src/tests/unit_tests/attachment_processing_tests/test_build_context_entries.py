@@ -11,7 +11,6 @@ from quickapp.common.abstract.folder_listing_provider import (
     ExpandedFolderEntry,
     FolderListingProvider,
 )
-from quickapp.common.attachment_processing_utils import collect_get_content_allowed_urls
 from quickapp.common.folder_context_urls import FOLDER_METADATA_MIME
 from quickapp.config.context import (
     Context,
@@ -218,6 +217,28 @@ class TestShouldGetContentTool:
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
         assert should_enable_get_content_tool(contexts, [], []) is False
 
+    def test_true_when_external_fetch_enabled_and_no_request_visible_files(self):
+        # No admin contexts, no user attachments — the url may still arrive via the
+        # system prompt, a skill, or a tool result, so the tool must be offered.
+        assert (
+            should_enable_get_content_tool([], [], ["application/pdf"], external_fetch_enabled=True)
+            is True
+        )
+
+    def test_false_when_external_fetch_enabled_but_deployment_accepts_no_attachments(self):
+        # External fetch on, but the orchestrator accepts no input attachments → the
+        # tool could deliver nothing, so it stays unregistered.
+        assert should_enable_get_content_tool([], [], None, external_fetch_enabled=True) is False
+        assert should_enable_get_content_tool([], [], [], external_fetch_enabled=True) is False
+
+    def test_false_when_external_fetch_disabled_and_no_request_visible_files(self):
+        assert (
+            should_enable_get_content_tool(
+                [], [], ["application/pdf"], external_fetch_enabled=False
+            )
+            is False
+        )
+
 
 class TestGetContentEligibility:
     def test_enable_get_content_when_user_attachment_supported(self):
@@ -245,37 +266,6 @@ class TestGetContentEligibility:
             )
             is True
         )
-
-    def test_collect_allowed_urls_includes_supported_user_attachment(self):
-        contexts: list[Context] = [FileContextConfig(url="files/bucket/admin.pdf")]
-        messages = [
-            Message(
-                role=Role.USER,
-                content="attached",
-                custom_content=CustomContent(
-                    attachments=[
-                        Attachment(
-                            title="notes.txt",
-                            url="files/bucket/notes.txt",
-                            type="text/plain",
-                        ),
-                        Attachment(
-                            title="report.pdf",
-                            url="files/bucket/user-report.pdf",
-                            type="application/pdf",
-                        ),
-                    ]
-                ),
-            )
-        ]
-        allowed = collect_get_content_allowed_urls(
-            contexts=contexts,
-            messages=messages,
-            input_attachment_types=["application/pdf"],
-        )
-        assert "files/bucket/admin.pdf" in allowed
-        assert "files/bucket/user-report.pdf" in allowed
-        assert "files/bucket/notes.txt" not in allowed
 
 
 class _FakeFolderListing(FolderListingProvider):
@@ -337,17 +327,3 @@ class TestBuildContextEntriesAsync:
         _, entries = await build_context_entries_async(contexts, seen, listing, holder)
         by_url = {e.url: e for e in entries}
         assert by_url["files/bucket/docs/new.pdf"].status == ContextEntryStatus.new
-
-    @pytest.mark.asyncio
-    async def test_collect_allowed_urls_includes_expanded_folder_file(self):
-        contexts: list[Context] = [
-            FolderContextConfig(url="metadata/files/bucket/docs/"),
-        ]
-        expanded = {"files/bucket/docs/report.pdf"}
-        allowed = collect_get_content_allowed_urls(
-            contexts=contexts,
-            messages=[],
-            input_attachment_types=["application/pdf"],
-            expanded_folder_file_urls=expanded,
-        )
-        assert "files/bucket/docs/report.pdf" in allowed

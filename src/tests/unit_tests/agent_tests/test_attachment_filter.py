@@ -5,32 +5,21 @@ from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
 from quickapp.attachment_processing._legacy_user_image_keep_policy import _LegacyUserImageKeepPolicy
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-from quickapp.config.application import ApplicationConfig
-from quickapp.config.context import FileContextConfig
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
 )
-from tests.unit_tests.attachment_processing_tests._folder_context_helpers import (
-    empty_expanded_context_file_urls,
-)
 
 
 def _make_filter(
-    contexts: list | None = None, input_attachment_types: list[str] | None = None
+    input_attachment_types: list[str] | None = None,
 ) -> _AttachmentFilter:
-    app = MagicMock(spec=ApplicationConfig)
-    app.contexts = contexts if contexts is not None else []
     patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
     caps = OrchestratorCapabilities(
         deployment=MagicMock(id="orch", input_attachment_types=patterns)
     )
-    keep_policy = _GetContentKeepPolicy(
-        app_config=app,
-        orchestrator_capabilities=caps,
-        expanded_file_urls=empty_expanded_context_file_urls(),
-    )
+    keep_policy = _GetContentKeepPolicy(orchestrator_capabilities=caps)
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 
@@ -268,10 +257,9 @@ class Test_AttachmentFilter:
         content = str(result[0].content)
         assert "<reference_url>/refs/doc.pdf</reference_url>" in content
 
-    def test_fetch_tool_pdf_retained_when_whitelisted(self):
+    def test_fetch_tool_pdf_retained_for_get_content_tool(self):
         url = "files/bucket/report.pdf"
-        contexts = [FileContextConfig(url=url)]
-        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -298,14 +286,46 @@ class Test_AttachmentFilter:
         assert len(result[1].custom_content.attachments) == 1
         assert result[1].custom_content.attachments[0].type == "application/pdf"
 
+    def test_fetch_tool_promoted_external_attachment_retained(self):
+        # A promoted DIAL url is neither an admin context nor a user attachment, yet
+        # it is retained because it rides a get-content TOOL message, points at a
+        # files/ path, and its MIME is accepted. The model-facing tool call still
+        # references the original external url.
+        promoted_url = "files/bucket/promoted-report.pdf"
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_promote_1",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "https://example.com/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_promote_1",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", promoted_url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].url == promoted_url
+
     def test_fetch_tool_attachment_with_empty_type_kept_via_url_fallback(self):
         """The keep policy must use the same MIME inference (URL-filename
         fallback) the synthetic injector uses — otherwise an attachment whose
         ``type`` is empty but whose URL implies an accepted MIME would be
         injected upstream and then silently stripped here."""
         url = "files/bucket/report.pdf"
-        contexts = [FileContextConfig(url=url)]
-        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -332,8 +352,7 @@ class Test_AttachmentFilter:
 
     def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
         url = "files/bucket/report.pdf"
-        contexts = [FileContextConfig(url=url)]
-        transformer = _make_filter(contexts=contexts, input_attachment_types=["application/pdf"])
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -356,9 +375,12 @@ class Test_AttachmentFilter:
         result = transformer.transform([assistant, tool_msg])
         assert len(result[1].custom_content.attachments) == 0
 
-    def test_fetch_tool_pdf_stripped_when_url_not_in_config(self):
+    def test_fetch_tool_pdf_kept_when_url_not_in_config(self):
+        # With no in-app allow-set, a get-content TOOL files/ attachment with an
+        # accepted MIME is retained even when no admin context declares it — DIAL
+        # Core authorizes the underlying fetch.
         url = "files/bucket/report.pdf"
-        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
         assistant = Message(
             role=Role.ASSISTANT,
             content="",
@@ -382,11 +404,12 @@ class Test_AttachmentFilter:
             ),
         )
         result = transformer.transform([assistant, tool_msg])
-        assert len(result[1].custom_content.attachments) == 0
+        assert len(result[1].custom_content.attachments) == 1
+        assert result[1].custom_content.attachments[0].url == url
 
     def test_fetch_tool_pdf_kept_when_url_matches_user_attachment(self):
         url = "files/bucket/user-report.pdf"
-        transformer = _make_filter(contexts=[], input_attachment_types=["application/pdf"])
+        transformer = _make_filter(input_attachment_types=["application/pdf"])
         user_msg = _user_msg(
             "please use my report",
             [_attachment("user-report.pdf", url, "application/pdf")],

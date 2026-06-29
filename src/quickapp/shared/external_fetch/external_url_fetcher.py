@@ -18,7 +18,7 @@ from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
 )
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.shared.external_fetch._external_fetch_settings import ExternalFetchSettings
-from quickapp.shared.external_fetch._external_url_fetch_policy_resolver import (
+from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
     DisabledReason,
     ExternalUrlFetchPolicyResolver,
 )
