@@ -354,9 +354,11 @@ async def test_forwarded_x_headers_passed_to_mcp_request():
             name="mcp-toolset",
             description="MCP toolset",
         ),
+        toolset_key="test",
         oauth_token_fetcher=mock_oauth,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
         bearer=None,
         forwarded_headers=forwarded,
     )

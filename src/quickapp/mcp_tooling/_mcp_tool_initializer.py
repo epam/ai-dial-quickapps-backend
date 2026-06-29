@@ -92,6 +92,17 @@ def _login_result_message(result: LoginResult, toolset_label: str) -> str:
     return template.format(name=toolset_label)
 
 
+def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
+    """Stable per-app key identifying a toolset's session across calls (and, later, turns).
+
+    DialMCPToolSet keys on its canonical ``deployment_id``; a directly-addressed MCPToolSet
+    keys on its ``name``. Prefixed so a deployment id can never collide with a plain name.
+    """
+    if isinstance(toolset_info, DialMCPToolSet):
+        return f"dial:{toolset_info.deployment_id}"
+    return f"mcp:{toolset_info.name}"
+
+
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """Return a label for this toolset suitable for error messages.
     For DialMCPToolSet with default name, use a human-readable form of deployment_id.
@@ -270,7 +281,8 @@ class _MCPToolInitializer(CompletionInitializer):
                 )
 
             connection_manager = self.__connection_manager_builder.build(
-                toolset_info=resolved_toolset
+                toolset_info=resolved_toolset,
+                toolset_key=_toolset_key(toolset_info),
             )
             tools = await connection_manager.get_tools_list()
 

@@ -11,6 +11,7 @@ from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPToolSet
 from quickapp.mcp_tooling._di_types import DialToolsetCacheService
 from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
+from quickapp.mcp_tooling._mcp_session_registry import _MCPSessionRegistry
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
@@ -26,6 +27,7 @@ class MCPToolingModule(Module):
         binder.bind(_MCPStageWrapper, to=_MCPStageWrapper, scope=request_scope)
         binder.bind(_MCPTool, to=_MCPTool, scope=request_scope)
         binder.bind(_MCPConnectionManager, to=_MCPConnectionManager, scope=request_scope)
+        binder.bind(_MCPSessionRegistry, to=_MCPSessionRegistry, scope=request_scope)
         binder.bind(DialToolsetCacheService, to=DialToolsetCacheService, scope=singleton)
         logger.debug("MCPToolingModule module configuration completed")
 

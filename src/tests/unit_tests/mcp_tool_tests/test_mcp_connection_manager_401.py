@@ -5,8 +5,10 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_connection_manager import _extract_http_401, _MCPConnectionManager
+from quickapp.mcp_tooling._mcp_session_registry import _MCPSessionRegistry
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from tests.unit_tests.common.common import noop_timeout_resolver
 
@@ -53,7 +55,7 @@ def test_extract_http_401_mixed():
 
 # --- _MCPConnectionManager integration tests ---
 
-_STREAMABLE_HTTP_PATCH = "quickapp.mcp_tooling._mcp_connection_manager.streamablehttp_client"
+_STREAMABLE_HTTP_PATCH = "quickapp.mcp_tooling._mcp_connection_manager.streamable_http_client"
 _SSE_PATCH = "quickapp.mcp_tooling._mcp_connection_manager.sse_client"
 
 
@@ -68,9 +70,11 @@ def _make_connection_manager(
     )
     return _MCPConnectionManager(
         toolset_info=toolset,
+        toolset_key="mcp:test-toolset",
         oauth_token_fetcher=MagicMock(),
         dial_settings=MagicMock(url="https://dial-core"),
         timeout_resolver=noop_timeout_resolver(),
+        registry=_MCPSessionRegistry(RequestAsyncCloseRegistry()),
     )
 
 

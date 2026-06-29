@@ -259,6 +259,29 @@ When a tool call exceeds the resolved budget, `translate_timeout` (async context
 <!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
+### MCP Session Reuse
+
+MCP servers can be **stateful**: a session established at `initialize` time holds server-side state that later
+tool calls depend on. To preserve that state, an MCP toolset's `ClientSession` is opened **once per request**
+and reused across orchestrator iterations and across concurrent tool calls — rather than the previous
+open-init-call-teardown per call, which lost all session state and re-negotiated the streamable-HTTP
+`MCP-Session-Id` every time.
+
+- **`_MCPSessionRegistry`** (request-scoped, `mcp_tooling/`) owns one live session per toolset, keyed by a
+  stable toolset key (`mcp:<name>` for `MCPToolSet`, `dial:<deployment_id>` for `DialMCPToolSet`).
+  `_MCPConnectionManager.call_mcp_tool` borrows the shared session instead of opening its own; tool *listing*
+  (`get_tools_list`, during initialization) keeps its own short-lived session.
+- **Owner-task model.** Tool calls run in concurrent sibling tasks, but anyio requires a session's cancel
+  scope to be exited in the task that entered it. The registry therefore opens each session inside a dedicated
+  owner task that enters the context, signals readiness, parks until shutdown, then exits — so enter/exit stay
+  co-located regardless of which call triggered the open. Borrowers issue concurrent `call_tool`s against the
+  shared session, which the SDK multiplexes by request id. A failed open is not memoized, so the existing
+  interactive-login retry re-opens cleanly.
+- **Teardown seam.** The registry self-registers with a request-scoped `RequestAsyncCloseRegistry`
+  (`common/`); the orchestrator awaits `aclose_all()` in its `_persisting_state()` `finally`, so every live
+  session is torn down on both the success and the error path. Within-request reuse is unconditional — there
+  is no configuration flag.
+
 ---
 
 ## Message Processing

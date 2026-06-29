@@ -149,10 +149,15 @@ sequenceDiagram
 request and runs cleanup in its `finally` block (it flushes the deferred stage-close registry and writes
 state). Registry teardown hooks in here, so sessions are guaranteed to close on both success and error paths.
 
-**Initialization vs. the loop.** Toolset initialization (`_MCPToolInitializer`, which lists tools) runs in
-its own `asyncio.gather` tasks *before* the orchestrator loop. Its tool-listing session is **not** carried
-forward (it lives in a different task and finishes during init). The persistent session is the one opened by
-the registry within the request/owner-task context. Tool *listing* keeps its current short-lived session.
+**Why tool listing stays out of the registry.** Toolset initialization (`_MCPToolInitializer`, which lists
+tools) runs *before* the orchestrator loop. The decisive reason listing keeps its own short-lived session is
+**teardown scope**: registry teardown is wired to the orchestrator's `_persisting_state()` finally, which only
+runs once the loop is reached — a registry session opened during initialization would leak if init failed
+beforehand. Two supporting reasons: listing is read-only (it establishes no state later calls depend on), and
+it runs for *every* configured toolset, whereas the long-lived session is opened lazily on the first
+`call_mcp_tool`, scoping it to toolsets the agent actually uses. (The owner-task model means listing *could*
+technically share the registry session — the constraint is the teardown seam, not anyio task binding — but
+that would require a request-level teardown seam and is deferred.)
 
 ### Layer 2 — Cross-turn session-id persistence (opt-in)
 
@@ -235,9 +240,9 @@ part of cross-turn continuity — the key is what links turn N+1's toolset back 
 **What:** On a new turn, read the toolset's `MCPToolsetState`, seed the transport with its `session_id`, and
 skip the `initialize` handshake, so requests rejoin the existing server session.
 
-**SDK constraint (named risk).** In the installed `mcp` 1.27.0, `StreamableHTTPTransport.__init__` takes only
-`url` and sets `self.session_id = None`; there is **no public parameter to seed a pre-existing session id**,
-and the transport does not auto-reinitialize on 404. Re-attaching therefore requires a thin wrapper around the
+**SDK constraint (named risk).** In the installed `mcp` 1.27.0, `StreamableHTTPTransport.__init__` exposes
+**no constructor parameter for a pre-existing session id** (it sets `self.session_id = None`; its other
+parameters are deprecated transport options), and the transport does not auto-reinitialize on 404. Re-attaching therefore requires a thin wrapper around the
 SDK transport that (a) pre-sets the session id and (b) bypasses the initialize handshake. This wrapper is the
 only place the design reaches below the public SDK surface, and is the main implementation risk. `pyproject.toml`
 declares a **range** (`mcp>=1.23.2,<2.0.0`), not a pin, so the wrapper must be guarded by a version-asserting
@@ -284,9 +289,9 @@ the QuickApps process. Decisions:
 
 ### Configuration / gating
 
-- **Within-request reuse (Layer 1): on by default**, no per-toolset flag — it is strictly spec-aligned and
-  benefits every toolset. A global env kill-switch (e.g. `MCP_SESSION_REUSE_ENABLED`, default `true`) allows
-  emergency rollback.
+- **Within-request reuse (Layer 1): always on**, no flag — it is strictly spec-aligned, benefits every
+  toolset, and changes connection lifetime rather than observable behavior, so there is no use case for an
+  opt-out.
 - **Cross-turn persistence (Layer 2): opt-in**, via a new per-toolset field (e.g.
   `MCPToolSet.preserve_session: bool = False`). Off by default given the server-affinity and security
   trade-offs.
@@ -334,8 +339,9 @@ tool_sets:
 
 | Variable / field | Scope | Default | Effect |
 |------------------|-------|---------|--------|
-| `MCP_SESSION_REUSE_ENABLED` | env (admin) | `true` | Master switch for Layer 1 within-request reuse |
 | `preserve_session` | per toolset | `false` | Enables Layer 2 cross-turn id persistence (streamable-HTTP only) |
+
+(Within-request reuse (Layer 1) has no configuration — it is always on.)
 
 ---
 
@@ -344,7 +350,7 @@ tool_sets:
 ### Non-breaking changes
 
 - **Layer 1** changes connection lifetime, not observable tool behavior; stateless servers are unaffected
-  (UC-4). Shipped on by default with an env kill-switch.
+  (UC-4). Always on, no configuration.
 - **Layer 2** is additive and opt-in; existing apps and stored conversation states (which carry no
   `mcp_state` key) behave exactly as today. An unknown/stale persisted id self-heals via the 404 path.
 
@@ -380,6 +386,6 @@ key is namespaced and ignored by older readers.
 | `core/agent/orchestrator.py` | Invoke registry teardown from `_persisting_state()` `finally` |
 | `core/agent/models.py` | Add `MCP_STATE_KEY = "mcp_state"` |
 | `config/toolsets/mcp.py` | Add optional `preserve_session: bool = False` to `MCPToolSet` |
-| `CONFIGURATION.md` | Document `MCP_SESSION_REUSE_ENABLED` and `preserve_session` |
+| `CONFIGURATION.md` | Document `preserve_session` |
 | `docs/agent.md` | Document MCP session lifecycle: within-request reuse, cross-turn persistence, recovery, security |
 | App schema | Regenerate via `make dump_app_schema` (new config field) |

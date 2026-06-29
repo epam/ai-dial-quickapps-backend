@@ -318,9 +318,11 @@ async def test_connection_manager_build_headers(auth, header_name, expected_head
     dial_settings = DialSettings(url="https://dial.test")
     conn_manager = _MCPConnectionManager(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
     )
 
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
@@ -345,9 +347,11 @@ async def test_connection_manager_build_headers_client_id_secret():
 
     conn_manager = _MCPConnectionManager(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
     )
     headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
 
@@ -411,9 +415,11 @@ async def test_connection_manager_forwards_request_bearer_for_dial_internal_serv
 
     conn_manager = _MCPConnectionManager(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
         bearer=SecretStr("request-token"),
     )
 
@@ -431,9 +437,11 @@ async def test_connection_manager_does_not_forward_request_bearer_for_external_s
 
     conn_manager = _MCPConnectionManager(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
         bearer=SecretStr("request-token"),
     )
 
@@ -451,9 +459,11 @@ async def test_connection_manager_handles_missing_request_bearer_for_dial_intern
 
     conn_manager = _MCPConnectionManager(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        registry=MagicMock(),
         bearer=None,
     )
 
