@@ -1,90 +1,87 @@
-# Design: Preserve MCP Sessions Across Tool Calls and Conversation Turns
+# Design: Persist MCP Sessions Across Conversation Turns
 
-- **Status:** Approved
-- **Approved:** 2026-06-29
+- **Status:** Draft
+- **Approved:** N/A
 - **Last updated:** 2026-06-30
 - **Dependencies:**
+  - **Depends on** [`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md) — the
+    request-scoped `_MCPSessionRegistry`, its owner-task lifecycle, and the stable `_toolset_key` introduced
+    there are prerequisites for capturing, re-attaching, and recovering a session id.
   - Interacts with, but does not depend on, [`interactive_login.md`](interactive_login.md).
+
+> **Implementation status.** This is the **remaining work** (Phase 2, a.k.a. "Phase B"), building on the
+> landed within-request layer (PR #390). It specifies: session-id capture (an earlier simplify pass removed the
+> groundwork as dead code; this design re-introduces it where it is actually used), cross-turn persistence, the
+> principal binding, the per-key eviction that powers 404 recovery, and the `terminate_on_close` policy.
+> *Summary of Changes* lists each artifact.
 
 ## Problem Statement
 
-QuickApps treats every MCP interaction as a brand-new connection. `_MCPConnectionManager._open_session`
-opens a transport (SSE or streamable HTTP), creates a `ClientSession`, calls `initialize()`, runs a single
-operation, and tears the whole thing down — on **every** call. Both `get_tools_list()` (during toolset
-initialization) and `call_mcp_tool()` (during the orchestrator loop) open their own short-lived session, and
-the session id the server returns is discarded (the third element of `streamable_http_client()` is bound to `_`).
+QuickApps now reuses one initialized MCP session per toolset *within* a request
+([`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md)). But that session is torn down
+at request end, and the session id the server returned is discarded (the third element of
+`streamable_http_client()` is bound to `_`).
 
-The MCP specification defines a **session** as "logically related interactions between a client and a server,
-beginning with the initialization phase." A server **MAY** assign a session id at initialization (the
-`MCP-Session-Id` response header) and, once it does, the client **MUST** include that id on all subsequent
-requests. Servers use the session to hold per-session state across calls.
+The MCP specification lets a server assign a **session id** at initialization (the `MCP-Session-Id` response
+header); once it does, the client **MUST** include that id on all subsequent requests, and the server uses the
+session to hold per-session state — including across the turn boundary.
 
-Because QuickApps never reuses a session — not across orchestrator iterations, not even across two tool calls
-within a single iteration — **stateful MCP servers do not work**. Any server that relies on session-scoped
-state (a working set established by one tool call and read by the next, an authenticated handshake, a
-server-side cursor) loses it the instant the call returns, and the streamable-HTTP session id is re-negotiated
-every time. This was the root cause of the MCP server we found failing during investigation
-([issue #389](https://github.com/epam/ai-dial-quickapps-backend/issues/389)).
+Because the id is discarded at request end, a stateful server's per-session state — a working set established
+by one turn and read by the next, an authenticated handshake, a server-side cursor — survives *within* a turn
+but is **lost between turns**: turn N+1 re-negotiates a brand-new session and starts from empty. Completing the
+fix for [issue #389](https://github.com/epam/ai-dial-quickapps-backend/issues/389) for multi-turn stateful
+workflows requires preserving the id across turns so the next turn can rejoin the same server-side session.
 
 ## Design Goals
 
-- **G1 — Within-request continuity.** All MCP calls to the same toolset within a single chat-completion
-  request share one initialized session: opened once, reused across orchestrator iterations and across
-  concurrent tool calls in the same iteration, torn down cleanly at request end.
-- **G2 — Cross-turn continuity (best-effort, single-replica).** When a server assigns a session id, persist it
+- **G1 — Cross-turn continuity (best-effort, single-replica).** When a server assigns a session id, persist it
   in the response state so a follow-up turn can rejoin the same server-side session instead of negotiating a
   new one — verifiable as: against a single-replica stateful server, server-side state set in turn N is
   observable in turn N+1 without a fresh `initialize`. Multi-replica servers without shared session storage
-  degrade to G3 (see *Out of Scope*).
-- **G3 — Spec-compliant recovery.** On `HTTP 404` (session expired or terminated server-side) the client
+  degrade to G2 (see *Out of Scope*).
+- **G2 — Spec-compliant recovery.** On `HTTP 404` (session expired or terminated server-side) the client
   starts a fresh session, exactly as the spec mandates — transparently to the orchestrator and the user.
-- **G4 — Per-principal isolation and secure handling.** The persisted id round-trips through the client, so
+- **G3 — Per-principal isolation and secure handling.** The persisted id round-trips through the client, so
   treat it as a credential-grade value per the spec's session-hijacking guidance, and **bind it to the
   principal that created it** so a session can never be re-attached for a different user — even if the
   conversation state reaches one (e.g. via sharing).
-- **G5 — No regression for stateless servers and existing flows** (interactive login, fallback strategies,
-  attachment upload).
+- **G4 — No regression.** Existing apps and stored conversation states (which carry no `mcp_state` key) behave
+  exactly as today; the feature is opt-in per toolset, default off, and never affects stateless servers or
+  within-request behavior.
 
 ---
 
 ## Use Cases
 
-### UC-1: Stateful server, multiple calls in one turn
-
-**Trigger:** An app wires a stateful MCP toolset. In one user turn the agent calls `tool_a` (which sets up
-server-side state) and then `tool_b` (which depends on it).
-**Behavior:** Both calls run over the same initialized session; the server sees one continuous session id.
-**Outcome:** `tool_b` succeeds. Today it fails or sees an empty server state.
-
-### UC-2: Continuity across turns
+### UC-1: Continuity across turns
 
 **Trigger:** The agent uses a stateful toolset in turn 1, then the user sends a follow-up in turn 2.
 **Behavior:** The session id captured in turn 1 was saved to the conversation state. In turn 2 QuickApps
 re-attaches to the same server session id and resumes without re-initializing.
 **Outcome:** Server-side state established in turn 1 is still available in turn 2.
 
-### UC-3: Session expired between turns
+### UC-2: Session expired between turns
 
-**Trigger:** Same as UC-2, but the server expired the session (TTL) or it lives on a different replica.
+**Trigger:** Same as UC-1, but the server expired the session (TTL) or it lives on a different replica.
 **Behavior:** The first call with the stale id returns `HTTP 404`; QuickApps starts a new session
 (fresh `initialize`), persists the new id, and retries the call once.
 **Outcome:** The call succeeds against a fresh session. The user sees no error.
 
-### UC-4: Stateless server (no session id)
+### UC-3: Stateless server (no session id)
 
 **Trigger:** A server that never sets `MCP-Session-Id`.
-**Behavior:** Within-request reuse still holds one connection open for efficiency, but no id is captured or
-persisted; teardown closes the connection.
-**Outcome:** Fewer connections opened.
+**Behavior:** Within-request reuse still holds one connection open, but no id is captured or persisted; nothing
+is written to the conversation state.
+**Outcome:** No cross-turn state; behavior unchanged from today.
 
-### UC-5: SSE (legacy) toolset
+### UC-4: SSE (legacy) toolset
 
 **Trigger:** A toolset configured for the deprecated SSE transport.
-**Behavior:** Within-request reuse applies; cross-turn id persistence does **not** (SSE predates streamable-HTTP
-session management).
-**Outcome:** Efficiency win within a turn; no cross-turn continuity, documented as a known limitation.
+**Behavior:** Cross-turn id persistence does **not** apply (SSE predates streamable-HTTP session management);
+within-request reuse still holds the session for the turn.
+**Outcome:** No cross-turn continuity, documented as a known limitation.
 
-### UC-6: Conversation reaches a different user
+### UC-5: Conversation reaches a different user
 
 **Trigger:** A conversation that persisted an MCP session id in turn 1 is continued by a *different* principal
 (e.g. a shared or forwarded conversation).
@@ -96,96 +93,16 @@ match, so QuickApps ignores the persisted id and opens a fresh session under the
 
 ## Proposed Design
 
-The design has two orthogonal layers. **Layer 1 (within-request reuse)** is the core fix and is
-self-contained. **Layer 2 (cross-turn persistence)** builds on Layer 1's captured session id and is opt-in.
+This layer builds directly on the within-request session layer
+([`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md)): that layer already opens one
+live `ClientSession` per toolset inside an owner task and derives a stable `_toolset_key`. Cross-turn
+persistence (a) re-exposes the server-assigned session id that layer captures, (b) persists it per toolset in
+DIAL conversation state, and (c) on a new turn re-attaches to it — recovering spec-compliantly on `HTTP 404`.
+Everything persisted is **bound to the principal that created it**, so a session can never be re-attached for a
+different user (see *Securing the persisted session id*). The feature is gated per toolset (see
+*Configuration / gating*).
 
-> **Implementation status.** **Layer 1 is implemented** and lives on this branch (commit `abaf16f`, PR #390):
-> the `_MCPSessionRegistry` (owner-task model, `get_session`, `aclose_all`), the connection-manager borrow,
-> the `_toolset_key` derivation, the DI binding, and the `RequestAsyncCloseRegistry` teardown seam all exist.
-> **Layer 2 is the remaining work** this doc specifies — session-id capture (Phase A removed it as dead code),
-> cross-turn persistence, the principal binding, and the 404-retry / `terminate_on_close` policy. The Layer 1
-> prose below is retained as the rationale for the landed design; *Summary of Changes* marks each artifact's
-> status.
-
-### Layer 1 — A request-scoped live session per toolset
-
-**What:** A request-scoped `_MCPSessionRegistry` owns one live, initialized `ClientSession` per toolset
-for the duration of the request. `_MCPConnectionManager` stops opening a fresh `_open_session` per call
-and instead borrows the shared session from the registry.
-
-**Owner:** `mcp_tooling/` — new `_MCPSessionRegistry`; modified `_MCPConnectionManager`; the orchestrator
-provides the teardown seam.
-
-**Wiring (reconciling existing scopes).** Today `_MCPConnectionManager` is bound `request_scope` but is in
-practice built **per toolset** via `AssistedBuilder` in `_MCPToolInitializer`, and that one instance is shared
-by every `_MCPTool` of the toolset. The registry, by contrast, is a single **request-scoped singleton** keyed
-by a **stable toolset key** (see Layer 2 — the same key is used for both reuse and persistence). Each
-per-toolset `_MCPConnectionManager` receives the registry by injection and calls `registry.get_session(key)`;
-the registry owns the lifecycle, the connection manager just borrows.
-
-**Semantics:**
-
-- The session is opened **lazily** on first use within the request and reused for every subsequent
-  `call_mcp_tool()` to that toolset.
-- It is torn down once, at request end.
-
-**The anyio task constraint (central decision).** A `ClientSession` and its transport are anyio context
-managers backed by an internal task group; anyio requires a cancel scope to be *exited in the same task that
-entered it*. The orchestrator runs its loop in one task, but tool calls within an iteration execute in
-**concurrent child tasks**. If a session were entered lazily inside a child tool task, exiting it later from
-the orchestrator task would raise a cross-task cancel-scope error. The registry therefore opens each session
-inside a dedicated **owner task** that enters the context, signals readiness, parks until a shutdown event,
-and exits the context itself. Callers (including concurrent ones) borrow the live `ClientSession` and issue
-`call_tool` against it — safe, because the SDK multiplexes concurrent requests over the streams by request id.
-This co-locates enter/exit in a single task regardless of which task first triggers the open.
-
-```mermaid
-sequenceDiagram
-    participant Orch as Orchestrator (request task)
-    participant Reg as _MCPSessionRegistry
-    participant Owner as Session owner task
-    participant Srv as MCP server
-
-    Note over Orch,Srv: iteration 1
-    Orch->>Reg: get_session(toolset)
-    Reg->>Owner: spawn + open transport/session
-    Owner->>Srv: initialize  (MCP-Session-Id: s1)
-    Owner-->>Reg: ready (session s1)
-    Reg-->>Orch: live session
-    Orch->>Srv: tools/call tool_a  (MCP-Session-Id: s1)
-
-    Note over Orch,Srv: iteration 2 — same session reused
-    Orch->>Reg: get_session(toolset)
-    Reg-->>Orch: live session (s1, no re-init)
-    Orch->>Srv: tools/call tool_b  (MCP-Session-Id: s1)
-
-    Note over Orch,Srv: request end
-    Orch->>Reg: aclose_all()
-    Reg->>Owner: signal shutdown
-    Owner->>Owner: exit context (optional DELETE)
-```
-
-**Teardown seam.** The orchestrator's `_persisting_state()` context manager already brackets the whole
-request and runs cleanup in its `finally` block (it flushes the deferred stage-close registry and writes
-state). Registry teardown hooks in here, so sessions are guaranteed to close on both success and error paths.
-
-**Why tool listing stays out of the registry.** Toolset initialization (`_MCPToolInitializer`, which lists
-tools) runs *before* the orchestrator loop. The decisive reason listing keeps its own short-lived session is
-**teardown scope**: registry teardown is wired to the orchestrator's `_persisting_state()` finally, which only
-runs once the loop is reached — a registry session opened during initialization would leak if init failed
-beforehand. Two supporting reasons: listing is read-only (it establishes no state later calls depend on), and
-it runs for *every* configured toolset, whereas the long-lived session is opened lazily on the first
-`call_mcp_tool`, scoping it to toolsets the agent actually uses. (The owner-task model means listing *could*
-technically share the registry session — the constraint is the teardown seam, not anyio task binding — but
-that would require a request-level teardown seam and is deferred.)
-
-### Layer 2 — Cross-turn session-id persistence (opt-in)
-
-Builds on Layer 1's captured session id; gated per toolset (see *Configuration / gating*). Everything
-persisted is bound to the principal that created it, so a session can never be re-attached for a different
-user (see *Securing the persisted session id*).
-
-#### Capturing and persisting the session id
+### Capturing and persisting the session id
 
 **What:** Capture the server-assigned `MCP-Session-Id` (via the SDK's `get_session_id` callback that is
 currently discarded) and persist it, per toolset, in the DIAL conversation state under a new state key.
@@ -209,7 +126,7 @@ plumbing, with two differences: an app can have **several** MCP toolsets, and th
 | Write path | `StateHolder.add_state` → `choice.set_state` | identical |
 | Validate / recreate | `check_session_opened` → reopen | first call returns 404 → fresh `initialize` |
 
-#### Persisted state model
+### Persisted state model
 
 The persisted value is a model, not a raw `{key: id}` dict, so future per-toolset state (resumption tokens,
 negotiated protocol version, cached server capabilities, last-used timestamps) can be added later. Two nested
@@ -249,10 +166,11 @@ A schema-`version` field for non-additive (re-keying / semantic) migrations is *
 a change is actually needed, an incompatible blob is handled by the read path above (`ValidationError` →
 empty state → fresh sessions), and a `version` field can be introduced at that point.
 
-#### Toolset key (stability)
+### Toolset key (stability)
 
-`MCPToolsetsState.toolsets` is keyed by a **stable toolset key**, and choosing it well is the genuinely hard
-part of cross-turn continuity — the key is what links turn N+1's toolset back to turn N's `MCPToolsetState`.
+`MCPToolsetsState.toolsets` is keyed by the **stable toolset key** introduced by the within-request layer
+(`_toolset_key`), and choosing it well is the genuinely hard part of cross-turn continuity — the key is what
+links turn N+1's toolset back to turn N's `MCPToolsetState`.
 
 - For `DialMCPToolSet` the natural key is `deployment_id` (stable, canonical). DIAL-routed toolsets are
   deferred (see *Out of Scope*) pending the passthrough question, but `deployment_id` is the intended key.
@@ -261,9 +179,9 @@ part of cross-turn continuity — the key is what links turn N+1's toolset back 
   landed `_toolset_key` (`mcp:{name}`).
 - **Collision / rename:** if a toolset is renamed between turns, the old key's entry is simply never matched
   and the new key has no entry → a fresh session is opened (no error). A stale or mismatched entry likewise
-  self-heals via the 404 path (UC-3). The key never needs to be globally unique, only stable per app.
+  self-heals via the 404 path (UC-2). The key never needs to be globally unique, only stable per app.
 
-#### Re-attaching to a persisted session
+### Re-attaching to a persisted session
 
 **What:** On a new turn, read the persisted `MCPToolsetsState`, **verify it belongs to the current caller**
 (the principal gate above), then for each toolset seed the transport with its `session_id` and skip the
@@ -286,15 +204,16 @@ containing an `MCP-Session-Id`, it MUST start a new session by sending a new Ini
 session id attached."* The re-attach path catches 404, drops the stale id, opens a fresh session, persists the
 new id, and retries the call once.
 
-**Coordinating recovery with the Layer 1 registry.** Both the seeded re-attach and the 404 fallback go through
-`_MCPSessionRegistry.get_session`, so each session is opened and closed inside a single owner task. On a 404
-the connection manager **invalidates the registry's cached handle for that `toolset_key`** (signalling its
-owner task to shut down and exit the context) and re-enters through `get_session`, which spawns a fresh owner
-task for the replacement session — keeping enter/exit co-located per the anyio constraint. Per-key eviction
-**awaits the evicted owner task's exit before spawning the replacement** (so a concurrent borrower of the same
-key cannot observe a half-torn-down handle) and leaves other keys' handles untouched — distinct from the
-request-end `aclose_all`, which tears down every key at once. This adds a small per-key eviction method to the
-registry (a Layer 2 addition to the landed Layer 1 interface).
+**Coordinating recovery with the within-request session registry.** Both the seeded re-attach and the 404
+fallback go through `_MCPSessionRegistry.get_session` (the registry introduced by the within-request layer), so
+each session is opened and closed inside a single owner task. On a 404 the connection manager **invalidates the
+registry's cached handle for that `toolset_key`** (signalling its owner task to shut down and exit the context)
+and re-enters through `get_session`, which spawns a fresh owner task for the replacement session — keeping
+enter/exit co-located per the anyio constraint. Per-key eviction **awaits the evicted owner task's exit before
+spawning the replacement** (so a concurrent borrower of the same key cannot observe a half-torn-down handle)
+and leaves other keys' handles untouched — distinct from the request-end `aclose_all`, which tears down every
+key at once. This adds a small per-key eviction method to the `_MCPSessionRegistry` (an addition to the landed
+within-request interface).
 
 ```mermaid
 flowchart TD
@@ -318,7 +237,7 @@ toolsets therefore keep the default (close **with** `DELETE`, honoring the spec'
 a session SHOULD send DELETE"); only the **persisted** case overrides it to `False`, so the server keeps the
 session for the next turn. The implementer overrides exactly one direction — persisted → `False`.
 
-#### Securing the persisted session id
+### Securing the persisted session id
 
 Per the 2025-11-25 spec the client **MUST** handle the session id securely (session-hijacking mitigation).
 DIAL conversation state is replayed to and stored by the client, so persisting the id exposes it beyond the
@@ -346,7 +265,7 @@ each request and is **not** part of the shareable state blob, so a shared conver
 to a `project` (e.g. a shared project key), all users of that project share one fingerprint, so a persisted
 session can be reused among them. This is **accepted by design**: those callers share a single DIAL identity
 and security domain, and DIAL itself cannot tell them apart — the binding is per-user wherever DIAL exposes a
-user, and per-project otherwise (see Open Questions #4).
+user, and per-project otherwise (see Open Questions #3).
 
 **2. Out-of-band replay (credential-grade handling): a residual only for no-auth servers.** Even with the
 principal gate — which governs only what *QuickApps* will do — the raw id sits in client-visible state, so it
@@ -366,7 +285,7 @@ toolset landscape into a mainstream that is safe and one outlier that is not:
   to fall back on. This residual is **documented and accepted**: exploiting it needs both a genuinely no-auth
   server *and* a leak of the conversation state, and a no-auth server holding sensitive per-session state is
   already an unusual posture. (A future hardening — encrypting the id under a principal-derived, app-secret
-  key so the raw id never enters state — would close even this; deferred, see Open Questions.)
+  key so the raw id never enters state — would close even this; deferred, see Open Questions #5.)
 
 **Other handling.** Cross-turn persistence stays **opt-in per toolset** (default off), so apps consciously
 accept the exposure trade-off; the id and the principal fingerprint are stored under a dedicated state key,
@@ -375,17 +294,16 @@ streamable-HTTP toolsets.
 
 ### Configuration / gating
 
-- **Within-request reuse (Layer 1): always on**, no flag — it is strictly spec-aligned and benefits every
-  toolset.
-- **Cross-turn persistence (Layer 2): opt-in**, via a new per-toolset field (e.g.
-  `MCPToolSet.preserve_session: bool = False`). Off by default given the server-affinity and security
-  trade-offs.
+Cross-turn persistence is **opt-in**, via a new per-toolset field (e.g.
+`MCPToolSet.preserve_session: bool = False`). Off by default given the server-affinity and security
+trade-offs. (Within-request reuse, by contrast, is unconditional and has no flag — see
+[`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md).)
 
 ---
 
 ## Secondary Fixes
 
-None — this design has no incidental follow-on changes beyond the two layers above.
+None — this design has no incidental follow-on changes beyond the cross-turn layer above.
 
 ---
 
@@ -397,15 +315,13 @@ None — this design has no incidental follow-on changes beyond the two layers a
   continuity.
 - **Guaranteed cross-turn continuity under load balancing.** If the upstream MCP server is replicated without
   shared session storage, a follow-up turn may land on a replica that never saw the session → 404 → fresh
-  session. The design degrades gracefully (UC-3) but cannot guarantee continuity the server itself doesn't
+  session. The design degrades gracefully (UC-2) but cannot guarantee continuity the server itself doesn't
   preserve.
 - **DIAL Core session-id passthrough for `DialMCPToolSet`.** DIAL-routed toolsets reach the upstream through
   `/v1/toolset/{id}/mcp`. Whether DIAL Core forwards `MCP-Session-Id` end-to-end is an upstream dependency to
-  confirm; until then, cross-turn persistence targets directly-addressed `MCPToolSet`s. Within-request reuse
-  still holds one transport open for the turn (avoiding per-call re-initialization), but whether DIAL Core
-  preserves the *upstream* session across that held connection is the same open question (#2), just within one
-  turn rather than across turns.
-- **Cross-turn persistence for SSE toolsets** (UC-5).
+  confirm; until then, cross-turn persistence targets directly-addressed `MCPToolSet`s. (`DialMCPToolSet` is
+  still wired for the field, accepting it may no-op until Core forwards the header — see Open Questions #2.)
+- **Cross-turn persistence for SSE toolsets** (UC-4).
 
 ---
 
@@ -416,7 +332,7 @@ None — this design has no incidental follow-on changes beyond the two layers a
 tool_sets:
   - type: mcp
     name: stateful_workspace
-    preserve_session: true          # Layer 2 opt-in (default false)
+    preserve_session: true          # cross-turn opt-in (default false)
     mcp_server_info:
       url: https://example.com/mcp
       protocol: streamable_http
@@ -424,9 +340,10 @@ tool_sets:
 
 | Variable / field | Scope | Default | Effect |
 |------------------|-------|---------|--------|
-| `preserve_session` | per toolset | `false` | Enables Layer 2 cross-turn id persistence (streamable-HTTP only) |
+| `preserve_session` | per toolset | `false` | Enables cross-turn session-id persistence (streamable-HTTP only) |
 
-(Within-request reuse (Layer 1) has no configuration — it is always on.)
+(Within-request reuse has no configuration — it is always on; see
+[`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md).)
 
 ---
 
@@ -434,9 +351,7 @@ tool_sets:
 
 ### Non-breaking changes
 
-- **Layer 1** changes connection lifetime, not observable tool behavior; stateless servers are unaffected
-  (UC-4). Always on, no configuration.
-- **Layer 2** is additive and opt-in; existing apps and stored conversation states (which carry no
+- This layer is additive and opt-in; existing apps and stored conversation states (which carry no
   `mcp_state` key) behave exactly as today. An unknown/stale persisted id self-heals via the 404 path, and a
   blob whose principal fingerprint is absent or does not match the caller is ignored (fresh session).
 
@@ -450,22 +365,20 @@ key is namespaced and ignored by older readers.
 ## Open Questions / Risks
 
 1. **SDK wrapper for re-attach.** Seeding a session id and skipping `initialize` reaches below the public SDK
-   surface (Layer 2). Since `pyproject.toml` allows the whole `>=1.28.1,<2.0.0` range, guard the wrapper with
+   surface. Since `pyproject.toml` allows the whole `>=1.28.1,<2.0.0` range, guard the wrapper with
    a version-asserting test that fails loudly if an in-range SDK changes `StreamableHTTPTransport`'s
    session-id internals — rather than relying on a pin the dependency spec does not enforce.
-2. **DIAL Core passthrough** of `MCP-Session-Id` for `DialMCPToolSet` (see Out of Scope) — confirm before
-   enabling Layer 2 for DIAL-routed toolsets.
-3. **Owner-task lifecycle** must be robust to orchestrator cancellation/errors; teardown lives in
-   `_persisting_state()`'s `finally` to cover both paths.
-4. **Principal resolution granularity.** Confirm that in the flows where `preserve_session` is enabled the
+2. **DIAL Core passthrough** of `MCP-Session-Id` for `DialMCPToolSet` (see *Out of Scope*) — confirm before
+   enabling cross-turn persistence for DIAL-routed toolsets.
+3. **Principal resolution granularity.** Confirm that in the flows where `preserve_session` is enabled the
    per-request credential resolves to an end-user `sub` (per-user binding) rather than only a `project`
    (per-project binding). If only a project is available, sessions are isolated per project, not per user.
-5. **Optional Core enhancement.** `/v1/user/info` returns `userClaims` (with `sub` only if the IdP emits it),
+4. **Optional Core enhancement.** `/v1/user/info` returns `userClaims` (with `sub` only if the IdP emits it),
    not a canonical id; DIAL Core already computes `userId`/`userHash` internally. Exposing one as a top-level
    field would *replace* the `sub`/`project` derivation under *Securing the persisted session id* (not add a
    second, independent mechanism) and remove the IdP-dependent claim parsing — a small, optional upstream
    change.
-6. **Future hardening for no-auth servers.** Encrypting the persisted id under a principal-derived, app-secret
+5. **Future hardening for no-auth servers.** Encrypting the persisted id under a principal-derived, app-secret
    key (rather than storing the raw id plus a fingerprint) would also close the no-auth out-of-band residual;
    deferred pending a process-stable app secret.
 
@@ -475,17 +388,12 @@ key is namespaced and ignored by older readers.
 
 | Component | Status | Change |
 |-----------|--------|--------|
-| `common/request_async_close_registry.py` | Landed (#390) | Generic request-scoped async teardown registry — the seam Layer 1 hooks into |
-| `mcp_tooling/_mcp_session_registry.py` | Landed (#390) | Request-scoped registry owning one live `ClientSession` per toolset via owner tasks; lazy open, reuse, `aclose_all()` teardown |
-| `mcp_tooling/_mcp_tool_initializer.py` | Landed (#390) | `_toolset_key` derivation — `dial:{deployment_id}` / `mcp:{name}` |
-| `mcp_tooling/mcp_tooling_module.py` | Landed (#390) | Bind `_MCPSessionRegistry` (request-scoped) |
-| `core/agent/orchestrator.py` | Landed (#390) | Invoke registry teardown from `_persisting_state()` `finally` (via `RequestAsyncCloseRegistry`) |
-| `mcp_tooling/_mcp_connection_manager.py` | Landed (#390) + Layer 2 | Borrow the shared session from the registry instead of opening `_open_session` per call **(landed)**; capture `get_session_id`, 404 → evict handle + fresh session + retry, `terminate_on_close` policy **(Layer 2)** |
-| `mcp_tooling/_mcp_session_registry.py` (eviction) | Layer 2 | Add per-`toolset_key` handle eviction so 404 recovery re-enters via `get_session` in a fresh owner task |
-| `mcp_tooling/_mcp_state.py` | Layer 2 | **New** — `MCPToolsetsState` / `MCPToolsetState` models; `MCPToolsetsState` carries a `principal_fingerprint` binding the blob to its creating principal |
-| `mcp_tooling/` (session-state helper) | Layer 2 | **New** — read/persist `MCPToolsetsState` via `StateHolder`/message history (mirroring `py_interpreter` `SessionManager`); resolve the caller principal via the `aidial-client` `user` resource and enforce the principal gate on read |
-| `core/agent/models.py` | Layer 2 | Add `MCP_STATE_KEY = "mcp_state"` |
-| `config/toolsets/mcp.py` | Layer 2 | Add optional `preserve_session: bool = False` to `MCPToolSet` |
-| `CONFIGURATION.md` | Layer 2 | Document `preserve_session` |
-| `docs/agent.md` | Landed (#390) + Layer 2 | Within-request reuse documented (landed); add cross-turn persistence, recovery, security |
-| App schema | Layer 2 | Regenerate via `make dump_app_schema` (new config field) |
+| `mcp_tooling/_mcp_connection_manager.py` | New | Capture `get_session_id`; on 404 → evict handle + fresh session + retry once; `terminate_on_close` policy (persisted → `False`) |
+| `mcp_tooling/_mcp_session_registry.py` (eviction) | New | Add per-`toolset_key` handle eviction so 404 recovery re-enters via `get_session` in a fresh owner task |
+| `mcp_tooling/_mcp_state.py` | New | `MCPToolsetsState` / `MCPToolsetState` models; `MCPToolsetsState` carries a `principal_fingerprint` binding the blob to its creating principal |
+| `mcp_tooling/` (session-state helper) | New | Read/persist `MCPToolsetsState` via `StateHolder`/message history (mirroring `py_interpreter` `SessionManager`); resolve the caller principal via the `aidial-client` `user` resource and enforce the principal gate on read |
+| `core/agent/models.py` | New | Add `MCP_STATE_KEY = "mcp_state"` |
+| `config/toolsets/mcp.py` | New | Add optional `preserve_session: bool = False` to `MCPToolSet` (propagated to `DialMCPToolSet`) |
+| `CONFIGURATION.md` | New | Document `preserve_session` |
+| `docs/agent.md` | New | Add cross-turn persistence, recovery, and security to the MCP section |
+| App schema | New | Regenerate via `make dump_app_schema` (new config field) |
