@@ -82,7 +82,7 @@ class OrchestratorConfig(BaseModel):
         default=True,
         description="When True (default), orchestrator model stages (reasoning steps) are shown on the choice. Set to False to hide them.",
     )
-    attachment_strategy: LazyOnDemandAttachmentStrategy | None = PreviewField(  # type: ignore[assignment]
+    attachment_strategy: LazyOnDemandAttachmentStrategy | None = Field(
         default=None,
         description=(
             "How the orchestrator receives request-scoped attachments. "
