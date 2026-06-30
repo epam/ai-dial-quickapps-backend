@@ -24,31 +24,31 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 ### UC-1: Agent promotes a written file to the response
 
-**Trigger:** The agent writes a CSV report with `internal_file_write` (preview feature) and then calls `internal_add_attachment` with the returned DIAL URL.
+**Trigger:** The agent writes a CSV report with `internal_file_write` (preview feature) and then calls `internal_representation_add_attachment` with the returned DIAL URL.
 **Behavior:** The orchestrator adds the attachment to the choice via `propagate_to_choice`. Note: `text/csv` is not in the automatic propagation allowlist, so without this tool the file would not appear in the response.
 **Outcome:** The user sees the CSV as a downloadable attachment in the final response, not only in the stage.
 
 ### UC-2: Agent attaches a URL received from an external tool
 
-**Trigger:** An MCP or REST tool returns a DIAL or external file URL. The agent calls `internal_add_attachment` with that URL.
+**Trigger:** An MCP or REST tool returns a DIAL or external file URL. The agent calls `internal_representation_add_attachment` with that URL.
 **Behavior:** The URL is placed in `propagate_to_choice` and forwarded to the choice.
 **Outcome:** The user sees the file as a response attachment.
 
 ### UC-3: Agent promotes an admin-attached file on user request
 
-**Trigger:** The user asks about a file the operator pre-attached to the application (e.g. "show me the reference document"). The agent locates the file URL via `internal_attachments_available_context` and calls `internal_add_attachment` to surface it in the reply.
+**Trigger:** The user asks about a file the operator pre-attached to the application (e.g. "show me the reference document"). The agent locates the file URL via `internal_attachments_available_context` and calls `internal_representation_add_attachment` to surface it in the reply.
 **Behavior:** The attachment URL is placed in `propagate_to_choice` and forwarded to the choice.
 **Outcome:** The user receives the admin-supplied file as a response attachment without the agent re-uploading or copying it.
 
 ### UC-4: Agent re-attaches a file from conversation history on user request
 
-**Trigger:** The user asks about a file that appeared in a previous response (e.g. "can you send me that chart again?"). The agent finds the URL in conversation history (available in its context window) and calls `internal_add_attachment` to include it in the current reply.
+**Trigger:** The user asks about a file that appeared in a previous response (e.g. "can you send me that chart again?"). The agent finds the URL in conversation history (available in its context window) and calls `internal_representation_add_attachment` to include it in the current reply.
 **Behavior:** The URL is promoted to `propagate_to_choice` exactly as in UC-1.
 **Outcome:** The user receives the previously generated file as an attachment in the new response without the agent regenerating it.
 
 ### UC-5: Agent attaches a URL that was already propagated to the current response
 
-**Trigger:** A URL was already added to the response's attachments — either by the automatic `propagate_types_to_choice` path (e.g. an image written by `internal_file_write`) or by an earlier `internal_add_attachment` call in the same turn. The agent calls `internal_add_attachment` again for the same URL.
+**Trigger:** A URL was already added to the response's attachments — either by the automatic `propagate_types_to_choice` path (e.g. an image written by `internal_file_write`) or by an earlier `internal_representation_add_attachment` call in the same turn. The agent calls `internal_representation_add_attachment` again for the same URL.
 **Behavior:** The orchestrator deduplicates by URL before streaming to the choice (see §6). The second occurrence is silently skipped.
 **Outcome:** The attachment appears **once** in the response, regardless of how many tools (or the automatic path) tried to propagate it. The agent does not need to track what has already been attached.
 
@@ -65,7 +65,7 @@ A new `AddAttachmentToolConfig` model is added to `src/quickapp/config/applicati
 class AddAttachmentToolConfig(BaseModel):
     enabled: bool = Field(
         default=True,
-        description="Set to false to disable the internal_add_attachment tool.",
+        description="Set to false to disable the internal_representation_add_attachment tool.",
     )
 ```
 
@@ -75,7 +75,7 @@ class AddAttachmentToolConfig(BaseModel):
 add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[assignment]
     default=None,
     description=(
-        "Enables the internal_add_attachment tool. "
+        "Enables the internal_representation_add_attachment tool. "
         "Omit or set to null to disable. "
         "Set to {} or {\"enabled\": true} to enable."
     ),
@@ -86,15 +86,15 @@ The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment
 
 ### 2. Tool name constant
 
-`INTERNAL_ADD_ATTACHMENT_TOOL_NAME = "internal_add_attachment"` is added to
-`src/quickapp/common/tool_names.py`. The name is flat (`internal_<action>`) rather than
-prefixed with an existing family, because the implementation lives in `internal_tooling/`
-alongside `internal_code_execution_*` — not in `attachment_processing/` where the
-`internal_attachments_*` family resides.
+`INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME = "internal_representation_add_attachment"` is added to
+`src/quickapp/common/tool_names.py`. The name follows the `internal_<module>_<action>` convention
+used by the other built-in tools (e.g. `internal_file_write`, `internal_timeawareness_current_timestamp`):
+the `representation` segment names the owning module (`representation_tooling/`, see §5) and
+`add_attachment` is the action.
 
 ### 3. Tool config (`InternalTool` definition)
 
-A new file `src/quickapp/internal_tooling/_add_attachment_tool_config.py` defines the
+A new file `src/quickapp/representation_tooling/_add_attachment_tool_config.py` defines the
 `InternalTool` config (all unlisted `ConfigurableSchemaSimpleType` fields default, yielding
 a valid OpenAI function schema).
 
@@ -106,7 +106,7 @@ Two `attachment` (`AttachmentConfig`) choices matter:
 ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
-            name=INTERNAL_ADD_ATTACHMENT_TOOL_NAME,
+            name=INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME,
             description=(
                 "Add a file to the attachments of the current response. "
                 "The file must be accessible via a URL (DIAL URL or external link). "
@@ -139,8 +139,9 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
 
 ### 4. Tool implementation
 
-A new file `src/quickapp/internal_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
-a `StagedBaseTool` subclass.
+A new file `src/quickapp/representation_tooling/_add_attachment_tool.py` contains `_AddAttachmentTool`,
+a `StagedBaseTool` subclass. A minimal `_AddAttachmentStageWrapper` (a `TimedStageWrapper` subclass)
+lives alongside it in `_add_attachment_stage_wrapper.py` to render the stage.
 
 **Parameters (LLM-facing):**
 
@@ -164,8 +165,14 @@ a `StagedBaseTool` subclass.
 
 ### 5. Module wiring
 
-A new `@multiprovider` method and a `configure()` binding are added to the existing
-`InternalToolModule` (`src/quickapp/internal_tooling/internal_tooling_module.py`).
+A new `RepresentationToolingModule`
+(`src/quickapp/representation_tooling/representation_tooling_module.py`) owns the tool. It is its
+own module rather than a provider on `InternalToolModule` so the attachment-promotion concern
+(controlling how the agent represents its work to the user) is isolated from the tool-sets-driven
+internal tooling. The module is marked `@preview_module` (like `DialFilesToolingModule`), so when
+`ENABLE_PREVIEW_FEATURES=false` the whole module is filtered out in `AppFactory.build_di_modules()`;
+the config-nullification of `features.add_attachment` (§1) remains as a second gate. It is registered
+in `app_factory.py`.
 
 `configure()` adds:
 ```python
@@ -175,7 +182,7 @@ binder.bind(_AddAttachmentTool, to=_AddAttachmentTool, scope=request_scope)
 The new provider:
 ```python
 @multiprovider
-def _provide_add_attachment_tool(
+def _provide_representation_tools(
     self,
     app_config: ApplicationConfig,
     builder: AssistedBuilder[_AddAttachmentTool],
@@ -186,17 +193,20 @@ def _provide_add_attachment_tool(
     return [
         builder.build(
             tool_config=ADD_ATTACHMENT_TOOL_CONFIG,
-            name=INTERNAL_ADD_ATTACHMENT_TOOL_NAME,
+            name=INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME,
             description=ADD_ATTACHMENT_TOOL_CONFIG.open_ai_tool.function.description,
         )
     ]
 ```
 
-This provider is independent of `_provide_internal_tools` (which is tool_sets-driven) — both contribute to the same `list[StagedBaseTool]` multibinding.
+The provider name ends in `_tools` (plural) so the `dump_internal_tools.py` drift-detection script
+discovers it (it collects `_provide_<feature>_tools` multiproviders). That script's synthetic config
+also sets `features.add_attachment` so the tool materializes in the generated manifest. Like every
+other internal-tools multibinding, this contributes to the same `list[StagedBaseTool]`.
 
 ### 6. Orchestrator-level deduplication
 
-The orchestrator's propagation loop (`src/quickapp/core/agent/orchestrator.py:172-176`) currently calls `choice.add_attachment(...)` for every entry in every tool result's `propagate_to_choice` with no deduplication. `choice.add_attachment()` itself does not dedup — it streams each call as a new chunk with an incrementing index. So the same URL can be streamed to the response multiple times across a single turn (UC-5): once via the automatic `propagate_types_to_choice` path and again via an `internal_add_attachment` call, or via two tool calls referencing the same file.
+The orchestrator's propagation loop (`src/quickapp/core/agent/orchestrator.py:172-176`) currently calls `choice.add_attachment(...)` for every entry in every tool result's `propagate_to_choice` with no deduplication. `choice.add_attachment()` itself does not dedup — it streams each call as a new chunk with an incrementing index. So the same URL can be streamed to the response multiple times across a single turn (UC-5): once via the automatic `propagate_types_to_choice` path and again via an `internal_representation_add_attachment` call, or via two tool calls referencing the same file.
 
 To guarantee Design Goal "never surface the same URL twice," the orchestrator tracks already-propagated URLs across all iterations of a single `invoke()` and skips repeats:
 
@@ -246,7 +256,7 @@ Requires `ENABLE_PREVIEW_FEATURES=true` on the deployment.
 
 ```json
 {
-  "name": "internal_add_attachment",
+  "name": "internal_representation_add_attachment",
   "arguments": {
     "url": "files/bucket/path/report.csv",
     "title": "Monthly Report",
@@ -284,10 +294,13 @@ None.
 
 | Component | Change |
 |-----------|--------|
-| `src/quickapp/common/tool_names.py` | Add `INTERNAL_ADD_ATTACHMENT_TOOL_NAME` |
+| `src/quickapp/common/tool_names.py` | Add `INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME` |
 | `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` `PreviewField` to `Features` |
-| `src/quickapp/internal_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
-| `src/quickapp/internal_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
-| `src/quickapp/internal_tooling/internal_tooling_module.py` | Add `configure()` binding + `@multiprovider _provide_add_attachment_tool` |
+| `src/quickapp/representation_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
+| `src/quickapp/representation_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
+| `src/quickapp/representation_tooling/_add_attachment_stage_wrapper.py` | New file — `_AddAttachmentStageWrapper` |
+| `src/quickapp/representation_tooling/representation_tooling_module.py` | New file — `@preview_module RepresentationToolingModule` with `configure()` binding + `@multiprovider _provide_representation_tools` |
+| `src/quickapp/app_factory.py` | Register `RepresentationToolingModule` |
 | `src/quickapp/core/agent/orchestrator.py` | Add per-request `__propagated_attachment_urls` set; dedup by URL in the `propagate_to_choice` loop |
-| `make dump_app_schema` | Re-run after config changes to regenerate JSON schema |
+| `src/scripts/dump_internal_tools.py` | Enable `add_attachment` in the synthetic dump config so the tool appears in the generated manifest |
+| `make dump_app_schema` / `make format` | Re-run after config changes to regenerate the JSON schema and internal-tools manifest |
