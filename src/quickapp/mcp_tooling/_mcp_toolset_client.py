@@ -22,7 +22,7 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
-from quickapp.mcp_tooling._mcp_session_registry import _MCPSessionRegistry
+from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
@@ -45,8 +45,13 @@ def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
 
 
 @inject
-class _MCPConnectionManager:
-    """Manages MCP connections and sessions."""
+class _MCPToolsetClient:
+    """Per-toolset MCP client: auth headers + tool operations.
+
+    Builds the toolset's authorization headers and runs its tool operations
+    (``get_tools_list`` / ``call_mcp_tool``), borrowing a shared, request-scoped
+    session from :class:`_MCPSessionManager` rather than opening one per call.
+    """
 
     def __init__(
         self,
@@ -55,7 +60,7 @@ class _MCPConnectionManager:
         oauth_token_fetcher: OAuthTokenFetcher,
         dial_settings: DialSettings,
         timeout_resolver: ToolTimeoutResolver,
-        registry: _MCPSessionRegistry,
+        session_manager: _MCPSessionManager,
         bearer: DIAL_BEARER = None,
         forwarded_headers: ForwardedHeaders = None,
     ):
@@ -66,7 +71,7 @@ class _MCPConnectionManager:
         self.__bearer: DIAL_BEARER = bearer
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
-        self.__registry: _MCPSessionRegistry = registry
+        self.__session_manager: _MCPSessionManager = session_manager
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
         headers = (
@@ -98,7 +103,7 @@ class _MCPConnectionManager:
         return headers
 
     @asynccontextmanager
-    async def _open_session(self, sse_read_timeout: float) -> AsyncIterator[ClientSession]:
+    async def __open_session(self, sse_read_timeout: float) -> AsyncIterator[ClientSession]:
         """
         Async context manager that yields an initialized ClientSession for the given server_info.
         Builds headers, opens the underlying connection (SSE or streamable HTTP), initializes
@@ -160,7 +165,7 @@ class _MCPConnectionManager:
         configured toolset, so the long-lived session is opened lazily on the first
         ``call_mcp_tool`` instead, scoping it to toolsets the agent actually uses.
         """
-        async with self._open_session(self.__timeout_resolver.resolve()) as session:
+        async with self.__open_session(self.__timeout_resolver.resolve()) as session:
             current_cursor: str | None = None
             all_tools: list[Tool] = []
 
@@ -192,8 +197,8 @@ class _MCPConnectionManager:
         try:
             # Borrow the request-scoped session: opened once per toolset, reused across
             # orchestrator iterations and concurrent calls, torn down at request end.
-            session = await self.__registry.get_session(
-                self.__toolset_key, functools.partial(self._open_session, timeout)
+            session = await self.__session_manager.get_session(
+                self.__toolset_key, functools.partial(self.__open_session, timeout)
             )
             return await session.call_tool(
                 tool_name, kwargs, read_timeout_seconds=read_timeout_seconds

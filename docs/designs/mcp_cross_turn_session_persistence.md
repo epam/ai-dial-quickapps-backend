@@ -5,7 +5,7 @@
 - **Last updated:** 2026-06-30
 - **Dependencies:**
   - **Depends on** [`mcp_within_request_session_reuse.md`](mcp_within_request_session_reuse.md) — the
-    request-scoped `_MCPSessionRegistry`, its owner-task lifecycle, and the stable `_toolset_key` introduced
+    request-scoped `_MCPSessionManager`, its owner-task lifecycle, and the stable `_toolset_key` introduced
     there are prerequisites for capturing, re-attaching, and recovering a session id.
   - Interacts with, but does not depend on, [`interactive_login.md`](interactive_login.md).
 
@@ -204,15 +204,15 @@ containing an `MCP-Session-Id`, it MUST start a new session by sending a new Ini
 session id attached."* The re-attach path catches 404, drops the stale id, opens a fresh session, persists the
 new id, and retries the call once.
 
-**Coordinating recovery with the within-request session registry.** Both the seeded re-attach and the 404
-fallback go through `_MCPSessionRegistry.get_session` (the registry introduced by the within-request layer), so
-each session is opened and closed inside a single owner task. On a 404 the connection manager **invalidates the
-registry's cached handle for that `toolset_key`** (signalling its owner task to shut down and exit the context)
+**Coordinating recovery with the within-request session manager.** Both the seeded re-attach and the 404
+fallback go through `_MCPSessionManager.get_session` (the session manager introduced by the within-request layer), so
+each session is opened and closed inside a single owner task. On a 404 the toolset client **invalidates the
+session manager's cached handle for that `toolset_key`** (signalling its owner task to shut down and exit the context)
 and re-enters through `get_session`, which spawns a fresh owner task for the replacement session — keeping
 enter/exit co-located per the anyio constraint. Per-key eviction **awaits the evicted owner task's exit before
 spawning the replacement** (so a concurrent borrower of the same key cannot observe a half-torn-down handle)
 and leaves other keys' handles untouched — distinct from the request-end `aclose_all`, which tears down every
-key at once. This adds a small per-key eviction method to the `_MCPSessionRegistry` (an addition to the landed
+key at once. This adds a small per-key eviction method to the `_MCPSessionManager` (an addition to the landed
 within-request interface).
 
 ```mermaid
@@ -388,8 +388,8 @@ key is namespaced and ignored by older readers.
 
 | Component | Status | Change |
 |-----------|--------|--------|
-| `mcp_tooling/_mcp_connection_manager.py` | New | Capture `get_session_id`; on 404 → evict handle + fresh session + retry once; `terminate_on_close` policy (persisted → `False`) |
-| `mcp_tooling/_mcp_session_registry.py` (eviction) | New | Add per-`toolset_key` handle eviction so 404 recovery re-enters via `get_session` in a fresh owner task |
+| `mcp_tooling/_mcp_toolset_client.py` | New | Capture `get_session_id`; on 404 → evict handle + fresh session + retry once; `terminate_on_close` policy (persisted → `False`) |
+| `mcp_tooling/_mcp_session_manager.py` (eviction) | New | Add per-`toolset_key` handle eviction so 404 recovery re-enters via `get_session` in a fresh owner task |
 | `mcp_tooling/_mcp_state.py` | New | `MCPToolsetsState` / `MCPToolsetState` models; `MCPToolsetsState` carries a `principal_fingerprint` binding the blob to its creating principal |
 | `mcp_tooling/` (session-state helper) | New | Read/persist `MCPToolsetsState` via `StateHolder`/message history (mirroring `py_interpreter` `SessionManager`); resolve the caller principal via the `aidial-client` `user` resource and enforce the principal gate on read |
 | `core/agent/models.py` | New | Add `MCP_STATE_KEY = "mcp_state"` |

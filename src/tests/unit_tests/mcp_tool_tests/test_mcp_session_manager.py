@@ -1,4 +1,4 @@
-"""Tests for _MCPSessionRegistry: lazy open, reuse, concurrent dedup, failure handling, teardown."""
+"""Tests for _MCPSessionManager: lazy open, reuse, concurrent dedup, failure handling, teardown."""
 
 import asyncio
 from collections.abc import Callable
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
-from quickapp.mcp_tooling._mcp_session_registry import _MCPSessionRegistry
+from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
 
 
 def _make_opener(
@@ -36,7 +36,7 @@ def _make_opener(
 
 @pytest.mark.asyncio
 async def test_get_session_opens_once_and_reuses():
-    registry = _MCPSessionRegistry(RequestAsyncCloseRegistry())
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     session = MagicMock()
     counters = {"open": 0, "close": 0}
     opener = _make_opener(session, counters=counters)
@@ -54,7 +54,7 @@ async def test_get_session_opens_once_and_reuses():
 
 @pytest.mark.asyncio
 async def test_concurrent_first_calls_share_one_owner():
-    registry = _MCPSessionRegistry(RequestAsyncCloseRegistry())
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     session = MagicMock()
     counters = {"open": 0, "close": 0}
     opener = _make_opener(session, counters=counters)
@@ -73,7 +73,7 @@ async def test_concurrent_first_calls_share_one_owner():
 
 @pytest.mark.asyncio
 async def test_distinct_keys_open_distinct_sessions():
-    registry = _MCPSessionRegistry(RequestAsyncCloseRegistry())
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     session_a, session_b = MagicMock(), MagicMock()
 
     got_a = await registry.get_session("a", _make_opener(session_a))
@@ -87,7 +87,7 @@ async def test_distinct_keys_open_distinct_sessions():
 
 @pytest.mark.asyncio
 async def test_failed_open_not_memoized_then_reopens():
-    registry = _MCPSessionRegistry(RequestAsyncCloseRegistry())
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     boom = RuntimeError("open failed")
 
     with pytest.raises(RuntimeError, match="open failed"):
@@ -108,7 +108,7 @@ async def test_failed_open_not_memoized_then_reopens():
 async def test_aclose_all_via_request_async_close_registry():
     """The registry self-registers, so closing the request-level registry tears down sessions."""
     close_registry = RequestAsyncCloseRegistry()
-    registry = _MCPSessionRegistry(close_registry)
+    registry = _MCPSessionManager(close_registry)
     counters = {"open": 0, "close": 0}
 
     await registry.get_session("k", _make_opener(MagicMock(), counters=counters))
@@ -120,6 +120,6 @@ async def test_aclose_all_via_request_async_close_registry():
 
 @pytest.mark.asyncio
 async def test_aclose_all_idempotent_when_no_sessions():
-    registry = _MCPSessionRegistry(RequestAsyncCloseRegistry())
+    registry = _MCPSessionManager(RequestAsyncCloseRegistry())
     # No sessions opened — teardown is a no-op and must not raise.
     await registry.aclose_all()

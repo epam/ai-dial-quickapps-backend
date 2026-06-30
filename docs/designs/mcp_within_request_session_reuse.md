@@ -6,16 +6,16 @@
 - **Dependencies:**
   - Interacts with, but does not depend on, [`interactive_login.md`](interactive_login.md).
   - Foundation for [`mcp_cross_turn_session_persistence.md`](mcp_cross_turn_session_persistence.md), which
-    builds on the request-scoped session registry and the stable toolset key introduced here.
+    builds on the request-scoped session manager and the stable toolset key introduced here.
 
 > **Implementation status.** This layer is **implemented** and lives on `feat/mcp-session-persistence`
-> (commit `abaf16f`, PR #390): the `_MCPSessionRegistry` (owner-task model, `get_session`, `aclose_all`), the
-> connection-manager borrow, the `_toolset_key` derivation, the DI binding, and the `RequestAsyncCloseRegistry`
+> (commit `abaf16f`, PR #390): the `_MCPSessionManager` (owner-task model, `get_session`, `aclose_all`), the
+> toolset-client borrow, the `_toolset_key` derivation, the DI binding, and the `RequestAsyncCloseRegistry`
 > teardown seam all exist. *Summary of Changes* marks each landed artifact.
 
 ## Problem Statement
 
-QuickApps treats every MCP interaction as a brand-new connection. `_MCPConnectionManager._open_session`
+QuickApps treats every MCP interaction as a brand-new connection. `_MCPToolsetClient._open_session`
 opens a transport (SSE or streamable HTTP), creates a `ClientSession`, calls `initialize()`, runs a single
 operation, and tears the whole thing down — on **every** call. Both `get_tools_list()` (during toolset
 initialization) and `call_mcp_tool()` (during the orchestrator loop) open their own short-lived session.
@@ -79,20 +79,20 @@ the session it holds open and the toolset key it derives.
 
 ### A request-scoped live session per toolset
 
-**What:** A request-scoped `_MCPSessionRegistry` owns one live, initialized `ClientSession` per toolset
-for the duration of the request. `_MCPConnectionManager` stops opening a fresh `_open_session` per call
-and instead borrows the shared session from the registry.
+**What:** A request-scoped `_MCPSessionManager` owns one live, initialized `ClientSession` per toolset
+for the duration of the request. `_MCPToolsetClient` stops opening a fresh `_open_session` per call
+and instead borrows the shared session from the session manager.
 
-**Owner:** `mcp_tooling/` — new `_MCPSessionRegistry`; modified `_MCPConnectionManager`; the orchestrator
+**Owner:** `mcp_tooling/` — new `_MCPSessionManager`; modified `_MCPToolsetClient`; the orchestrator
 provides the teardown seam.
 
-**Wiring (reconciling existing scopes).** Today `_MCPConnectionManager` is bound `request_scope` but is in
+**Wiring (reconciling existing scopes).** Today `_MCPToolsetClient` is bound `request_scope` but is in
 practice built **per toolset** via `AssistedBuilder` in `_MCPToolInitializer`, and that one instance is shared
-by every `_MCPTool` of the toolset. The registry, by contrast, is a single **request-scoped singleton** keyed
+by every `_MCPTool` of the toolset. The session manager, by contrast, is a single **request-scoped singleton** keyed
 by a **stable toolset key** (the `_toolset_key`; the cross-turn layer reuses the same key for persistence —
 see [`mcp_cross_turn_session_persistence.md`](mcp_cross_turn_session_persistence.md)). Each per-toolset
-`_MCPConnectionManager` receives the registry by injection and calls `registry.get_session(key)`; the registry
-owns the lifecycle, the connection manager just borrows.
+`_MCPToolsetClient` receives the session manager by injection and calls `session_manager.get_session(key)`; the
+session manager owns the lifecycle, the toolset client just borrows.
 
 **Semantics:**
 
@@ -104,7 +104,7 @@ owns the lifecycle, the connection manager just borrows.
 managers backed by an internal task group; anyio requires a cancel scope to be *exited in the same task that
 entered it*. The orchestrator runs its loop in one task, but tool calls within an iteration execute in
 **concurrent child tasks**. If a session were entered lazily inside a child tool task, exiting it later from
-the orchestrator task would raise a cross-task cancel-scope error. The registry therefore opens each session
+the orchestrator task would raise a cross-task cancel-scope error. The session manager therefore opens each session
 inside a dedicated **owner task** that enters the context, signals readiness, parks until a shutdown event,
 and exits the context itself. Callers (including concurrent ones) borrow the live `ClientSession` and issue
 `call_tool` against it — safe, because the SDK multiplexes concurrent requests over the streams by request id.
@@ -114,7 +114,7 @@ This co-locates enter/exit in a single task regardless of which task first trigg
 ```mermaid
 sequenceDiagram
     participant Orch as Orchestrator (request task)
-    participant Reg as _MCPSessionRegistry
+    participant Reg as _MCPSessionManager
     participant Owner as Session owner task
     participant Srv as MCP server
 
@@ -139,18 +139,18 @@ sequenceDiagram
 
 **Teardown seam.** The orchestrator's `_persisting_state()` context manager already brackets the whole
 request and runs cleanup in its `finally` block (it flushes the deferred stage-close registry and writes
-state). Registry teardown hooks in here via a generic request-scoped `RequestAsyncCloseRegistry` (in
-`common/`) with which the session registry self-registers, so sessions are guaranteed to close on both the
+state). Session-manager teardown hooks in here via a generic request-scoped `RequestAsyncCloseRegistry` (in
+`common/`) with which the session manager self-registers, so sessions are guaranteed to close on both the
 success and error paths.
 
-**Why tool listing stays out of the registry.** Toolset initialization (`_MCPToolInitializer`, which lists
+**Why tool listing stays out of the session manager.** Toolset initialization (`_MCPToolInitializer`, which lists
 tools) runs *before* the orchestrator loop. The decisive reason listing keeps its own short-lived session is
-**teardown scope**: registry teardown is wired to the orchestrator's `_persisting_state()` finally, which only
-runs once the loop is reached — a registry session opened during initialization would leak if init failed
+**teardown scope**: session-manager teardown is wired to the orchestrator's `_persisting_state()` finally, which only
+runs once the loop is reached — a manager-held session opened during initialization would leak if init failed
 beforehand. Two supporting reasons: listing is read-only (it establishes no state later calls depend on), and
 it runs for *every* configured toolset, whereas the long-lived session is opened lazily on the first
 `call_mcp_tool`, scoping it to toolsets the agent actually uses. (The owner-task model means listing *could*
-technically share the registry session — the constraint is the teardown seam, not anyio task binding — but
+technically share the session manager session — the constraint is the teardown seam, not anyio task binding — but
 that would require a request-level teardown seam and is deferred.)
 
 ### Configuration / gating
@@ -215,9 +215,9 @@ None.
 | Component | Status | Change |
 |-----------|--------|--------|
 | `common/request_async_close_registry.py` | Landed (#390) | Generic request-scoped async teardown registry — the seam this layer hooks into |
-| `mcp_tooling/_mcp_session_registry.py` | Landed (#390) | Request-scoped registry owning one live `ClientSession` per toolset via owner tasks; lazy open, reuse, `aclose_all()` teardown |
+| `mcp_tooling/_mcp_session_manager.py` | Landed (#390) | Request-scoped manager owning one live `ClientSession` per toolset via owner tasks; lazy open, reuse, `aclose_all()` teardown |
 | `mcp_tooling/_mcp_tool_initializer.py` | Landed (#390) | `_toolset_key` derivation — `dial:{deployment_id}` / `mcp:{name}` |
-| `mcp_tooling/mcp_tooling_module.py` | Landed (#390) | Bind `_MCPSessionRegistry` (request-scoped) |
-| `core/agent/orchestrator.py` | Landed (#390) | Invoke registry teardown from `_persisting_state()` `finally` (via `RequestAsyncCloseRegistry`) |
-| `mcp_tooling/_mcp_connection_manager.py` | Landed (#390) | Borrow the shared session from the registry instead of opening `_open_session` per call; migrate `streamablehttp_client` → `streamable_http_client` |
+| `mcp_tooling/mcp_tooling_module.py` | Landed (#390) | Bind `_MCPSessionManager` (request-scoped) |
+| `core/agent/orchestrator.py` | Landed (#390) | Invoke session-manager teardown from `_persisting_state()` `finally` (via `RequestAsyncCloseRegistry`) |
+| `mcp_tooling/_mcp_toolset_client.py` | Landed (#390) | Borrow the shared session from the session manager instead of opening `_open_session` per call; migrate `streamablehttp_client` → `streamable_http_client` |
 | `docs/agent.md` | Landed (#390) | Document within-request session reuse |

@@ -26,7 +26,7 @@ class _SessionHandle:
 
 
 @inject
-class _MCPSessionRegistry:
+class _MCPSessionManager:
     """Owns one live, initialized MCP ``ClientSession`` per toolset for the whole request.
 
     Each session is opened inside a dedicated *owner task* that enters the
@@ -37,7 +37,7 @@ class _MCPSessionRegistry:
     the live session and may issue concurrent ``call_tool`` requests — the SDK
     multiplexes them by request id.
 
-    Request-scoped: one registry instance per request. It self-registers its
+    Request-scoped: one manager instance per request. It self-registers its
     teardown with :class:`RequestAsyncCloseRegistry`, which the orchestrator
     flushes in its ``_persisting_state()`` ``finally`` block.
     """

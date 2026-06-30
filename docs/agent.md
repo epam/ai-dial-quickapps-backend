@@ -90,7 +90,7 @@ skills) are visible to transformers:
   `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
   to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
   as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
-  401 from `_MCPConnectionManager`, requests sign-in, and retries the call once. The
+  401 from `_MCPToolsetClient`, requests sign-in, and retries the call once. The
   `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
   the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
@@ -267,17 +267,17 @@ and reused across orchestrator iterations and across concurrent tool calls — r
 open-init-call-teardown per call, which lost all session state and re-negotiated the streamable-HTTP
 `MCP-Session-Id` every time.
 
-- **`_MCPSessionRegistry`** (request-scoped, `mcp_tooling/`) owns one live session per toolset, keyed by a
+- **`_MCPSessionManager`** (request-scoped, `mcp_tooling/`) owns one live session per toolset, keyed by a
   stable toolset key (`mcp:<name>` for `MCPToolSet`, `dial:<deployment_id>` for `DialMCPToolSet`).
-  `_MCPConnectionManager.call_mcp_tool` borrows the shared session instead of opening its own; tool *listing*
+  `_MCPToolsetClient.call_mcp_tool` borrows the shared session instead of opening its own; tool *listing*
   (`get_tools_list`, during initialization) keeps its own short-lived session.
 - **Owner-task model.** Tool calls run in concurrent sibling tasks, but anyio requires a session's cancel
-  scope to be exited in the task that entered it. The registry therefore opens each session inside a dedicated
+  scope to be exited in the task that entered it. The session manager therefore opens each session inside a dedicated
   owner task that enters the context, signals readiness, parks until shutdown, then exits — so enter/exit stay
   co-located regardless of which call triggered the open. Borrowers issue concurrent `call_tool`s against the
   shared session, which the SDK multiplexes by request id. A failed open is not memoized, so the existing
   interactive-login retry re-opens cleanly.
-- **Teardown seam.** The registry self-registers with a request-scoped `RequestAsyncCloseRegistry`
+- **Teardown seam.** The session manager self-registers with a request-scoped `RequestAsyncCloseRegistry`
   (`common/`); the orchestrator awaits `aclose_all()` in its `_persisting_state()` `finally`, so every live
   session is torn down on both the success and the error path. Within-request reuse is unconditional — there
   is no configuration flag.

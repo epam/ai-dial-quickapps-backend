@@ -29,9 +29,9 @@ from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 
 from ._di_types import DialToolsetCacheService
-from ._mcp_connection_manager import _MCPConnectionManager
 from ._mcp_tool import _MCPTool
 from ._mcp_tooling_context import _MCPToolingContext
+from ._mcp_toolset_client import _MCPToolsetClient
 from ._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
@@ -121,7 +121,7 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_setting: DialSettings,
         api_key_provider: ProviderOf[DIAL_API_KEY],
         tool_builder: AssistedBuilder[_MCPTool],
-        connection_manager_builder: AssistedBuilder[_MCPConnectionManager],
+        toolset_client_builder: AssistedBuilder[_MCPToolsetClient],
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
@@ -135,9 +135,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__dial_setting: DialSettings = dial_setting
         self.__api_key_provider: ProviderOf[DIAL_API_KEY] = api_key_provider
         self.__tool_builder: AssistedBuilder[_MCPTool] = tool_builder
-        self.__connection_manager_builder: AssistedBuilder[_MCPConnectionManager] = (
-            connection_manager_builder
-        )
+        self.__toolset_client_builder: AssistedBuilder[_MCPToolsetClient] = toolset_client_builder
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
@@ -280,11 +278,11 @@ class _MCPToolInitializer(CompletionInitializer):
                     ),
                 )
 
-            connection_manager = self.__connection_manager_builder.build(
+            toolset_client = self.__toolset_client_builder.build(
                 toolset_info=resolved_toolset,
                 toolset_key=_toolset_key(toolset_info),
             )
-            tools = await connection_manager.get_tools_list()
+            tools = await toolset_client.get_tools_list()
 
             if resolved_toolset.allowed_tools:
                 tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
@@ -302,7 +300,7 @@ class _MCPToolInitializer(CompletionInitializer):
                             tool.inputSchema,
                         ),
                     ),
-                    connection_manager=connection_manager,
+                    toolset_client=toolset_client,
                     dial_toolset_id=(
                         toolset_info.deployment_id
                         if isinstance(toolset_info, DialMCPToolSet)
