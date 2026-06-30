@@ -166,6 +166,13 @@ class ExternalUrlFetchConfig(BaseModel):
     )
 
 
+class AddAttachmentToolConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description="Set to false to disable the internal_representation_add_attachment tool.",
+    )
+
+
 class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
@@ -189,6 +196,14 @@ class Features(BaseModel):
     dial_files: DialFilesConfig | None = Field(
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+    )
+    add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Enables the internal_representation_add_attachment tool. "
+            "Omit or set to null to disable. "
+            'Set to {} or {"enabled": true} to enable.'
+        ),
     )
 
 

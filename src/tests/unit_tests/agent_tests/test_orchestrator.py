@@ -919,3 +919,98 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     custom_content = tool_entry.get("custom_content")
     assert isinstance(custom_content, dict)
     assert "attachments" in custom_content
+
+
+def _build_orchestrator_for_propagation(choice, tool_result):
+    """Build a minimal Orchestrator that runs one tool-calling iteration then stops."""
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
+    messages_context.messages = messages_list
+
+    assistant_result_with_tools = SimpleNamespace(
+        content="call tool",
+        attachments=[],
+        tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
+        usage=None,
+        state=None,
+    )
+    assistant_result_no_tools = SimpleNamespace(
+        content="final", attachments=[], tool_calls=[], usage=None, state=None
+    )
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[assistant_result_with_tools, assistant_result_no_tools]
+    )
+
+    tool_executor = Mock()
+    tool_executor.execute = AsyncMock(return_value=[tool_result])
+
+    return Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="test-model"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=_recovery_service(messages_context),
+        tool_execution_history_policies=[],
+    )
+
+
+@pytest.mark.asyncio
+async def test_propagation_deduplicates_repeated_urls():
+    choice = SpyChoice()
+    same_url = "files/bucket/report.csv"
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.propagate_to_choice = [
+        Attachment(url=same_url, type="text/csv"),
+        Attachment(url=same_url, type="text/csv"),
+        Attachment(url="files/bucket/other.pdf", type="application/pdf"),
+    ]
+
+    orchestrator = _build_orchestrator_for_propagation(choice, tool_result)
+    await orchestrator.invoke()
+
+    urls = [kw.get("url") for kw in choice.add_attachment_kwargs]
+    assert urls == [same_url, "files/bucket/other.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_propagation_keeps_urlless_attachments():
+    choice = SpyChoice()
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.propagate_to_choice = [
+        Attachment(data="abc", type="image/png"),
+        Attachment(data="def", type="image/png"),
+    ]
+
+    orchestrator = _build_orchestrator_for_propagation(choice, tool_result)
+    await orchestrator.invoke()
+
+    # Attachments without a URL have no stable dedup key, so both are streamed.
+    assert len(choice.add_attachment_kwargs) == 2

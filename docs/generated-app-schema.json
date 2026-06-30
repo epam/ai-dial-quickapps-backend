@@ -9,6 +9,18 @@
   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
   "title": "ApplicationConfig",
   "$defs": {
+    "AddAttachmentToolConfig": {
+      "properties": {
+        "enabled": {
+          "default": true,
+          "description": "Set to false to disable the internal_representation_add_attachment tool.",
+          "title": "Enabled",
+          "type": "boolean"
+        }
+      },
+      "title": "AddAttachmentToolConfig",
+      "type": "object"
+    },
     "ApiKeyAuthorization": {
       "properties": {
         "type": {
@@ -1344,6 +1356,19 @@
           ],
           "default": null,
           "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
+        },
+        "add_attachment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AddAttachmentToolConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Enables the internal_representation_add_attachment tool. Omit or set to null to disable. Set to {} or {\"enabled\": true} to enable.",
+          "x-preview": true
         }
       },
       "title": "Features",

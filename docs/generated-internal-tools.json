@@ -322,6 +322,27 @@
     ]
   },
   {
+    "name": "internal_representation_add_attachment",
+    "description": "Add a file to the attachments of the current response. The file must be accessible via a URL (DIAL URL or external link). Use this to surface a file to the user in the final reply.",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "File URL — DIAL (e.g. files/bucket/path/report.csv) or external."
+      },
+      "title": {
+        "type": "string",
+        "description": "Display name shown to the user. Optional."
+      },
+      "type": {
+        "type": "string",
+        "description": "MIME type (e.g. text/csv, application/pdf). Default: text/plain."
+      }
+    },
+    "required": [
+      "url"
+    ]
+  },
+  {
     "name": "internal_skills_read_skill",
     "description": "Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you.",
     "properties": {
