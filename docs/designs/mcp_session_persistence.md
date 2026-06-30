@@ -2,7 +2,7 @@
 
 - **Status:** Approved
 - **Approved:** 2026-06-29
-- **Last updated:** 2026-06-29
+- **Last updated:** 2026-06-30
 - **Dependencies:**
   - Interacts with, but does not depend on, [`interactive_login.md`](interactive_login.md).
 
@@ -270,13 +270,16 @@ part of cross-turn continuity — the key is what links turn N+1's toolset back 
 `initialize` handshake so requests rejoin the existing server session. A principal mismatch is treated exactly
 like "no persisted id" — a fresh session is opened.
 
-**SDK constraint (named risk).** In the installed `mcp` 1.27.0, `StreamableHTTPTransport.__init__` exposes
+**SDK constraint (named risk).** In the installed `mcp` 1.28.1, `StreamableHTTPTransport.__init__` exposes
 **no constructor parameter for a pre-existing session id** (it sets `self.session_id = None`; its other
-parameters are deprecated transport options), and the transport does not auto-reinitialize on 404. Re-attaching therefore requires a thin wrapper around the
-SDK transport that (a) pre-sets the session id and (b) bypasses the initialize handshake. This wrapper is the
-only place the design reaches below the public SDK surface, and is the main implementation risk. `pyproject.toml`
-declares a **range** (`mcp>=1.23.2,<2.0.0`), not a pin, so the wrapper must be guarded by a version-asserting
-test that fails loudly if a future in-range SDK changes these internals (see Open Questions #1).
+parameters — `headers`/`timeout`/`sse_read_timeout`/`auth` — are now `@deprecated` and ignored at runtime, so
+the only construction path is `__init__(url)`), and the transport does not auto-reinitialize on 404.
+Re-attaching therefore requires a thin wrapper around the SDK transport that (a) pre-sets the session id
+(by assigning `transport.session_id` after construction) and (b) bypasses the initialize handshake. This
+wrapper is the only place the design reaches below the public SDK surface, and is the main implementation
+risk. `pyproject.toml` declares a **range** (`mcp>=1.28.1,<2.0.0`), not a pin, so the wrapper must be guarded
+by a version-asserting test that fails loudly if a future in-range SDK changes these internals (see Open
+Questions #1).
 
 **Recovery (spec-mandated).** The spec requires: *"When a client receives HTTP 404 in response to a request
 containing an `MCP-Session-Id`, it MUST start a new session by sending a new InitializeRequest without a
@@ -447,7 +450,7 @@ key is namespaced and ignored by older readers.
 ## Open Questions / Risks
 
 1. **SDK wrapper for re-attach.** Seeding a session id and skipping `initialize` reaches below the public SDK
-   surface (Layer 2). Since `pyproject.toml` allows the whole `>=1.23.2,<2.0.0` range, guard the wrapper with
+   surface (Layer 2). Since `pyproject.toml` allows the whole `>=1.28.1,<2.0.0` range, guard the wrapper with
    a version-asserting test that fails loudly if an in-range SDK changes `StreamableHTTPTransport`'s
    session-id internals — rather than relying on a pin the dependency spec does not enforce.
 2. **DIAL Core passthrough** of `MCP-Session-Id` for `DialMCPToolSet` (see Out of Scope) — confirm before

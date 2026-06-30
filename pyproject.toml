@@ -23,7 +23,7 @@ dependencies = [
     "plotly>=6.5.2,<7.0.0",                       # Data visualization
 
     # MCP (Model Context Protocol)
-    "mcp>=1.23.2,<2.0.0",                         # MCP protocol support
+    "mcp>=1.28.1,<2.0.0",                         # MCP protocol support
     "fastmcp>=3.4.0,<4.0.0",                      # High-level MCP server framework
 
     # HTML & web content
