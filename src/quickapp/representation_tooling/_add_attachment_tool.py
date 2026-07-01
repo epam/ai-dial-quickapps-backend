@@ -13,6 +13,11 @@ from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAt
 
 _DEFAULT_ATTACHMENT_TYPE = "text/plain"
 
+# Neutral status returned to the LLM after a successful call. Deliberately does not echo the
+# file name/path (nothing to parrot back); guidance on not restating the attachment lives in
+# the tool description, not here.
+_TOOL_RESULT_CONTENT = "The file is now attached to the response."
+
 
 @inject
 class _AddAttachmentTool(StagedBaseTool):
@@ -35,6 +40,15 @@ class _AddAttachmentTool(StagedBaseTool):
             **kwargs,
         )
 
+    async def arun(
+        self,
+        tool_call_id: str,
+        *args: Any,
+        stage_level: StageDisplayLevel = StageDisplayLevel.DEBUG,
+        **kwargs: Any,
+    ) -> ToolCallResult:
+        return await super().arun(tool_call_id, *args, stage_level=stage_level, **kwargs)
+
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None = None,
@@ -49,7 +63,7 @@ class _AddAttachmentTool(StagedBaseTool):
         attachment = Attachment(url=url, title=title, type=mime_type)
 
         result = ToolCallResult(
-            content=f"Attachment added to response: {title or url}",
+            content=_TOOL_RESULT_CONTENT,
             content_type="text/plain",
             attachments=[attachment],
             propagate_to_choice=[attachment],

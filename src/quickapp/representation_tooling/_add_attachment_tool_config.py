@@ -15,9 +15,15 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME,
             description=(
-                "Add a file to the attachments of the current response. "
-                "The file must be accessible via a URL (DIAL URL or external link). "
-                "Use this to surface a file to the user in the final reply."
+                "Attach a file to your final response so the user can open or download it. "
+                "Call this whenever you produce or find a file the user should receive — a "
+                "report you wrote (CSV, PDF, XLSX), a chart or image, a file returned by "
+                "another tool, or a file attached earlier in the conversation. Always call "
+                "it for every file you reference in your reply; otherwise the file stays "
+                "hidden in the tool stage and the user never sees it. The file must be "
+                "reachable via a URL — a DIAL URL (e.g. files/bucket/path/report.csv) or an "
+                "external link. After calling, do not restate the file name or say that you "
+                "attached it — the file is shown to the user automatically."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -40,9 +46,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
         )
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Add attachment")),
-    # propagate_types_to_choice=[] disables StagedBaseTool's automatic type-based
-    # auto-append from `attachments` to `propagate_to_choice`; the tool sets
-    # `propagate_to_choice` directly. supported_types is left at its default so the
-    # stage renders the attachment for any MIME type the agent supplies.
+    # propagate_types_to_choice=[]: the tool sets propagate_to_choice directly, so this
+    # stops StagedBaseTool from auto-appending the same attachment a second time.
     attachment=AttachmentConfig(propagate_types_to_choice=[]),
 )

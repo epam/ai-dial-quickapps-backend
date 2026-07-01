@@ -82,9 +82,6 @@ class Orchestrator:
         self.__request_async_close_registry: RequestAsyncCloseRegistry = (
             request_async_close_registry
         )
-        # URLs already streamed to the choice this request. Orchestrator is request_scope,
-        # so this starts empty per request and guards against the same attachment URL
-        # being surfaced twice (e.g. automatic propagation + an internal_representation_add_attachment call).
         self.__propagated_attachment_urls: set[str] = set()
 
     @asynccontextmanager
