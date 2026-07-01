@@ -1,7 +1,8 @@
 # Design: Add Attachment to Response Tool
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-06-22
+- **Implemented:** 2026-07-01 (#348, commit b446370)
 - **Dependencies:**
   - None
 
