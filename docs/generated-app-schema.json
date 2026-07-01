@@ -3299,8 +3299,7 @@
             }
           ],
           "default": null,
-          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only).",
-          "x-preview": true
+          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only)."
         }
       },
       "required": [
