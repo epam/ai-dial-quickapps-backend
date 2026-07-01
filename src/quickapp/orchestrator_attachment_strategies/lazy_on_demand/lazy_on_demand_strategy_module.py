@@ -10,7 +10,6 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
-from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.core.agent import OrchestratorCapabilities
@@ -49,12 +48,10 @@ def _is_active(app_config: ApplicationConfig) -> bool:
     return isinstance(app_config.orchestrator.attachment_strategy, LazyOnDemandAttachmentStrategy)
 
 
-@preview_module
 class LazyOnDemandStrategyModule(Module):
     """Wires the `internal_attachments_get_content` tool and its policies when
     ``OrchestratorConfig.attachment_strategy`` is a
-    :class:`LazyOnDemandAttachmentStrategy`. Filtered out entirely when
-    ``ENABLE_PREVIEW_FEATURES`` is unset.
+    :class:`LazyOnDemandAttachmentStrategy`.
     """
 
     def configure(self, binder: Binder) -> None:
