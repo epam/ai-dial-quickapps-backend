@@ -1,12 +1,14 @@
-"""Tests for 401 detection in _MCPConnectionManager, including ExceptionGroup wrapping."""
+"""Tests for 401 detection in _MCPToolsetClient, including ExceptionGroup wrapping."""
 
 from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
-from quickapp.mcp_tooling._mcp_connection_manager import _extract_http_401, _MCPConnectionManager
+from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
+from quickapp.mcp_tooling._mcp_toolset_client import _extract_http_401, _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from tests.unit_tests.common.common import noop_timeout_resolver
 
@@ -51,32 +53,34 @@ def test_extract_http_401_mixed():
     assert _extract_http_401(eg) is err_401
 
 
-# --- _MCPConnectionManager integration tests ---
+# --- _MCPToolsetClient integration tests ---
 
-_STREAMABLE_HTTP_PATCH = "quickapp.mcp_tooling._mcp_connection_manager.streamablehttp_client"
-_SSE_PATCH = "quickapp.mcp_tooling._mcp_connection_manager.sse_client"
+_STREAMABLE_HTTP_PATCH = "quickapp.mcp_tooling._mcp_toolset_client.streamable_http_client"
+_SSE_PATCH = "quickapp.mcp_tooling._mcp_toolset_client.sse_client"
 
 
-def _make_connection_manager(
+def _make_toolset_client(
     protocol: MCPProtocol = MCPProtocol.streamable_http,
-) -> _MCPConnectionManager:
+) -> _MCPToolsetClient:
     toolset = MCPToolSet(
         mcp_server_info=MCPServerInfo(
             url="https://test-mcp", authorization=None, protocol=protocol
         ),
         name="test-toolset",
     )
-    return _MCPConnectionManager(
+    return _MCPToolsetClient(
         toolset_info=toolset,
+        toolset_key="mcp:test-toolset",
         oauth_token_fetcher=MagicMock(),
         dial_settings=MagicMock(url="https://dial-core"),
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=_MCPSessionManager(RequestAsyncCloseRegistry()),
     )
 
 
 @pytest.mark.asyncio
 async def test_get_tools_list_bare_401_raises_unauthorized():
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(401)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(MCPUnauthorizedException) as exc_info:
@@ -88,7 +92,7 @@ async def test_get_tools_list_bare_401_raises_unauthorized():
 @pytest.mark.asyncio
 async def test_get_tools_list_exception_group_401_raises_unauthorized():
     """Streamable HTTP transport wraps 401 in ExceptionGroup — must still detect it."""
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(401)
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [err])
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=eg):
@@ -100,7 +104,7 @@ async def test_get_tools_list_exception_group_401_raises_unauthorized():
 
 @pytest.mark.asyncio
 async def test_get_tools_list_exception_group_non_401_propagates():
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(500)
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [err])
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=eg):
@@ -110,7 +114,7 @@ async def test_get_tools_list_exception_group_non_401_propagates():
 
 @pytest.mark.asyncio
 async def test_get_tools_list_bare_500_propagates():
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(500)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(httpx.HTTPStatusError):
@@ -119,7 +123,7 @@ async def test_get_tools_list_bare_500_propagates():
 
 @pytest.mark.asyncio
 async def test_call_mcp_tool_exception_group_401_raises_unauthorized():
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(401)
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [err])
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=eg):
@@ -129,7 +133,7 @@ async def test_call_mcp_tool_exception_group_401_raises_unauthorized():
 
 @pytest.mark.asyncio
 async def test_call_mcp_tool_bare_401_raises_unauthorized():
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(401)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(MCPUnauthorizedException):
@@ -139,7 +143,7 @@ async def test_call_mcp_tool_bare_401_raises_unauthorized():
 @pytest.mark.asyncio
 async def test_call_mcp_tool_bare_500_wraps_in_runtime_error():
     """Non-401 errors from call_mcp_tool get RuntimeError wrapping (preserving tool name context)."""
-    cm = _make_connection_manager()
+    cm = _make_toolset_client()
     err = _make_http_status_error(500)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(RuntimeError, match="Error calling MCP tool"):
@@ -148,7 +152,7 @@ async def test_call_mcp_tool_bare_500_wraps_in_runtime_error():
 
 @pytest.mark.asyncio
 async def test_sse_transport_401_raises_unauthorized():
-    cm = _make_connection_manager(protocol=MCPProtocol.sse)
+    cm = _make_toolset_client(protocol=MCPProtocol.sse)
     err = _make_http_status_error(401)
     with patch(_SSE_PATCH, side_effect=err):
         with pytest.raises(MCPUnauthorizedException):
