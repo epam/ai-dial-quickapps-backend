@@ -818,6 +818,11 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     assert isinstance(custom_content, dict)
     assert "attachments" not in custom_content
     assert custom_content.get("state") == {"marker": "keep"}
+    tool_content = tool_entry.get("content")
+    assert isinstance(tool_content, str)
+    assert "<attachments>" in tool_content
+    assert "<title>report.pdf</title>" in tool_content
+    assert "<url>files/bucket/report.pdf</url>" in tool_content
 
 
 @pytest.mark.asyncio
