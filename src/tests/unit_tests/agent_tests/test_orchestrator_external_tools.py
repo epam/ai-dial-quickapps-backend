@@ -10,6 +10,7 @@ from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.core.agent import Orchestrator
+from quickapp.core.agent.models import TOOL_EXECUTION_HISTORY
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
 
@@ -341,3 +342,76 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
 
     assert stream_handler.process_stream.await_count == 2
     tool_executor.execute.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_mixed_batch_persists_history_without_external_tool_calls():
+    """In a mixed batch, persisted history strips external tool_calls from the ASSISTANT."""
+    messages_list: list[Message] = [Message(role=Role.USER, content="hi")]
+    tc_internal = _make_tool_call("id-i", "server_tool")
+    tc_external = _make_tool_call("id-e", "ext_tool")
+    result = _stream_result(tool_calls=[tc_internal, tc_external])
+
+    tool_msg = Message(role=Role.TOOL, content="server result", tool_call_id="id-i")
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(return_value=tool_msg)
+    tool_result.propagate_to_choice = []
+    tool_result.usage = None
+    tool_executor = Mock(execute=AsyncMock(return_value=[tool_result]))
+
+    messages_context = Mock()
+    messages_context.append_message = Mock(side_effect=lambda m: messages_list.append(m))
+    messages_context.messages = messages_list
+
+    state_holder = Mock(get_state=Mock(return_value={}), add_state=Mock())
+    choice = SpyChoice()
+
+    assistant_invoker = Mock()
+    assistant_invoker.invoke = AsyncMock(return_value="stream")
+    assistant_invoker_provider = Mock(get=Mock(return_value=assistant_invoker))
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(return_value=result)
+
+    orch = Orchestrator(
+        presentation_settings=SimpleNamespace(show_usage_statistics=False),
+        messages_context=messages_context,
+        choice=choice,
+        state_holder=state_holder,
+        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
+        tool_executor=tool_executor,
+        assistant_invoker_provider=assistant_invoker_provider,
+        stream_handler=stream_handler,
+        app_config=SimpleNamespace(
+            orchestrator=SimpleNamespace(
+                max_iterations=10,
+                deployment=SimpleNamespace(deployment_id="m"),
+                propagate_stages=True,
+            )
+        ),
+        perf_timer=Mock(),
+        deferred_stage_close_registry=DeferredStageCloseRegistry(),
+        chat_completion_recovery=Mock(apply_message_recovery=Mock()),
+        tool_execution_history_policies=[],
+        tool_names=frozenset({"ext_tool"}),
+    )
+
+    await orch.invoke()
+
+    # Find the add_state call for TOOL_EXECUTION_HISTORY
+    history_call = next(
+        call
+        for call in state_holder.add_state.call_args_list
+        if call[0][0] == TOOL_EXECUTION_HISTORY
+    )
+    history = history_call[0][1]
+
+    # History should have ASSISTANT + TOOL
+    assert len(history) == 2
+    assert history[0]["role"] == "assistant"
+    assert history[1]["role"] == "tool"
+
+    # The ASSISTANT in history should only have the internal tool call
+    assistant_tool_calls = history[0]["tool_calls"]
+    assert len(assistant_tool_calls) == 1
+    assert assistant_tool_calls[0]["function"]["name"] == "server_tool"

@@ -251,18 +251,29 @@ class Orchestrator:
         Only includes ASSISTANT messages with tool_calls and TOOL messages.
         ASSISTANT messages whose tool calls are all external (client-side) are excluded
         because they are surfaced via create_function_tool_call, not executed server-side.
+        For mixed ASSISTANT messages (both internal and external tool calls), external
+        tool calls are stripped so that reconstruction produces valid LLM history.
         """
         history: list[dict[str, object]] = []
 
         for msg in reversed(self.__messages_context.messages):
             if msg.role == Role.USER:
                 break
-            if msg.role == Role.TOOL or (
+            if msg.role == Role.TOOL:
+                history.append(msg.model_dump(mode="json", exclude_none=True))
+            elif (
                 msg.role == Role.ASSISTANT
                 and msg.tool_calls
                 and not self._is_all_external(msg.tool_calls)
             ):
-                history.append(msg.model_dump(mode="json", exclude_none=True))
+                msg_dict = msg.model_dump(mode="json", exclude_none=True)
+                if self.__tool_names and msg_dict.get("tool_calls"):
+                    msg_dict["tool_calls"] = [
+                        tc
+                        for tc in msg_dict["tool_calls"]
+                        if tc.get("function", {}).get("name") not in self.__tool_names
+                    ]
+                history.append(msg_dict)
 
         return history[::-1]
 

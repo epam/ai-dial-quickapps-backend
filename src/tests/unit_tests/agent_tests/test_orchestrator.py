@@ -763,7 +763,8 @@ class TestBuildToolExecutionHistory:
         assert result[1]["role"] == "tool"
 
     def test_mixed_assistant_message_included(self):
-        """ASSISTANT messages with both server and external tool calls are kept in history."""
+        """ASSISTANT messages with both server and external tool calls are kept,
+        but external tool calls are stripped from the persisted history."""
         messages = [
             Message(role=Role.USER, content="hello"),
             Message(
@@ -781,7 +782,8 @@ class TestBuildToolExecutionHistory:
 
         assert len(result) == 2
         assert result[0]["role"] == "assistant"
-        assert len(result[0]["tool_calls"]) == 2
+        assert len(result[0]["tool_calls"]) == 1
+        assert result[0]["tool_calls"][0]["function"]["name"] == "server_tool"
         assert result[1]["role"] == "tool"
 
 
