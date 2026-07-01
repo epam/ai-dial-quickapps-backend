@@ -28,19 +28,20 @@ class TestAddAttachmentTool:
             stage_wrapper=None, url="files/bucket/path/report.csv", title="Report", type="text/csv"
         )
 
-        assert result.attachments is not None
-        assert len(result.attachments) == 1
-        attachment = result.attachments[0]
+        assert len(result.propagate_to_choice) == 1
+        attachment = result.propagate_to_choice[0]
         assert attachment.url == "files/bucket/path/report.csv"
         assert attachment.title == "Report"
         assert attachment.type == "text/csv"
 
     @pytest.mark.asyncio
-    async def test_propagates_same_attachment_to_choice(self):
+    async def test_propagates_attachment_to_choice_only(self):
+        # The attachment is surfaced via propagate_to_choice (the response), not via
+        # result.attachments (which would only render it in the stage).
         tool = _build_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, url="files/a.pdf")
 
-        assert result.attachments == result.propagate_to_choice
+        assert result.attachments is None
         assert len(result.propagate_to_choice) == 1
 
     @pytest.mark.asyncio
@@ -48,16 +49,14 @@ class TestAddAttachmentTool:
         tool = _build_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, url="files/a.bin")
 
-        assert result.attachments is not None
-        assert result.attachments[0].type == "text/plain"
+        assert result.propagate_to_choice[0].type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_empty_type_falls_back_to_text_plain(self):
         tool = _build_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, url="files/a.bin", type="")
 
-        assert result.attachments is not None
-        assert result.attachments[0].type == "text/plain"
+        assert result.propagate_to_choice[0].type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_content_does_not_echo_the_file(self):

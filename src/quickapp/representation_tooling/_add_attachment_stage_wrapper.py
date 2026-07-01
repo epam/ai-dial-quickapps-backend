@@ -22,4 +22,4 @@ class _AddAttachmentStageWrapper(TimedStageWrapper):
         return f"### Exception:\n\r{exception}\n\r"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
-        return result.content
+        return ""

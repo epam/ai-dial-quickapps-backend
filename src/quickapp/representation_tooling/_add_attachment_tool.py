@@ -65,7 +65,6 @@ class _AddAttachmentTool(StagedBaseTool):
         result = ToolCallResult(
             content=_TOOL_RESULT_CONTENT,
             content_type="text/plain",
-            attachments=[attachment],
             propagate_to_choice=[attachment],
         )
         if stage_wrapper:
