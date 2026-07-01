@@ -4,7 +4,7 @@ from ._di_types import (
     DIAL_BEARER,
     CLIENT_CHANNEL_HEADER,
     CLIENT_CHANNEL_ID,
-    TOOL_NAMES,
+    EXTERNAL_TOOL_NAMES,
     ForwardedHeaders,
     ORCHESTRATOR_AZURE_CLIENT,
     RESPONSE_FORMAT,

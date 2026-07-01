@@ -9,8 +9,8 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
+    EXTERNAL_TOOL_NAMES,
     ORCHESTRATOR_AZURE_CLIENT,
-    TOOL_NAMES,
     ForwardedHeaders,
     StagedBaseTool,
 )
@@ -39,6 +39,7 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
 )
+from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
@@ -165,12 +166,10 @@ class AgentModule(Module):
     ) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
-            if issubclass(type(tool.tool_config), BaseOpenAITool):
+            if isinstance(tool.tool_config, BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
                 open_ai_tool = self._remove_const_params(open_ai_tool)
-                if tool.tool_config.type in [
-                    "deployment-tool"
-                ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
+                if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         for default_tool in static_tools:
@@ -196,7 +195,7 @@ class AgentModule(Module):
         server_names: set[str] = {
             tool.tool_config.open_ai_tool.function.name
             for tool in tools
-            if issubclass(type(tool.tool_config), BaseOpenAITool)
+            if isinstance(tool.tool_config, BaseOpenAITool)
         } | {st.static_function.name for st in static_tools}
         for t in extra_tools:
             if t.function.name in server_names:
@@ -211,8 +210,10 @@ class AgentModule(Module):
 
     @provider
     @request_scope
-    def provide_tool_names(self, context: _RequestContext) -> TOOL_NAMES:
-        return frozenset(t.function.name for t in context.extra_tools)
+    def provide_tool_names(self, context: _RequestContext) -> EXTERNAL_TOOL_NAMES:
+        return frozenset(
+            t.function.name for t in context.extra_tools if t.function and t.function.name
+        )
 
     @staticmethod
     def _remove_const_params(open_ai_tool):

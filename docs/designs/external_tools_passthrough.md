@@ -33,10 +33,10 @@ Clients can't contribute their own tools to the agent loop. `request.tools` para
 |---|---|
 | `_RequestContext` | +`extra_tools: list[Tool]` (read-once setter, defaults to `[]`) |
 | `_RequestContextSetup.setup_context()` | Extract `Tool` items from `request.tools` (ignore `StaticTool`) |
-| `common/_di_types.py` | +`TOOL_NAMES: Annotated[frozenset[str], ...]` |
+| `common/_di_types.py` | +`EXTERNAL_TOOL_NAMES: Annotated[frozenset[str], ...]` |
 | `AgentModule` | +`@multiprovider provide_extra_openai_tools()` — serialises extra tools + collision guard |
-| `AgentModule` | +`@provider @request_scope provide_tool_names()` → `TOOL_NAMES` |
-| `Orchestrator` | Inject `TOOL_NAMES`; partition tool calls; surface client tools via `choice.create_function_tool_call()` |
+| `AgentModule` | +`@provider @request_scope provide_EXTERNAL_TOOL_NAMES()` → `EXTERNAL_TOOL_NAMES` |
+| `Orchestrator` | Inject `EXTERNAL_TOOL_NAMES`; partition tool calls; surface client tools via `choice.create_function_tool_call()` |
 
 ## Example
 

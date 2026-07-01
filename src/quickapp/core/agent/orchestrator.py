@@ -8,7 +8,7 @@ from injector import ProviderOf, inject
 from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
-from quickapp.common import TOOL_NAMES, DeploymentUsage
+from quickapp.common import EXTERNAL_TOOL_NAMES, DeploymentUsage
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.chat_completion_recovery import (
     STREAM_ACCUMULATION_RETRY_SCOPE,
@@ -55,7 +55,7 @@ class Orchestrator:
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         chat_completion_recovery: ChatCompletionRecoveryService,
         tool_execution_history_policies: list[ToolExecutionHistoryPolicy],
-        tool_names: TOOL_NAMES,
+        tool_names: EXTERNAL_TOOL_NAMES,
         request_async_close_registry: RequestAsyncCloseRegistry,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
@@ -182,31 +182,39 @@ class Orchestrator:
             internal = tool_calls
 
         if internal:
-            logger.debug("Agent requests internal tool calls: %s", internal)
-            tool_call_results = await self.__tool_executor.execute(internal)
-            if not tool_call_results:
-                raise RuntimeError(f"Tool call(s) {internal} doesn't return any result.")
-
-            logger.debug("Tool call results: %s", tool_call_results)
-            for tool_call_result in tool_call_results:
-                tool_call_result_message = tool_call_result.to_tool_message()
-                self.__messages_context.append_message(tool_call_result_message)
-                for attachment in tool_call_result.propagate_to_choice:
-                    self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
-                if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
-                    self.__usage_statistics_list.extend(tool_call_result.usage)
+            await self._execute_internal_tool_calls(internal)
 
         if external:
-            logger.debug("Surfacing external tool calls to client: %s", external)
-            for tc in external:
-                self.__choice.create_function_tool_call(tc.id, tc.name, tc.arguments)
-            self.__perf_timer.stop_period(period)
-            self.__deferred_stage_close_registry.flush()
+            self._surface_external_tool_calls(external, period)
             return False
 
         self.__perf_timer.stop_period(period)
         logger.debug("Message from context: %s", self.__messages_context.messages)
         return True
+
+    async def _execute_internal_tool_calls(self, tool_calls: list[AccumulatedToolCall]) -> None:
+        logger.debug("Agent requests internal tool calls: %s", tool_calls)
+        tool_call_results = await self.__tool_executor.execute(tool_calls)
+        if not tool_call_results:
+            raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
+
+        logger.debug("Tool call results: %s", tool_call_results)
+        for tool_call_result in tool_call_results:
+            tool_call_result_message = tool_call_result.to_tool_message()
+            self.__messages_context.append_message(tool_call_result_message)
+            for attachment in tool_call_result.propagate_to_choice:
+                self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+                self.__usage_statistics_list.extend(tool_call_result.usage)
+
+    def _surface_external_tool_calls(
+        self, tool_calls: list[AccumulatedToolCall], period: str
+    ) -> None:
+        logger.debug("Surfacing external tool calls to client: %s", tool_calls)
+        for tc in tool_calls:
+            self.__choice.create_function_tool_call(tc.id, tc.name, tc.arguments)
+        self.__perf_timer.stop_period(period)
+        self.__deferred_stage_close_registry.flush()
 
     async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
         """Invoke assistant and consume stream; on APIError/BadRequest during stream, run recovery once."""
