@@ -521,7 +521,14 @@ def _make_tool_call(call_id: str, name: str = "tool_a") -> ToolCall:
     )
 
 
-def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
+def _make_orchestrator(
+    messages_list: list[Message],
+    *,
+    choice: object | None = None,
+    tool_executor: object | None = None,
+    stream_handler: object | None = None,
+    assistant_invoker_provider: object | None = None,
+) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
@@ -529,12 +536,12 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
     return Orchestrator(
         presentation_settings=SimpleNamespace(show_usage_statistics=False),
         messages_context=messages_context,
-        choice=Mock(add_attachment=Mock(), set_state=Mock()),
+        choice=choice or Mock(add_attachment=Mock(), set_state=Mock()),
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=Mock(),
-        assistant_invoker_provider=Mock(),
-        stream_handler=Mock(),
+        tool_executor=tool_executor or Mock(),
+        assistant_invoker_provider=assistant_invoker_provider or Mock(),
+        stream_handler=stream_handler or Mock(),
         app_config=SimpleNamespace(
             orchestrator=SimpleNamespace(
                 max_iterations=10,
@@ -923,11 +930,6 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
 
 def _build_orchestrator_for_propagation(choice, tool_result):
     """Build a minimal Orchestrator that runs one tool-calling iteration then stops."""
-    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
-    messages_context = Mock()
-    messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
-    messages_context.messages = messages_list
-
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
         attachments=[],
@@ -951,26 +953,12 @@ def _build_orchestrator_for_propagation(choice, tool_result):
     tool_executor = Mock()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
-    return Orchestrator(
-        presentation_settings=SimpleNamespace(show_usage_statistics=False),
-        messages_context=messages_context,
+    return _make_orchestrator(
+        [Message(role=Role.USER, content="hello")],
         choice=choice,
-        state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
-        usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
         tool_executor=tool_executor,
-        assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
-        app_config=SimpleNamespace(
-            orchestrator=SimpleNamespace(
-                max_iterations=10,
-                deployment=SimpleNamespace(deployment_id="test-model"),
-                propagate_stages=True,
-            )
-        ),
-        perf_timer=Mock(),
-        deferred_stage_close_registry=DeferredStageCloseRegistry(),
-        chat_completion_recovery=_recovery_service(messages_context),
-        tool_execution_history_policies=[],
+        assistant_invoker_provider=assistant_invoker_provider,
     )
 
 

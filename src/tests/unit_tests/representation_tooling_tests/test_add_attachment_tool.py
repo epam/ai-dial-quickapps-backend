@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.config.application import StageDisplayLevel
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
 from quickapp.representation_tooling._add_attachment_tool import _AddAttachmentTool
@@ -43,6 +44,13 @@ class TestAddAttachmentTool:
 
         assert result.attachments is None
         assert len(result.propagate_to_choice) == 1
+
+    @pytest.mark.asyncio
+    async def test_missing_url_raises_invalid_parameter(self):
+        tool = _build_tool()
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(stage_wrapper=None)
+        assert excinfo.value.parameter_name == "url"
 
     @pytest.mark.asyncio
     async def test_defaults_type_to_text_plain(self):

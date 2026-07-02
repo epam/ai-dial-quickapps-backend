@@ -156,13 +156,13 @@ lives alongside it in `_add_attachment_stage_wrapper.py` to render the stage.
 
 1. Builds `Attachment(url=url, title=title, type=type or "text/plain")`.
 2. Returns `ToolCallResult` with:
-   - `content`: a short confirmation string (e.g. `"Attachment added to response: <title or url>"`)
+   - `content`: `"The file is now attached to the response."` (neutral; no filename echo)
    - `content_type`: `"text/plain"`
-   - `attachments`: `[attachment]` — shown in the stage
    - `propagate_to_choice`: `[attachment]` — forwarded to the final response
-3. A minimal stage named "Add attachment" is rendered; no network I/O occurs.
+   - `attachments`: omitted — the attachment surfaces only in the response, not in the stage
+3. A minimal stage named "Add attachment" is emitted at DEBUG level; it is suppressed unless the app's stage display level is DEBUG. No network I/O occurs.
 
-`attachments` and `propagate_to_choice` are both set deliberately: the attachment is shown in the stage via `attachments` and promoted to the response via `propagate_to_choice`. The `propagate_types_to_choice=[]` config (§3) stops `StagedBaseTool._run_in_stage_report_success` from auto-appending the same attachment a second time within this one tool result. Duplicates that span multiple tool calls or the automatic propagation path are handled by the orchestrator-level URL dedup in §6, which is the authoritative guard.
+The attachment is surfaced solely via `propagate_to_choice`, which promotes it to the response. `content` is a neutral status that never echoes the file name/path, so there is nothing for the model to parrot back into its reply; guidance on not restating the attachment lives in the tool description. The `propagate_types_to_choice=[]` config (§3) stops `StagedBaseTool._run_in_stage_report_success` from auto-appending an attachment on top of the explicit `propagate_to_choice`. Duplicates that span multiple tool calls are handled by the orchestrator-level URL dedup in §6, which is the authoritative guard.
 
 ### 5. Module wiring
 

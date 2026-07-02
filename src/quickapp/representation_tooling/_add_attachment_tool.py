@@ -6,6 +6,7 @@ from injector import AssistedBuilder, inject
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
@@ -56,6 +57,8 @@ class _AddAttachmentTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
+        if "url" not in kwargs:
+            raise InvalidToolCallParameterException("url", "url is required")
         url: str = kwargs["url"]
         title: str | None = kwargs.get("title")
         mime_type: str = kwargs.get("type") or _DEFAULT_ATTACHMENT_TYPE
