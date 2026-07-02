@@ -25,6 +25,7 @@ from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.application import ApplicationConfig
@@ -54,6 +55,7 @@ class Orchestrator:
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         chat_completion_recovery: ChatCompletionRecoveryService,
         tool_execution_history_policies: list[ToolExecutionHistoryPolicy],
+        request_async_close_registry: RequestAsyncCloseRegistry,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -77,6 +79,9 @@ class Orchestrator:
         self.__tool_execution_history_policies: list[ToolExecutionHistoryPolicy] = (
             tool_execution_history_policies
         )
+        self.__request_async_close_registry: RequestAsyncCloseRegistry = (
+            request_async_close_registry
+        )
 
     @asynccontextmanager
     async def _persisting_state(self) -> AsyncIterator[None]:
@@ -88,6 +93,9 @@ class Orchestrator:
             logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
         finally:
             self.__deferred_stage_close_registry.flush()
+            # Close any per-request async resources (e.g. live MCP sessions) held open
+            # for the duration of the request. Runs on both success and error paths.
+            await self.__request_async_close_registry.aclose_all()
             # Store history in state.tool_execution_history for restoring on next request
             tool_execution_history = self._build_tool_execution_history()
             if tool_execution_history:

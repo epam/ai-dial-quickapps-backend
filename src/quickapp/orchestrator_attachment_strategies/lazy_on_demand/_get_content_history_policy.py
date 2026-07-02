@@ -4,8 +4,10 @@ from quickapp.common.abstract.tool_execution_history_policy import ToolExecution
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 
 _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE = (
-    "Attachment was removed to reduce context size. "
-    "If you need that attachment call this tool again"
+    "The file attachment payload was removed from saved history to save context. "
+    "The file is still available at the url above. "
+    f"Call {INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME} again with the same attachment_url "
+    "(do not ask the user to re-upload)."
 )
 
 
@@ -17,8 +19,8 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
     list-tool metadata and call ``internal_attachments_get_content`` again only
     when the document is needed.
 
-    The tool ``content`` is replaced with a short notice so restored history
-    tells the model the attachment is no longer available inline.
+    The tool ``content`` gets an explicit notice appended so restored history tells
+    the model to re-call ``internal_attachments_get_content`` with the same url.
     """
 
     def apply(self, history: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -55,7 +57,12 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
 
             attachments = custom_content.get("attachments")
             if isinstance(attachments, list) and attachments:
-                msg["content"] = _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
+                content = msg.get("content")
+                if content is None:
+                    content = ""
+                elif not isinstance(content, str):
+                    content = str(content)
+                msg["content"] = content + "\n" + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
 
             custom_content.pop("attachments", None)
             if not custom_content:

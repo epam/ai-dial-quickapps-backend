@@ -35,11 +35,11 @@ from tests.unit_tests.common.common import create_app_configuration, noop_timeou
 
 @pytest.mark.asyncio
 @patch(
-    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool",
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.call_mcp_tool",
     new_callable=AsyncMock,
 )
 @patch(
-    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list",
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.get_tools_list",
     new_callable=AsyncMock,
 )
 async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
@@ -230,11 +230,11 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
 
 @pytest.mark.asyncio
 @patch(
-    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.call_mcp_tool",
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.call_mcp_tool",
     new_callable=AsyncMock,
 )
 @patch(
-    "quickapp.mcp_tooling._mcp_tool_initializer._MCPConnectionManager.get_tools_list",
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.get_tools_list",
     new_callable=AsyncMock,
 )
 async def test_mcp_tool_narrow_supported_types_skips_non_matching(
@@ -334,8 +334,8 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
 
 @pytest.mark.asyncio
 async def test_forwarded_x_headers_passed_to_mcp_request():
-    """X-* headers from forwarded_headers (dict) are included in the headers built by _MCPConnectionManager."""
-    from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
+    """X-* headers from forwarded_headers (dict) are included in the headers built by _MCPToolsetClient."""
+    from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 
     forwarded = {"X-Request-Id": "mcp-req-456", "X-MCP-Custom": "mcp-val"}
     server_info = MCPServerInfo(
@@ -347,21 +347,23 @@ async def test_forwarded_x_headers_passed_to_mcp_request():
     mock_oauth.fetch_oauth_token = AsyncMock()
     dial_settings = DialSettings(url="https://core")
 
-    manager = _MCPConnectionManager(
+    manager = _MCPToolsetClient(
         toolset_info=MCPToolSet(
             type="mcp",
             mcp_server_info=server_info,
             name="mcp-toolset",
             description="MCP toolset",
         ),
+        toolset_key="test",
         oauth_token_fetcher=mock_oauth,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
         bearer=None,
         forwarded_headers=forwarded,
     )
 
-    headers = await manager._MCPConnectionManager__build_headers(server_info)
+    headers = await manager._MCPToolsetClient__build_headers(server_info)
 
     assert "X-Request-Id" in headers
     assert headers["X-Request-Id"] == "mcp-req-456"

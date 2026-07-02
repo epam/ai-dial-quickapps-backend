@@ -16,11 +16,13 @@ from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import Orchestrator
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
+    _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE,
     _GetContentHistoryPolicy,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
@@ -107,6 +109,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -183,6 +186,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
             deferred_stage_close_registry=deferred_registry,
         ),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -240,6 +244,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(openai.APIError):
@@ -334,6 +339,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -413,6 +419,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -497,6 +504,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -539,6 +547,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
 
@@ -804,6 +813,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -819,10 +829,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     assert "attachments" not in custom_content
     assert custom_content.get("state") == {"marker": "keep"}
     tool_content = tool_entry.get("content")
-    assert tool_content == (
-        "Attachment was removed to reduce context size. "
-        "If you need that attachment call this tool again"
-    )
+    assert tool_content == '{"ok": true}\n' + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
 
 
 @pytest.mark.asyncio
@@ -901,6 +908,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):

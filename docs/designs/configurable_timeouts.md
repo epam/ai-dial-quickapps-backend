@@ -18,8 +18,8 @@ flow through `AsyncDial`. Three inadequacies today:
    |---|---|
    | `AsyncDial` (deployment tool) | `Timeout(connect=5, read=600, write=600, pool=600)` |
    | `_RestApiTool` (`httpx.AsyncClient()`) | httpx default — 5s all phases |
-   | `_MCPConnectionManager.streamablehttp_client` | `timeout=30`, `sse_read_timeout=300` |
-   | `_MCPConnectionManager.sse_client` | `timeout=5`, `sse_read_timeout=300` |
+   | `_MCPToolsetClient.streamablehttp_client` | `timeout=30`, `sse_read_timeout=300` |
+   | `_MCPToolsetClient.sse_client` | `timeout=5`, `sse_read_timeout=300` |
    | `ClientSession.call_tool` (MCP) | `read_timeout_seconds=None` — unbounded |
    | `_PyInterpreterClient` | 60s (env `PY_INTERPRETER_CLIENT_TIMEOUT`) |
 
@@ -213,7 +213,7 @@ every request.
 
 **Centralisation.** `translate_timeout` wraps the full `_MCPTool._run_in_stage_async`
 body — one place, not per inner call site. This is load-bearing because
-`_MCPConnectionManager` runs under anyio task groups, which can raise
+`_MCPToolsetClient` runs under anyio task groups, which can raise
 `BaseExceptionGroup`. `BaseExceptionGroup` is **not** a subclass of `Exception`, so
 without the wrap such groups would escape `StagedBaseTool.arun()`'s `except Exception`
 and bypass fallback handling. The MCP SDK also accepts both `float` and
@@ -513,10 +513,10 @@ required.
   `ToolTimeoutError`
 - `rest_api_tooling/_rest_api_tool._run_in_stage_async` — pass `timeout=T` to
   `httpx.AsyncClient(...)`; wrap body in `translate_timeout`
-- `mcp_tooling/_mcp_connection_manager.__session_context` — pass
+- `mcp_tooling/_mcp_toolset_client.__session_context` — pass
   `sse_read_timeout=timedelta(seconds=T)` only; leave connection `timeout` at
   library default
-- `mcp_tooling/_mcp_connection_manager.call_mcp_tool` — pass
+- `mcp_tooling/_mcp_toolset_client.call_mcp_tool` — pass
   `read_timeout_seconds=timedelta(seconds=T)` to `ClientSession.call_tool`
 - `mcp_tooling/_mcp_tool._run_in_stage_async` — wrap body in `translate_timeout`
 - `internal_tooling/internal_tooling_module._provide_py_interpreter_client` —

@@ -1,11 +1,7 @@
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
+    _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE,
     _GetContentHistoryPolicy,
-)
-
-_REMOVED_MESSAGE = (
-    "Attachment was removed to reduce context size. "
-    "If you need that attachment call this tool again"
 )
 
 
@@ -58,9 +54,9 @@ class TestGetContentHistoryPolicy:
         assert isinstance(custom_content, dict)
         assert "attachments" not in custom_content
         assert custom_content.get("state") == {"k": "v"}
-        assert tool_msg.get("content") == _REMOVED_MESSAGE
+        assert tool_msg.get("content") == '{"ok": true}\n' + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
 
-    def test_replaces_content_when_multiple_attachments_stripped(self):
+    def test_appends_notice_when_multiple_attachments_stripped(self):
         policy = _GetContentHistoryPolicy()
         history = _get_content_history(
             attachments=[
@@ -70,14 +66,16 @@ class TestGetContentHistoryPolicy:
         )
 
         result = policy.apply(history)
-        assert result[1].get("content") == _REMOVED_MESSAGE
+        assert (
+            result[1].get("content") == '{"ok": true}\n' + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
+        )
 
-    def test_replaces_content_when_original_content_missing(self):
+    def test_appends_notice_when_original_content_missing(self):
         policy = _GetContentHistoryPolicy()
         history = _get_content_history(tool_content=None)
 
         result = policy.apply(history)
-        assert result[1].get("content") == _REMOVED_MESSAGE
+        assert result[1].get("content") == "\n" + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
 
     def test_leaves_message_unchanged_when_no_attachments(self):
         policy = _GetContentHistoryPolicy()
