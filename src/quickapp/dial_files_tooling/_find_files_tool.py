@@ -26,7 +26,7 @@ class _FindFilesTool(_DialFileTool):
         matched: list[tuple[str, FolderEntry]] = []
         for entry in entries:
             if regex.fullmatch(relative_to(entry.url, folder_url)):
-                display = await self._to_display_path(entry.url)
+                display = await self._home_resolver.to_display_path(entry.url)
                 matched.append((display, entry))
 
         content = render_listing(matched) if matched else "No files found."
