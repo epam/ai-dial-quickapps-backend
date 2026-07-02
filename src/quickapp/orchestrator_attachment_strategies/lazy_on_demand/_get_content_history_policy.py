@@ -1,8 +1,12 @@
 from aidial_sdk.chat_completion import Role
 
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
-from quickapp.common.attachment_processing_utils import build_attachment_xml_metadata
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+
+_GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE = (
+    "Attachment was removed to reduce context size. "
+    "If you need that attachment call this tool again"
+)
 
 
 class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
@@ -13,9 +17,8 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
     list-tool metadata and call ``internal_attachments_get_content`` again only
     when the document is needed.
 
-    Attachment title/type/url metadata is appended to the tool ``content`` text
-    (same XML shape as ``_AttachmentFilter``) so restored history remains
-    coherent for the model.
+    The tool ``content`` is replaced with a short notice so restored history
+    tells the model the attachment is no longer available inline.
     """
 
     def apply(self, history: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -51,17 +54,8 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
                 continue
 
             attachments = custom_content.get("attachments")
-            if isinstance(attachments, list):
-                attachment_dicts = [item for item in attachments if isinstance(item, dict)]
-                if attachment_dicts:
-                    content = msg.get("content")
-                    if content is None:
-                        content = ""
-                    elif not isinstance(content, str):
-                        content = str(content)
-                    msg["content"] = (
-                        content + "\n" + build_attachment_xml_metadata(attachment_dicts)
-                    )
+            if isinstance(attachments, list) and attachments:
+                msg["content"] = _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
 
             custom_content.pop("attachments", None)
             if not custom_content:

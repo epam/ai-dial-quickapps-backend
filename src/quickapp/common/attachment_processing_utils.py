@@ -4,8 +4,7 @@ Used by attachment processing and agent pre-invocation transformers.
 """
 
 import mimetypes
-from collections.abc import Mapping, Sequence
-from xml.sax.saxutils import escape
+from collections.abc import Sequence
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
 
@@ -49,35 +48,3 @@ def attachment_mime_type(attachment: Attachment) -> str:
     if attachment.url:
         return inferred_mime_type_for_file_context_url(attachment.url)
     return ""
-
-
-def _attachment_field(
-    attachment: Attachment | Mapping[str, object],
-    field: str,
-) -> str:
-    if isinstance(attachment, Mapping):
-        value = attachment.get(field)
-        return "" if value is None else str(value)
-    return "" if getattr(attachment, field, None) is None else str(getattr(attachment, field))
-
-
-def build_attachment_xml_metadata(
-    attachments: Sequence[Attachment | Mapping[str, object]],
-) -> str:
-    """Serialize attachment title/type/url metadata as XML for model-facing text."""
-    xml_parts = ["<attachments>"]
-    for attachment in attachments:
-        xml_parts.append("  <attachment>")
-        xml_parts.append(f"    <title>{escape(_attachment_field(attachment, 'title'))}</title>")
-        xml_parts.append(f"    <type>{escape(_attachment_field(attachment, 'type'))}</type>")
-        xml_parts.append(f"    <url>{escape(_attachment_field(attachment, 'url'))}</url>")
-        reference_url = (
-            attachment.get("reference_url")
-            if isinstance(attachment, Mapping)
-            else attachment.reference_url
-        )
-        if reference_url is not None:
-            xml_parts.append(f"    <reference_url>{escape(str(reference_url))}</reference_url>")
-        xml_parts.append("  </attachment>")
-    xml_parts.append("</attachments>")
-    return "\n".join(xml_parts)

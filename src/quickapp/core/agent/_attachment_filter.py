@@ -1,12 +1,12 @@
 import copy
 import logging
+from xml.sax.saxutils import escape
 
 from aidial_sdk.chat_completion import Attachment, Message, Role
 from injector import inject
 
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
-from quickapp.common.attachment_processing_utils import build_attachment_xml_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +24,22 @@ class _AttachmentFilter(PreInvocationTransformer):
     @staticmethod
     def _has_attachments(message: Message) -> bool:
         return message.custom_content is not None and bool(message.custom_content.attachments)
+
+    @staticmethod
+    def _build_attachment_xml(attachments: list[Attachment]) -> str:
+        xml_parts = ["<attachments>"]
+        for attachment in attachments:
+            xml_parts.append("  <attachment>")
+            xml_parts.append(f"    <title>{escape(str(attachment.title or ''))}</title>")
+            xml_parts.append(f"    <type>{escape(str(attachment.type or ''))}</type>")
+            xml_parts.append(f"    <url>{escape(str(attachment.url or ''))}</url>")
+            if attachment.reference_url is not None:
+                xml_parts.append(
+                    f"    <reference_url>{escape(str(attachment.reference_url))}</reference_url>"
+                )
+            xml_parts.append("  </attachment>")
+        xml_parts.append("</attachments>")
+        return "\n".join(xml_parts)
 
     def _should_keep(
         self, messages: list[Message], message_index: int, attachment: Attachment
@@ -53,7 +69,7 @@ class _AttachmentFilter(PreInvocationTransformer):
         # re-presenting the model's own prior attachments conditions it to
         # mimic the XML format in responses.
         if message.role != Role.ASSISTANT:
-            content += "\n" + build_attachment_xml_metadata(all_attachments)
+            content += "\n" + self._build_attachment_xml(all_attachments)
         message.custom_content.attachments = updated_attachments  # type: ignore[union-attr]
         message.content = content
 
