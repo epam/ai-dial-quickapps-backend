@@ -16,7 +16,6 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
-from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 
 # noinspection PyProtectedMember
@@ -25,6 +24,7 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _format_leaf_for_user,
     _MCPToolInitializer,
 )
+from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
@@ -32,7 +32,7 @@ def build_side_effect(tool, tool_config):
     return _MCPTool(
         tool=tool,
         tool_config=tool_config,
-        connection_manager=MagicMock(),
+        toolset_client=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         state_holder=MagicMock(),
         dial_attachment_service=MagicMock(),
@@ -56,7 +56,7 @@ def mock_stage_wrapper_builder():
 
 
 @pytest.fixture
-def mock_connection_manager():
+def mock_toolset_client():
     return MagicMock()
 
 
@@ -94,7 +94,7 @@ def mcp_tool1(
     mock_tool_config,
     mock_stage_wrapper_builder,
     mock_dial_attachment_service,
-    mock_connection_manager,
+    mock_toolset_client,
     mock_state_holder,
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
@@ -102,7 +102,7 @@ def mcp_tool1(
     return _MCPTool(
         tool=tool1,
         tool_config=mock_tool_config,
-        connection_manager=mock_connection_manager,
+        toolset_client=mock_toolset_client,
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
@@ -121,7 +121,7 @@ def mcp_tool2(
     mock_tool_config,
     mock_stage_wrapper_builder,
     mock_dial_attachment_service,
-    mock_connection_manager,
+    mock_toolset_client,
     mock_state_holder,
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
@@ -129,7 +129,7 @@ def mcp_tool2(
     return _MCPTool(
         tool=tool2,
         tool_config=mock_tool_config,
-        connection_manager=mock_connection_manager,
+        toolset_client=mock_toolset_client,
         stage_wrapper_builder=mock_stage_wrapper_builder,
         dial_attachment_service=mock_dial_attachment_service,
         state_holder=mock_state_holder(),
@@ -144,26 +144,26 @@ def mcp_tool2(
 
 # --- New reusable fixtures to remove duplication ---
 @pytest.fixture
-def connection_manager_with_tools(tool1, tool2):
+def toolset_client_with_tools(tool1, tool2):
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(return_value=[tool1, tool2])
     return conn
 
 
 @pytest.fixture
-def connection_manager_builder(connection_manager_with_tools):
+def toolset_client_builder(toolset_client_with_tools):
     b = MagicMock()
-    b.build.return_value = connection_manager_with_tools
+    b.build.return_value = toolset_client_with_tools
     return b
 
 
 @pytest.fixture
 def builder_mock():
-    def side_effect(tool, tool_config, connection_manager=None, **kwargs):
+    def side_effect(tool, tool_config, toolset_client=None, **kwargs):
         return _MCPTool(
             tool=tool,
             tool_config=tool_config,
-            connection_manager=connection_manager,
+            toolset_client=toolset_client,
             stage_wrapper_builder=MagicMock(),
             dial_attachment_service=MagicMock(),
             state_holder=MagicMock(),
@@ -181,7 +181,7 @@ def builder_mock():
 
 
 @pytest.fixture
-def initializer_factory(builder_mock, connection_manager_builder):
+def initializer_factory(builder_mock, toolset_client_builder):
     def _create(protocol: MCPProtocol, allowed_tools=None, name="test_toolset"):
         toolset_info = MCPToolSet(
             mcp_server_info=MCPServerInfo(
@@ -197,7 +197,7 @@ def initializer_factory(builder_mock, connection_manager_builder):
             MagicMock(),  # dial_setting
             MagicMock(),  # api_key_provider
             builder_mock,
-            connection_manager_builder,
+            toolset_client_builder,
             MagicMock(),  # dial_mcp_cache
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
@@ -250,15 +250,15 @@ async def test_initialize_no_tools_match_allowed_tools(
 async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
     mcp_context = MagicMock()
 
-    # Two connection managers, each returning one tool
+    # Two toolset clients, each returning one tool
     conn1 = MagicMock()
     conn1.get_tools_list = AsyncMock(return_value=[tool1])
     conn2 = MagicMock()
     conn2.get_tools_list = AsyncMock(return_value=[tool2])
 
     # Builder returns conn1 for first toolset, conn2 for second
-    connection_manager_builder = MagicMock()
-    connection_manager_builder.build.side_effect = [conn1, conn2]
+    toolset_client_builder = MagicMock()
+    toolset_client_builder.build.side_effect = [conn1, conn2]
 
     toolset_info1 = MCPToolSet(
         mcp_server_info=MCPServerInfo(
@@ -281,7 +281,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
         builder_mock,
-        connection_manager_builder,
+        toolset_client_builder,
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
@@ -309,28 +309,30 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         ),
     ],
 )
-async def test_connection_manager_build_headers(auth, header_name, expected_header):
+async def test_toolset_client_build_headers(auth, header_name, expected_header):
     server_info = MCPServerInfo(
         url="https://test", authorization=auth, protocol=MCPProtocol.streamable_http
     )
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
     oauth_token_fetcher = AsyncMock()
     dial_settings = DialSettings(url="https://dial.test")
-    conn_manager = _MCPConnectionManager(
+    conn_manager = _MCPToolsetClient(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
     )
 
-    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
 
     assert header_name in headers
     assert headers[header_name] == expected_header
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_build_headers_client_id_secret():
+async def test_toolset_client_build_headers_client_id_secret():
     auth = ClientIdSecretAuthorization(
         client_id="client_id", client_secret="client_secret", token_url="https://token.url"
     )
@@ -343,13 +345,15 @@ async def test_connection_manager_build_headers_client_id_secret():
     oauth_token_fetcher.fetch_oauth_token = AsyncMock(return_value="mock_token")
     dial_settings = DialSettings(url="https://dial.test")
 
-    conn_manager = _MCPConnectionManager(
+    conn_manager = _MCPToolsetClient(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=oauth_token_fetcher,
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
     )
-    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
 
     assert "Authorization" in headers
     assert headers["Authorization"] == "Bearer mock_token"
@@ -365,7 +369,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # dial_setting
         MagicMock(),  # api_key_provider
         MagicMock(),  # tool_builder
-        MagicMock(),  # connection_manager_builder
+        MagicMock(),  # toolset_client_builder
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
@@ -403,61 +407,67 @@ async def test_tool_names_prefixed_with_toolset_name(initializer_factory, builde
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_forwards_request_bearer_for_dial_internal_server():
+async def test_toolset_client_forwards_request_bearer_for_dial_internal_server():
     server_info = MCPServerInfo(
         url="https://dial.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
     )
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
 
-    conn_manager = _MCPConnectionManager(
+    conn_manager = _MCPToolsetClient(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
         bearer=SecretStr("request-token"),
     )
 
-    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
 
     assert headers["Authorization"] == "Bearer request-token"
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_does_not_forward_request_bearer_for_external_server():
+async def test_toolset_client_does_not_forward_request_bearer_for_external_server():
     server_info = MCPServerInfo(
         url="https://external.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
     )
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
 
-    conn_manager = _MCPConnectionManager(
+    conn_manager = _MCPToolsetClient(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
         bearer=SecretStr("request-token"),
     )
 
-    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
 
     assert "Authorization" not in headers
 
 
 @pytest.mark.asyncio
-async def test_connection_manager_handles_missing_request_bearer_for_dial_internal_server():
+async def test_toolset_client_handles_missing_request_bearer_for_dial_internal_server():
     server_info = MCPServerInfo(
         url="https://dial.test/mcp", authorization=None, protocol=MCPProtocol.streamable_http
     )
     toolset_info = MCPToolSet(mcp_server_info=server_info, allowed_tools=None, name="set1")
 
-    conn_manager = _MCPConnectionManager(
+    conn_manager = _MCPToolsetClient(
         toolset_info=toolset_info,
+        toolset_key="test",
         oauth_token_fetcher=AsyncMock(),
         dial_settings=DialSettings(url="https://dial.test"),
         timeout_resolver=noop_timeout_resolver(),
+        session_manager=MagicMock(),
         bearer=None,
     )
 
-    headers = await conn_manager._MCPConnectionManager__build_headers(server_info)
+    headers = await conn_manager._MCPToolsetClient__build_headers(server_info)
 
     assert "Authorization" not in headers
 

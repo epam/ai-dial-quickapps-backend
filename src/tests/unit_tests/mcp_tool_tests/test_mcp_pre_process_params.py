@@ -13,9 +13,9 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
 from quickapp.file_transfer._file_loader_service import FileLoaderService
-from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
+from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from tests.unit_tests.common.common import noop_timeout_resolver
 
 DIAL_URL = "https://dial.example.com"
@@ -38,7 +38,7 @@ def _make_tool(
     tool_config = MagicMock(spec=MCPTool)
     tool_config.attachment = MagicMock()
     tool_config.attachment.supported_types = []
-    connection_manager = MagicMock(spec=_MCPConnectionManager)
+    toolset_client = MagicMock(spec=_MCPToolsetClient)
     stage_wrapper_builder = MagicMock()
     stage_wrapper_builder.build.return_value = MagicMock(spec=_MCPStageWrapper)
     state_holder = StateHolder()
@@ -57,7 +57,7 @@ def _make_tool(
     mcp_tool = _MCPTool(
         tool=tool,
         tool_config=tool_config,
-        connection_manager=connection_manager,
+        toolset_client=toolset_client,
         stage_wrapper_builder=stage_wrapper_builder,
         state_holder=state_holder,
         dial_attachment_service=attachment_service,

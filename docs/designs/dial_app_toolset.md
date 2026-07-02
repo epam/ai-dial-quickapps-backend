@@ -31,7 +31,7 @@ Two concrete symptoms follow:
   MCP and chat completion (e.g. during migration windows). Admins must be able to pin transport explicitly without
   forking the deployment, while the default ("MCP if available, otherwise chat completion") preserves the
   zero-config story.
-- Reuse the existing MCP runtime (connection manager, tool wrapper, stage wrapper) and the existing chat-completion
+- Reuse the existing MCP runtime (toolset client, tool wrapper, stage wrapper) and the existing chat-completion
   runtime (completion service, deployment tool) unchanged — Phase 1 is a resolution/routing change, not a new
   execution path. Interactive sign-in on the deployment-scoped MCP endpoint is deferred (see Out of Scope).
 - Additive change from a caller's perspective: no breaking impact on existing `DeploymentToolSet`,
@@ -737,7 +737,7 @@ emitted by `make dump_app_schema` gains a new union variant but existing variant
 - Existing tool-naming behaviour for `DialDeploymentSimpleTool`. The fallback branch of `DialAppToolSet`
   reuses `_convert_to_openai_tool_format` exactly, so the agent-visible name is identical for the same
   deployment whether it's referenced via `DialDeploymentSimpleTool` or `DialAppToolSet` fallback.
-- Runtime components (`_MCPTool`, `_MCPConnectionManager`, `DeploymentTool`, `DialCompletionService`). Phase 1
+- Runtime components (`_MCPTool`, `_MCPToolsetClient`, `DeploymentTool`, `DialCompletionService`). Phase 1
   changes which toolset inputs reach the MCP/Deployment initializers, not how those initializers build tools or
   how the runtime executes them.
 - `_MCPToolInitializer._process_toolset` — plain `MCPToolSet` entries already skip the DIAL-toolset-info

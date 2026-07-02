@@ -27,18 +27,18 @@ _TOOL_META = SimpleNamespace(
 def _make_mcp_tool(
     fallback_config: ToolFallbackConfig | None = None,
 ) -> tuple[_MCPTool, AsyncMock]:
-    """Create an _MCPTool with mocked dependencies. Returns (tool, connection_manager)."""
+    """Create an _MCPTool with mocked dependencies. Returns (tool, toolset_client)."""
     tool_config = MagicMock()
     tool_config.attachment.supported_types = []
     tool_config.display = None
     tool_config.fallback_configuration = fallback_config or ToolFallbackConfig()
 
-    connection_manager = AsyncMock()
+    toolset_client = AsyncMock()
 
     mcp_tool = _MCPTool(
         tool=_TOOL_META,
         tool_config=tool_config,
-        connection_manager=connection_manager,
+        toolset_client=toolset_client,
         stage_wrapper_builder=MagicMock(),
         state_holder=MagicMock(),
         dial_attachment_service=MagicMock(),
@@ -50,7 +50,7 @@ def _make_mcp_tool(
         dial_settings=MagicMock(url="https://dial.example.com"),
         stage_display_level=StageDisplayLevel.INFO,
     )
-    return mcp_tool, connection_manager
+    return mcp_tool, toolset_client
 
 
 @pytest.mark.asyncio
