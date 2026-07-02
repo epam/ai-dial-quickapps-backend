@@ -221,12 +221,12 @@ returns HTTP 401.
 **Semantics:** Wraps the underlying `httpx.HTTPStatusError` and carries the `toolset_name` for logging.
 Should include a user-friendly message (e.g. "Authentication required for toolset '{name}'") since
 it may propagate to `StagedBaseTool.arun()` and surface to the user when interactive login fails.
-Raised by `_MCPConnectionManager` in both `get_tools_list()` and `call_mcp_tool()` when an
+Raised by `_MCPToolsetClient` in both `get_tools_list()` and `call_mcp_tool()` when an
 `httpx.HTTPStatusError` with `status_code == 401` is detected. This replaces the current behavior
 where 401s in `call_mcp_tool()` are silently wrapped in a generic `RuntimeError` and 401s in
 `get_tools_list()` propagate as raw `httpx.HTTPStatusError`.
 
-### `_MCPConnectionManager` — surface 401 as typed exception
+### `_MCPToolsetClient` — surface 401 as typed exception
 
 **What:** Both `get_tools_list()` and `call_mcp_tool()` gain explicit handling for HTTP 401: they
 raise `MCPUnauthorizedException` instead of propagating the raw error or wrapping it in `RuntimeError`.
@@ -279,7 +279,7 @@ blocked on `request_signin_batch()`, no chunks are pushed to the response queue,
 SSE comment lines (`: heartbeat\n\n`) are standard and ignored by compliant clients, so there is no
 observable impact on existing behavior.
 
-**Note on forwarded headers:** `_MCPConnectionManager.__build_headers()` forwards all X-headers
+**Note on forwarded headers:** `_MCPToolsetClient.__build_headers()` forwards all X-headers
 (including `X-DIAL-CLIENT-CHANNEL-ID`) to MCP servers. This is acceptable — MCP servers ignore
 unknown headers, and the channel ID carries no security-sensitive information beyond what the
 Api-Key already provides.
@@ -354,7 +354,7 @@ login was already attempted). Any other exception from the retry is also convert
 ### `_MCPTool` — catch, interact, retry during tool execution
 
 **What:** `_run_in_stage_async()` intercepts `MCPUnauthorizedException` from
-`connection_manager.call_mcp_tool()`, calls `InteractiveLoginService.request_signin()`, and retries
+`toolset_client.call_mcp_tool()`, calls `InteractiveLoginService.request_signin()`, and retries
 the tool call once on success.
 
 **Owner:** `mcp_tooling/_mcp_tool.py`
@@ -436,10 +436,10 @@ wall-clock time when the interactive login wait occurs, so the tool will appear 
 - **`InteractiveLoginService`:** Unit tests with mocked `httpx.AsyncClient` and SSE responses
   covering: successful batch, partial success/denial, timeout, HTTP errors, malformed JSON, and
   `NO_CHANNEL`.
-- **`_MCPToolInitializer` multi-phase flow:** Unit tests with mocked `_MCPConnectionManager` and
+- **`_MCPToolInitializer` multi-phase flow:** Unit tests with mocked `_MCPToolsetClient` and
   `InteractiveLoginService`, covering: no 401s (unchanged path), batch login + retry, retry failure,
   mixed success/failure.
-- **`_MCPConnectionManager`:** Unit test verifying `MCPUnauthorizedException` is raised on 401 and
+- **`_MCPToolsetClient`:** Unit test verifying `MCPUnauthorizedException` is raised on 401 and
   other HTTP errors propagate unchanged.
 - **Integration tests:** Require a DIAL Core instance with client channel support. Test the full
   flow: subscribe → send request with channel ID → 401 → interact → retry → success.
@@ -462,7 +462,7 @@ wall-clock time when the interactive login wait occurs, so the tool will appear 
 | `dial_core_services/interactive_login_settings.py` | **New** — `InteractiveLoginSettings` with wall-clock timeout                                                                  |
 | `dial_core_services/dial_core_services_module.py`  | Register new service and settings                                                                                             |
 | `mcp_tooling/_mcp_unauthorized_exception.py`       | **New** — `MCPUnauthorizedException`                                                                                          |
-| `mcp_tooling/_mcp_connection_manager.py`           | Raise `MCPUnauthorizedException` on 401 in `__session_context()`; re-raise before `RuntimeError` wrapper in `call_mcp_tool()` |
+| `mcp_tooling/_mcp_toolset_client.py`           | Raise `MCPUnauthorizedException` on 401 in `__session_context()`; re-raise before `RuntimeError` wrapper in `call_mcp_tool()` |
 | `application/_quick_app_application.py`            | Enable `heartbeat_interval` on `add_chat_completion()`                                                                        |
 | `mcp_tooling/_mcp_tool_initializer.py`             | Multi-phase batch init; inject `InteractiveLoginService`                                                                      |
 | `mcp_tooling/_mcp_tool.py`                         | Catch `MCPUnauthorizedException`, call `request_signin()`, retry                                                              |

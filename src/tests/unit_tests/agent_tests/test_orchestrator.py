@@ -16,6 +16,7 @@ from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import Orchestrator
@@ -107,6 +108,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -183,6 +185,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
             deferred_stage_close_registry=deferred_registry,
         ),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -240,6 +243,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(openai.APIError):
@@ -334,6 +338,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -413,6 +418,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -497,6 +503,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -539,6 +546,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
 
@@ -804,6 +812,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orchestrator.invoke()
@@ -901,6 +910,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):

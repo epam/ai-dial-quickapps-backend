@@ -17,7 +17,7 @@ def _make_mcp_tool(
     dial_toolset_id: str | None = "toolsets/public/ts1",
     login_result: LoginResult = LoginResult.SUCCESS,
 ) -> tuple[_MCPTool, AsyncMock, AsyncMock]:
-    """Create an _MCPTool with mocked dependencies. Returns (tool, connection_manager, login_service)."""
+    """Create an _MCPTool with mocked dependencies. Returns (tool, toolset_client, login_service)."""
     tool_meta = SimpleNamespace(
         name="test_tool",
         description="test",
@@ -26,14 +26,14 @@ def _make_mcp_tool(
     tool_config = MagicMock()
     tool_config.attachment.supported_types = []
 
-    connection_manager = AsyncMock()
+    toolset_client = AsyncMock()
     login_service = AsyncMock()
     login_service.request_signin = AsyncMock(return_value=login_result)
 
     mcp_tool = _MCPTool(
         tool=tool_meta,
         tool_config=tool_config,
-        connection_manager=connection_manager,
+        toolset_client=toolset_client,
         stage_wrapper_builder=MagicMock(),
         state_holder=MagicMock(),
         dial_attachment_service=MagicMock(),
@@ -44,7 +44,7 @@ def _make_mcp_tool(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
-    return mcp_tool, connection_manager, login_service
+    return mcp_tool, toolset_client, login_service
 
 
 def _ok_result():

@@ -23,6 +23,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.agent_settings import AgentSettings
@@ -83,6 +84,11 @@ class AgentModule(Module):
         binder.bind(
             DeferredStageCloseRegistry,
             to=DeferredStageCloseRegistry,
+            scope=request_scope,
+        )
+        binder.bind(
+            RequestAsyncCloseRegistry,
+            to=RequestAsyncCloseRegistry,
             scope=request_scope,
         )
         binder.bind(

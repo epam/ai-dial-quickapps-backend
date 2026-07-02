@@ -36,11 +36,11 @@ def _make_mcp_toolset(name: str = "ext-toolset") -> MCPToolSet:
     )
 
 
-def _build_tool_side_effect(tool, tool_config, connection_manager=None, **kwargs):
+def _build_tool_side_effect(tool, tool_config, toolset_client=None, **kwargs):
     return _MCPTool(
         tool=tool,
         tool_config=tool_config,
-        connection_manager=connection_manager,
+        toolset_client=toolset_client,
         stage_wrapper_builder=MagicMock(),
         dial_attachment_service=MagicMock(),
         state_holder=MagicMock(),
@@ -68,15 +68,15 @@ def _make_toolset_info() -> ToolsetInfo:
 def _make_initializer(
     toolset_list,
     login_service=None,
-    connection_manager_builder=None,
+    toolset_client_builder=None,
 ):
     mcp_context = MagicMock()
 
-    if connection_manager_builder is None:
+    if toolset_client_builder is None:
         conn = MagicMock()
         conn.get_tools_list = AsyncMock(return_value=[])
-        connection_manager_builder = MagicMock()
-        connection_manager_builder.build.return_value = conn
+        toolset_client_builder = MagicMock()
+        toolset_client_builder.build.return_value = conn
 
     tool_builder = MagicMock()
     tool_builder.build.side_effect = _build_tool_side_effect
@@ -102,7 +102,7 @@ def _make_initializer(
         dial_setting=dial_setting,
         api_key_provider=api_key_provider,
         tool_builder=tool_builder,
-        connection_manager_builder=connection_manager_builder,
+        toolset_client_builder=toolset_client_builder,
         dial_mcp_cache=dial_mcp_cache,
         tool_config_service=MagicMock(),
         login_service=login_service,
@@ -120,7 +120,7 @@ async def test_no_401_no_login_called():
     conn_builder.build.return_value = conn
 
     initializer, mcp_context, login_service = _make_initializer(
-        [ts], connection_manager_builder=conn_builder
+        [ts], toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -144,7 +144,7 @@ async def test_dial_toolset_401_triggers_batch_login():
     )
 
     initializer, mcp_context, _ = _make_initializer(
-        [ts], login_service=login_service, connection_manager_builder=conn_builder
+        [ts], login_service=login_service, toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -180,7 +180,7 @@ async def test_dial_toolset_401_success_retries():
     )
 
     initializer, mcp_context, _ = _make_initializer(
-        [ts], login_service=login_service, connection_manager_builder=conn_builder
+        [ts], login_service=login_service, toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -205,7 +205,7 @@ async def test_retry_failure_appends_exception():
     )
 
     initializer, mcp_context, _ = _make_initializer(
-        [ts], login_service=login_service, connection_manager_builder=conn_builder
+        [ts], login_service=login_service, toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -227,7 +227,7 @@ async def test_plain_mcp_toolset_401_not_eligible():
     conn_builder.build.return_value = conn
 
     initializer, mcp_context, login_service = _make_initializer(
-        [ts], connection_manager_builder=conn_builder
+        [ts], toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -255,7 +255,7 @@ async def test_batch_multiple_toolsets():
     )
 
     initializer, mcp_context, _ = _make_initializer(
-        [ts1, ts2], login_service=login_service, connection_manager_builder=conn_builder
+        [ts1, ts2], login_service=login_service, toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 
@@ -286,7 +286,7 @@ async def test_no_channel_appends_exception():
     )
 
     initializer, mcp_context, _ = _make_initializer(
-        [ts], login_service=login_service, connection_manager_builder=conn_builder
+        [ts], login_service=login_service, toolset_client_builder=conn_builder
     )
     await initializer.initialize()
 

@@ -10,11 +10,12 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPToolSet
 from quickapp.mcp_tooling._di_types import DialToolsetCacheService
-from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
+from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_tooling_context import _MCPToolingContext
+from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ class MCPToolingModule(Module):
         binder.bind(_MCPToolingContext, to=_MCPToolingContext, scope=request_scope)
         binder.bind(_MCPStageWrapper, to=_MCPStageWrapper, scope=request_scope)
         binder.bind(_MCPTool, to=_MCPTool, scope=request_scope)
-        binder.bind(_MCPConnectionManager, to=_MCPConnectionManager, scope=request_scope)
+        binder.bind(_MCPToolsetClient, to=_MCPToolsetClient, scope=request_scope)
+        binder.bind(_MCPSessionManager, to=_MCPSessionManager, scope=request_scope)
         binder.bind(DialToolsetCacheService, to=DialToolsetCacheService, scope=singleton)
         logger.debug("MCPToolingModule module configuration completed")
 
