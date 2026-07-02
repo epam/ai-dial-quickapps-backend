@@ -6,11 +6,11 @@
   },
   {
     "name": "internal_attachments_get_content",
-    "description": "Loads one allowed file/attachment by reference for use in this turn. Accepted MIME types: */*.",
+    "description": "Loads one allowed file/attachment by reference for the orchestrator to read. Attachment bytes are not kept across user turns; when you need page-level or verbatim content from a file that was loaded in an earlier turn, call this tool again with the same attachment_url. Accepted MIME types: */*.",
     "properties": {
       "attachment_url": {
         "type": "string",
-        "description": "File reference. Accepted MIME types: */*."
+        "description": "File reference in the file:url:: form used by prior tool calls. Accepted MIME types: */*."
       }
     },
     "required": [

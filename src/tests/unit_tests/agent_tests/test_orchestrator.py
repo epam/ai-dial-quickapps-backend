@@ -15,6 +15,7 @@ from aidial_sdk.chat_completion.request import (
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -22,7 +23,7 @@ from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAM
 from quickapp.core.agent import Orchestrator
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
-    _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE,
+    _build_attachment_removed_notice,
     _GetContentHistoryPolicy,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
@@ -829,7 +830,9 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     assert "attachments" not in custom_content
     assert custom_content.get("state") == {"marker": "keep"}
     tool_content = tool_entry.get("content")
-    assert tool_content == '{"ok": true}\n' + _GET_CONTENT_ATTACHMENT_REMOVED_MESSAGE
+    assert tool_content == '{"ok": true}\n' + _build_attachment_removed_notice(
+        [to_file_url_reference("files/bucket/report.pdf")]
+    )
 
 
 @pytest.mark.asyncio
