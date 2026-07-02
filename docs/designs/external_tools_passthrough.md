@@ -1,6 +1,6 @@
 # Design: External Tools Passthrough
 
-- **Status:** Draft
+- **Status:** Implemented
 
 ## Problem
 
