@@ -4,6 +4,7 @@
 - **Dependencies:**
   - [external_url_attachments.md](external_url_attachments.md) — `ExternalUrlFetcher`, `classify_url`, and the two-tier egress policy both tools reuse unchanged.
   - [dial_files_tools.md](dial_files_tools.md) / [dial_files_search.md](dial_files_search.md) — the `internal_file_*` tool family `internal_file_download` joins, its `_DialFileTool` base, and the agent-home workspace a downloaded file lands in.
+  - **Prerequisite PRs (merge first): #368 and #393.** #344 rebases onto a base that already includes PR #368 (dial-files home-resolution refactor — the `_DialFileTool` subclass API `_resolve_appdata_url` / `_to_display_path` is preserved, and `_WriteFileTool` now sets the real `content_type`) and PR #393 (which adds another preview-gated built-in tool via its own feature flag). #344's edits to the shared wiring files — `config/application.py` (`Features`), `common/tool_names.py`, `app_factory.py`, `src/scripts/dump_internal_tools.py` — are **additive** alongside those PRs' edits to the same files.
 
 ## Problem Statement
 
@@ -39,7 +40,7 @@ The feature ships as **two dedicated tools** rather than one tool with a mode fl
 | **Content types** | Textual only | Any (text + binary) |
 | **Oversized text** | Rejected by the size guard — error pointing at `internal_file_download` | Saved; ranged reading is then `internal_file_read_lines` / `internal_file_search` |
 | **Best for** | Reading a page/README/code file once | Large files, binary files, or content the agent will read/search repeatedly with the file tools |
-| **Lives in** | the `internal_tooling` module (plain `StagedBaseTool`) | the `internal_file_*` family (`_DialFileTool` subclass) |
+| **Lives in** | a new `web_tooling` module (plain `StagedBaseTool`) | the `internal_file_*` family (`_DialFileTool` subclass) |
 | **Enabled by** | `features.web_fetch.enabled` | the short-name `download` in `features.dial_files.enabled_tools` |
 
 **Why two tools, not one flag:** the two behaviors have genuinely different return shapes (inline text vs. a path) and different input domains (textual-only + size-capped vs. any content). A single tool whose output schema and preconditions depend on a boolean is harder for the model to use and inconsistent with the file family, which has no behavior-flagged tools. Splitting on the verb (**fetch** = read it now, **download** = keep it) mirrors the browser mental model and lets each tool be enabled independently.
@@ -140,7 +141,7 @@ flowchart TD
 
 ### Component 1: `internal_web_fetch` (load into context)
 
-- **What:** a new internal tool, `internal_web_fetch`, in the existing `internal_tooling` module (alongside the Python interpreter). A plain `StagedBaseTool` (it produces no file, so it does **not** need `_DialFileTool`). Depends on the shared fetch helper (Component 3). Enabled by `features.web_fetch.enabled` (Component 5), not by an `InternalToolSet` entry.
+- **What:** a new built-in tool, `internal_web_fetch`, in a **new dedicated `web_tooling` module** (`WebToolingModule`, `@preview_module`) — a self-contained, feature-gated module (the standard shape for a standalone built-in tool: `configure` binding + a `@multiprovider` that reads its feature config). A plain `StagedBaseTool` (it produces no file, so it does **not** need `_DialFileTool`). Depends on the shared fetch helper (Component 3). Enabled by `features.web_fetch.enabled` (Component 5).
 - **Arguments:** `url: str` (required) — the http(s) URL to fetch.
 - **Semantics:** run the shared helper to classify + fetch. Then require textual content (Component 3) within the size guard (Component 2). If either fails → parameter error directing the agent to `internal_file_download` (UC-4/UC-5). Otherwise return the decoded text inline (code-block wrapped, consistent with the file-tool stage formatting).
 - **Return shape:** always inline text in `ToolCallResult.content`; never an attachment, never a path.
@@ -149,7 +150,7 @@ flowchart TD
 
 - **What:** a new internal tool, `internal_file_download`, joining the `internal_file_*` family in `dial_files_tooling/`. Subclasses `_DialFileTool` (`dial_files_tooling/_base_file_tool.py`) to reuse the family's home-path resolution, write path, and stage handling. Depends on the shared fetch helper (Component 3).
 - **Arguments:** `url: str` (required) — the http(s) URL to fetch.
-- **Semantics:** run the shared helper to classify + fetch (any content type — no textual restriction, no size guard). Then persist via the file-family write path — resolve a target URL under the agent home (`_resolve_appdata_url`), write the bytes through `DialFileService` exactly as `_WriteFileTool` does (Component 4). Return the saved **relative** path (+ a short text preview when textual).
+- **Semantics:** run the shared helper to classify + fetch (any content type — no textual restriction, no size guard). Then persist via the file-family write path — resolve a target URL under the agent home (the family's home-path resolution; see Component 4), write the bytes through `DialFileService` exactly as `_WriteFileTool` does. Return the saved **relative** path (+ a short text preview when textual).
 - **Return shape:** always a saved relative path (+ optional preview) in `ToolCallResult.content`; never sets `result.attachments` (see Component 4, "No user-choice propagation").
 
 ### Component 3: Shared fetch helper
@@ -164,7 +165,8 @@ flowchart TD
 ### Component 4: Workspace placement (applies to `internal_file_download`)
 
 - **What:** the file must be written under the agent-home root the `internal_file_*` tools address — `files/{appdata}/{agent_home_dir}/…` — and the tool must return the **workspace-relative path** (not an absolute DIAL URL).
-- **How:** reuse `_DialFileTool`'s `_resolve_appdata_url` (`dial_files_tooling/_base_file_tool.py:138`) to turn a target filename into the home-prefixed URL, then write via `DialFileService` — the same two steps `_WriteFileTool` performs (`dial_files_tooling/_write_file_tool.py:27`). Report the relative path back via `_to_display_path` (`_base_file_tool.py:164`) so it round-trips into `internal_file_read_lines` / `internal_file_search`.
+- **How:** reuse the file family's **home-path resolution** to turn a target filename into the home-prefixed URL, then write via `DialFileService` — the same two steps `_WriteFileTool` performs. Report the relative path back via the family's display-path helper so it round-trips into `internal_file_read_lines` / `internal_file_search`.
+  - **Subclass API is stable:** a `_DialFileTool` subclass calls `self._resolve_appdata_url` and `self._to_display_path`. PR #368 (merging first) refactors the home-resolution internals but **keeps these subclass-facing methods unchanged**, so the download tool uses them as-is. The behavior is: resolve under `files/{appdata}/{agent_home_dir}/…`, report the relative path.
 - **Why not `AttachmentService.upload_bytes`:** it targets the flat bucket root `files/{bucket}/{filename}` (`dial_core_services/attachment_service.py:51`), which the file tools cannot resolve by relative path (they resolve under the agent-home prefix). This is the load-bearing decision for UC-3.
 - **Target filename:** derive from `FetchedBytes.filename` (already sanitized from Content-Disposition / URL path / MIME extension by `ExternalUrlFetcher`); on collision, follow the file family's existing overwrite/uniqueness convention.
 - **Binary write nuance (implementation):** `DialFileService.write_file` is text-oriented (`_upload_text` encodes a `str`). Persisting **binary** content under the home root needs a bytes-capable write into the *resolved home URL* — confirm `DialFileService` exposes one, or add a thin bytes-write that targets the resolved URL (never the flat bucket path). Covered by the binary-download test.
@@ -182,16 +184,16 @@ flowchart TD
 
 ### Component 5: Tool config, names, DI wiring, and gating
 
-Both tools are **feature-gated** (enabled through `features.*`, not through an `InternalToolSet` entry) and **preview-gated** — symmetric by design:
+Both tools are **feature-gated** (enabled through `features.*`, not through a per-tool tool-set entry) and **preview-gated** — symmetric by design:
 
 - **Names:** add `INTERNAL_WEB_FETCH_TOOL_NAME = "internal_web_fetch"` to `common/tool_names.py`; `internal_file_download` follows the family's `INTERNAL_FILE_TOOL_NAME_PREFIX` + short-name `download`.
 - **`internal_web_fetch`:**
   - New feature config `WebFetchConfig` (`enabled: bool = false`, `max_inline_size: int` defaulting to the offload threshold) added to the `Features` model (`config/application.py:169`) as a `PreviewField` — so configuring it requires `ENABLE_PREVIEW_FEATURES`, matching `dial_files`.
-  - Provided from the **existing** `InternalToolModule` `@multiprovider`, which gains a branch that builds the tool when `features.web_fetch.enabled` is true (reading `max_inline_size` from the same config). No new module, no `app_factory` change.
+  - Provided by a **new `WebToolingModule`** (`web_tooling/web_tooling_module.py`, `@preview_module`) via its own `@multiprovider`, which builds the tool when `features.web_fetch.enabled` is true (reading `max_inline_size` from the same config). Registered in `app_factory.py`.
 - **`internal_file_download` (file family):**
   - Enabled via `features.dial_files.enabled_tools` — the short-name `download` (or `"all"`), like every other `internal_file_*` tool. The `dial_files_tooling` module strips the `internal_file_` prefix and checks `short_name in cfg.enabled_tools` (`dial_files_tooling_module.py:123`).
   - Add `download` to the `DialFilesToolName` literal (defined near the top of `config/dial_files.py`). Dispatched from the existing `dial_files_tooling` `@multiprovider`; bound at request scope.
-- **Preview gating:** `DialFilesToolingModule` is already `@preview_module` (`dial_files_tooling_module.py:46`), so `internal_file_download` is gated by `ENABLE_PREVIEW_FEATURES`. Making `WebFetchConfig` a `PreviewField` gives `internal_web_fetch` the same gating — **both graduate together** without `InternalToolModule` itself needing to be preview-gated (the py-interpreter tool stays unaffected).
+- **Preview gating:** `DialFilesToolingModule` is already `@preview_module` (`dial_files_tooling_module.py:46`), so `internal_file_download` is gated by `ENABLE_PREVIEW_FEATURES`. `WebToolingModule` is itself `@preview_module`, and `WebFetchConfig` is a `PreviewField` — so `internal_web_fetch` is preview-gated at both the module and config level, and **both tools graduate together**.
 - **Schema:** run `make dump_app_schema` to regenerate `docs/generated-app-schema.json` and `docs/generated-internal-tools.json`.
 
 ### Component 6: Egress policy (reused, unchanged)
@@ -218,7 +220,7 @@ Deferred from phase-1; each is a clean follow-on, not a rework:
 
 ### Enabling both tools
 
-Both tools are turned on through `features.*` (no `InternalToolSet` entry for either) and both require `ENABLE_PREVIEW_FEATURES=true` (preview-gated in phase-1):
+Both tools are turned on through `features.*` (no per-tool tool-set entry for either) and both require `ENABLE_PREVIEW_FEATURES=true` (preview-gated in phase-1):
 
 ```yaml
 features:
@@ -269,7 +271,9 @@ None. Both tools are purely additive and opt-in via app config.
 
 ### New files
 
-- `internal_tooling/_web_fetch_tool.py` — the `internal_web_fetch` tool (plain `StagedBaseTool`; depends on the shared fetch helper).
+- `web_tooling/web_tooling_module.py` — `WebToolingModule` (`@preview_module`; `configure` + `@multiprovider`).
+- `web_tooling/_web_fetch_tool.py` — the `internal_web_fetch` tool (plain `StagedBaseTool`; depends on the shared fetch helper).
+- `web_tooling/_web_fetch_tool_config.py` — the tool's `InternalTool` config (`WEB_FETCH_TOOL_CONFIG`).
 - `dial_files_tooling/_download_file_tool.py` — the `internal_file_download` tool (`_DialFileTool` subclass; persists via the file-family `DialFileService` write path).
 - A shared fetch helper (Component 3) — location shared by both (e.g., `shared/external_fetch/` or a small `common/` helper), reused by both tools.
 - Unit tests for both tools.
@@ -278,7 +282,7 @@ None. Both tools are purely additive and opt-in via app config.
 
 - `common/tool_names.py` — add `INTERNAL_WEB_FETCH_TOOL_NAME` (the download tool uses the family prefix + short-name `download`).
 - `config/application.py` — add `WebFetchConfig` and a `web_fetch` `PreviewField` to the `Features` model (`enabled: bool`, `max_inline_size: int` defaulting to the offload threshold).
-- `internal_tooling/internal_tooling_module.py` — extend the `@multiprovider` to build `internal_web_fetch` when `features.web_fetch.enabled`. No `app_factory` change.
+- `app_factory.py` — register `WebToolingModule`.
 - `config/dial_files.py` — add `download` to the `DialFilesToolName` literal so it can appear in `enabled_tools`.
 - `dial_files_tooling` DI module — bind `internal_file_download` and dispatch it from the existing `@multiprovider`; add its tool definition to the family.
 - `dial_core_services/dial_file_service.py` — if no bytes-capable write exists, add a thin one targeting a resolved home URL (Component 4 binary nuance).
