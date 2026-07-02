@@ -14,6 +14,7 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
+from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
 
@@ -35,6 +36,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         perf_timer: PerformanceTimer,
         dial_file_service: DialFileService,
         dial_files_config: DialFilesConfig,
+        home_resolver: _HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
@@ -49,7 +51,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         )
         self._dial_file_service = dial_file_service
         self._dial_files_config = dial_files_config
-        self._resolved_home: str | None = None
+        self._home_resolver = home_resolver
 
     async def _download_text(
         self, file_url: str, display_path: str
@@ -92,10 +94,10 @@ class _DialFileTool(StagedBaseTool, ABC):
         './' into 'files/.../.'.
         """
         if is_root_reference(path):
-            return await self._resolve_home_dir()
+            return await self._home_resolver.resolve_home_dir()
         if not path.endswith("/"):
             path = path + "/"
-        return await self._resolve_appdata_url(path)
+        return await self._home_resolver.resolve_appdata_url(path)
 
     async def _list_folder_entries(
         self, path: str, max_depth: int
@@ -118,10 +120,10 @@ class _DialFileTool(StagedBaseTool, ABC):
         except ResourceNotFoundError as e:
             if is_root_reference(path):
                 return folder_url, []
-            display = await self._to_display_path(folder_url)
+            display = await self._home_resolver.to_display_path(folder_url)
             raise InvalidToolCallParameterException("path", f"folder not found: {display}") from e
         except ValueError as e:
-            display = await self._to_display_path(folder_url)
+            display = await self._home_resolver.to_display_path(folder_url)
             raise InvalidToolCallParameterException("path", f"not a folder: {display}") from e
         except DialException as e:
             self._check_permission_denied(e, path)
@@ -134,70 +136,6 @@ class _DialFileTool(StagedBaseTool, ABC):
         if max_depth < 1 or max_depth > _MAX_DEPTH:
             raise InvalidToolCallParameterException("max_depth", f"must be in [1, {_MAX_DEPTH}]")
         return max_depth
-
-    async def _resolve_appdata_url(self, path: str) -> str:
-        if not isinstance(path, str) or path == "":
-            raise InvalidToolCallParameterException("path", "path must be a non-empty string")
-        if "\n" in path or "\r" in path:
-            raise InvalidToolCallParameterException(
-                "path", "path must not contain newline characters"
-            )
-        if path.startswith("files/"):
-            return path
-        self._validate_relative_path(path)
-        home = await self._resolve_home_dir()
-        return f"{home}{path}"
-
-    async def _resolve_home_dir(self) -> str:
-        if self._resolved_home is not None:
-            return self._resolved_home
-        appdata = await self._dial_file_service.my_appdata_home()
-        if appdata is None:
-            raise InvalidToolCallParameterException(
-                "path",
-                "appdata namespace is not available; cannot resolve agent home directory",
-            )
-        subdir = self._dial_files_config.agent_home_dir
-        self._resolved_home = f"files/{appdata}/{subdir}"
-        return self._resolved_home
-
-    async def _to_display_path(self, url: str) -> str:
-        """Inverse of _resolve_appdata_url.
-
-        Async because home-dir resolution may require `my_appdata_home()` on first call;
-        subsequent calls return from cache.
-        """
-        try:
-            home = await self._resolve_home_dir()
-        except InvalidToolCallParameterException:
-            return url
-        if url.startswith(home):
-            return url[len(home) :]
-        return url
-
-    @staticmethod
-    def _validate_relative_path(path: str) -> None:
-        if path != path.strip():
-            raise InvalidToolCallParameterException(
-                "path", "path must not have leading/trailing whitespace"
-            )
-        if path.startswith("/"):
-            raise InvalidToolCallParameterException("path", "path must not start with '/'")
-        segments = path.split("/")
-        if ".." in segments:
-            raise InvalidToolCallParameterException("path", "path must not contain '..'")
-        # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
-        if "" in segments[:-1]:
-            raise InvalidToolCallParameterException("path", "path must not contain empty segments")
-
-    @staticmethod
-    def _reject_absolute_path(parameter_name: str, tool_name: str, value: str) -> None:
-        if value.startswith("files/"):
-            raise InvalidToolCallParameterException(
-                parameter_name,
-                f"{tool_name} requires a relative path under agent_home_dir; "
-                "do not pass an absolute files/... URL",
-            )
 
     @staticmethod
     def _check_permission_denied(
