@@ -394,6 +394,7 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
         chat_completion_recovery=Mock(apply_message_recovery=Mock()),
         tool_execution_history_policies=[],
         tool_names=frozenset({"ext_tool"}),
+        request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
     await orch.invoke()
