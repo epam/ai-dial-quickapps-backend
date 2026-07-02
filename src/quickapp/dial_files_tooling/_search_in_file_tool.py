@@ -68,7 +68,7 @@ class _SearchInFileTool(_DialFileTool):
         context_lines: int,
         case_insensitive: bool,
     ) -> str:
-        url = await self._resolve_appdata_url(path)
+        url = await self._home_resolver.resolve_appdata_url(path)
         text, _ = await self._download_text(url, display_path=path)
         lines = text.splitlines()
         indices = self._matching_line_indices(lines, pattern, case_insensitive)
@@ -111,7 +111,7 @@ class _SearchInFileTool(_DialFileTool):
             indices = self._matching_line_indices(lines, pattern, case_insensitive)
             if not indices:
                 continue
-            display = await self._to_display_path(entry.url)
+            display = await self._home_resolver.to_display_path(entry.url)
             matches.append((display, lines, indices))
 
         body = self._render_folder_output(matches, output_mode, context_lines)

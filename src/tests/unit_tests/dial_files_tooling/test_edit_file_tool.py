@@ -6,7 +6,7 @@ from aidial_client._exception import EtagMismatchError, ResourceNotFoundError
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
 from quickapp.dial_files_tooling._tool_configs import EDIT_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(
@@ -20,13 +20,7 @@ def _make_tool(
         service.write_file.side_effect = upload_side_effect
     else:
         service.write_file.return_value = "files/appbucket/r.md"
-    return _EditFileTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=EDIT_FILE_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_EditFileTool, EDIT_FILE_TOOL_CONFIG, service=service)
 
 
 class TestEditFile:
