@@ -90,7 +90,7 @@ skills) are visible to transformers:
   `_MCPToolInitializer` collects all unauthorized toolsets and sends a single batched sign-in request
   to DIAL Core via `InteractiveLoginService`. Toolsets that succeed are retried; failures are recorded
   as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
-  401 from `_MCPConnectionManager`, requests sign-in, and retries the call once. The
+  401 from `_MCPToolsetClient`, requests sign-in, and retries the call once. The
   `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
   the standard error path. See `docs/designs/interactive_login.md` for the full design.
 
@@ -259,6 +259,29 @@ When a tool call exceeds the resolved budget, `translate_timeout` (async context
 <!-- DIAGRAM: Tool execution flow showing ToolExecutor receiving tool calls, parallel execution via async gather, each tool wrapped in StagedBaseTool with StageWrapper, returning ToolCallResults -->
 ![Tool Execution](content/svg/agent_tool_execution.svg)
 
+### MCP Session Reuse
+
+MCP servers can be **stateful**: a session established at `initialize` time holds server-side state that later
+tool calls depend on. To preserve that state, an MCP toolset's `ClientSession` is opened **once per request**
+and reused across orchestrator iterations and across concurrent tool calls — rather than the previous
+open-init-call-teardown per call, which lost all session state and re-negotiated the streamable-HTTP
+`MCP-Session-Id` every time.
+
+- **`_MCPSessionManager`** (request-scoped, `mcp_tooling/`) owns one live session per toolset, keyed by a
+  stable toolset key (`mcp:<name>` for `MCPToolSet`, `dial:<deployment_id>` for `DialMCPToolSet`).
+  `_MCPToolsetClient.call_mcp_tool` borrows the shared session instead of opening its own; tool *listing*
+  (`get_tools_list`, during initialization) keeps its own short-lived session.
+- **Owner-task model.** Tool calls run in concurrent sibling tasks, but anyio requires a session's cancel
+  scope to be exited in the task that entered it. The session manager therefore opens each session inside a dedicated
+  owner task that enters the context, signals readiness, parks until shutdown, then exits — so enter/exit stay
+  co-located regardless of which call triggered the open. Borrowers issue concurrent `call_tool`s against the
+  shared session, which the SDK multiplexes by request id. A failed open is not memoized, so the existing
+  interactive-login retry re-opens cleanly.
+- **Teardown seam.** The session manager self-registers with a request-scoped `RequestAsyncCloseRegistry`
+  (`common/`); the orchestrator awaits `aclose_all()` in its `_persisting_state()` `finally`, so every live
+  session is torn down on both the success and the error path. Within-request reuse is unconditional — there
+  is no configuration flag.
+
 ---
 
 ## Message Processing
@@ -420,12 +443,26 @@ Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_str
 The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
 no-op unless both gates pass. When active it contributes:
 
-- `_GetContentTool` (`internal_attachments_get_content`) — registered when at least one admin context or
-  user attachment passes the orchestrator's `input_attachment_types` MIME gate.
+- `_GetContentTool` (`internal_attachments_get_content`) — registered when the orchestrator accepts input
+  attachments (`input_attachment_types` non-empty) **and** either external URL fetching is policy-enabled
+  (an attachment url may then arrive through any channel — system prompt, skill, user message, tool result —
+  so it can't be predicted from request-visible files) **or** at least one admin context / expanded folder
+  file / user attachment passes the `input_attachment_types` MIME gate (`should_enable_get_content_tool`).
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
+- `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL
+  `files/` urls pass through; **external `http(s)` urls are downloaded and promoted to a durable DIAL file**
+  via `DialFilePromoter` (which enforces the two-tier external-fetch policy, the SSRF guard, the redirect cap,
+  and the size limit). Both the synthetic injector and the explicit tool call route external urls through it,
+  so the orchestrator deployment receives a fetchable DIAL url even though the model only ever sees and passes
+  the original url. There is no in-app url allow-set — authorization of the underlying fetch is enforced
+  upstream: DIAL Core gates `files/` access by the caller's bucket permissions, and the external-fetch policy
+  gates `http(s)`.
 - `_GetContentKeepPolicy`, `_GetContentHistoryPolicy`, `_GetContentRecoveryPolicy` — keep, persist, and
-  recover get-content tool messages and their attachments.
+  recover get-content tool messages and their attachments. The keep policy retains any attachment that rides
+  an `internal_attachments_get_content` TOOL message, points at a DIAL `files/` path, and whose MIME the
+  orchestrator accepts (the `files/` prefix is the storage-path validity check; it covers both DIAL
+  passthrough and promoted-external attachments).
 
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future

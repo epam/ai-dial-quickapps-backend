@@ -165,6 +165,13 @@ The deployment-handoff branch (when a DIAL deployment advertises `features.url_a
 QuickApps emits an `AttachmentParam(reference_url=…)` and the deployment fetches the bytes itself, so neither axis
 applies.
 
+> [!NOTE]
+> The orchestrator's [`lazy_on_demand` attachment strategy](agent.md#lazy_on_demand-strategy) is another consumer
+> of this envelope. When an allowed attachment (user attachment or admin context) is an external `http(s)` URL,
+> `_AttachmentMaterializer` promotes it to a durable DIAL file via `DialFilePromoter` so the orchestrator
+> deployment can read it through the `internal_attachments_get_content` channel — the same two-tier policy, SSRF
+> guard, and size limit apply. See [`pass_attachments_to_orchestrator.md`](designs/pass_attachments_to_orchestrator.md), Concern 2.
+
 ## Deployment-attachment dispatch
 
 `AttachmentResolver._resolve_attachment` is capability-aware. The four-branch dispatch is:

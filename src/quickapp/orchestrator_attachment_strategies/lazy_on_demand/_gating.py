@@ -16,15 +16,21 @@ def should_enable_get_content_tool(
     messages: Sequence[Message],
     input_attachment_types: list[str] | None,
     expanded_folder_file_urls: set[str] | None = None,
+    external_fetch_enabled: bool = False,
 ) -> bool:
-    """True when some admin file context's or attachment in user message
-    inferred MIME is allowed on the orchestrator path.
+    """True when the deployment accepts input attachments (``input_attachment_types``
+    non-empty) **and** either external URL fetching is enabled (a url may then arrive
+    via any channel, so it can't be predicted from request-visible files) or some
+    request-visible file — admin context, expanded folder file, or user attachment —
+    has an inferred MIME the deployment accepts.
 
-    Uses the same filename-based inference as ``build_context_entries_async`` in
-    :mod:`quickapp.attachment_processing._context_entries` and DialCore
-    ``input_attachment_types`` via :func:`quickapp.common.utils.matches_type`.
-    Empty inferred MIME never matches unless the deployment patterns allow it.
+    MIME inference is filename-based (matching ``build_context_entries_async``) and
+    gated by :func:`quickapp.common.utils.matches_type`.
     """
+    if not input_attachment_types:
+        return False
+    if external_fetch_enabled:
+        return True
     for ctx in contexts:
         if not isinstance(ctx, FileContextConfig):
             continue
