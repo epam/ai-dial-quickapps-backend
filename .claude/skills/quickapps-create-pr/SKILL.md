@@ -119,6 +119,7 @@ git push -u origin <branch>
 - Fill `### Applicable issues` with `fixes #<issue>` (or leave `fixes #` if none).
 - Fill `### Description of changes` with the **why** first (problem/motivation), then the key implementation points — expand on the commit body. Add screenshots for user-visible / stage-rendering changes.
 - **Keep every checklist point** from the template — do not delete rows. Tick `[x]` only the ones you've actually verified, leave the rest `[ ]`. `Title follows Conventional Commits` is safe to tick; **leave `Integration tests pass` and `Changes are tested on review environment` unticked** unless they really ran (they're CI/reviewer responsibilities, and Step 2 doesn't run them locally). If a config/schema model changed, the schema-compat row is load-bearing — address it.
+- **If a checklist point doesn't apply to this PR** (e.g. "Design documented..." on a pure refactor with no design doc), don't delete the row and don't just leave it unticked — cross it out with `~~...~~` so the reviewer can tell "not applicable" apart from "not done". Leave a short parenthetical reason, e.g. `- ~~[ ] Design documented is updated/created and approved by the team (if applicable)~~ (no design doc for this change)`.
 - Keep the license confirmation line at the bottom.
 
 Write the filled body with the **Write** tool to `./tmp/quickapp_pr_body.md` — a project-local, gitignored scratch dir (`mkdir -p ./tmp` first if it doesn't exist yet) — not the global `/tmp` and not a shell heredoc.
@@ -175,5 +176,5 @@ Print the PR URL `gh` returns. Give the user a 3-line summary: branch, title, an
 - **Empty `fixes #`** left when an issue exists — pass `$issue` or infer it.
 - **Body that only says *what*** — reviewers want the *why*. Lead with motivation.
 - **Unstaged schema/cache regen** from `make format`/`make dump_app_schema` — always commit regenerated artifacts.
-- **Deleting checklist rows** — keep every point from `.github/pull_request_template.md`; tick the ones you verified, leave the rest unchecked. Don't remove rows.
+- **Deleting checklist rows** — keep every point from `.github/pull_request_template.md`; tick the ones you verified, leave the rest unchecked, and cross out (`~~...~~`) the ones that don't apply with a short reason. Don't remove rows.
 - **Reproducing the PR template from memory** — read `.github/pull_request_template.md` each time; it's the source of truth and it changes.
