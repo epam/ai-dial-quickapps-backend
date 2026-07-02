@@ -1,7 +1,7 @@
 ---
 name: quickapps-create-pr
 description: Use when the user asks to "create a PR", "open a pull request", "raise a PR", "ship this", or "/quickapps-create-pr" in this repo. Drives the project's end-to-end PR flow — feature branch, conventional-commit title/body, the pre-PR format+lint gate, push, and `gh pr create --base development` with the repo's PR template filled in.
-allowed-tools: Read Grep Glob LSP Write(/tmp/*) Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git rev-parse:*) Bash(git branch:*) Bash(git checkout:*) Bash(git switch:*) Bash(git stash:*) Bash(git add:*) Bash(git commit:*) Bash(git push:*) Bash(gh pr create:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(make format:*) Bash(make lint:*) Bash(make test:*) Bash(date:*)
+allowed-tools: Read Grep Glob LSP Write(./tmp/*) Bash(git status:*) Bash(git diff:*) Bash(git log:*) Bash(git rev-parse:*) Bash(git branch:*) Bash(git checkout:*) Bash(git switch:*) Bash(git stash:*) Bash(git add:*) Bash(git commit:*) Bash(git push:*) Bash(gh pr create:*) Bash(gh pr view:*) Bash(gh pr list:*) Bash(make format:*) Bash(make lint:*) Bash(make test:*) Bash(date:*) Bash(mkdir:*)
 argument-hint: "[issue-number]"
 arguments: issue
 model: opus
@@ -121,11 +121,11 @@ git push -u origin <branch>
 - **Keep every checklist point** from the template — do not delete rows. Tick `[x]` only the ones you've actually verified, leave the rest `[ ]`. `Title follows Conventional Commits` is safe to tick; **leave `Integration tests pass` and `Changes are tested on review environment` unticked** unless they really ran (they're CI/reviewer responsibilities, and Step 2 doesn't run them locally). If a config/schema model changed, the schema-compat row is load-bearing — address it.
 - Keep the license confirmation line at the bottom.
 
-Write the filled body with the **Write** tool to `/tmp/quickapp_pr_body.md` (not a shell heredoc).
+Write the filled body with the **Write** tool to `./tmp/quickapp_pr_body.md` — a project-local, gitignored scratch dir (`mkdir -p ./tmp` first if it doesn't exist yet) — not the global `/tmp` and not a shell heredoc.
 
 ### 6. Open the PR
 
-With the body already written to `/tmp/quickapp_pr_body.md` (Step 5):
+With the body already written to `./tmp/quickapp_pr_body.md` (Step 5):
 
 ```bash
 gh pr create \
@@ -133,7 +133,7 @@ gh pr create \
   --head <branch> \
   --assignee @me \
   --title "<type>: <subject>" \
-  --body-file /tmp/quickapp_pr_body.md
+  --body-file ./tmp/quickapp_pr_body.md
 ```
 
 `--base development` is non-negotiable — this repo's default base is `development`, never `main`/`master`.
