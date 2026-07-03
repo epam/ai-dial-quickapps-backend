@@ -16,6 +16,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_rec
     _GetContentRecoveryPolicy,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
     GetContentToolResponse,
 )
 
@@ -76,7 +77,7 @@ def test_try_recover_rewrites_get_content_tool_result_on_attachment_error() -> N
         messages[2].custom_content.state if messages[2].custom_content else None
     )
     assert payload is not None
-    assert payload.status == "Fail"
+    assert payload.status == GetContentStatus.FAIL
     assert payload.status_message == (
         "The AI model service rejected the attachment payload; the file was not forwarded."
     )

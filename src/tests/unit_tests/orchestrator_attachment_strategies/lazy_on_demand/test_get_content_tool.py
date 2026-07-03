@@ -26,6 +26,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
     _GetContentTool,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
     GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
@@ -98,7 +99,7 @@ class TestGetContentTool:
         assert 'Loaded file "a.pdf"' in result.content
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
 
     @pytest.mark.asyncio
@@ -130,7 +131,7 @@ class TestGetContentTool:
         # the tool-result text echoes the original url the model passed
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("https://example.com/report.pdf")
 
     @pytest.mark.asyncio
@@ -153,7 +154,7 @@ class TestGetContentTool:
         assert result.attachments[0].url == "files/bucket/pasted.pdf"
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("https://example.com/pasted.pdf")
 
     @pytest.mark.asyncio
@@ -175,7 +176,7 @@ class TestGetContentTool:
         assert result.attachments[0].type == "application/pdf"
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("files/bucket/orphan.pdf")
         assert payload.title == "orphan.pdf"
 
@@ -198,5 +199,5 @@ class TestGetContentTool:
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Fail"
+        assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Orchestrator deployment does not accept this file type."

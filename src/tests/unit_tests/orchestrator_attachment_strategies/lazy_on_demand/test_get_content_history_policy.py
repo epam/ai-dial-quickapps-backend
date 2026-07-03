@@ -7,6 +7,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_his
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
     HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE,
+    GetContentStatus,
     GetContentToolResponse,
 )
 
@@ -78,7 +79,7 @@ class TestGetContentHistoryPolicy:
 
         payload = GetContentToolResponse.from_state(state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
         assert payload.title == "a.pdf"
         assert payload.type == "application/pdf"

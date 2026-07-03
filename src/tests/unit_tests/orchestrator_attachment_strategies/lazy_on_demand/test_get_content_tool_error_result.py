@@ -23,6 +23,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
     _GetContentTool,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
     GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
@@ -81,7 +82,7 @@ class TestErrorResultPayload:
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Fail"
+        assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Missing or empty attachment_url."
         assert payload.accepted_types == ["application/pdf", "text/csv"]
 
@@ -97,7 +98,7 @@ class TestErrorResultPayload:
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Fail"
+        assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Orchestrator deployment does not accept this file type."
         assert payload.accepted_types == ["application/pdf"]
 
@@ -113,7 +114,7 @@ class TestErrorResultPayload:
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Fail"
+        assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "Invalid storage path for attachment file."
         assert payload.accepted_types == ["application/pdf"]
 
@@ -136,7 +137,7 @@ class TestErrorResultPayload:
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
-        assert payload.status == "Fail"
+        assert payload.status == GetContentStatus.FAIL
         assert payload.status_message == "External URL fetching is disabled by operator policy."
         assert payload.accepted_types == ["application/pdf"]
 

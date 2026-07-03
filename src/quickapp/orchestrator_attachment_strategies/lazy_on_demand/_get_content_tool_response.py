@@ -5,15 +5,14 @@ Human-readable summaries live in ``content``; canonical structured data lives in
 """
 
 import json
-from typing import Literal, Self
+from enum import StrEnum
+from typing import Self
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from quickapp.common.attachment_processing_utils import normalize_attachment_url_argument
 from quickapp.common.file_reference_pattern import FILE_PATTERN, to_file_url_reference
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-
-GetContentStatus = Literal["Success", "Fail"]
 
 GET_CONTENT_RESPONSE_STATE_KEY = "_get_content_response"
 
@@ -22,6 +21,11 @@ HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE = (
     f"Call {INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME} again with attachment_url "
     "when you need the content. Do not ask the user to re-upload."
 )
+
+
+class GetContentStatus(StrEnum):
+    SUCCESS = "Success"
+    FAIL = "Fail"
 
 
 class GetContentToolResponse(BaseModel):
@@ -37,7 +41,7 @@ class GetContentToolResponse(BaseModel):
     @classmethod
     def success(cls, *, display_url: str, title: str, mime_type: str) -> Self:
         return cls(
-            status="Success",
+            status=GetContentStatus.SUCCESS,
             attachment_url=_model_facing_attachment_url(display_url),
             title=title,
             type=mime_type,
@@ -54,7 +58,7 @@ class GetContentToolResponse(BaseModel):
     @classmethod
     def fail(cls, *, message: str, accepted_types: list[str]) -> Self:
         return cls(
-            status="Fail",
+            status=GetContentStatus.FAIL,
             status_message=message,
             accepted_types=accepted_types,
         )
@@ -75,7 +79,7 @@ class GetContentToolResponse(BaseModel):
         return self.model_dump(mode="json", exclude_none=True)
 
     def content_summary(self) -> str:
-        if self.status == "Fail":
+        if self.status == GetContentStatus.FAIL:
             parts = [f"Failed to load attachment: {self.status_message or 'Unknown error'}."]
             if self.accepted_types:
                 parts.append(f"Accepted MIME types: {', '.join(self.accepted_types)}.")
@@ -186,7 +190,7 @@ def history_strip_response(
         )
     else:
         existing = GetContentToolResponse.from_state(state_dict)
-        if existing is not None and existing.status == "Success":
+        if existing is not None and existing.status == GetContentStatus.SUCCESS:
             display_url = _display_url_from_attachment_url(existing.attachment_url or "")
             title = existing.title or ""
             mime_type = existing.type or ""

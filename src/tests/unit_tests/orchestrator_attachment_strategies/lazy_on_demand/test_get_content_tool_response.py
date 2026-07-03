@@ -2,6 +2,7 @@ from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
     GET_CONTENT_RESPONSE_STATE_KEY,
     HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE,
+    GetContentStatus,
     GetContentToolResponse,
 )
 
@@ -13,11 +14,11 @@ class TestGetContentToolResponse:
             title="a.pdf",
             mime_type="application/pdf",
         )
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
         assert payload.status_message is None
         assert payload.to_state_entry() == {
-            "status": "Success",
+            "status": GetContentStatus.SUCCESS,
             "attachment_url": "file:url::files/bucket/a.pdf",
             "title": "a.pdf",
             "type": "application/pdf",
@@ -36,7 +37,7 @@ class TestGetContentToolResponse:
     def test_fail_response(self):
         payload = GetContentToolResponse.fail(message="nope", accepted_types=["application/pdf"])
         assert payload.to_state_entry() == {
-            "status": "Fail",
+            "status": GetContentStatus.FAIL,
             "status_message": "nope",
             "accepted_types": ["application/pdf"],
         }

@@ -16,6 +16,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
     _AttachmentMaterializer,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
     GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
@@ -266,7 +267,7 @@ class TestExternalUrlPromotion:
         assert tool.custom_content is not None
         payload = GetContentToolResponse.from_state(tool.custom_content.state)
         assert payload is not None
-        assert payload.status == "Success"
+        assert payload.status == GetContentStatus.SUCCESS
         assert payload.attachment_url == "file:url::https://example.com/report.pdf"
         assert 'Loaded file "report.pdf"' in str(tool.content)
 
