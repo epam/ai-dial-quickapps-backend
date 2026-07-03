@@ -16,9 +16,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_rec
     _GetContentRecoveryPolicy,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    build_tool_result_parts,
-    parse_from_state,
-    success_response,
+    GetContentToolResponse,
 )
 
 
@@ -27,13 +25,11 @@ def _bad_request(message: str, body: object | None = None) -> openai.BadRequestE
 
 
 def _messages_with_get_content_pair(*, with_attachment: bool = True) -> list[Message]:
-    content, state = build_tool_result_parts(
-        success_response(
-            display_url="files/bucket/r.pdf",
-            title="r.pdf",
-            mime_type="application/pdf",
-        )
-    )
+    content, state = GetContentToolResponse.success(
+        display_url="files/bucket/r.pdf",
+        title="r.pdf",
+        mime_type="application/pdf",
+    ).tool_parts()
     custom_content = (
         CustomContent(
             attachments=[
@@ -76,7 +72,7 @@ def test_try_recover_rewrites_get_content_tool_result_on_attachment_error() -> N
     changed = policy.try_recover(messages, _bad_request("unsupported file type"))
 
     assert changed is True
-    payload = parse_from_state(
+    payload = GetContentToolResponse.from_state(
         messages[2].custom_content.state if messages[2].custom_content else None
     )
     assert payload is not None

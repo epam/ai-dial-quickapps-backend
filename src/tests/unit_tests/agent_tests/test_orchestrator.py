@@ -26,12 +26,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_his
     _GetContentHistoryPolicy,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    build_content_summary,
-    build_tool_result_parts,
-    merge_get_content_state,
-    parse_from_state,
-    success_response,
-    success_response_for_history,
+    GetContentToolResponse,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -778,13 +773,13 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
-    live_response = success_response(
+    live_response = GetContentToolResponse.success(
         display_url="files/bucket/report.pdf",
         title="report.pdf",
         mime_type="application/pdf",
     )
-    tool_content, _ = build_tool_result_parts(live_response)
-    tool_state = merge_get_content_state({"marker": "keep"}, live_response)
+    tool_content, _ = live_response.tool_parts()
+    tool_state = live_response.merge_into_state({"marker": "keep"})
 
     tool_message = Message(
         role=Role.TOOL,
@@ -846,18 +841,18 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     state = custom_content.get("state")
     assert isinstance(state, dict)
     assert state.get("marker") == "keep"
-    payload = parse_from_state(state)
+    payload = GetContentToolResponse.from_state(state)
     assert payload is not None
     assert (
         payload.status_message
-        == success_response_for_history(
+        == GetContentToolResponse.for_history(
             display_url="files/bucket/report.pdf",
             title="report.pdf",
             mime_type="application/pdf",
         ).status_message
     )
     assert payload.attachment_url == to_file_url_reference("files/bucket/report.pdf")
-    assert tool_entry.get("content") == build_content_summary(payload)
+    assert tool_entry.get("content") == payload.content_summary()
 
 
 @pytest.mark.asyncio

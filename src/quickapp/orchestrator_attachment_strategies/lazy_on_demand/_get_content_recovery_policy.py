@@ -5,9 +5,11 @@ from aidial_sdk.chat_completion.request import Message, Role
 from openai import BadRequestError
 
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.get_content_recovery_payload import get_content_recovery_parts
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_recovery_payload import (
+    get_content_recovery_parts,
+)
 
 _ATTACHMENT_ERROR_SIGNALS: tuple[str, ...] = (
     "attachment payload",

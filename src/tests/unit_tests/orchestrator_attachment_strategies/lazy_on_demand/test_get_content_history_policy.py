@@ -7,10 +7,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_his
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
     HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE,
-    build_content_summary,
-    build_tool_result_parts,
-    parse_from_state,
-    success_response,
+    GetContentToolResponse,
 )
 
 
@@ -29,13 +26,13 @@ def _get_content_history(
         else [{"title": "a.pdf", "url": "files/bucket/a.pdf", "type": "application/pdf"}]
     )
     display_url = attachment_rows[0]["url"]
-    response = success_response(
+    response = GetContentToolResponse.success(
         display_url=display_url,
         title=attachment_rows[0]["title"],
         mime_type=attachment_rows[0]["type"],
     )
     if tool_content is None or tool_state is None:
-        built_content, state_fragment = build_tool_result_parts(response)
+        built_content, state_fragment = response.tool_parts()
         tool_content = built_content if tool_content is None else tool_content
         tool_state = state_fragment if tool_state is None else tool_state
     custom_content: dict[str, object] = {"attachments": attachment_rows, "state": tool_state}
@@ -79,14 +76,14 @@ class TestGetContentHistoryPolicy:
         assert isinstance(state, dict)
         assert state.get("k") == "v"
 
-        payload = parse_from_state(state)
+        payload = GetContentToolResponse.from_state(state)
         assert payload is not None
         assert payload.status == "Success"
         assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
         assert payload.title == "a.pdf"
         assert payload.type == "application/pdf"
         assert payload.status_message == HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE
-        assert tool_msg.get("content") == build_content_summary(payload)
+        assert tool_msg.get("content") == payload.content_summary()
 
     def test_prefers_attachment_url_from_assistant_tool_call_arguments(self):
         policy = _GetContentHistoryPolicy()
@@ -100,7 +97,7 @@ class TestGetContentHistoryPolicy:
 
         result = policy.apply(history)
         state = result[1]["custom_content"]["state"]
-        payload = parse_from_state(state)
+        payload = GetContentToolResponse.from_state(state)
         assert payload is not None
         assert payload.attachment_url == explicit_url
         assert payload.status_message == HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE
@@ -116,18 +113,18 @@ class TestGetContentHistoryPolicy:
         )
 
         result = policy.apply(history)
-        payload = parse_from_state(result[1]["custom_content"]["state"])
+        payload = GetContentToolResponse.from_state(result[1]["custom_content"]["state"])
         assert payload is not None
         assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
 
     def test_leaves_message_unchanged_when_no_attachments(self):
         policy = _GetContentHistoryPolicy()
-        response = success_response(
+        response = GetContentToolResponse.success(
             display_url="files/bucket/a.pdf",
             title="a.pdf",
             mime_type="application/pdf",
         )
-        content, state_fragment = build_tool_result_parts(response)
+        content, state_fragment = response.tool_parts()
         state = {"k": "v", **state_fragment}
         history: list[dict[str, object]] = [
             {
@@ -167,6 +164,6 @@ class TestGetContentHistoryPolicy:
         custom_content = tool_msg.get("custom_content")
         assert isinstance(custom_content, dict)
         assert "attachments" in custom_content
-        payload = parse_from_state(custom_content.get("state"))
+        payload = GetContentToolResponse.from_state(custom_content.get("state"))
         assert payload is not None
         assert payload.status_message is None

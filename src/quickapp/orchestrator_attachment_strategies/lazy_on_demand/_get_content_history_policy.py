@@ -3,13 +3,8 @@ from aidial_sdk.chat_completion import Role
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    build_content_summary,
-    display_url_from_attachment_url,
-    merge_get_content_state,
-    parse_from_state,
+    history_strip_response,
     parse_function_arguments,
-    resolve_success_fields,
-    success_response_for_history,
 )
 
 
@@ -27,7 +22,7 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
     """
 
     def apply(self, history: list[dict[str, object]]) -> list[dict[str, object]]:
-        tool_name_by_call_id: dict[str, str] = {}
+        get_content_call_ids: set[str] = set()
         tool_call_arguments_by_id: dict[str, dict[str, object]] = {}
         for msg in history:
             if msg.get("role") != Role.ASSISTANT.value:
@@ -42,10 +37,9 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
                 function = tool_call.get("function")
                 if not isinstance(tool_call_id, str) or not isinstance(function, dict):
                     continue
-                name = function.get("name")
-                if name != INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME:
+                if function.get("name") != INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME:
                     continue
-                tool_name_by_call_id[tool_call_id] = name
+                get_content_call_ids.add(tool_call_id)
                 parsed_args = parse_function_arguments(function)
                 if parsed_args is not None:
                     tool_call_arguments_by_id[tool_call_id] = parsed_args
@@ -54,9 +48,7 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
             if msg.get("role") != Role.TOOL.value:
                 continue
             tool_call_id = msg.get("tool_call_id")
-            if not isinstance(tool_call_id, str):
-                continue
-            if tool_name_by_call_id.get(tool_call_id) != INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME:
+            if not isinstance(tool_call_id, str) or tool_call_id not in get_content_call_ids:
                 continue
 
             custom_content = msg.get("custom_content")
@@ -67,30 +59,13 @@ class _GetContentHistoryPolicy(ToolExecutionHistoryPolicy):
             if isinstance(attachments, list) and attachments:
                 state = custom_content.get("state")
                 state_dict = state if isinstance(state, dict) else {}
-                tool_args = tool_call_arguments_by_id.get(tool_call_id)
-                if tool_args is not None and tool_args.get("attachment_url"):
-                    display_url, title, mime_type = resolve_success_fields(
-                        tool_call_arguments=tool_args,
-                        attachments=attachments,
-                    )
-                else:
-                    existing = parse_from_state(state_dict)
-                    if existing is not None and existing.status == "Success":
-                        display_url = display_url_from_attachment_url(existing.attachment_url or "")
-                        title = existing.title or ""
-                        mime_type = existing.type or ""
-                    else:
-                        display_url, title, mime_type = resolve_success_fields(
-                            tool_call_arguments=None,
-                            attachments=attachments,
-                        )
-                response = success_response_for_history(
-                    display_url=display_url,
-                    title=title,
-                    mime_type=mime_type,
+                response = history_strip_response(
+                    tool_call_arguments=tool_call_arguments_by_id.get(tool_call_id),
+                    attachments=attachments,
+                    state=state_dict,
                 )
-                msg["content"] = build_content_summary(response)
-                custom_content["state"] = merge_get_content_state(state_dict, response)
+                msg["content"] = response.content_summary()
+                custom_content["state"] = response.merge_into_state(state_dict)
 
             custom_content.pop("attachments", None)
             if not custom_content:

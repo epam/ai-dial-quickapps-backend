@@ -37,9 +37,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_sta
     _GetContentStageWrapper,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    build_tool_result_parts,
-    fail_response,
-    success_response,
+    GetContentToolResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -85,11 +83,11 @@ class _GetContentTool(StagedBaseTool):
         self.__materializer: _AttachmentMaterializer = materializer
 
     def _error_result(self, message: str) -> ToolCallResult:
-        response = fail_response(
+        response = GetContentToolResponse.fail(
             message=message,
             accepted_types=list(self.__orchestrator_capabilities.input_attachment_types or []),
         )
-        content, state = build_tool_result_parts(response)
+        content, state = response.tool_parts()
         return ToolCallResult(content=content, content_type="text/plain", state=state)
 
     async def _run_in_stage_async(
@@ -183,12 +181,12 @@ class _GetContentTool(StagedBaseTool):
             type=resolved.mime or "application/octet-stream",
             url=resolved.url,
         )
-        response = success_response(
+        response = GetContentToolResponse.success(
             display_url=payload_url,
             title=resolved.title,
             mime_type=str(attachment.type or ""),
         )
-        content, state = build_tool_result_parts(response)
+        content, state = response.tool_parts()
         result = ToolCallResult(
             content=content,
             content_type="text/plain",

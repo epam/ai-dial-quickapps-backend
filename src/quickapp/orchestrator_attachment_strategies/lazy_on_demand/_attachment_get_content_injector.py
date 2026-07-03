@@ -19,8 +19,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
     _AttachmentMaterializer,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    build_tool_result_parts,
-    success_response,
+    GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -102,13 +101,11 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         # display_url is what the model sees; the promoted DIAL url is only on `attachment`.
         title = str(attachment.title) if attachment.title else display_url.rsplit("/", 1)[-1]
         content_type = attachment.type or "application/octet-stream"
-        return build_tool_result_parts(
-            success_response(
-                display_url=display_url,
-                title=title,
-                mime_type=content_type,
-            )
-        )
+        return GetContentToolResponse.success(
+            display_url=display_url,
+            title=title,
+            mime_type=content_type,
+        ).tool_parts()
 
     @staticmethod
     def _build_pair(

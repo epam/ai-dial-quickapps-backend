@@ -5,7 +5,7 @@ Human-readable summaries live in ``content``; canonical structured data lives in
 """
 
 import json
-from typing import Literal
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
@@ -20,7 +20,7 @@ GET_CONTENT_RESPONSE_STATE_KEY = "_get_content_response"
 HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE = (
     "The file attachment payload was removed from saved history to save context. "
     f"Call {INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME} again with attachment_url "
-    "when the content. Do not ask the user to re-upload."
+    "when you need the content. Do not ask the user to re-upload."
 )
 
 
@@ -34,12 +34,71 @@ class GetContentToolResponse(BaseModel):
     status_message: str | None = None
     accepted_types: list[str] | None = None
 
+    @classmethod
+    def success(cls, *, display_url: str, title: str, mime_type: str) -> Self:
+        return cls(
+            status="Success",
+            attachment_url=_model_facing_attachment_url(display_url),
+            title=title,
+            type=mime_type,
+        )
+
+    @classmethod
+    def for_history(cls, *, display_url: str, title: str, mime_type: str) -> Self:
+        return cls.success(
+            display_url=display_url,
+            title=title,
+            mime_type=mime_type,
+        ).model_copy(update={"status_message": HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE})
+
+    @classmethod
+    def fail(cls, *, message: str, accepted_types: list[str]) -> Self:
+        return cls(
+            status="Fail",
+            status_message=message,
+            accepted_types=accepted_types,
+        )
+
+    @classmethod
+    def from_state(cls, state: object) -> Self | None:
+        if not isinstance(state, dict):
+            return None
+        raw = state.get(GET_CONTENT_RESPONSE_STATE_KEY)
+        if raw is None:
+            return None
+        try:
+            return cls.model_validate(raw)
+        except ValidationError:
+            return None
+
     def to_state_entry(self) -> dict[str, object]:
         return self.model_dump(mode="json", exclude_none=True)
 
+    def content_summary(self) -> str:
+        if self.status == "Fail":
+            parts = [f"Failed to load attachment: {self.status_message or 'Unknown error'}."]
+            if self.accepted_types:
+                parts.append(f"Accepted MIME types: {', '.join(self.accepted_types)}.")
+            return " ".join(parts)
 
-def model_facing_attachment_url(raw: str) -> str:
-    """Return a ``file:url::...`` reference suitable for ``attachment_url`` tool args."""
+        title = self.title or "file"
+        mime = self.type or "application/octet-stream"
+        url = self.attachment_url or ""
+        lines = [f'Loaded file "{title}" ({mime}) from {url}.']
+        if self.status_message:
+            lines.append(self.status_message)
+        return "\n".join(lines)
+
+    def tool_parts(self) -> tuple[str, dict[str, object]]:
+        return self.content_summary(), {GET_CONTENT_RESPONSE_STATE_KEY: self.to_state_entry()}
+
+    def merge_into_state(self, existing: dict[str, object] | None) -> dict[str, object]:
+        merged = dict(existing or {})
+        merged[GET_CONTENT_RESPONSE_STATE_KEY] = self.to_state_entry()
+        return merged
+
+
+def _model_facing_attachment_url(raw: str) -> str:
     value = raw.strip()
     if not value:
         return ""
@@ -48,8 +107,7 @@ def model_facing_attachment_url(raw: str) -> str:
     return to_file_url_reference(normalize_attachment_url_argument(value))
 
 
-def display_url_from_attachment_url(raw: str) -> str:
-    """Normalize a model-facing ``file:url::...`` reference to a bare display url."""
+def _display_url_from_attachment_url(raw: str) -> str:
     value = raw.strip()
     if not value:
         return ""
@@ -60,107 +118,15 @@ def display_url_from_attachment_url(raw: str) -> str:
     return normalize_attachment_url_argument(value)
 
 
-def success_response(*, display_url: str, title: str, mime_type: str) -> GetContentToolResponse:
-    return GetContentToolResponse(
-        status="Success",
-        attachment_url=model_facing_attachment_url(display_url),
-        title=title,
-        type=mime_type,
-    )
-
-
-def success_response_for_history(
-    *,
-    display_url: str,
-    title: str,
-    mime_type: str,
-) -> GetContentToolResponse:
-    return GetContentToolResponse(
-        status="Success",
-        attachment_url=model_facing_attachment_url(display_url),
-        title=title,
-        type=mime_type,
-        status_message=HISTORY_ATTACHMENT_REMOVED_STATUS_MESSAGE,
-    )
-
-
-def fail_response(*, message: str, accepted_types: list[str]) -> GetContentToolResponse:
-    return GetContentToolResponse(
-        status="Fail",
-        status_message=message,
-        accepted_types=accepted_types,
-    )
-
-
-def build_content_summary(response: GetContentToolResponse) -> str:
-    """Return the human-readable TOOL ``content`` string for the orchestrator model."""
-    if response.status == "Fail":
-        parts = [f"Failed to load attachment: {response.status_message or 'Unknown error'}."]
-        if response.accepted_types:
-            parts.append(f"Accepted MIME types: {', '.join(response.accepted_types)}.")
-        return " ".join(parts)
-
-    title = response.title or "file"
-    mime = response.type or "application/octet-stream"
-    url = response.attachment_url or ""
-    lines = [f'Loaded file "{title}" ({mime}) from {url}.']
-    if response.status_message:
-        lines.append(response.status_message)
-    return "\n".join(lines)
-
-
-def build_tool_result_parts(
-    response: GetContentToolResponse,
-) -> tuple[str, dict[str, object]]:
-    """Return ``(content, state_fragment)`` for a get-content ``ToolCallResult``."""
-    return build_content_summary(response), {
-        GET_CONTENT_RESPONSE_STATE_KEY: response.to_state_entry(),
-    }
-
-
-def merge_get_content_state(
-    existing: dict[str, object] | None,
-    response: GetContentToolResponse,
-) -> dict[str, object]:
-    merged = dict(existing or {})
-    merged[GET_CONTENT_RESPONSE_STATE_KEY] = response.to_state_entry()
-    return merged
-
-
-def parse_from_state(state: object) -> GetContentToolResponse | None:
-    """Read structured get-content data from ``custom_content.state``."""
-    if not isinstance(state, dict):
-        return None
-    raw = state.get(GET_CONTENT_RESPONSE_STATE_KEY)
-    if raw is None:
-        return None
-    try:
-        return GetContentToolResponse.model_validate(raw)
-    except ValidationError:
-        return None
-
-
-def parse_function_arguments(function: dict[str, object]) -> dict[str, object] | None:
-    arguments = function.get("arguments")
-    if not isinstance(arguments, str):
-        return None
-    try:
-        data = json.loads(arguments)
-    except (TypeError, ValueError):
-        return None
-    return data if isinstance(data, dict) else None
-
-
-def resolve_success_fields(
+def _resolve_success_fields(
     *,
     tool_call_arguments: dict[str, object] | None,
     attachments: list[object],
 ) -> tuple[str, str, str]:
-    """Return ``(display_url, title, mime_type)`` when rebuilding a success payload."""
     if tool_call_arguments is not None:
         attachment_url = tool_call_arguments.get("attachment_url")
         if isinstance(attachment_url, str) and attachment_url.strip():
-            display_url = display_url_from_attachment_url(attachment_url)
+            display_url = _display_url_from_attachment_url(attachment_url)
             title = ""
             mime_type = ""
             for item in attachments:
@@ -189,3 +155,48 @@ def resolve_success_fields(
         return display_url, title, mime_type
 
     return "", "", ""
+
+
+def parse_function_arguments(function: dict[str, object]) -> dict[str, object] | None:
+    arguments = function.get("arguments")
+    if not isinstance(arguments, str):
+        return None
+    try:
+        data = json.loads(arguments)
+    except (TypeError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def history_strip_response(
+    *,
+    tool_call_arguments: dict[str, object] | None,
+    attachments: list[object],
+    state: dict[str, object] | None,
+) -> GetContentToolResponse:
+    """Build the post-strip success payload for persisted get-content history."""
+    state_dict = state or {}
+    attachment_url = (
+        tool_call_arguments.get("attachment_url") if tool_call_arguments is not None else None
+    )
+    if isinstance(attachment_url, str) and attachment_url.strip():
+        display_url, title, mime_type = _resolve_success_fields(
+            tool_call_arguments=tool_call_arguments,
+            attachments=attachments,
+        )
+    else:
+        existing = GetContentToolResponse.from_state(state_dict)
+        if existing is not None and existing.status == "Success":
+            display_url = _display_url_from_attachment_url(existing.attachment_url or "")
+            title = existing.title or ""
+            mime_type = existing.type or ""
+        else:
+            display_url, title, mime_type = _resolve_success_fields(
+                tool_call_arguments=None,
+                attachments=attachments,
+            )
+    return GetContentToolResponse.for_history(
+        display_url=display_url,
+        title=title,
+        mime_type=mime_type,
+    )

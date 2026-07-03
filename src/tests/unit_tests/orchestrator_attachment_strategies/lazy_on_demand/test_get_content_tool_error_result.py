@@ -23,7 +23,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
     _GetContentTool,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
-    parse_from_state,
+    GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -79,7 +79,7 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == "Fail"
         assert payload.status_message == "Missing or empty attachment_url."
@@ -95,7 +95,7 @@ class TestErrorResultPayload:
             stage_wrapper=None, attachment_url="files/bucket/archive.zip"
         )
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == "Fail"
         assert payload.status_message == "Orchestrator deployment does not accept this file type."
@@ -111,7 +111,7 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == "Fail"
         assert payload.status_message == "Invalid storage path for attachment file."
@@ -134,7 +134,7 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == "Fail"
         assert payload.status_message == "External URL fetching is disabled by operator policy."
@@ -146,7 +146,7 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.accepted_types == []
 
@@ -156,6 +156,6 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = parse_from_state(result.state)
+        payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.accepted_types == ["image/*", "application/pdf"]
