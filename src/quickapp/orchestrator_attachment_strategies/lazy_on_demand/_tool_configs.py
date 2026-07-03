@@ -15,8 +15,7 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
             name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
             description=(
                 "Loads one allowed file/attachment by reference for the orchestrator to read. "
-                "Attachment bytes are not kept across user turns; when you need page-level or "
-                "verbatim content from a file that was loaded in an earlier turn, call this tool "
+                "Attachment bytes are not kept across user turns; when you need the content from a file that was loaded in an earlier turn, call this tool "
                 "again with the same attachment_url."
             ),
             parameters=OpenAiToolFunctionParameters(
@@ -24,9 +23,7 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
                 properties={
                     "attachment_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description=(
-                            "File reference in the file:url:: form used by prior tool calls."
-                        ),
+                        description=("File reference in the file:url:: form."),
                     )
                 },
                 required=["attachment_url"],

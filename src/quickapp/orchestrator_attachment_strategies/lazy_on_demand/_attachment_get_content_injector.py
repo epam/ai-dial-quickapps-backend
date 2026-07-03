@@ -18,6 +18,10 @@ from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    build_tool_result_parts,
+    success_response,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
@@ -92,13 +96,18 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         return False
 
     @staticmethod
-    def _build_tool_result_payload(attachment: Attachment, display_url: str) -> str:
+    def _build_tool_result_payload(
+        attachment: Attachment, display_url: str
+    ) -> tuple[str, dict[str, object]]:
         # display_url is what the model sees; the promoted DIAL url is only on `attachment`.
         title = str(attachment.title) if attachment.title else display_url.rsplit("/", 1)[-1]
         content_type = attachment.type or "application/octet-stream"
-        return json.dumps(
-            {"ok": True, "url": display_url, "title": title, "type": content_type},
-            ensure_ascii=False,
+        return build_tool_result_parts(
+            success_response(
+                display_url=display_url,
+                title=title,
+                mime_type=content_type,
+            )
         )
 
     @staticmethod
@@ -106,7 +115,8 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         tool_name: str,
         call_id: str,
         arguments: dict[str, Any],
-        payload: str,
+        content: str,
+        state: dict[str, object],
         attachment: Attachment,
     ) -> tuple[Message, Message]:
         assistant_msg = Message(
@@ -125,9 +135,9 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         )
         tool_msg = Message(
             role=Role.TOOL,
-            content=payload,
+            content=content,
             tool_call_id=call_id,
-            custom_content=CustomContent(attachments=[copy.deepcopy(attachment)]),
+            custom_content=CustomContent(attachments=[copy.deepcopy(attachment)], state=state),
         )
         return assistant_msg, tool_msg
 
@@ -208,13 +218,14 @@ class _AttachmentGetContentInjector(MessagesTransformer):
             ):
                 continue
 
-            payload = self._build_tool_result_payload(deliverable, display_url=original_url)
-            call_id = _make_call_id(self.call_id_prefix, tool_name, arguments, payload)
+            content, state = self._build_tool_result_payload(deliverable, display_url=original_url)
+            call_id = _make_call_id(self.call_id_prefix, tool_name, arguments, content)
             assistant_msg, tool_msg = self._build_pair(
                 tool_name=tool_name,
                 call_id=call_id,
                 arguments=arguments,
-                payload=payload,
+                content=content,
+                state=state,
                 attachment=deliverable,
             )
             at = insert_idx + inserted

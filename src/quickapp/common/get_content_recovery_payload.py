@@ -1,15 +1,20 @@
-"""Canonical JSON and ToolCallResult for get_content chat-completion recovery (message + stage UI)."""
+"""Canonical payload for get_content chat-completion recovery (message + stage UI)."""
 
-import json
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentToolResponse,
+    build_tool_result_parts,
+)
 
 _GET_CONTENT_RECOVERY_ERROR_TEXT = (
     "The AI model service rejected the attachment payload; the file was not forwarded."
 )
 
 
-def get_content_recovery_json_string() -> str:
-    """Exact TOOL message body written by get_content BadRequest recovery."""
-    return json.dumps(
-        {"ok": False, "error": _GET_CONTENT_RECOVERY_ERROR_TEXT},
-        ensure_ascii=False,
+def get_content_recovery_parts() -> tuple[str, dict[str, object]]:
+    """Human-readable TOOL content and state fragment for BadRequest recovery."""
+    return build_tool_result_parts(
+        GetContentToolResponse(
+            status="Fail",
+            status_message=_GET_CONTENT_RECOVERY_ERROR_TEXT,
+        )
     )

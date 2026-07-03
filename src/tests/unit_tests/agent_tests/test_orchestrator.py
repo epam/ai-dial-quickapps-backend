@@ -23,8 +23,15 @@ from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAM
 from quickapp.core.agent import Orchestrator
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
-    _build_attachment_removed_notice,
     _GetContentHistoryPolicy,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    build_content_summary,
+    build_tool_result_parts,
+    merge_get_content_state,
+    parse_from_state,
+    success_response,
+    success_response_for_history,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -771,9 +778,17 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
+    live_response = success_response(
+        display_url="files/bucket/report.pdf",
+        title="report.pdf",
+        mime_type="application/pdf",
+    )
+    tool_content, _ = build_tool_result_parts(live_response)
+    tool_state = merge_get_content_state({"marker": "keep"}, live_response)
+
     tool_message = Message(
         role=Role.TOOL,
-        content='{"ok": true}',
+        content=tool_content,
         tool_call_id="tc-1",
         custom_content=CustomContent(
             attachments=[
@@ -783,7 +798,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
                     url="files/bucket/report.pdf",
                 )
             ],
-            state={"marker": "keep"},
+            state=tool_state,
         ),
     )
     tool_result = Mock()
@@ -828,11 +843,21 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     custom_content = tool_entry.get("custom_content")
     assert isinstance(custom_content, dict)
     assert "attachments" not in custom_content
-    assert custom_content.get("state") == {"marker": "keep"}
-    tool_content = tool_entry.get("content")
-    assert tool_content == '{"ok": true}\n' + _build_attachment_removed_notice(
-        [to_file_url_reference("files/bucket/report.pdf")]
+    state = custom_content.get("state")
+    assert isinstance(state, dict)
+    assert state.get("marker") == "keep"
+    payload = parse_from_state(state)
+    assert payload is not None
+    assert (
+        payload.status_message
+        == success_response_for_history(
+            display_url="files/bucket/report.pdf",
+            title="report.pdf",
+            mime_type="application/pdf",
+        ).status_message
     )
+    assert payload.attachment_url == to_file_url_reference("files/bucket/report.pdf")
+    assert tool_entry.get("content") == build_content_summary(payload)
 
 
 @pytest.mark.asyncio
