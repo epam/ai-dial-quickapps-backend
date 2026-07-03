@@ -92,11 +92,11 @@ Both branches share the same front half — classify, egress-gate, fetch, decode
 
 ### UC-5: External egress is disabled (admin cap or per-app opt-out)
 
-**Trigger:** Agent calls `internal_web_fetch` on an external URL (with or without `save_path`) while `EXTERNAL_URL_FETCH_ENABLED=false` (or the app set `features.external_url_fetch.enabled=false`, or the host is outside the allowlist).
+**Trigger:** An app sets `features.web_fetch.enabled=true` while external fetching is disabled — `EXTERNAL_URL_FETCH_ENABLED=false` (admin cap) or `features.external_url_fetch.enabled=false` (per-app opt-out).
 
-**Behavior:** `ExternalUrlFetcher.fetch` raises `ExternalFetchDisabledError`; the tool wraps it as a parameter-scoped tool error carrying the existing operator/builder/allowlist message.
+**Behavior:** This is a contradictory configuration — the tool cannot function without egress — so it is caught at **initialization**, not per call. `WebToolingModule` gates tool provisioning on the egress policy (`ExternalUrlFetchPolicyResolver.is_enabled()`): the tool is **not exposed**, and a hard `ToolInitializationException` is surfaced in the "Initialization issues" stage explaining that `web_fetch` needs external fetch enabled. (A host-allowlist denial — egress on, but the *specific host* not allowed — is per-URL and cannot be known at init; it remains a runtime parameter error via `ExternalUrlFetcher.fetch`, see Component 3.)
 
-**Outcome:** The model gets a clear, actionable refusal — no new policy, no bypass.
+**Outcome:** The builder learns their config is contradictory up front; the model is never offered a tool that would fail on every call. No silent misconfiguration.
 
 ### UC-6: Agent passes a DIAL URL
 
@@ -193,13 +193,14 @@ The tool is **feature-gated** (enabled through `features.web_fetch`, not through
 - **Name:** `INTERNAL_WEB_FETCH_TOOL_NAME = "internal_web_fetch"` in `common/tool_names.py`.
 - **Feature config `WebFetchConfig`** (`config/web_fetch.py`): `enabled: bool = false`, `max_inline_size: int` (validated `gt=0`) defaulting (via `default_factory`) to the offload threshold. Exposed on the `Features` model (`config/application.py`) as a `PreviewField` — so configuring it requires `ENABLE_PREVIEW_FEATURES`.
 - **Provider:** `WebToolingModule` (`web_tooling/web_tooling_module.py`, `@preview_module`) via a `@multiprovider` that builds the tool when `features.web_fetch.enabled` is true (passing `max_inline_size` from the same config). Registered in `app_factory.py`.
+- **Egress init-gate (fail fast on contradictory config):** the tool is useless without external egress, so `WebToolingModule` injects `ExternalUrlFetchPolicyResolver` and, when `web_fetch.enabled` is set but `is_enabled()` is false (admin cap or per-app opt-out), **does not build the tool** and emits a hard `ToolInitializationException` via a second `@multiprovider -> list[InitializationException]` (aggregated by `_InitializationErrorHandler` into the "Initialization issues" stage). This replaces per-call egress-disabled errors for the on/off case (UC-5); host-allowlist denials stay runtime (Component 3).
 - **Shared home resolver:** move `_HomePathResolver` (`dial_files_tooling/_home_path_resolver.py`) into a **new `shared/home_path/` package** as public `HomePathResolver`, bound request-scoped by a `HomePathModule` spliced into `shared_module` (`shared/__init__.py`, mirroring the existing `ExternalFetchModule` there, per the CLAUDE.md `shared/` convention). `dial_files_tooling` drops its own binding (`dial_files_tooling_module.py`) and injects the shared type; `_DialFileTool` and the `_AppdataHomePathTransformer` keep working against the same public API. Its constructor deps (`DialFileService`, `DialFilesConfig`) are already globally bound.
 - **Preview gating:** `WebToolingModule` is `@preview_module` **and** `WebFetchConfig` is exposed via `PreviewField` — so `internal_web_fetch` is preview-gated at both the module and config level. (This mirrors how the dial-files tooling is preview-gated at the *module* level via `@preview_module`; note the `Features.dial_files` config field itself is a plain `Field`, so the two are not identical — `web_fetch` additionally nullifies its config outside preview.)
 - **Schema:** run `make dump_app_schema` to regenerate `docs/generated-app-schema.json` and `docs/generated-internal-tools.json`.
 
 ### Component 6: Egress policy (reused, unchanged)
 
-- No new policy code. The two-tier gate (`EXTERNAL_URL_FETCH_ENABLED` + `features.external_url_fetch.enabled`), host allowlists, and SSRF guard are enforced inside `ExternalUrlFetcher.fetch`. The tool's only responsibility is to surface the resulting errors clearly (UC-5).
+- No new policy code. The two-tier gate (`EXTERNAL_URL_FETCH_ENABLED` + `features.external_url_fetch.enabled`), host allowlists, and SSRF guard are enforced inside `ExternalUrlFetcher.fetch`. The tool reuses the same `ExternalUrlFetchPolicyResolver` to gate its own provisioning at init (Component 5, UC-5); at runtime it surfaces any residual errors (host-allowlist denials, SSRF) clearly.
 
 ---
 
@@ -254,8 +255,8 @@ features:
 
 ### Egress disabled (UC-5)
 
-`internal_web_fetch(url="https://example.com/x")` with `EXTERNAL_URL_FETCH_ENABLED=false`
-→ tool error: *"External URL fetching is disabled by operator policy (EXTERNAL_URL_FETCH_ENABLED)."*
+`features.web_fetch.enabled=true` with `EXTERNAL_URL_FETCH_ENABLED=false` (or `features.external_url_fetch.enabled=false`)
+→ the tool is **not exposed**; a hard initialization error appears in the "Initialization issues" stage: *"internal_web_fetch requires external URL fetching, which is disabled … enable it, or remove features.web_fetch."*
 
 ---
 
@@ -289,6 +290,7 @@ None. The tool is purely additive and opt-in via app config.
 - `common/tool_names.py` — add `INTERNAL_WEB_FETCH_TOOL_NAME`.
 - `config/application.py` — add a `web_fetch` `PreviewField` to the `Features` model.
 - `app_factory.py` — register `WebToolingModule`.
+- `web_tooling/web_tooling_module.py` — inject `ExternalUrlFetchPolicyResolver`; gate tool provisioning on `is_enabled()` and emit a hard `ToolInitializationException` (via a `list[InitializationException]` `@multiprovider`) when `web_fetch` is enabled but egress is disabled.
 - `dial_core_services/dial_file_service.py` — add `write_bytes` (bytes-capable sibling of `write_file`) targeting a resolved home URL (Component 4).
 - `dial_files_tooling/dial_files_tooling_module.py` — drop the local `_HomePathResolver` binding (now provided by `HomePathModule`) and inject the shared `HomePathResolver`.
 - `shared/__init__.py` — add `HomePathModule` to `shared_module`.
@@ -318,6 +320,7 @@ The current branch already carries a superseded two-tool implementation. Bringin
 - **save:** invalid `save_path` (absolute / traversal / empty / `files/`-prefixed) → parameter error on `save_path`.
 - **save:** `save_path` collision → numeric-suffix uniquification.
 - **save** then `internal_file_list`/`read_lines` on the returned relative path (workspace-placement guarantee).
-- **both branches:** egress disabled / host not allowed → parameter error with the policy message.
+- **both branches:** host not allowed / SSRF → parameter error with the policy message (runtime).
 - **both branches:** DIAL URL → parameter error pointing to the file tools.
 - **config:** `features.web_fetch.enabled=false` (or omitted) → tool not exposed (UC-7).
+- **egress init-gate:** `web_fetch.enabled=true` but egress disabled → tool not exposed **and** a hard `ToolInitializationException` emitted (UC-5); `enabled=false` + egress disabled → no error.

@@ -351,5 +351,22 @@
         "description": "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to UTC."
       }
     }
+  },
+  {
+    "name": "internal_web_fetch",
+    "description": "Fetch a resource from an external http(s) URL (e.g. a README, a source file, a documentation page). Without save_path it returns the text inline in a single call — text only: binary content (images, PDFs, archives) or a resource too large to fit inline is rejected, re-call with a save_path instead. With save_path it persists the resource (any content type) at that workspace-relative path under the agent home and returns the saved path (+ a short preview for text), so you can then read it with internal_file_read_lines / internal_file_search. DIAL file paths (files/...) are not fetched here; read them with the file tools.",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The external http(s) URL to fetch."
+      },
+      "save_path": {
+        "type": "string",
+        "description": "Optional workspace-relative destination (e.g. 'data.py' or 'docs/readme.md'). Omit to read the content inline; provide it to save the resource under the agent home and get back the saved path. Must not be an absolute 'files/...' URL."
+      }
+    },
+    "required": [
+      "url"
+    ]
   }
 ]

@@ -7,13 +7,13 @@ from quickapp.dial_files_tooling._utils import validate_relative_path
 
 
 @inject
-class _HomePathResolver:
+class HomePathResolver:
     """Resolves agent-home-relative paths to absolute DIAL file URLs and back.
 
     The agent home prefix (``files/{appdata}/{agent_home_dir}``) is resolved once
     per request (it may require a ``my_appdata_home()`` API call) and cached. Shared
-    by the file tools and the path-argument transformer so the home is resolved a
-    single time per request.
+    by the file tools, the path-argument transformer, and the web-fetch tool so the
+    home is resolved a single time per request.
     """
 
     def __init__(

@@ -23,6 +23,7 @@ from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.config.web_fetch import WebFetchConfig
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +190,14 @@ class Features(BaseModel):
     dial_files: DialFilesConfig | None = Field(
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+    )
+    web_fetch: WebFetchConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Built-in internal_web_fetch tool: fetch an external resource and return "
+            "it inline, or persist it to the workspace when a save_path is given "
+            "(binary / oversized content must be saved rather than read inline)."
+        ),
     )
 
 
