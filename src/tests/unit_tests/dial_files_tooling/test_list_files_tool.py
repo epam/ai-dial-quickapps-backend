@@ -1,5 +1,3 @@
-from unittest.mock import MagicMock
-
 import pytest
 from aidial_client._exception import ResourceNotFoundError
 
@@ -7,7 +5,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._tool_configs import LIST_FILES_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(entries: list[FolderEntry] | None = None, side_effect: Exception | None = None):
@@ -16,13 +14,7 @@ def _make_tool(entries: list[FolderEntry] | None = None, side_effect: Exception 
         service.list_folder.side_effect = side_effect
     else:
         service.list_folder.return_value = entries or []
-    return _ListFilesTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=LIST_FILES_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_ListFilesTool, LIST_FILES_TOOL_CONFIG, service=service)
 
 
 class TestListFiles:

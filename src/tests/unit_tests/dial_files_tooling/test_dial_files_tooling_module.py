@@ -19,14 +19,14 @@ class TestDialFilesToolingModule:
         module = DialFilesToolingModule()
         app_config = MagicMock()
         app_config.features = None
-        result = module._provide_dial_files_tools(app_config, *_make_builders())
+        result = module._provide_dial_files_tools(app_config, *_make_builders(), [], MagicMock())
         assert result == []
 
     def test_enabled_all_returns_all_tools(self):
         module = DialFilesToolingModule()
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools="all")
-        result = module._provide_dial_files_tools(app_config, *_make_builders())
+        result = module._provide_dial_files_tools(app_config, *_make_builders(), [], MagicMock())
         assert len(result) == 9
 
     def test_enabled_subset_filters_tools(self):
@@ -34,7 +34,7 @@ class TestDialFilesToolingModule:
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools=["read_lines"])
         builders = _make_builders()
-        result = module._provide_dial_files_tools(app_config, *builders)
+        result = module._provide_dial_files_tools(app_config, *builders, [], MagicMock())
         assert len(result) == 1
         # read is builder[1] (after list)
         builders[1].build.assert_called_once()
@@ -45,7 +45,22 @@ class TestDialFilesToolingModule:
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools=["find"])
         builders = _make_builders()
-        result = module._provide_dial_files_tools(app_config, *builders)
+        result = module._provide_dial_files_tools(app_config, *builders, [], MagicMock())
         assert len(result) == 1
         # find is builder[3] (list, read, search, find)
         builders[3].build.assert_called_once()
+
+    def test_path_transformer_injected_into_tools(self):
+        module = DialFilesToolingModule()
+        app_config = MagicMock()
+        app_config.features.dial_files = DialFilesConfig(enabled_tools=["write"])
+        builders = _make_builders()
+        global_transformer = MagicMock()
+        path_transformer = MagicMock()
+        module._provide_dial_files_tools(
+            app_config, *builders, [global_transformer], path_transformer
+        )
+        # write is builder[4] (list, read, search, find, write); the path transformer
+        # must run last (after the global transformers).
+        transformers = builders[4].build.call_args.kwargs["argument_transformers"]
+        assert transformers == [global_transformer, path_transformer]
