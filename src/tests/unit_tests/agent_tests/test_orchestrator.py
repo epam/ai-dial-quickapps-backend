@@ -108,6 +108,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -185,6 +186,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
             deferred_stage_close_registry=deferred_registry,
         ),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -243,6 +245,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -338,6 +341,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -418,6 +422,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -503,6 +508,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -521,7 +527,10 @@ def _make_tool_call(call_id: str, name: str = "tool_a") -> ToolCall:
     )
 
 
-def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
+def _make_orchestrator(
+    messages_list: list[Message],
+    tool_names: frozenset[str] = frozenset(),
+) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
     messages_context.messages = messages_list
@@ -546,6 +555,7 @@ def _make_orchestrator(messages_list: list[Message]) -> Orchestrator:
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=tool_names,
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -727,6 +737,55 @@ class TestBuildToolExecutionHistory:
         assert result[1]["role"] == "tool"
         assert result[1]["tool_call_id"] == "tc-synth"
 
+    def test_external_only_assistant_message_excluded(self):
+        """ASSISTANT messages with only external tool calls must not appear in history."""
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-server", name="server_tool")],
+            ),
+            Message(role=Role.TOOL, content="server result", tool_call_id="tc-server"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-ext", name="ext_tool")],
+            ),
+        ]
+        orchestrator = _make_orchestrator(messages, tool_names=frozenset({"ext_tool"}))
+        result = orchestrator._build_tool_execution_history()
+
+        # Only the server tool call pair is in history; the external-only ASSISTANT is excluded
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-server"
+        assert result[1]["role"] == "tool"
+
+    def test_mixed_assistant_message_included(self):
+        """ASSISTANT messages with both server and external tool calls are kept,
+        but external tool calls are stripped from the persisted history."""
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-server", name="server_tool"),
+                    _make_tool_call("tc-ext", name="ext_tool"),
+                ],
+            ),
+            Message(role=Role.TOOL, content="server result", tool_call_id="tc-server"),
+        ]
+        orchestrator = _make_orchestrator(messages, tool_names=frozenset({"ext_tool"}))
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert len(result[0]["tool_calls"]) == 1
+        assert result[0]["tool_calls"][0]["function"]["name"] == "server_tool"
+        assert result[1]["role"] == "tool"
+
 
 @pytest.mark.asyncio
 async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_history():
@@ -812,6 +871,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -905,6 +965,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
