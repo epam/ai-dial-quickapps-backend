@@ -1,6 +1,7 @@
 import copy
 
 from aidial_sdk.chat_completion.request import StaticTool
+from aidial_sdk.exceptions import InvalidRequestError
 from fastapi_injector import request_scope
 from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provider, singleton
 from openai.lib.azure import AsyncAzureOpenAI
@@ -8,6 +9,7 @@ from openai.lib.azure import AsyncAzureOpenAI
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
+    EXTERNAL_TOOL_NAMES,
     ORCHESTRATOR_AZURE_CLIENT,
     ForwardedHeaders,
     StagedBaseTool,
@@ -37,6 +39,7 @@ from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
 )
+from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.display.paramenter import (
     FormattedParameterConfig,
     ParameterDisplayConfig,
@@ -57,6 +60,7 @@ from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabiliti
 from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
+from quickapp.core.application._request_context import _RequestContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -162,12 +166,10 @@ class AgentModule(Module):
     ) -> list[OpenAiToolConfigDict]:
         openai_functions = []
         for tool in tools:
-            if issubclass(type(tool.tool_config), BaseOpenAITool):
+            if isinstance(tool.tool_config, BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
                 open_ai_tool = self._remove_const_params(open_ai_tool)
-                if tool.tool_config.type in [
-                    "deployment-tool"
-                ]:  # Append Query and attachment_urls for all deployment tools if they are missing.
+                if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         for default_tool in static_tools:
@@ -179,6 +181,39 @@ class AgentModule(Module):
         self, orchestrator_static_tools_context: _OrchestratorStaticToolsContext
     ) -> list[StaticTool]:
         return orchestrator_static_tools_context.static_tools
+
+    @multiprovider
+    def provide_extra_openai_tools(
+        self,
+        context: _RequestContext,
+        tools: list[StagedBaseTool],
+        static_tools: list[StaticTool],
+    ) -> list[OpenAiToolConfigDict]:
+        extra_tools = context.extra_tools
+        if not extra_tools:
+            return []
+        server_names: set[str] = {
+            tool.tool_config.open_ai_tool.function.name
+            for tool in tools
+            if isinstance(tool.tool_config, BaseOpenAITool)
+        } | {st.static_function.name for st in static_tools}
+        for t in extra_tools:
+            if t.function.name in server_names:
+                raise InvalidRequestError(
+                    message=f"Tool name '{t.function.name}' conflicts with a server-configured tool",
+                    display_message=(
+                        f"The tool name '{t.function.name}' conflicts with a server-configured tool."
+                        " Use a different name."
+                    ),
+                )
+        return [t.model_dump(mode="json", exclude_none=True) for t in extra_tools]
+
+    @provider
+    @request_scope
+    def provide_tool_names(self, context: _RequestContext) -> EXTERNAL_TOOL_NAMES:
+        return frozenset(
+            t.function.name for t in context.extra_tools if t.function and t.function.name
+        )
 
     @staticmethod
     def _remove_const_params(open_ai_tool):

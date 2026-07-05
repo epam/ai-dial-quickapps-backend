@@ -452,6 +452,40 @@ class ResponseValidator:
         return failures
 
     @staticmethod
+    def check_external_tool_calls(
+        raw_tool_calls: list[dict] | None,
+        expected_external_tool_calls: list[ToolCall],
+        ts: TestStats,
+    ) -> list[Failure]:
+        """Validates external tool calls returned in the response message against expected calls."""
+        if not expected_external_tool_calls:
+            return []
+
+        parsed_calls: list[ParsedToolCall] = []
+        for raw_tc in raw_tool_calls or []:
+            func = raw_tc.get("function", {})
+            name = func.get("name", "")
+            args_str = func.get("arguments", "{}")
+            try:
+                args = json.loads(args_str) if isinstance(args_str, str) else args_str or {}
+            except json.JSONDecodeError:
+                args = {"input": args_str}
+            parsed_calls.append(ParsedToolCall(name=name, args=args, result=""))
+
+        failures = []
+        failures.extend(
+            ResponseValidator._validate_tool_call_counts(
+                parsed_calls, expected_external_tool_calls, ts
+            )
+        )
+        failures.extend(
+            ResponseValidator._validate_tool_call_arguments(
+                parsed_calls, expected_external_tool_calls, ts
+            )
+        )
+        return failures
+
+    @staticmethod
     def check_attachments(
         attachments: list[Any], expected_attachments: list[AttachmentCheck], ts: TestStats
     ) -> list[Failure]:

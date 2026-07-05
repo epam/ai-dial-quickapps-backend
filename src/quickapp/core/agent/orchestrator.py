@@ -8,7 +8,7 @@ from injector import ProviderOf, inject
 from openai import APIError, AsyncStream, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 
-from quickapp.common import DeploymentUsage
+from quickapp.common import EXTERNAL_TOOL_NAMES, DeploymentUsage
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.chat_completion_recovery import (
     STREAM_ACCUMULATION_RETRY_SCOPE,
@@ -55,6 +55,7 @@ class Orchestrator:
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         chat_completion_recovery: ChatCompletionRecoveryService,
         tool_execution_history_policies: list[ToolExecutionHistoryPolicy],
+        tool_names: EXTERNAL_TOOL_NAMES,
         request_async_close_registry: RequestAsyncCloseRegistry,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
@@ -79,6 +80,7 @@ class Orchestrator:
         self.__tool_execution_history_policies: list[ToolExecutionHistoryPolicy] = (
             tool_execution_history_policies
         )
+        self.__tool_names: frozenset[str] = tool_names
         self.__request_async_close_registry: RequestAsyncCloseRegistry = (
             request_async_close_registry
         )
@@ -168,10 +170,30 @@ class Orchestrator:
         logger.debug("Message from agent: %s", self.__messages_context.messages)
 
         if not tool_calls:
+            self.__perf_timer.stop_period(period)
             self.__deferred_stage_close_registry.flush()
             return False
 
-        logger.debug("Agent requests tool calls: %s", tool_calls)
+        if self.__tool_names:
+            external = [tc for tc in tool_calls if tc.name in self.__tool_names]
+            internal = [tc for tc in tool_calls if tc.name not in self.__tool_names]
+        else:
+            external = []
+            internal = tool_calls
+
+        if internal:
+            await self._execute_internal_tool_calls(internal)
+
+        if external:
+            self._surface_external_tool_calls(external, period)
+            return False
+
+        self.__perf_timer.stop_period(period)
+        logger.debug("Message from context: %s", self.__messages_context.messages)
+        return True
+
+    async def _execute_internal_tool_calls(self, tool_calls: list[AccumulatedToolCall]) -> None:
+        logger.debug("Agent requests internal tool calls: %s", tool_calls)
         tool_call_results = await self.__tool_executor.execute(tool_calls)
         if not tool_call_results:
             raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
@@ -185,9 +207,14 @@ class Orchestrator:
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
 
+    def _surface_external_tool_calls(
+        self, tool_calls: list[AccumulatedToolCall], period: str
+    ) -> None:
+        logger.debug("Surfacing external tool calls to client: %s", tool_calls)
+        for tc in tool_calls:
+            self.__choice.create_function_tool_call(tc.id, tc.name, tc.arguments)
         self.__perf_timer.stop_period(period)
-        logger.debug("Message from context: %s", self.__messages_context.messages)
-        return True
+        self.__deferred_stage_close_registry.flush()
 
     async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
         """Invoke assistant and consume stream; on APIError/BadRequest during stream, run recovery once."""
@@ -222,16 +249,39 @@ class Orchestrator:
 
         Stores messages directly to preserve parallel tool call grouping.
         Only includes ASSISTANT messages with tool_calls and TOOL messages.
+        ASSISTANT messages whose tool calls are all external (client-side) are excluded
+        because they are surfaced via create_function_tool_call, not executed server-side.
+        For mixed ASSISTANT messages (both internal and external tool calls), external
+        tool calls are stripped so that reconstruction produces valid LLM history.
         """
         history: list[dict[str, object]] = []
 
         for msg in reversed(self.__messages_context.messages):
             if msg.role == Role.USER:
                 break
-            if msg.role == Role.TOOL or (msg.role == Role.ASSISTANT and msg.tool_calls):
+            if msg.role == Role.TOOL:
                 history.append(msg.model_dump(mode="json", exclude_none=True))
+            elif (
+                msg.role == Role.ASSISTANT
+                and msg.tool_calls
+                and not self._is_all_external(msg.tool_calls)
+            ):
+                msg_dict = msg.model_dump(mode="json", exclude_none=True)
+                if self.__tool_names and msg_dict.get("tool_calls"):
+                    msg_dict["tool_calls"] = [
+                        tc
+                        for tc in msg_dict["tool_calls"]
+                        if tc.get("function", {}).get("name") not in self.__tool_names
+                    ]
+                history.append(msg_dict)
 
         return history[::-1]
+
+    def _is_all_external(self, tool_calls: list) -> bool:
+        """True if every tool call in the list is an external (client-side) tool."""
+        return bool(self.__tool_names) and all(
+            tc.function.name in self.__tool_names for tc in tool_calls
+        )
 
     def _is_terminal_completion(self) -> bool:
         """True when the latest message is a final assistant response (no tool calls)."""
