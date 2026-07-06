@@ -1,5 +1,28 @@
 {
   "applications": {
+    "memory": {
+      "name": "applications/public/AppMemory__1.0.0",
+      "display_name": "AppMemory",
+      "display_version": "1.0.0",
+      "description": "",
+      "reference": "8ebba66e-4c77-4f9a-b6c3-163c0ab6620c",
+      "forward_auth_token": false,
+      "defaults": {},
+      "responses_defaults": {},
+      "interceptors": [],
+      "description_keywords": [],
+      "max_retry_attempts": 1,
+      "dependencies": [],
+      "application_properties": {},
+      "mcp": {
+        "endpoint": "http://memory:8000/mcp/",
+        "transport": "HTTP",
+        "allowedTools": [],
+        "configDelivery": "META",
+        "forwardPerRequestKey": true
+      },
+      "routes": {}
+    },
     "test_folder_app": {
       "displayName": "TestFolderAppPreConfigured",
       "description": "Application with rag and folder in contexts",
