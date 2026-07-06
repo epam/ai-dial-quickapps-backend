@@ -6,7 +6,6 @@ must always emit an ``accepted_types`` JSON array so the model learns the live
 ``docs/designs/pass_attachments_to_orchestrator.md``).
 """
 
-import json
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -22,6 +21,10 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
+    GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -77,10 +80,11 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = json.loads(result.content)
-        assert payload["ok"] is False
-        assert payload["error"] == "Missing or empty attachment_url."
-        assert payload["accepted_types"] == ["application/pdf", "text/csv"]
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "Missing or empty attachment_url."
+        assert payload.accepted_types == ["application/pdf", "text/csv"]
 
     @pytest.mark.asyncio
     async def test_dial_url_inferred_mime_not_accepted_includes_accepted_types(self):
@@ -92,10 +96,11 @@ class TestErrorResultPayload:
             stage_wrapper=None, attachment_url="files/bucket/archive.zip"
         )
 
-        payload = json.loads(result.content)
-        assert payload["ok"] is False
-        assert payload["error"] == "Orchestrator deployment does not accept this file type."
-        assert payload["accepted_types"] == ["application/pdf"]
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+        assert payload.accepted_types == ["application/pdf"]
 
     @pytest.mark.asyncio
     async def test_unsupported_scheme_includes_accepted_types(self):
@@ -107,10 +112,11 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
 
-        payload = json.loads(result.content)
-        assert payload["ok"] is False
-        assert payload["error"] == "Invalid storage path for attachment file."
-        assert payload["accepted_types"] == ["application/pdf"]
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "Invalid storage path for attachment file."
+        assert payload.accepted_types == ["application/pdf"]
 
     @pytest.mark.asyncio
     async def test_external_promotion_blocked_includes_accepted_types(self):
@@ -129,10 +135,11 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=url)
 
-        payload = json.loads(result.content)
-        assert payload["ok"] is False
-        assert payload["error"] == "External URL fetching is disabled by operator policy."
-        assert payload["accepted_types"] == ["application/pdf"]
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "External URL fetching is disabled by operator policy."
+        assert payload.accepted_types == ["application/pdf"]
 
     @pytest.mark.asyncio
     async def test_accepted_types_empty_list_when_input_attachment_types_none(self):
@@ -140,8 +147,9 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = json.loads(result.content)
-        assert payload["accepted_types"] == []
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.accepted_types == []
 
     @pytest.mark.asyncio
     async def test_accepted_types_preserves_wildcard_patterns(self):
@@ -149,5 +157,6 @@ class TestErrorResultPayload:
 
         result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url=None)
 
-        payload = json.loads(result.content)
-        assert payload["accepted_types"] == ["image/*", "application/pdf"]
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.accepted_types == ["image/*", "application/pdf"]

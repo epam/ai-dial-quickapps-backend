@@ -7,7 +7,6 @@ original url the model passed. There is no in-app url allow-set — DIAL Core
 authorizes ``files/`` fetches and the external-fetch policy authorizes ``http(s)``.
 """
 
-import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -15,6 +14,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.utils import matches_type
 from quickapp.core.agent import OrchestratorCapabilities
@@ -24,6 +24,10 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool import (
     _GetContentTool,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
+    GetContentToolResponse,
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
@@ -91,9 +95,12 @@ class TestGetContentTool:
         assert result.attachments is not None
         assert result.attachments[0].url == "files/bucket/a.pdf"
         assert result.attachments[0].type == "application/pdf"
-        payload = json.loads(result.content)
-        assert payload["ok"] is True
-        assert payload["url"] == "files/bucket/a.pdf"
+        assert result.content_type == "text/plain"
+        assert 'Loaded file "a.pdf"' in result.content
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == to_file_url_reference("files/bucket/a.pdf")
 
     @pytest.mark.asyncio
     async def test_external_user_attachment_is_promoted(self):
@@ -122,9 +129,10 @@ class TestGetContentTool:
         assert result.attachments[0].url == "files/bucket/report.pdf"
         assert result.attachments[0].type == "application/pdf"
         # the tool-result text echoes the original url the model passed
-        payload = json.loads(result.content)
-        assert payload["ok"] is True
-        assert payload["url"] == "https://example.com/report.pdf"
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == to_file_url_reference("https://example.com/report.pdf")
 
     @pytest.mark.asyncio
     async def test_external_url_absent_from_contexts_and_messages_is_promoted(self):
@@ -144,9 +152,10 @@ class TestGetContentTool:
         promoter.promote.assert_awaited_once()
         assert result.attachments is not None
         assert result.attachments[0].url == "files/bucket/pasted.pdf"
-        payload = json.loads(result.content)
-        assert payload["ok"] is True
-        assert payload["url"] == "https://example.com/pasted.pdf"
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == to_file_url_reference("https://example.com/pasted.pdf")
 
     @pytest.mark.asyncio
     async def test_dial_url_absent_from_config_is_built_with_inferred_mime(self):
@@ -165,10 +174,11 @@ class TestGetContentTool:
         assert result.attachments is not None
         assert result.attachments[0].url == "files/bucket/orphan.pdf"
         assert result.attachments[0].type == "application/pdf"
-        payload = json.loads(result.content)
-        assert payload["ok"] is True
-        assert payload["url"] == "files/bucket/orphan.pdf"
-        assert payload["title"] == "orphan.pdf"
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == to_file_url_reference("files/bucket/orphan.pdf")
+        assert payload.title == "orphan.pdf"
 
     @pytest.mark.asyncio
     async def test_external_promotion_rejected_when_mime_not_accepted(self):
@@ -187,6 +197,7 @@ class TestGetContentTool:
             stage_wrapper=None, attachment_url="https://example.com/data.pdf"
         )
 
-        payload = json.loads(result.content)
-        assert payload["ok"] is False
-        assert payload["error"] == "Orchestrator deployment does not accept this file type."
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "Orchestrator deployment does not accept this file type."

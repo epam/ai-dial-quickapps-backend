@@ -6,7 +6,6 @@ underlying fetch is enforced upstream — DIAL Core gates ``files/`` access by t
 caller's bucket permissions, and the external-fetch policy gates ``http(s)``.
 """
 
-import json
 import logging
 from typing import Any
 
@@ -36,6 +35,9 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_mate
 )
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_stage_wrapper import (
     _GetContentStageWrapper,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentToolResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -81,17 +83,12 @@ class _GetContentTool(StagedBaseTool):
         self.__materializer: _AttachmentMaterializer = materializer
 
     def _error_result(self, message: str) -> ToolCallResult:
-        payload = json.dumps(
-            {
-                "ok": False,
-                "error": message,
-                "accepted_types": list(
-                    self.__orchestrator_capabilities.input_attachment_types or []
-                ),
-            },
-            ensure_ascii=False,
+        response = GetContentToolResponse.fail(
+            message=message,
+            accepted_types=list(self.__orchestrator_capabilities.input_attachment_types or []),
         )
-        return ToolCallResult(content=payload, content_type="application/json")
+        content, state = response.tool_parts()
+        return ToolCallResult(content=content, content_type="text/plain", state=state)
 
     async def _run_in_stage_async(
         self,
@@ -184,14 +181,17 @@ class _GetContentTool(StagedBaseTool):
             type=resolved.mime or "application/octet-stream",
             url=resolved.url,
         )
-        payload = json.dumps(
-            {"ok": True, "url": payload_url, "title": resolved.title, "type": attachment.type},
-            ensure_ascii=False,
+        response = GetContentToolResponse.success(
+            display_url=payload_url,
+            title=resolved.title,
+            mime_type=str(attachment.type or ""),
         )
+        content, state = response.tool_parts()
         result = ToolCallResult(
-            content=payload,
-            content_type="application/json",
+            content=content,
+            content_type="text/plain",
             attachments=[attachment],
+            state=state,
         )
         logger.debug(
             "get_content tool allowed: deployment_id=%s url_basename=%s type=%s",

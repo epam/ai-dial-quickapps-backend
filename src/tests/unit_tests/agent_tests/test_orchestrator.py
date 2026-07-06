@@ -15,6 +15,7 @@ from aidial_sdk.chat_completion.request import (
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -23,6 +24,9 @@ from quickapp.core.agent import Orchestrator
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentToolResponse,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -828,9 +832,17 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
+    live_response = GetContentToolResponse.success(
+        display_url="files/bucket/report.pdf",
+        title="report.pdf",
+        mime_type="application/pdf",
+    )
+    tool_content, _ = live_response.tool_parts()
+    tool_state = live_response.merge_into_state({"marker": "keep"})
+
     tool_message = Message(
         role=Role.TOOL,
-        content='{"ok": true}',
+        content=tool_content,
         tool_call_id="tc-1",
         custom_content=CustomContent(
             attachments=[
@@ -840,7 +852,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
                     url="files/bucket/report.pdf",
                 )
             ],
-            state={"marker": "keep"},
+            state=tool_state,
         ),
     )
     tool_result = Mock()
@@ -886,7 +898,21 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     custom_content = tool_entry.get("custom_content")
     assert isinstance(custom_content, dict)
     assert "attachments" not in custom_content
-    assert custom_content.get("state") == {"marker": "keep"}
+    state = custom_content.get("state")
+    assert isinstance(state, dict)
+    assert state.get("marker") == "keep"
+    payload = GetContentToolResponse.from_state(state)
+    assert payload is not None
+    assert (
+        payload.status_message
+        == GetContentToolResponse.for_history(
+            display_url="files/bucket/report.pdf",
+            title="report.pdf",
+            mime_type="application/pdf",
+        ).status_message
+    )
+    assert payload.attachment_url == to_file_url_reference("files/bucket/report.pdf")
+    assert tool_entry.get("content") == payload.content_summary()
 
 
 @pytest.mark.asyncio

@@ -15,6 +15,10 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
+    GetContentToolResponse,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
@@ -260,7 +264,12 @@ class TestExternalUrlPromotion:
         assert tool.custom_content.attachments[0].url == "files/bucket/report.pdf"
         assert tool.custom_content.attachments[0].type == "application/pdf"
         # the tool-result text echoes the original url the model passed
-        assert json.loads(str(tool.content))["url"] == "https://example.com/report.pdf"
+        assert tool.custom_content is not None
+        payload = GetContentToolResponse.from_state(tool.custom_content.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == "file:url::https://example.com/report.pdf"
+        assert 'Loaded file "report.pdf"' in str(tool.content)
 
     @pytest.mark.asyncio
     async def test_external_attachment_skipped_when_promotion_blocked(self):
