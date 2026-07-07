@@ -171,6 +171,7 @@ class AgentModule(Module):
                 open_ai_tool = self._remove_const_params(open_ai_tool)
                 if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
+                open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
                 openai_functions.append(open_ai_tool.model_dump(mode="json", exclude_none=True))
         for default_tool in static_tools:
             openai_functions.append(default_tool.model_dump(mode="json", exclude_none=True))

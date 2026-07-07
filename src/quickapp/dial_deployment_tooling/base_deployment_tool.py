@@ -20,7 +20,12 @@ from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
-from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
+from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
+from quickapp.config.tools.deployment import (
+    ContentPropagation,
+    ConversationMode,
+    DialDeploymentTool,
+)
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
@@ -72,9 +77,15 @@ class BaseDeploymentTool(StagedBaseTool):
         **kwargs,
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
+        session_id: str | None = kwargs.pop("session_id", None)
         history = None
-        if self.__content_propagation and self.__content_propagation.propagate_history:
-            history = await self._extract_tool_history(tool_config.open_ai_tool.function.name)
+        if self.__content_propagation and (
+            self.__content_propagation.propagate_history
+            or self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
+        ):
+            history = await self._extract_tool_history(
+                tool_config.open_ai_tool.function.name, session_id=session_id
+            )
         return await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
@@ -84,6 +95,37 @@ class BaseDeploymentTool(StagedBaseTool):
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
         )
+
+    _STATEFUL_DESCRIPTION_SUFFIX = (
+        "\n\nThis tool is a stateful subagent: it maintains conversation history across calls "
+        "within the same session. On each follow-up call, the backend automatically prepends "
+        "prior exchanges for that session. Send only the new information (delta) in `query` — "
+        "do not re-summarize prior context. Assign a unique `session_id` at the start of each "
+        "conversation thread and use the same value for all follow-up calls in that thread."
+    )
+
+    _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(
+        type=JsonTypeEnum.string,
+        description=(
+            "Identifier for this conversation thread. Assign a unique value when starting a "
+            "new multi-turn exchange with this subagent (e.g. 'research-climate'). Use the "
+            "same session_id on all follow-up calls for that thread. Use a different "
+            "session_id to start an independent conversation thread."
+        ),
+    )
+
+    def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
+        if not (
+            self.__content_propagation
+            and self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
+        ):
+            return open_ai_tool
+        open_ai_tool.function.description = (
+            open_ai_tool.function.description or ""
+        ) + self._STATEFUL_DESCRIPTION_SUFFIX
+        if "session_id" not in open_ai_tool.function.parameters.properties:
+            open_ai_tool.function.parameters.properties["session_id"] = self._SESSION_ID_PARAM
+        return open_ai_tool
 
     @staticmethod
     def _sdk_attachment_to_param(attachment: SdkAttachment) -> AttachmentParam:
@@ -97,6 +139,7 @@ class BaseDeploymentTool(StagedBaseTool):
     async def _extract_tool_history(
         self,
         tool_name: str,
+        session_id: str | None = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         if not tool_name:
             return []
@@ -106,8 +149,9 @@ class BaseDeploymentTool(StagedBaseTool):
         # Build map: tool_call_id -> (content, custom_content)
         tool_result_by_id: dict[str, tuple[str, CustomContent | None]] = {}
         for msg in messages:
-            if msg.role == Role.TOOL and msg.tool_call_id and msg.content:
-                content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+            if msg.role == Role.TOOL and msg.tool_call_id:
+                raw = msg.content
+                content = "" if raw is None else (str(raw) if not isinstance(raw, str) else raw)
                 tool_result_by_id[msg.tool_call_id] = (content, msg.custom_content)
 
         # Walk ASSISTANT messages, find completed tool_calls matching tool_name
@@ -120,6 +164,16 @@ class BaseDeploymentTool(StagedBaseTool):
                 if tc.function.name != tool_name:
                     continue
 
+                # When session_id is provided, only include calls from the same thread.
+                # Absent session_id falls back to tool_name-only filtering (propagate_history behaviour).
+                if session_id is not None:
+                    try:
+                        call_args = json.loads(tc.function.arguments)
+                        if call_args.get("session_id") != session_id:
+                            continue
+                    except (json.JSONDecodeError, AttributeError):
+                        continue
+
                 result_entry = tool_result_by_id.get(tc.id)
                 if result_entry is None:
                     # Current call — its TOOL result hasn't been appended yet
@@ -131,8 +185,10 @@ class BaseDeploymentTool(StagedBaseTool):
                 if user_msg is not None:
                     history.append(user_msg)
 
-                if tool_content:
-                    assistant_msg = self._build_assistant_message(tool_content, tool_custom_content)
+                if tool_content or tool_custom_content:
+                    assistant_msg = self._build_assistant_message(
+                        tool_content or "", tool_custom_content
+                    )
                     history.append(assistant_msg)
 
         return history

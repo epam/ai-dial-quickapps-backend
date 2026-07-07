@@ -18,6 +18,7 @@ from quickapp.common.stage_close_registry import (
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import BaseOpenAITool
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
+from quickapp.config.tools.base import OpenAiToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
@@ -152,6 +153,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     Exception("An error occurred while executing the tool.")
                 )
             return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
+
+    def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
+        return open_ai_tool
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
         for transformer in self.__argument_transformers:

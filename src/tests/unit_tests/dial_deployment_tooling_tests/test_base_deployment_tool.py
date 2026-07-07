@@ -1,3 +1,4 @@
+import copy
 import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
@@ -9,6 +10,7 @@ from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, Tool
 from pydantic import StrictStr
 
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
@@ -22,7 +24,11 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.config.tools.deployment import DialDeploymentTool
+from quickapp.config.tools.deployment import (
+    ContentPropagation,
+    ConversationMode,
+    DialDeploymentTool,
+)
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
 
 
@@ -37,10 +43,13 @@ def _make_tool_call(
     name: str,
     query: str,
     attachment_urls: list[str] | None = None,
+    session_id: str | None = None,
 ) -> ToolCall:
     args: dict[str, Any] = {"query": query}
     if attachment_urls is not None:
         args["attachment_urls"] = attachment_urls
+    if session_id is not None:
+        args["session_id"] = session_id
     return ToolCall(
         id=tool_call_id,
         type="function",
@@ -455,3 +464,285 @@ async def test_pre_process_params_standard_params_stay_flat():
     assert result["temperature"] == 0.7
     assert "temperature" not in result.get("custom_fields", {}).get("configuration", {})
     assert result["custom_fields"]["configuration"]["size"] == "1024x1024"
+
+
+# ---------------------------------------------------------------------------
+# _extract_tool_history: empty content with state
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_preserves_state_with_empty_content():
+    """TOOL message with state but empty content still produces an AssistantMessageParam with state."""
+    state_data = {"tool_execution_history": [{"role": "assistant", "content": "step 1"}]}
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Hello")),
+        _make_assistant_with_tool_calls([_make_tool_call("tc1", "my_tool", "go")]),
+        _make_tool_result("tc1", "", custom_content=CustomContent(state=state_data)),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool")
+
+    assert len(history) == 2
+    assistant_msg = history[1]
+    assert assistant_msg["role"] == "assistant"
+    assert assistant_msg["content"] == ""
+    assert assistant_msg["custom_content"]["state"] == state_data
+
+
+# ---------------------------------------------------------------------------
+# conversation_mode: _run_in_stage_async history triggering
+# ---------------------------------------------------------------------------
+
+
+def _build_tool_with_propagation(
+    messages: list[Message],
+    content_propagation: ContentPropagation | None,
+    dial_completion_service: Any = None,
+) -> BaseDeploymentTool:
+    """Build a BaseDeploymentTool with a real tool_config and configurable content_propagation."""
+    if dial_completion_service is None:
+        dial_completion_service = AsyncMock()
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=_make_tool_config(),
+        content_propagation=content_propagation,
+        dial_completion_service=dial_completion_service,
+        attachment_resolver=MagicMock(),
+        messages_mixin=_make_messages_mixin(messages),
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
+    )
+
+
+def _make_mock_completion_service() -> Any:
+    svc = AsyncMock()
+    svc.complete_request_async.return_value = ToolCallResult(
+        content="ok", content_type="text/plain"
+    )
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_conversation_mode_stateful_triggers_extract():
+    """conversation_mode=stateful causes history to be built and passed to the service."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        dial_completion_service=svc,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["history"] is not None
+
+
+@pytest.mark.asyncio
+async def test_conversation_mode_stateless_skips_extract():
+    """conversation_mode=stateless with propagate_history=False passes history=None."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(
+            conversation_mode=ConversationMode.STATELESS,
+            propagate_history=False,
+        ),
+        dial_completion_service=svc,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["history"] is None
+
+
+@pytest.mark.asyncio
+async def test_propagate_history_and_stateful_are_independent():
+    """propagate_history=True and conversation_mode=stateful each independently trigger extraction."""
+    for propagation in [
+        ContentPropagation(propagate_history=True, conversation_mode=ConversationMode.STATELESS),
+        ContentPropagation(propagate_history=False, conversation_mode=ConversationMode.STATEFUL),
+    ]:
+        svc = _make_mock_completion_service()
+        tool = _build_tool_with_propagation(
+            messages=[],
+            content_propagation=propagation,
+            dial_completion_service=svc,
+        )
+
+        await tool._run_in_stage_async(stage_wrapper=None, query="hello")
+
+        _, kwargs = svc.complete_request_async.call_args
+        assert kwargs["history"] is not None, f"Expected history for {propagation}"
+
+
+# ---------------------------------------------------------------------------
+# _extract_tool_history: session_id filtering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_session_id_filters_to_matching_thread():
+    """When session_id is provided, only calls with that session_id are included."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Start")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "thread-A step 1", session_id="session-A"),
+                _make_tool_call("tc2", "my_tool", "thread-B step 1", session_id="session-B"),
+            ]
+        ),
+        _make_tool_result("tc1", "A answer 1"),
+        _make_tool_result("tc2", "B answer 1"),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc3", "my_tool", "thread-A step 2", session_id="session-A"),
+            ]
+        ),
+        _make_tool_result("tc3", "A answer 2"),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool", session_id="session-A")
+
+    assert len(history) == 4
+    assert history[0]["content"] == "thread-A step 1"
+    assert history[1]["content"] == "A answer 1"
+    assert history[2]["content"] == "thread-A step 2"
+    assert history[3]["content"] == "A answer 2"
+
+
+@pytest.mark.asyncio
+async def test_extract_session_id_excludes_other_threads():
+    """Calls with a different session_id are not included."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Start")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "thread-A step", session_id="session-A"),
+            ]
+        ),
+        _make_tool_result("tc1", "A answer"),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool", session_id="session-B")
+
+    assert history == []
+
+
+@pytest.mark.asyncio
+async def test_extract_session_id_none_falls_back_to_tool_name_only():
+    """When session_id is None, falls back to tool_name-only filtering (includes all sessions)."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Start")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call("tc1", "my_tool", "thread-A", session_id="session-A"),
+                _make_tool_call("tc2", "my_tool", "thread-B", session_id="session-B"),
+            ]
+        ),
+        _make_tool_result("tc1", "A answer"),
+        _make_tool_result("tc2", "B answer"),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool", session_id=None)
+
+    assert len(history) == 4
+    assert history[0]["content"] == "thread-A"
+    assert history[1]["content"] == "A answer"
+    assert history[2]["content"] == "thread-B"
+    assert history[3]["content"] == "B answer"
+
+
+# ---------------------------------------------------------------------------
+# _run_in_stage_async: session_id is consumed, not forwarded to subagent
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_pops_session_id_before_forwarding():
+    """session_id is consumed by _run_in_stage_async and not forwarded to the completion service."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        dial_completion_service=svc,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=None, query="hello", session_id="my-thread")
+
+    forwarded_kwargs, _ = svc.complete_request_async.call_args
+    payload = forwarded_kwargs[0]
+    assert "session_id" not in payload
+    assert payload["query"] == "hello"
+
+
+# ---------------------------------------------------------------------------
+# enrich_openai_tool_schema
+# ---------------------------------------------------------------------------
+
+
+def _build_tool_with_content_propagation(
+    content_propagation: ContentPropagation | None,
+) -> BaseDeploymentTool:
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=_make_tool_config(),
+        content_propagation=content_propagation,
+        dial_completion_service=MagicMock(),
+        attachment_resolver=MagicMock(),
+        messages_mixin=_make_messages_mixin([]),
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
+    )
+
+
+def test_enrich_stateful_injects_session_id_and_description_suffix():
+    """For conversation_mode=stateful, enrich_openai_tool_schema injects session_id and appends description."""
+    tool = _build_tool_with_content_propagation(
+        ContentPropagation(conversation_mode=ConversationMode.STATEFUL)
+    )
+    tool_config = _make_tool_config()
+    open_ai_tool = copy.deepcopy(tool_config.open_ai_tool)
+    enriched = tool.enrich_openai_tool_schema(open_ai_tool)
+
+    assert "session_id" in enriched.function.parameters.properties
+    assert enriched.function.description is not None
+    assert "stateful subagent" in enriched.function.description
+
+
+def test_enrich_stateless_is_noop():
+    """For conversation_mode=stateless (default), enrich_openai_tool_schema returns the tool unchanged."""
+    tool = _build_tool_with_content_propagation(
+        ContentPropagation(conversation_mode=ConversationMode.STATELESS)
+    )
+    tool_config = _make_tool_config()
+    open_ai_tool = copy.deepcopy(tool_config.open_ai_tool)
+    original_description = open_ai_tool.function.description
+    original_props = set(open_ai_tool.function.parameters.properties.keys())
+
+    enriched = tool.enrich_openai_tool_schema(open_ai_tool)
+
+    assert enriched.function.description == original_description
+    assert set(enriched.function.parameters.properties.keys()) == original_props
+
+
+def test_enrich_no_propagation_is_noop():
+    """With no content_propagation, enrich_openai_tool_schema is a no-op."""
+    tool = _build_tool_with_content_propagation(None)
+    tool_config = _make_tool_config()
+    open_ai_tool = copy.deepcopy(tool_config.open_ai_tool)
+    original_props = set(open_ai_tool.function.parameters.properties.keys())
+
+    enriched = tool.enrich_openai_tool_schema(open_ai_tool)
+
+    assert set(enriched.function.parameters.properties.keys()) == original_props

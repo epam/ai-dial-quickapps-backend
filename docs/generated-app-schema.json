@@ -451,6 +451,11 @@
     },
     "ContentPropagation": {
       "properties": {
+        "conversation_mode": {
+          "$ref": "#/$defs/ConversationMode",
+          "default": "stateless",
+          "description": "Controls how prior interactions with this deployment are replayed. 'stateless': each call is independent (default). 'stateful': prior [user, assistant] pairs including the subagent's internal tool-execution state are sent, enabling stateful multi-turn subagents."
+        },
         "propagate_history": {
           "default": false,
           "description": "Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
@@ -520,6 +525,14 @@
       },
       "title": "ContinueStrategyModel",
       "type": "object"
+    },
+    "ConversationMode": {
+      "enum": [
+        "stateless",
+        "stateful"
+      ],
+      "title": "ConversationMode",
+      "type": "string"
     },
     "ConversationStarter": {
       "properties": {
