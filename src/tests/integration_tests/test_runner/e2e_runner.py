@@ -51,6 +51,24 @@ API_KEY_HEADER = "Api-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
 
 
+def _build_tool_result_messages(
+    raw_tool_calls: list[dict], tool_results: dict[str, str]
+) -> list[dict[str, str]]:
+    """Build TOOL role messages from the response's tool_calls and provided results."""
+    tool_messages = []
+    for tc in raw_tool_calls:
+        func_name = tc.get("function", {}).get("name", "")
+        if func_name in tool_results:
+            tool_messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tc["id"],
+                    "content": tool_results[func_name],
+                }
+            )
+    return tool_messages
+
+
 def _dial_relative_file_url(url: str) -> str:
     """Normalize a DIAL file URL to ``files/...`` form for :class:`FileContextConfig`."""
     s = str(url).strip()
@@ -204,6 +222,11 @@ class TestRunner:
                 request_payload["tool_choice"] = test_case.tool_choice
                 logger.debug(f"Using tool_choice: {test_case.tool_choice}")
 
+            # Add extra client-side tools if specified in test case
+            if test_case.tools is not None:
+                request_payload["tools"] = test_case.tools
+                logger.debug(f"Using tools: {test_case.tools}")
+
             response = client.post(
                 TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
                 headers=headers,
@@ -247,7 +270,70 @@ class TestRunner:
                     ts.increment_failure(FailureReason.ANSWER)
                     all_failures.extend(format_failures)
 
-            # Check message answer if expected
+            # Check tool calls and attachments
+            state = None
+            if response_message.custom_content and hasattr(
+                response_message.custom_content, "state"
+            ):
+                state = response_message.custom_content.state
+            logger.debug(f"state:{state}")
+            all_failures.extend(
+                ResponseValidator.check_tool_calls(state, test_message_data.tool_calls, ts)
+            )
+            raw_tool_calls = response_data["choices"][0]["message"].get("tool_calls")
+            if test_message_data.external_tool_calls:
+                all_failures.extend(
+                    ResponseValidator.check_external_tool_calls(
+                        raw_tool_calls, test_message_data.external_tool_calls, ts
+                    )
+                )
+
+            # External tool round-trip: send tool results and validate final answer
+            if test_message_data.external_tool_results and raw_tool_calls:
+                tool_result_messages = _build_tool_result_messages(
+                    raw_tool_calls, test_message_data.external_tool_results
+                )
+                messages.extend(tool_result_messages)
+
+                roundtrip_payload = {
+                    "model": TestDialCoreConfig.APP_DEPLOYMENT_V2_NAME,
+                    "messages": messages,
+                }
+                if test_case.tools is not None:
+                    roundtrip_payload["tools"] = test_case.tools
+
+                roundtrip_response = client.post(
+                    TestConfig.API_ENDPOINTS['CHAT_COMPLETIONS'],
+                    headers=headers,
+                    json=roundtrip_payload,
+                    timeout=100.0,
+                )
+
+                if roundtrip_response.status_code != 200:
+                    ts.increment_failure(FailureReason.HTTP_STATUS)
+                    all_failures.extend(
+                        [
+                            Failure(
+                                actual=roundtrip_response.status_code,
+                                expected=200,
+                                comment="Tool result round-trip status code",
+                            ),
+                            Failure(
+                                actual=roundtrip_response.text,
+                                expected=None,
+                                comment="Tool result round-trip content",
+                            ),
+                        ]
+                    )
+                    break
+
+                roundtrip_data = json.loads(roundtrip_response.text)
+                messages.append(roundtrip_data["choices"][0]["message"])
+                response_message = Message(**roundtrip_data["choices"][0]["message"])
+                response_data = roundtrip_data
+                logger.info(f"Tool round-trip final content: {response_message.content}")
+
+            # Check message answer if expected (after potential round-trip)
             if test_message_data.answer:
                 failures = check_multiple_alternatives(
                     response_message.content,
@@ -259,16 +345,6 @@ class TestRunner:
                     ts.increment_failure(FailureReason.ANSWER)
                     all_failures.extend(failures)
 
-            # Check tool calls and attachments
-            state = None
-            if response_message.custom_content and hasattr(
-                response_message.custom_content, "state"
-            ):
-                state = response_message.custom_content.state
-            logger.debug(f"state:{state}")
-            all_failures.extend(
-                ResponseValidator.check_tool_calls(state, test_message_data.tool_calls, ts)
-            )
             attachments = (
                 getattr(response_message.custom_content, "attachments", None)
                 if response_message.custom_content

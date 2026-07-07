@@ -15,6 +15,7 @@ from aidial_sdk.chat_completion.request import (
 from quickapp.common import DeploymentUsage
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -23,6 +24,9 @@ from quickapp.core.agent import Orchestrator
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
+)
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentToolResponse,
 )
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -108,6 +112,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -185,6 +190,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
             deferred_stage_close_registry=deferred_registry,
         ),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -243,6 +249,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context, policies=[recovery_policy]),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -338,6 +345,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -418,6 +426,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -503,6 +512,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -528,6 +538,7 @@ def _make_orchestrator(
     tool_executor: object | None = None,
     stream_handler: object | None = None,
     assistant_invoker_provider: object | None = None,
+    tool_names: frozenset[str] = frozenset(),
 ) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
@@ -553,6 +564,7 @@ def _make_orchestrator(
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[],
+        tool_names=tool_names,
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -734,6 +746,55 @@ class TestBuildToolExecutionHistory:
         assert result[1]["role"] == "tool"
         assert result[1]["tool_call_id"] == "tc-synth"
 
+    def test_external_only_assistant_message_excluded(self):
+        """ASSISTANT messages with only external tool calls must not appear in history."""
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-server", name="server_tool")],
+            ),
+            Message(role=Role.TOOL, content="server result", tool_call_id="tc-server"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[_make_tool_call("tc-ext", name="ext_tool")],
+            ),
+        ]
+        orchestrator = _make_orchestrator(messages, tool_names=frozenset({"ext_tool"}))
+        result = orchestrator._build_tool_execution_history()
+
+        # Only the server tool call pair is in history; the external-only ASSISTANT is excluded
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert result[0]["tool_calls"][0]["id"] == "tc-server"
+        assert result[1]["role"] == "tool"
+
+    def test_mixed_assistant_message_included(self):
+        """ASSISTANT messages with both server and external tool calls are kept,
+        but external tool calls are stripped from the persisted history."""
+        messages = [
+            Message(role=Role.USER, content="hello"),
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[
+                    _make_tool_call("tc-server", name="server_tool"),
+                    _make_tool_call("tc-ext", name="ext_tool"),
+                ],
+            ),
+            Message(role=Role.TOOL, content="server result", tool_call_id="tc-server"),
+        ]
+        orchestrator = _make_orchestrator(messages, tool_names=frozenset({"ext_tool"}))
+        result = orchestrator._build_tool_execution_history()
+
+        assert len(result) == 2
+        assert result[0]["role"] == "assistant"
+        assert len(result[0]["tool_calls"]) == 1
+        assert result[0]["tool_calls"][0]["function"]["name"] == "server_tool"
+        assert result[1]["role"] == "tool"
+
 
 @pytest.mark.asyncio
 async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_history():
@@ -776,9 +837,17 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     state_holder.get_state = Mock(return_value={})
     state_holder.add_state = Mock()
 
+    live_response = GetContentToolResponse.success(
+        display_url="files/bucket/report.pdf",
+        title="report.pdf",
+        mime_type="application/pdf",
+    )
+    tool_content, _ = live_response.tool_parts()
+    tool_state = live_response.merge_into_state({"marker": "keep"})
+
     tool_message = Message(
         role=Role.TOOL,
-        content='{"ok": true}',
+        content=tool_content,
         tool_call_id="tc-1",
         custom_content=CustomContent(
             attachments=[
@@ -788,7 +857,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
                     url="files/bucket/report.pdf",
                 )
             ],
-            state={"marker": "keep"},
+            state=tool_state,
         ),
     )
     tool_result = Mock()
@@ -819,6 +888,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 
@@ -833,7 +903,21 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     custom_content = tool_entry.get("custom_content")
     assert isinstance(custom_content, dict)
     assert "attachments" not in custom_content
-    assert custom_content.get("state") == {"marker": "keep"}
+    state = custom_content.get("state")
+    assert isinstance(state, dict)
+    assert state.get("marker") == "keep"
+    payload = GetContentToolResponse.from_state(state)
+    assert payload is not None
+    assert (
+        payload.status_message
+        == GetContentToolResponse.for_history(
+            display_url="files/bucket/report.pdf",
+            title="report.pdf",
+            mime_type="application/pdf",
+        ).status_message
+    )
+    assert payload.attachment_url == to_file_url_reference("files/bucket/report.pdf")
+    assert tool_entry.get("content") == payload.content_summary()
 
 
 @pytest.mark.asyncio
@@ -912,6 +996,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         deferred_stage_close_registry=DeferredStageCloseRegistry(),
         chat_completion_recovery=_recovery_service(messages_context),
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
+        tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
     )
 

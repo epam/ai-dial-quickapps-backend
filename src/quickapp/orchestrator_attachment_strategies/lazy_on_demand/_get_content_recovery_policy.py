@@ -1,12 +1,15 @@
 import json
 
+from aidial_sdk.chat_completion import CustomContent
 from aidial_sdk.chat_completion.request import Message, Role
 from openai import BadRequestError
 
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.get_content_recovery_payload import get_content_recovery_json_string
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_recovery_payload import (
+    get_content_recovery_parts,
+)
 
 _ATTACHMENT_ERROR_SIGNALS: tuple[str, ...] = (
     "attachment payload",
@@ -68,7 +71,7 @@ class _GetContentRecoveryPolicy(ChatCompletionRecoveryPolicy):
         if turn_start is None:
             return False
 
-        error_content = get_content_recovery_json_string()
+        error_content, error_state = get_content_recovery_parts()
 
         changed = False
         for i in range(turn_start, len(messages)):
@@ -83,6 +86,11 @@ class _GetContentRecoveryPolicy(ChatCompletionRecoveryPolicy):
             msg.content = error_content
             if msg.custom_content is not None:
                 msg.custom_content.attachments = None
+                existing_state = dict(msg.custom_content.state or {})
+                existing_state.update(error_state)
+                msg.custom_content.state = existing_state
+            else:
+                msg.custom_content = CustomContent(state=error_state)
             changed = True
 
         return changed

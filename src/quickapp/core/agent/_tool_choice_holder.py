@@ -15,6 +15,6 @@ class _ToolChoiceHolder:
     def consume(self) -> ToolChoice | str | None:
         """Consume tool_choice on the first consume() call."""
         if self._consumed:
-            return None
+            return None  # tool_choice applies only to the first LLM call
         self._consumed = True
         return self._value

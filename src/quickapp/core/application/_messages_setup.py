@@ -3,6 +3,7 @@ import logging
 import warnings
 
 from aidial_sdk.chat_completion import Message, Role, ToolCall
+from aidial_sdk.exceptions import InvalidRequestError
 from aidial_sdk.utils.pydantic import ExtraAllowModel
 from injector import ProviderOf, inject
 
@@ -77,6 +78,51 @@ class _MessagesSetup:
     def _extract_message_format(tool_history: list) -> list[Message]:
         """Extract messages from message-based format (new format)."""
         return [Message(**msg_dict) for msg_dict in tool_history]
+
+    @staticmethod
+    def validate_external_tool_results(
+        messages: list[Message], external_tool_names: frozenset[str]
+    ) -> None:
+        """Validate that external tool calls have corresponding tool result messages.
+
+        Must be called on raw messages (before extract_tool_calls) when external
+        tools are present. Raises InvalidRequestError if the client omitted required
+        tool result messages for surfaced external tool calls.
+        """
+        if not external_tool_names:
+            return
+
+        for index, message in enumerate(messages):
+            if message.role != Role.ASSISTANT or not message.tool_calls:
+                continue
+
+            external_call_ids: dict[str, str] = {}
+            for tc in message.tool_calls:
+                if tc.function and tc.function.name in external_tool_names:
+                    external_call_ids[tc.id] = tc.function.name
+
+            if not external_call_ids:
+                continue
+
+            # Collect tool_call_ids from TOOL messages that follow this ASSISTANT
+            provided_ids: set[str] = set()
+            for subsequent in messages[index + 1 :]:
+                if subsequent.role == Role.TOOL and subsequent.tool_call_id:
+                    provided_ids.add(subsequent.tool_call_id)
+                elif subsequent.role != Role.TOOL:
+                    break
+
+            missing_ids = set(external_call_ids.keys()) - provided_ids
+            if missing_ids:
+                missing_names = [external_call_ids[mid] for mid in missing_ids]
+                raise InvalidRequestError(
+                    message="Missing external tool results",
+                    display_message=(
+                        f"Missing tool result messages for external tool calls: "
+                        f"{missing_names}. Expected role 'tool' messages with "
+                        f"matching tool_call_ids: {sorted(missing_ids)}."
+                    ),
+                )
 
     def extract_tool_calls(self, messages: list[Message]) -> list[Message]:
         """Unpack tool execution history from state into message sequence.
