@@ -10,6 +10,7 @@ from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
 from quickapp.common.utils import fenced_code_block
+from quickapp.rest_api_tooling._rest_api_tool_error_exception import RestApiToolErrorException
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ class _RestApiStageWrapper(TimedStageWrapper):
         return f"> ##### Response:\n{formatted_response}\n"
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
+        if isinstance(exception, RestApiToolErrorException) and isinstance(
+            exception.__cause__, HTTPStatusError
+        ):
+            exception = exception.__cause__
 
         if isinstance(exception, HTTPStatusError):
             status_code = exception.response.status_code

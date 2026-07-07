@@ -144,6 +144,40 @@ async def test_is_error_applies_continue_fallback_strategy():
 
 
 @pytest.mark.asyncio
+async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
+    """Configured fallback can return the raw MCP error text to the model."""
+    fallback_config = ToolFallbackConfig(
+        strategies=[ContinueStrategyModel(forward_tool_error_message=True)]
+    )
+    tool, conn = _make_mcp_tool(fallback_config)
+    conn.call_mcp_tool.return_value = SimpleNamespace(
+        content=[SimpleNamespace(type="text", text="Internal server error")],
+        isError=True,
+    )
+
+    result = await tool.arun("call-id")
+
+    assert result.content == "Internal server error"
+
+
+@pytest.mark.asyncio
+async def test_is_error_empty_payload_falls_back_to_generic_continue_text_when_forwarding():
+    """Empty MCP error payload falls back to the generic continue fallback text."""
+    fallback_config = ToolFallbackConfig(
+        strategies=[ContinueStrategyModel(forward_tool_error_message=True)]
+    )
+    tool, conn = _make_mcp_tool(fallback_config)
+    conn.call_mcp_tool.return_value = SimpleNamespace(
+        content=[],
+        isError=True,
+    )
+
+    result = await tool.arun("call-id")
+
+    assert "An error occurs" in result.content
+
+
+@pytest.mark.asyncio
 async def test_is_error_applies_strategy_matching_error_text():
     """isError=True with trigger_on that matches the error text applies the strategy."""
     fallback_config = ToolFallbackConfig(

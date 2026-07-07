@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.exceptions import ToolTimeoutError
+from quickapp.common.exceptions import ToolTimeoutError, ToolErrorException
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -96,6 +96,44 @@ def test_non_timeout_error_uses_default_catchall():
     assert "timed out" not in result.content
 
 
+def test_non_timeout_error_ignores_forward_tool_error_message_for_non_tool_errors():
+    err = ValueError("something else")
+    strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert "An error occurs" in result.content
+
+
+def test_tool_error_can_forward_tool_error_message():
+    err = ToolErrorException("rag_search", "public error")
+    strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "public error"
+
+
+def test_tool_error_can_append_instructions_after_forwarded_error():
+    err = ToolErrorException("rag_search", "public error")
+    strategies = [
+        ContinueStrategyModel(
+            instructions="Try another applicable tool.",
+            forward_tool_error_message=True,
+        )
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "public error\n\nTry another applicable tool."
+
+
+def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error():
+    err = ToolErrorException("rag_search", "public error")
+    strategies = [
+        RetryStrategyModel(
+            instructions="Analyze the error and retry.",
+            forward_tool_error_message=True,
+        )
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "public error\n\nAnalyze the error and retry."
+
+
 def test_non_timeout_no_matching_strategy_reraises():
     err = ValueError("x")
     strategies = [
@@ -124,6 +162,14 @@ def test_continue_strategy_trigger_with_instructions_ok():
         instructions="ok",
     )
     assert cs.instructions == "ok"
+
+
+def test_continue_strategy_trigger_with_forward_tool_error_message_ok():
+    cs = ContinueStrategyModel(
+        trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+        forward_tool_error_message=True,
+    )
+    assert cs.forward_tool_error_message is True
 
 
 def test_continue_strategy_no_trigger_no_instructions_ok():

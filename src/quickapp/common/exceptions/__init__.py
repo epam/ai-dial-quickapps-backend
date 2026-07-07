@@ -11,6 +11,7 @@ from .skill_initialization import (
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
+from .tool_error import ToolErrorException
 
 __all__ = [
     "TOOL_TIMEOUT_PHRASE",
@@ -25,4 +26,5 @@ __all__ = [
     "ToolInitializationException",
     "ToolTimeoutError",
     "HookInitializationException",
+    "ToolErrorException"
 ]
