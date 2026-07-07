@@ -166,6 +166,13 @@ class ExternalUrlFetchConfig(BaseModel):
     )
 
 
+class RepresentationToolingConfig(BaseModel):
+    add_attachment: bool = Field(
+        default=True,
+        description="Set to false to disable the internal_representation_add_attachment tool.",
+    )
+
+
 class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
@@ -189,6 +196,15 @@ class Features(BaseModel):
     dial_files: DialFilesConfig | None = Field(
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
+    )
+    representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Enables tools that control how the agent surfaces its output to the user. "
+            "Omit or set to null to disable the whole section. "
+            "Set to {} to enable with defaults, or set individual sub-fields to false to "
+            "disable specific tools while keeping the section enabled."
+        ),
     )
 
 

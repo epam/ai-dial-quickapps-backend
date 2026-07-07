@@ -23,6 +23,9 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_s
     LazyOnDemandStrategyModule,
 )
 from quickapp.predefined_tooling import PredefinedToolingModule
+from quickapp.representation_tooling.representation_tooling_module import (
+    RepresentationToolingModule,
+)
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
 from quickapp.skills.skills_module import SkillsModule
@@ -57,6 +60,7 @@ class AppFactory:
             TimestampModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),
+            RepresentationToolingModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(
