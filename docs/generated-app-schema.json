@@ -9,18 +9,6 @@
   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
   "title": "ApplicationConfig",
   "$defs": {
-    "AddAttachmentToolConfig": {
-      "properties": {
-        "enabled": {
-          "default": true,
-          "description": "Set to false to disable the internal_representation_add_attachment tool.",
-          "title": "Enabled",
-          "type": "boolean"
-        }
-      },
-      "title": "AddAttachmentToolConfig",
-      "type": "object"
-    },
     "ApiKeyAuthorization": {
       "properties": {
         "type": {
@@ -1357,17 +1345,17 @@
           "default": null,
           "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
         },
-        "add_attachment": {
+        "representation_tooling": {
           "anyOf": [
             {
-              "$ref": "#/$defs/AddAttachmentToolConfig"
+              "$ref": "#/$defs/RepresentationToolingConfig"
             },
             {
               "type": "null"
             }
           ],
           "default": null,
-          "description": "Enables the internal_representation_add_attachment tool. Omit or set to null to disable. Set to {} or {\"enabled\": true} to enable.",
+          "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled.",
           "x-preview": true
         }
       },
@@ -2378,6 +2366,18 @@
         "template_name"
       ],
       "title": "PredefinedToolSet",
+      "type": "object"
+    },
+    "RepresentationToolingConfig": {
+      "properties": {
+        "add_attachment": {
+          "default": true,
+          "description": "Set to false to disable the internal_representation_add_attachment tool.",
+          "title": "Add Attachment",
+          "type": "boolean"
+        }
+      },
+      "title": "RepresentationToolingConfig",
       "type": "object"
     },
     "ResponseAsAttachmentConfig": {

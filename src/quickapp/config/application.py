@@ -166,8 +166,8 @@ class ExternalUrlFetchConfig(BaseModel):
     )
 
 
-class AddAttachmentToolConfig(BaseModel):
-    enabled: bool = Field(
+class RepresentationToolingConfig(BaseModel):
+    add_attachment: bool = Field(
         default=True,
         description="Set to false to disable the internal_representation_add_attachment tool.",
     )
@@ -197,12 +197,13 @@ class Features(BaseModel):
         default=None,
         description="Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move).",
     )
-    add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[assignment]
+    representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description=(
-            "Enables the internal_representation_add_attachment tool. "
-            "Omit or set to null to disable. "
-            'Set to {} or {"enabled": true} to enable.'
+            "Enables tools that control how the agent surfaces its output to the user. "
+            "Omit or set to null to disable the whole section. "
+            "Set to {} to enable with defaults, or set individual sub-fields to false to "
+            "disable specific tools while keeping the section enabled."
         ),
     )
 

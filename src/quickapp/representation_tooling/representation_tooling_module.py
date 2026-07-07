@@ -27,8 +27,8 @@ class RepresentationToolingModule(Module):
         app_config: ApplicationConfig,
         builder: AssistedBuilder[_AddAttachmentTool],
     ) -> list[StagedBaseTool]:
-        cfg = app_config.features.add_attachment if app_config.features else None
-        if cfg is None or not cfg.enabled:
+        cfg = app_config.features.representation_tooling if app_config.features else None
+        if cfg is None or not cfg.add_attachment:
             return []
         return [
             builder.build(

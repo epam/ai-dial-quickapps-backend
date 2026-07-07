@@ -32,10 +32,10 @@ from pydantic import SecretStr
 from quickapp.app_factory import AppFactory
 from quickapp.common import StagedBaseTool
 from quickapp.config.application import (
-    AddAttachmentToolConfig,
     ApplicationConfig,
     Features,
     OrchestratorConfig,
+    RepresentationToolingConfig,
 )
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
@@ -80,7 +80,7 @@ def build_dump_application_config() -> ApplicationConfig:
         features=Features(
             timestamp=ToolCallTimestampConfig(),
             dial_files=DialFilesConfig(),
-            add_attachment=AddAttachmentToolConfig(),
+            representation_tooling=RepresentationToolingConfig(),
         ),
     )
 

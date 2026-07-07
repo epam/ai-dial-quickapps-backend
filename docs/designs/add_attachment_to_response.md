@@ -60,11 +60,11 @@ The `ToolCallResult.propagate_to_choice` field and the orchestrator's wiring to 
 
 ### 1. Feature config
 
-A new `AddAttachmentToolConfig` model is added to `src/quickapp/config/application.py`:
+A new `RepresentationToolingConfig` model is added to `src/quickapp/config/application.py`:
 
 ```python
-class AddAttachmentToolConfig(BaseModel):
-    enabled: bool = Field(
+class RepresentationToolingConfig(BaseModel):
+    add_attachment: bool = Field(
         default=True,
         description="Set to false to disable the internal_representation_add_attachment tool.",
     )
@@ -73,17 +73,18 @@ class AddAttachmentToolConfig(BaseModel):
 `Features` gets a new field declared with `PreviewField` (same as `dial_files`):
 
 ```python
-add_attachment: AddAttachmentToolConfig | None = PreviewField(  # type: ignore[assignment]
+representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
     default=None,
     description=(
-        "Enables the internal_representation_add_attachment tool. "
-        "Omit or set to null to disable. "
-        "Set to {} or {\"enabled\": true} to enable."
+        "Enables tools that control how the agent surfaces its output to the user. "
+        "Omit or set to null to disable the whole section. "
+        "Set to {} to enable with defaults, or set individual sub-fields to false to "
+        "disable specific tools while keeping the section enabled."
     ),
 )
 ```
 
-The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.add_attachment` is not `null`, **and** `features.add_attachment.enabled` is `true`. The `enabled` flag supplements the presence gate: `null` means "not configured at all", while `{"enabled": false}` means "configured block present but deliberately off" — useful for operators who want to temporarily disable the tool without losing their config. (`dial_files` is the `PreviewField` + `| None` shape precedent; the nested `enabled` toggle follows `ToolCallResultOffloadConfig`, which uses the same pattern.)
+The tool is active when `ENABLE_PREVIEW_FEATURES=true`, `features.representation_tooling` is not `null`, **and** `features.representation_tooling.add_attachment` is `true`. The `add_attachment` flag supplements the presence gate: `null` means "not configured at all", while `{"add_attachment": false}` means "section present but that specific tool deliberately off" — useful for operators who want to temporarily disable the tool without losing their config, and for future sibling tools to share the section. (`dial_files` is the `PreviewField` + `| None` shape precedent; the nested boolean toggle follows `ToolCallResultOffloadConfig`, which uses the same pattern.)
 
 ### 2. Tool name constant
 
@@ -172,7 +173,7 @@ own module rather than a provider on `InternalToolModule` so the attachment-prom
 (controlling how the agent represents its work to the user) is isolated from the tool-sets-driven
 internal tooling. The module is marked `@preview_module` (like `DialFilesToolingModule`), so when
 `ENABLE_PREVIEW_FEATURES=false` the whole module is filtered out in `AppFactory.build_di_modules()`;
-the config-nullification of `features.add_attachment` (§1) remains as a second gate. It is registered
+the config-nullification of `features.representation_tooling` (§1) remains as a second gate. It is registered
 in `app_factory.py`.
 
 `configure()` adds:
@@ -188,8 +189,8 @@ def _provide_representation_tools(
     app_config: ApplicationConfig,
     builder: AssistedBuilder[_AddAttachmentTool],
 ) -> list[StagedBaseTool]:
-    cfg = app_config.features.add_attachment if app_config.features else None
-    if cfg is None or not cfg.enabled:
+    cfg = app_config.features.representation_tooling if app_config.features else None
+    if cfg is None or not cfg.add_attachment:
         return []
     return [
         builder.build(
@@ -202,7 +203,7 @@ def _provide_representation_tools(
 
 The provider name ends in `_tools` (plural) so the `dump_internal_tools.py` drift-detection script
 discovers it (it collects `_provide_<feature>_tools` multiproviders). That script's synthetic config
-also sets `features.add_attachment` so the tool materializes in the generated manifest. Like every
+also sets `features.representation_tooling` so the tool materializes in the generated manifest. Like every
 other internal-tools multibinding, this contributes to the same `list[StagedBaseTool]`.
 
 ### 6. Orchestrator-level deduplication
@@ -236,7 +237,7 @@ This is a single, source-agnostic guard: it covers the new tool, the automatic p
 ```json
 {
   "features": {
-    "add_attachment": {}
+    "representation_tooling": {}
   }
 }
 ```
@@ -248,7 +249,7 @@ Requires `ENABLE_PREVIEW_FEATURES=true` on the deployment.
 ```json
 {
   "features": {
-    "add_attachment": { "enabled": false }
+    "representation_tooling": { "add_attachment": false }
   }
 }
 ```
@@ -286,7 +287,7 @@ None.
 
 ### Non-breaking changes
 
-- New preview-gated `add_attachment` field in `Features` — existing apps are unaffected.
+- New preview-gated `representation_tooling` field in `Features` — existing apps are unaffected.
 - Orchestrator attachment deduplication (§6) applies to all apps. It only collapses repeated URLs; distinct URLs are never dropped.
 
 ---
@@ -296,12 +297,12 @@ None.
 | Component | Change |
 |-----------|--------|
 | `src/quickapp/common/tool_names.py` | Add `INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME` |
-| `src/quickapp/config/application.py` | Add `AddAttachmentToolConfig` model; add `add_attachment` `PreviewField` to `Features` |
+| `src/quickapp/config/application.py` | Add `RepresentationToolingConfig` model; add `representation_tooling` `PreviewField` to `Features` |
 | `src/quickapp/representation_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
 | `src/quickapp/representation_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
 | `src/quickapp/representation_tooling/_add_attachment_stage_wrapper.py` | New file — `_AddAttachmentStageWrapper` |
 | `src/quickapp/representation_tooling/representation_tooling_module.py` | New file — `@preview_module RepresentationToolingModule` with `configure()` binding + `@multiprovider _provide_representation_tools` |
 | `src/quickapp/app_factory.py` | Register `RepresentationToolingModule` |
 | `src/quickapp/core/agent/orchestrator.py` | Add per-request `__propagated_attachment_urls` set; dedup by URL in the `propagate_to_choice` loop |
-| `src/scripts/dump_internal_tools.py` | Enable `add_attachment` in the synthetic dump config so the tool appears in the generated manifest |
+| `src/scripts/dump_internal_tools.py` | Enable `representation_tooling` in the synthetic dump config so the tool appears in the generated manifest |
 | `make dump_app_schema` / `make format` | Re-run after config changes to regenerate the JSON schema and internal-tools manifest |
