@@ -23,9 +23,9 @@
       },
       "routes": {}
     },
-    "test_folder_app": {
-      "displayName": "TestFolderAppPreConfigured",
-      "description": "Application with rag and folder in contexts",
+    "test_memory_app": {
+      "displayName": "Test Memory Application",
+      "description": "Application with pre-configured memory hooks",
       "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
       "inputAttachmentTypes": [
         "*/*"
@@ -49,23 +49,29 @@
             "content": ""
           }
         },
-        "contexts": [
-          {
-            "type": "folder",
-            "description": "Some folder context description",
-            "url": "metadata/files/684f6Lz7ubje66aoCRsa5c/testFolder/"
-          }
-        ],
+        "contexts": [],
         "tool_sets": [
           {
-            "name": "dial-deployment-tool-set",
-            "type": "dial-deployment",
-            "tools": [
-              {
-                "type": "dial-deployment-simple",
-                "deployment_id": "dial-rag"
-              }
-            ]
+            "type": "dial-app",
+            "deployment_id": "memory",
+            "name": "AppMemory",
+            "transport": "mcp"
+          }
+        ],
+        "hooks": [
+          {
+            "name": "memory_skill_hook",
+            "event": "on_request_start",
+            "kind": "tool_call",
+            "toolset_name": "AppMemory",
+            "tool_name": "get_skill"
+          },
+          {
+            "name": "prime_memory_hook",
+            "event": "on_request_start",
+            "kind": "tool_call",
+            "toolset_name": "AppMemory",
+            "tool_name": "prime_memories"
           }
         ],
         "features": {
