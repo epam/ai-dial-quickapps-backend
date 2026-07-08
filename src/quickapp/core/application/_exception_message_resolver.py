@@ -336,13 +336,16 @@ def resolve_exception(e: Exception) -> ResolvedError:
     details = _extract_error_details(e)
 
     # 1. Upstream-authored, user-safe text wins. Used as-is (never retry-suffixed), since
-    #    appending generic advice can contradict a precise upstream explanation.
+    #    appending generic advice can contradict a precise upstream explanation. A message
+    #    that sanitizes to nothing (whitespace-only) falls through to the rules below.
     if details.display_message:
-        return ResolvedError(
-            message=_sanitize_display_message(details.display_message),
-            retryable=_is_retryable_from_details(details),
-            details=details,
-        )
+        display_message = _sanitize_display_message(details.display_message)
+        if display_message:
+            return ResolvedError(
+                message=display_message,
+                retryable=_is_retryable_from_details(details),
+                details=details,
+            )
 
     # 2. Specific, actionable error codes.
     resolution = _resolve_by_code(details)

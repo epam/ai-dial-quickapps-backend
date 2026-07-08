@@ -113,10 +113,14 @@ class _QuickAppCompletion(ChatCompletion):
             e,
         )
         display = f"{resolved.message} (error reference: {error_reference})"
+        status_code = _outgoing_status_code(resolved)
+        # OpenAI-protocol convention when the upstream supplied no type: client-attributable
+        # 4xx -> invalid_request_error, everything else -> runtime_error.
+        default_type = "invalid_request_error" if status_code < 500 else "runtime_error"
         raise DialHTTPException(
-            status_code=_outgoing_status_code(resolved),
+            status_code=status_code,
             message=display,
             display_message=display,
             code=resolved.details.code,
-            type=resolved.details.error_type or "runtime_error",
+            type=resolved.details.error_type or default_type,
         )

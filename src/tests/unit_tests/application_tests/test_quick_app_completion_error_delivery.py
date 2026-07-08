@@ -43,6 +43,7 @@ class TestHandleException:
             _handle_exception(e)
         exc = excinfo.value
         assert exc.status_code == 500
+        assert exc.type == "runtime_error"
         assert exc.display_message is not None
         assert "timed out" in exc.display_message.lower()
         assert exc.display_message == exc.message
@@ -57,6 +58,8 @@ class TestHandleException:
         with pytest.raises(DialHTTPException) as excinfo:
             _handle_exception(e)
         assert excinfo.value.status_code == 400
+        # No upstream type -> the OpenAI-idiomatic default for a client-attributable 4xx.
+        assert excinfo.value.type == "invalid_request_error"
 
     def test_rate_limit_downgraded_to_500(self) -> None:
         e = openai.RateLimitError(
@@ -67,6 +70,8 @@ class TestHandleException:
         with pytest.raises(DialHTTPException) as excinfo:
             _handle_exception(e)
         assert excinfo.value.status_code == 500
+        # The default type keys on the *outgoing* (downgraded) status, not the upstream one.
+        assert excinfo.value.type == "runtime_error"
 
     def test_code_and_type_propagated_to_wire(self) -> None:
         e = openai.BadRequestError(

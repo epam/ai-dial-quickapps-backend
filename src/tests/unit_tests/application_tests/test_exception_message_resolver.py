@@ -189,6 +189,15 @@ class TestDisplayMessagePreference:
         assert resolved.message == "Upstream is down."
         assert not resolved.message.endswith(_RETRY_SENTENCE)
 
+    def test_whitespace_only_display_message_falls_through(self) -> None:
+        e = _make_openai_status_error(
+            openai.InternalServerError, 500, body={"error": {"display_message": "   "}}
+        )
+        resolved = resolve_exception(e)
+        # Sanitizes to nothing -> the status ladder resolves instead of an empty message.
+        assert "internal error" in resolved.message.lower()
+        assert resolved.retryable is True
+
     def test_display_message_truncated(self) -> None:
         long_text = "x" * 900
         e = _make_openai_status_error(
