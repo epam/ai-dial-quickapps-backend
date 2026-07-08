@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from aidial_sdk.chat_completion import Choice
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
-from openai import APIError, AsyncStream, BadRequestError
+from openai import APIError, AsyncStream
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.common import EXTERNAL_TOOL_NAMES, DeploymentUsage
@@ -95,7 +95,7 @@ class Orchestrator:
             exc_to_reraise = exc
             logger.warning("Orchestrator interrupted by %s, saving state before re-raising", exc)
         finally:
-            self.__deferred_stage_close_registry.flush()
+            self.__deferred_stage_close_registry.flush(failed=exc_to_reraise is not None)
             # Close any per-request async resources (e.g. live MCP sessions) held open
             # for the duration of the request. Runs on both success and error paths.
             await self.__request_async_close_registry.aclose_all()
@@ -224,13 +224,13 @@ class Orchestrator:
         self.__deferred_stage_close_registry.flush()
 
     async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
-        """Invoke assistant and consume stream; on APIError/BadRequest during stream, run recovery once."""
+        """Invoke assistant and consume stream; on APIError during stream, run recovery once."""
         while True:
             assistant_invoker = self.__assistant_invoker_provider.get()
             chat_completion_stream = await assistant_invoker.invoke()
             try:
                 return await self.accumulate_stream(chat_completion_stream)
-            except (BadRequestError, APIError) as e:
+            except APIError as e:
                 self.__chat_completion_recovery.apply_message_recovery(
                     e, retry_scope=STREAM_ACCUMULATION_RETRY_SCOPE
                 )

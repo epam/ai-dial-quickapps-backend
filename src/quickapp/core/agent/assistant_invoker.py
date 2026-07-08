@@ -1,6 +1,6 @@
 from aidial_sdk.chat_completion.request import Message
 from injector import inject
-from openai import APIError, AsyncStream, BadRequestError
+from openai import APIError, AsyncStream
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.common import ORCHESTRATOR_AZURE_CLIENT
@@ -29,12 +29,12 @@ class AssistantInvoker:
         self.__chat_completion_recovery = chat_completion_recovery
 
     async def invoke(self) -> AsyncStream[ChatCompletionChunk]:
-        """Create chat completion; on APIError/BadRequest, run message recovery once and retry."""
+        """Create chat completion; on APIError, run message recovery once and retry."""
         while True:
             completion_config = self.__chat_completion_config_builder.build(self.__messages)
             try:
                 return await self.__azure_client.chat.completions.create(**completion_config)
-            except (BadRequestError, APIError) as e:
+            except APIError as e:
                 self.__chat_completion_recovery.apply_message_recovery(
                     e, retry_scope=CHAT_COMPLETION_CREATE_RETRY_SCOPE
                 )

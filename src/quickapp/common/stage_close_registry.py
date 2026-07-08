@@ -66,7 +66,19 @@ class DeferredStageCloseRegistry:
                 _stage_hook_from_tool_message(wrapper, tool_msg),
             )
 
-    def flush(self) -> None:
+    def flush(self, *, failed: bool = False) -> None:
+        """Run pending UI hooks and close every deferred stage wrapper.
+
+        On the error path (``failed=True``) wrappers are closed with failure exc-info so
+        their stages render as ``FAILED``; DIAL Chat otherwise shows a stage that was
+        opened but never closed as a perpetual spinner. The success path is unchanged.
+        """
+        exit_args: tuple[type[BaseException] | None, BaseException | None, None] = (
+            (RuntimeError, RuntimeError("Request failed before the stage completed."), None)
+            if failed
+            else (None, None, None)
+        )
+
         keyed_by_wrapper_id: dict[int, list[tuple[str, Callable[[], None]]]] = {}
         for tcid, (wrapper, fn) in self._deferred_ui_by_tool_call_id.items():
             keyed_by_wrapper_id.setdefault(id(wrapper), []).append((tcid, fn))
@@ -86,7 +98,7 @@ class DeferredStageCloseRegistry:
                 except Exception:
                     logger.exception("Failed while applying deferred stage UI before close")
             try:
-                wrapper.__exit__(None, None, None)
+                wrapper.__exit__(*exit_args)
             except Exception:
                 logger.exception("Failed while closing deferred stage wrapper")
         self._pending.clear()
@@ -121,5 +133,8 @@ class ImmediateStageCloseRegistry:
         except Exception:
             logger.exception("Failed while closing deferred stage wrapper")
 
-    def flush(self) -> None:
+    def flush(self, *, failed: bool = False) -> None:
+        # No-op: this registry closes stages eagerly in defer_close, so there is nothing
+        # to flush. The `failed` flag exists only for signature parity with the deferred
+        # registry (the two are used interchangeably via a union type).
         pass
