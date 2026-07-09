@@ -84,6 +84,7 @@ class Orchestrator:
         self.__request_async_close_registry: RequestAsyncCloseRegistry = (
             request_async_close_registry
         )
+        self.__propagated_attachment_urls: set[str] = set()
 
     @asynccontextmanager
     async def _persisting_state(self) -> AsyncIterator[None]:
@@ -203,6 +204,12 @@ class Orchestrator:
             tool_call_result_message = tool_call_result.to_tool_message()
             self.__messages_context.append_message(tool_call_result_message)
             for attachment in tool_call_result.propagate_to_choice:
+                url = attachment.url
+                if url is not None:
+                    if url in self.__propagated_attachment_urls:
+                        logger.debug("Skipping duplicate attachment URL %s", url)
+                        continue
+                    self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
