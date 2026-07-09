@@ -23,7 +23,10 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
                 properties={
                     "attachment_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description=("File reference in the file:url:: form."),
+                        description=(
+                            "File reference using ONLY the file:url:: form, e.g. "
+                            "file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected."
+                        ),
                     )
                 },
                 required=["attachment_url"],

@@ -10,7 +10,7 @@
     "properties": {
       "attachment_url": {
         "type": "string",
-        "description": "File reference in the file:url:: form. Accepted MIME types: */*."
+        "description": "File reference using ONLY the file:url:: form, e.g. file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected. Accepted MIME types: */*."
       }
     },
     "required": [
