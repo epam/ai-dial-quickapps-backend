@@ -12,7 +12,7 @@ export PYDANTIC_V2=True
 
 .PHONY: init_venv install install_dev install_integration install_all clean \
 	lint mypy format install_pre_commit_hooks run_chat run_error_injection_app test test_cov \
-	dump_app_schema dump_internal_tools generate_dial_config start_test_server stop_test_server \
+	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config start_test_server stop_test_server \
 	integration_test integration_test_run e2e_test run_python \
 	black black_check isort isort_check autoflake autoflake_check flake8
 
@@ -46,6 +46,7 @@ lint: install_dev
 	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json --check
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json --check
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_config_support_openapi.py docs/generated-config-support-openapi.json --check
 
 mypy: install_dev
 	$(POETRY) run mypy --show-error-codes $(MYPY_DIRS)
@@ -59,6 +60,7 @@ format: install_dev
 ifeq ($(FILES), $(SRC_DIRS))
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_app_schema.py docs/generated-app-schema.json
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_config_support_openapi.py docs/generated-config-support-openapi.json
 endif
 
 # --- Individual tool targets (honor FILES variable) ---
@@ -117,6 +119,9 @@ dump_app_schema: install_dev
 
 dump_internal_tools: install_dev
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_internal_tools.py docs/generated-internal-tools.json
+
+dump_config_support_openapi: install_dev
+	ENABLE_PREVIEW_FEATURES=true $(POETRY) run python src/scripts/dump_config_support_openapi.py docs/generated-config-support-openapi.json
 
 generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
