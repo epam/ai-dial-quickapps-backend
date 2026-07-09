@@ -1,0 +1,82 @@
+{
+  "orchestrator": {
+    "deployment": {
+      "deployment_id": "error-injection-model"
+    },
+    "system_prompt": {
+      "type": "custom",
+      "variables": {},
+      "content": "You are wired to the error-injection sample model. The model ignores this prompt and instead reproduces a failure mode selected by the user's message. Use the conversation starters to trigger each scenario."
+    },
+    "max_iterations": 15
+  },
+  "contexts": [],
+  "tool_sets": [],
+  "conversation_starters": {
+    "intro_text": "Pick an error scenario to trigger",
+    "chat_message_input_disabled": false,
+    "auto_submit": true,
+    "starters": [
+      {
+        "title": "Happy path (control)",
+        "text": "happy path"
+      },
+      {
+        "title": "Pre-stream 500 (display_message)",
+        "text": "pre-stream 500"
+      },
+      {
+        "title": "Content filter",
+        "text": "content filter"
+      },
+      {
+        "title": "Context length exceeded",
+        "text": "context length exceeded"
+      },
+      {
+        "title": "Rate limit (429)",
+        "text": "rate limit"
+      },
+      {
+        "title": "Auth failed (401)",
+        "text": "auth failed"
+      },
+      {
+        "title": "Permission denied (403)",
+        "text": "permission denied"
+      },
+      {
+        "title": "Not found (404)",
+        "text": "not found"
+      },
+      {
+        "title": "Payload too large (413)",
+        "text": "payload too large"
+      },
+      {
+        "title": "Invalid request (422)",
+        "text": "invalid request"
+      },
+      {
+        "title": "Internal error (no display_message)",
+        "text": "internal error"
+      },
+      {
+        "title": "Mid-stream error (after partial content)",
+        "text": "mid-stream error"
+      },
+      {
+        "title": "Mid-stream stream failure (no display_message)",
+        "text": "stream failure"
+      },
+      {
+        "title": "Uncaught exception",
+        "text": "uncaught exception"
+      },
+      {
+        "title": "Slow response / timeout",
+        "text": "slow response"
+      }
+    ]
+  }
+}
