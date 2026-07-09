@@ -1,0 +1,262 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "QuickApps Configuration Support API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/configuration-support/application-schema": {
+      "get": {
+        "summary": "Get App Schema",
+        "operationId": "get_app_schema_v1_configuration_support_application_schema_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/configuration-support/default-configuration": {
+      "get": {
+        "summary": "Get Default Configuration",
+        "operationId": "get_default_configuration_v1_configuration_support_default_configuration_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "type": "object",
+                  "title": "Response Get Default Configuration V1 Configuration Support Default Configuration Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/configuration-support/skills": {
+      "get": {
+        "summary": "Get Skills",
+        "operationId": "get_skills_v1_configuration_support_skills_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SkillMetadata"
+                  },
+                  "type": "array",
+                  "title": "Response Get Skills V1 Configuration Support Skills Get"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/configuration-support/skills/validate": {
+      "post": {
+        "summary": "Validate Skill",
+        "operationId": "validate_skill_v1_configuration_support_skills_validate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/DialPromptSkillConfig"
+                  }
+                ],
+                "title": "Config",
+                "discriminator": {
+                  "propertyName": "type",
+                  "mapping": {
+                    "dial-prompt": "#/components/schemas/DialPromptSkillConfig"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillMetadata"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DialPromptSkillConfig": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dial-prompt",
+            "title": "Type",
+            "description": "Skill sourced from a DIAL prompt.",
+            "default": "dial-prompt"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Relative prompt URL in DIAL (e.g. prompts/<bucket>/<path>)",
+            "dial:resource": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "DialPromptSkillConfig"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "SkillMetadata": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "license": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "License"
+          },
+          "compatibility": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Compatibility"
+          },
+          "metadata": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metadata"
+          },
+          "allowed_tools": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowed Tools"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "description"
+        ],
+        "title": "SkillMetadata",
+        "description": "Metadata extracted from a skill file's YAML frontmatter."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "ctx": {
+            "type": "object",
+            "title": "Context"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

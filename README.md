@@ -132,7 +132,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
 | **Logging**                                |                            |          |                                                                                                              |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string. The default references `%(otel_context)s`, a synthetic field populated by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] ` block when OTEL log correlation is active (`OTEL_PYTHON_LOG_CORRELATION=true` and a span is in scope) and to an empty string otherwise. Custom formats may reference `%(otelTraceID)s`/`%(otelSpanID)s`/`%(otelServiceName)s`/`%(otelTraceSampled)s` directly, but those placeholders only resolve while correlation is on. |
+| `LOG_FORMAT`                               | [see below](#log-format-configuration) | No | Custom logging format string (Python `logging` `%`-style). See [Log Format Configuration](#log-format-configuration) for the built-in default and available placeholders (including OTEL trace-correlation fields). |
 | `LOG_DATE_FORMAT`                          | `%Y-%m-%d %H:%M:%S`        | No       | `strftime`-style format for the `%(asctime)s` field                                                          |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
@@ -184,7 +184,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                           | If set alone, treated as a single extra layer on top of the built-in content                                                 |
 | `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
 
-¹**Notes:**
+**Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
   `REMOTE_DIAL_*`) are only used when running the full local stack via docker-compose or during testing.
@@ -192,14 +192,48 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
 
-### Deprecated: Agent Instructions
+#### Log Format Configuration
 
-> [!WARNING]
-> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills](docs/skills.md), which offer richer
-> metadata,
-> on-demand retrieval, and layered overrides. See the
-> [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.
+`LOG_FORMAT` is a standard Python `logging` [`%`-style](https://docs.python.org/3/library/logging.html#logrecord-attributes)
+format string, rendered by uvicorn's `DefaultFormatter`. The built-in default is:
+
+```
+%(levelprefix)s | %(asctime)s | %(process)d | %(name)s | %(otel_context)s%(message)s
+```
+
+Any `LogRecord` attribute can be referenced, e.g. `%(levelprefix)s` (padded, colorized level), `%(levelname)s`,
+`%(asctime)s` (formatted via `LOG_DATE_FORMAT`), `%(process)d`, `%(name)s`, `%(message)s`.
+
+**OTEL trace correlation.** Custom formats can reference either the composite `%(otel_context)s` field or the
+individual `otel*` placeholders:
+
+| Placeholder            | Rendered value                                                                                                                                                     |
+|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `%(otel_context)s`     | Synthesized by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] \| ` block when a span is active, and to an empty string otherwise. |
+| `%(otelTraceID)s`      | Active trace id (`0` when no span is in scope).                                                                                                                     |
+| `%(otelSpanID)s`       | Active span id (`0` when no span is in scope).                                                                                                                      |
+| `%(otelServiceName)s`  | Resource service name (from `OTEL_SERVICE_NAME`).                                                                                                                   |
+| `%(otelTraceSampled)s` | Whether the active trace is sampled.                                                                                                                                |
+
+The individual `otel*` placeholders are stamped by the `LoggingInstrumentor` (enabled by aidial-sdk when
+`OTEL_PYTHON_LOG_CORRELATION=true`) and only resolve while a span is in scope; otherwise they render as `0` / empty.
+Prefer `%(otel_context)s`, which collapses to nothing when no trace is present, unless you need a specific field.
+
+<details>
+<summary><strong>Example — JSON-shaped output</strong></summary>
+
+Because the value is a plain `%`-style string, you can lay the fields out as a JSON object to get one JSON line per
+log record:
+
+```bash
+LOG_FORMAT='{"level": "%(levelname)s", "time": "%(asctime)s", "pid": %(process)d, "logger": "%(name)s", "trace_id": "%(otelTraceID)s", "span_id": "%(otelSpanID)s", "message": "%(message)s"}'
+```
+
+Use `%(levelname)s` here, not `%(levelprefix)s` — the latter embeds ANSI color codes and padding. Note that field
+values are **not** JSON-escaped, so a message containing a `"`, a backslash, or a newline will produce a line that is
+not strictly valid JSON. For guaranteed-valid structured logs, plug in a dedicated JSON log formatter instead.
+
+</details>
 
 ## Local Development
 
