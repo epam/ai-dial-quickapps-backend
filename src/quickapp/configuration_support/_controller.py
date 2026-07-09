@@ -4,16 +4,10 @@ from typing import Any
 from aidial_client import AsyncDial, DialException
 from fastapi import FastAPI, HTTPException, Request, status
 from injector import inject
-from pydantic import SecretStr, ValidationError
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.predefined_content_provider import ContentType
 from quickapp.config.skill import DialPromptSkillConfig, SkillConfig
-from quickapp.config.tools.deployment import DialDeploymentTool
-from quickapp.config.toolsets.toolset import ToolSet
-from quickapp.config.utils import validate_toolset_dict_and_expand
-from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import (
     fetch_and_validate_dial_prompt_skill,
 )
@@ -33,12 +27,10 @@ class _Controller:
     def __init__(
         self,
         config_resolver: PredefinedConfigResolver,
-        service: ToolConfigCoreService,
         skills_provider: AgentSkillsProvider,
         dial_settings: DialSettings,
     ):
         self.__config_resolver = config_resolver
-        self.__service = service
         self.__skills_provider = skills_provider
         self.__dial_settings = dial_settings
 
@@ -47,38 +39,9 @@ class _Controller:
         async def get_app_schema():
             return ApplicationConfig.model_json_schema(include_dial_fields=False)
 
-        @app.get(CONFIG_SUPPORT_URI + "/system-prompts")
-        async def get_system_prompts():
-            return self.__config_resolver.get_prompts()
-
-        @app.get(CONFIG_SUPPORT_URI + "/tool-sets")
-        async def get_tool_sets():
-            return self.__config_resolver.get_tool_sets()
-
         @app.get(CONFIG_SUPPORT_URI + "/default-configuration")
         async def get_default_configuration() -> dict[str, Any]:
             return self.__config_resolver.get_default_configuration()
-
-        @app.get(CONFIG_SUPPORT_URI + "/tools")
-        async def get_tools():
-            return self.__config_resolver.get_tools()
-
-        @app.get(CONFIG_SUPPORT_URI + "/system-prompts/{deployment_name}")
-        async def get_system_prompt_content(deployment_name: str):
-            return self._get_template_content(ContentType.PROMPT, deployment_name)
-
-        @app.get(CONFIG_SUPPORT_URI + "/tool-sets/{toolset_name}")
-        async def get_toolset_content(toolset_name: str):
-            return self._get_template_content(ContentType.TOOLSET, toolset_name)
-
-        @app.get(CONFIG_SUPPORT_URI + "/tools/{tool_name}")
-        async def get_tool_content(tool_name: str):
-            return self._get_template_content(ContentType.TOOL, tool_name)
-
-        @app.get(CONFIG_SUPPORT_URI + "/template/{deployment}", response_model=DialDeploymentTool)
-        async def get_tool_template(deployment: str, request: Request):
-            api_key = SecretStr(request.headers.get("api-key", ""))
-            return await self.__service.get_basic_tool_config(deployment, api_key)
 
         @app.get(CONFIG_SUPPORT_URI + "/skills")
         async def get_skills() -> list[SkillMetadata]:
@@ -135,42 +98,4 @@ class _Controller:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=str(e),
-            )
-
-    def _get_template_content(
-        self, template_type: ContentType, template_name: str
-    ) -> str | dict[str, Any] | ToolSet:
-        templates = self.__config_resolver.template_map.get(template_type.value, [])
-        if template_name not in templates:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"{template_type.value.capitalize()} '{template_name}' not found.",
-            )
-        try:
-            content = self.__config_resolver.read_template_content(template_type, template_name)
-            if template_type == ContentType.TOOLSET:
-                if not isinstance(content, dict):
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                        detail=f"Toolset '{template_name}' must be a JSON object.",
-                    )
-                try:
-                    return validate_toolset_dict_and_expand(
-                        content,
-                        expand_fn=self.__config_resolver.resolve_toolset,
-                    )
-                except ValidationError as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                        detail=str(e),
-                    ) from e
-            return content
-        except FileNotFoundError as e:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
-        except HTTPException:
-            raise
-        except Exception as e:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Failed to load {template_type.value} '{template_name}': {e}",
             )
