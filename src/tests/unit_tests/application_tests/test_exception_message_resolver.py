@@ -156,13 +156,13 @@ class TestResolveHttpxError:
         )
         e = ToolErrorException("rest_tool", "public tool error")
         e.__cause__ = cause
-        assert "permission" in resolve_exception_message(e).lower()
+        assert "permission" in _resolve(e).lower()
 
     def test_tool_error_with_timeout_cause_uses_timeout_message(self) -> None:
         cause = httpx.TimeoutException("timed out", request=_make_httpx_request())
         e = ToolErrorException("rest_tool", "public tool error")
         e.__cause__ = cause
-        assert "timed out" in resolve_exception_message(e).lower()
+        assert "timed out" in _resolve(e).lower()
 
 
 class TestResolveInternalError:
@@ -309,12 +309,12 @@ class TestExtraction:
 
     def test_tool_error_without_cause_uses_tool_error_message(self) -> None:
         e = ToolErrorException("some_tool", "public tool error")
-        assert "some_tool" in resolve_exception_message(e).lower()
+        assert "some_tool" in _resolve(e).lower()
 
     def test_tool_error_with_non_http_cause_uses_generic_fallback(self) -> None:
         e = ToolErrorException("rest_tool", "public tool error")
         e.__cause__ = ValueError("bad value")
-        assert "something went wrong" in resolve_exception_message(e).lower()
+        assert "something went wrong" in _resolve(e).lower()
 
 
 class TestNoLeakage:
