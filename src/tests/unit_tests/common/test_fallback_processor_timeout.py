@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.exceptions import ToolTimeoutError, ToolErrorException
+from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,

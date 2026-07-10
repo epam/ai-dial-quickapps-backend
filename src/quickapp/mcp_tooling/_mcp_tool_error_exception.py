@@ -6,4 +6,3 @@ class MCPToolErrorException(ToolErrorException):
 
     def __str__(self) -> str:
         return f"MCP tool '{self.tool_name}' returned an error: {self.error_message}"
-
