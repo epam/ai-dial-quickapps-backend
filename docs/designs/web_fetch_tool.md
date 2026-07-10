@@ -9,6 +9,8 @@
 
 An earlier revision of this doc (Status: Approved) shipped this capability as **two dedicated tools** — `internal_web_fetch` (inline text) and `internal_file_download` (persist to the workspace, living in the `internal_file_*` family). This revision collapses them into **one independent tool** whose behavior is selected by a single optional `save_path` argument. The rationale for the reversal is in [One tool, one switch](#one-tool-one-switch-core-design-decision).
 
+A subsequent revision re-examined the design against `internal_attachments_get_content` (the lazy-on-demand attachment tool, which also fetches external urls) and against dropping back to a minimal `download` tool in the file family. Both alternatives were rejected — the analysis confirmed the one-tool form unchanged and is recorded in [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content).
+
 ## Problem Statement
 
 The agent today has two halves of a capability but not the bridge between them:
@@ -56,6 +58,27 @@ Both branches share the same front half — classify, egress-gate, fetch, decode
 
 ---
 
+## Relationship to `internal_attachments_get_content`
+
+The lazy-on-demand attachment strategy ships a tool that superficially overlaps with this one: `internal_attachments_get_content` (`orchestrator_attachment_strategies/lazy_on_demand/`) also accepts external `http(s)` urls and fetches them through the same egress plumbing (`DialFilePromoter` → `ExternalUrlFetcher`, same two-tier policy). The overlap is mechanical, not conceptual — the two tools answer different questions:
+
+| | `internal_attachments_get_content` | `internal_web_fetch` |
+|---|---|---|
+| **Purpose** | Deliver a *conversation attachment* to the orchestrator model as multimodal input | *Agent-initiated* retrieval of a web resource |
+| **How content reaches the model** | `result.attachments` entry — the deployment must accept the MIME (`orchestrator_accepts_mime_type`); how the model "sees" it is adapter-dependent | Plain text in the tool result — works with any deployment |
+| **Availability** | Only when `attachment_strategy: lazy_on_demand` is configured (the default is `None`) **and** the deployment declares non-empty `input_attachment_types` | `features.web_fetch.enabled` — any strategy, any deployment |
+| **Where fetched bytes land** | Flat bucket root (`AttachmentService.upload_bytes`), promotion cache is request-scoped; not addressable by the file tools | Agent home at the caller's `save_path` — round-trips into `internal_file_*` |
+
+`get_content`'s external-url support exists because PR #279 made external urls first-class *user attachments* — "the user attached `https://…/report.pdf`" must be loadable. Arbitrary-url fetching is incidental capability it inherits from that, not designed behavior, and it covers issue #344 only in a configuration corner (lazy strategy + a deployment that accepts the MIME + an adapter that inlines text attachments). The two things it does **not** cover — a universal one-call text read that works on any deployment, and persistence under the agent home for the file tools — are exactly this tool's two branches. (A minimal `download`-only tool in the file family was also re-considered as an alternative and rejected: it leaves the read half config-dependent and forces two-call reads where every glanced-at page becomes a permanently named workspace file.)
+
+Consequences:
+
+- **`get_content` is unchanged by this design.** They share fetch plumbing, not code paths that need reconciling.
+- **Where both tools are registered, they don't compete** — they divide the labor. Introducing `internal_web_fetch` relieves `get_content` of the fetch role it plays awkwardly today (see the `file:url::` steering fix, `0553f9a`): the model gets a purpose-named tool for the web, and `get_content` stays about attachments. Binary content the deployment accepts (image, PDF) remains `get_content`'s strength — it delivers what this tool's phase-1 punts to save-only.
+- **Routing fetched content to downstream tools is neither tool's job.** "The orchestrator can't read this PDF but tool X can" is already covered by #279's outward url-attachment path (capability-aware via `Deployment.features.url_attachments`, with promoter fallback). This tool's save branch adds *durability* (ephemeral/signed urls outlive the link) and a stable workspace identity the model can hand to several tools — not new routing.
+
+---
+
 ## Use Cases
 
 ### UC-1: Agent fetches a text resource and reads it in one call (default)
@@ -88,7 +111,7 @@ Both branches share the same front half — classify, egress-gate, fetch, decode
 
 **Behavior:** Without `save_path` → parameter error: binary content cannot be loaded into context; re-call with a `save_path`. With `save_path` → the bytes are saved and the tool returns the path + content type + size (no inline body, no extraction in phase-1).
 
-**Outcome:** The model never receives garbled bytes in context; binary is reachable only as a saved file it can forward to a capable deployment/tool.
+**Outcome:** The model never receives garbled bytes in context; binary is reachable only as a saved file it can forward to a capable deployment/tool. (When the url is a conversation attachment and `internal_attachments_get_content` is registered, that tool may deliver the binary to the orchestrator as multimodal input instead — see [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content).)
 
 ### UC-5: External egress is disabled (admin cap or per-app opt-out)
 
@@ -217,6 +240,8 @@ Deferred from phase-1; each is a clean follow-on, not a rework:
 - **A second dedicated tool / splitting read and save apart.** The prior revision's `internal_file_download` (a `_DialFileTool` subclass in the file family) is intentionally folded into the `save_path` branch. If a future need arises to enable saving independently of read-into-context, a separate flag or tool can be reintroduced; phase-1 treats web retrieval as one capability.
 - **Auto-derived save filenames.** Saving always uses the caller's `save_path`; the tool never guesses a name from Content-Disposition / URL path / MIME type. A future revision could add an "infer a name" affordance.
 - **PDF / binary text extraction.** Binary content is save-only (no inline, no extraction) in phase-1. Extraction needs a parser and a preview strategy; future phase.
+- **Binary-attach enrichment of the inline branch.** A phase-2 candidate: when the fetched content is binary and the orchestrator deployment accepts its MIME (`orchestrator_accepts_mime_type`), return it as a `result.attachments` entry — `get_content`-style multimodal delivery — instead of the "re-call with a `save_path`" error (UC-4). Closes the binary-read gap for capable deployments without touching phase-1's text-only inline contract.
+- **Routing fetched content to downstream tools.** Passing an external resource to a deployment/REST/MCP tool is already covered by PR #279's outward url-attachment path (capability-aware, with promoter fallback); this tool deliberately adds only durability and workspace identity on top (see [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content)).
 - **Special-casing the tool against the global offload processor.** The tool does not rely on offload (saving covers large content) and does not exempt itself from the global post-processor in phase-1; see Component 4a.
 - **Pagination / `start_index` on inline reads.** Unnecessary — a save + `internal_file_read_lines` / `internal_file_search` provide ranged access; inline fetch is for content that fits inline.
 - **Content summarization** (Claude Code-style prompt-over-content).
