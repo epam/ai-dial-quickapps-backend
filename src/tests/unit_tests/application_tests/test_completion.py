@@ -4,6 +4,7 @@ from unittest.mock import Mock
 import fastapi
 import pytest
 from aidial_sdk.chat_completion import Message, Request, Role
+from aidial_sdk.exceptions import HTTPException as DialHTTPException
 from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
@@ -189,7 +190,7 @@ async def test_chat_completion_success(make_request_completion):
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_orchestrator_exceed_exception(make_request_completion):
+async def test_chat_completion_orchestrator_exceed_raises_dial_error(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
@@ -200,15 +201,18 @@ async def test_chat_completion_orchestrator_exceed_exception(make_request_comple
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
-    # Act
-    await completion.chat_completion(request, response)
+    # Act + Assert: delivered as a DIAL protocol error, not swallowed into choice content
+    with pytest.raises(DialHTTPException) as exc:
+        await completion.chat_completion(request, response)
 
-    # Assert
-    assert any("Agent stopped due to max iterations." in c for c in choice.contents)
+    display = exc.value.display_message
+    assert display is not None
+    assert "Agent stopped due to max iterations." in display
+    assert choice.contents == []
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_generic_exception_appends_generic_message(make_request_completion):
+async def test_chat_completion_generic_exception_raises_generic_message(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
@@ -219,13 +223,15 @@ async def test_chat_completion_generic_exception_appends_generic_message(make_re
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
-    # Act
-    await completion.chat_completion(request, response)
+    # Act + Assert
+    with pytest.raises(DialHTTPException) as exc:
+        await completion.chat_completion(request, response)
 
-    # Assert
-    assert any(
-        "Something went wrong with the execution of your request" in c for c in choice.contents
-    )
+    display = exc.value.display_message
+    assert display is not None
+    assert "Something went wrong with the execution of your request" in display
+    assert exc.value.status_code == 500
+    assert choice.contents == []
 
 
 @pytest.mark.asyncio
@@ -270,7 +276,7 @@ async def test_configuration_with_binding_returns_config_response(
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_http_error_appends_safe_message(make_request_completion):
+async def test_chat_completion_http_error_raises_safe_message(make_request_completion):
     # Arrange
     choice = FakeChoice()
     response = FakeResponse(choice)
@@ -281,16 +287,19 @@ async def test_chat_completion_http_error_appends_safe_message(make_request_comp
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
-    # Act
-    await completion.chat_completion(request, response)
+    # Act + Assert: a user-friendly message is delivered and the raw internal URL is NOT leaked
+    with pytest.raises(DialHTTPException) as exc:
+        await completion.chat_completion(request, response)
 
-    # Assert: a user-friendly message is shown and the raw internal URL is NOT leaked
-    assert any("http error" in c.lower() for c in choice.contents)
-    assert not any("http://internal-service" in c for c in choice.contents)
+    display = exc.value.display_message
+    assert display is not None
+    assert "http error" in display.lower()
+    assert "http://internal-service" not in display
+    assert choice.contents == []
 
 
 @pytest.mark.asyncio
-async def test_chat_completion_openai_internal_server_error_appends_safe_message(
+async def test_chat_completion_openai_internal_server_error_raises_safe_message(
     make_request_completion,
 ):
     # Arrange
@@ -311,13 +320,18 @@ async def test_chat_completion_openai_internal_server_error_appends_safe_message
 
     request, completion, _ = make_request_completion(OrchRaise(), api_key="k")
 
-    # Act
-    await completion.chat_completion(request, response)
+    # Act + Assert: clean message delivered, raw internal details NOT exposed. An upstream
+    # 500 is downgraded to 500 (never a Core-retriable status).
+    with pytest.raises(DialHTTPException) as exc:
+        await completion.chat_completion(request, response)
 
-    # Assert: clean message shown, raw internal details NOT exposed
-    assert any("internal error" in c.lower() for c in choice.contents)
-    assert not any("http://internal-dial-core" in c for c in choice.contents)
-    assert not any("upstream internal error" in c for c in choice.contents)
+    display = exc.value.display_message
+    assert display is not None
+    assert "internal error" in display.lower()
+    assert "http://internal-dial-core" not in display
+    assert "upstream internal error" not in display
+    assert exc.value.status_code == 500
+    assert choice.contents == []
 
 
 @pytest.mark.asyncio
@@ -330,8 +344,13 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
     choice = FakeChoice()
     response = FakeResponse(choice)
 
-    # Create request via fixture (no orchestrator needed — we only need __setup_request_context to run)
-    request, completion, injector = make_request_completion(None, api_key="k")
+    class OrchestratorFake:
+        async def invoke(self):
+            return None
+
+    # We only need the request-context setup to run; a no-op orchestrator lets the
+    # success path complete so we can inspect the resolved messages.
+    request, completion, injector = make_request_completion(OrchestratorFake(), api_key="k")
 
     # Act
     await completion.chat_completion(request, response)

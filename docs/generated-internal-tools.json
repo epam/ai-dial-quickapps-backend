@@ -10,7 +10,7 @@
     "properties": {
       "attachment_url": {
         "type": "string",
-        "description": "File reference in the file:url:: form. Accepted MIME types: */*."
+        "description": "File reference using ONLY the file:url:: form, e.g. file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected. Accepted MIME types: */*."
       }
     },
     "required": [
@@ -319,6 +319,27 @@
     "required": [
       "path",
       "content"
+    ]
+  },
+  {
+    "name": "internal_representation_add_attachment",
+    "description": "Attach a file to your final response so the user can open or download it. Call this whenever you produce or find a file the user should receive — a report you wrote (CSV, PDF, XLSX), a chart or image, a file returned by another tool, or a file attached earlier in the conversation. Call it separately for each file that should be visible to the user — a file stays hidden in the tool stage until this tool is called with its URL. The file must be reachable via a URL — a DIAL URL (e.g. files/bucket/path/report.csv) or an external link. After calling, do not restate the file name or say that you attached it — the file is shown to the user automatically.",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "File URL — DIAL (e.g. files/bucket/path/report.csv) or external."
+      },
+      "title": {
+        "type": "string",
+        "description": "Display name shown to the user. Optional."
+      },
+      "type": {
+        "type": "string",
+        "description": "MIME type (e.g. text/csv, application/pdf). Default: text/plain."
+      }
+    },
+    "required": [
+      "url"
     ]
   },
   {
