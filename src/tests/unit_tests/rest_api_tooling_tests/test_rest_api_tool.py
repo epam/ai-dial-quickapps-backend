@@ -33,9 +33,9 @@ from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallb
 from quickapp.config.toolsets.authorization import BearerAuthorization
 from quickapp.config.toolsets.rest_api import RestApiToolSet
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.rest_api_tooling._rest_api_stage_wrapper import _RestApiStageWrapper
 from quickapp.rest_api_tooling._rest_api_tool_error_exception import RestApiToolErrorException
-from quickapp.rest_api_tooling import RestApiToolingModule
 from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration
 
@@ -442,7 +442,9 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
     )
     mock_response = AsyncMock(text=response.text, headers={"Content-Type": "application/json"})
     mock_response.raise_for_status = MagicMock(
-        side_effect=httpx.HTTPStatusError("bad request", request=response.request, response=response)
+        side_effect=httpx.HTTPStatusError(
+            "bad request", request=response.request, response=response
+        )
     )
     mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
@@ -497,7 +499,9 @@ async def test_http_status_error_can_append_instructions_after_forwarded_error(m
     )
     mock_response = AsyncMock(text=response.text, headers={"Content-Type": "application/json"})
     mock_response.raise_for_status = MagicMock(
-        side_effect=httpx.HTTPStatusError("rate limited", request=response.request, response=response)
+        side_effect=httpx.HTTPStatusError(
+            "rate limited", request=response.request, response=response
+        )
     )
     mock_async_client.return_value.__aenter__.return_value.request.return_value = mock_response
 
@@ -564,4 +568,3 @@ def test_rest_api_stage_wrapper_uses_http_status_error_cause_for_debug_info():
 
     assert "502" in output
     assert "Gateway failure" in output
-

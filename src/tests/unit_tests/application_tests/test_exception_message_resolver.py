@@ -2,7 +2,7 @@ import httpx
 import openai
 import pytest
 
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException, ToolErrorException
 from quickapp.core.application._exception_message_resolver import resolve_exception_message
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
@@ -22,6 +22,12 @@ def _make_openai_status_error(
     cls: type[openai.APIStatusError], status_code: int
 ) -> openai.APIStatusError:
     return cls("raw error detail", response=_make_httpx_response(status_code), body=None)
+
+
+def _make_tool_error_with_cause(cause: Exception) -> ToolErrorException:
+    error = ToolErrorException("rest_tool", "public tool error")
+    error.__cause__ = cause
+    return error
 
 
 class TestResolveOpenAIError:
@@ -114,6 +120,20 @@ class TestResolveHttpxError:
         e = httpx.HTTPError("some low-level http error")
         assert "http error" in resolve_exception_message(e).lower()
 
+    def test_tool_error_with_http_status_cause_uses_http_specific_message(self) -> None:
+        cause = httpx.HTTPStatusError(
+            "forbidden", request=_make_httpx_request(), response=_make_httpx_response(403)
+        )
+        e = ToolErrorException("rest_tool", "public tool error")
+        e.__cause__ = cause
+        assert "permission" in resolve_exception_message(e).lower()
+
+    def test_tool_error_with_timeout_cause_uses_timeout_message(self) -> None:
+        cause = httpx.TimeoutException("timed out", request=_make_httpx_request())
+        e = ToolErrorException("rest_tool", "public tool error")
+        e.__cause__ = cause
+        assert "timed out" in resolve_exception_message(e).lower()
+
 
 class TestResolveInternalError:
     def test_orchestrator_exceed_max_iterations(self) -> None:
@@ -134,6 +154,15 @@ class TestResolveInternalError:
 
     def test_generic_value_error_fallback(self) -> None:
         e = ValueError("unexpected value")
+        assert "something went wrong" in resolve_exception_message(e).lower()
+
+    def test_tool_error_without_cause_uses_tool_error_message(self) -> None:
+        e = ToolErrorException("some_tool", "public tool error")
+        assert "some_tool" in resolve_exception_message(e).lower()
+
+    def test_tool_error_with_non_http_cause_uses_generic_fallback(self) -> None:
+        e = ToolErrorException("rest_tool", "public tool error")
+        e.__cause__ = ValueError("bad value")
         assert "something went wrong" in resolve_exception_message(e).lower()
 
 
@@ -177,6 +206,16 @@ class TestNoLeakage:
             pytest.param(
                 httpx.HTTPError(f"failure at {_INTERNAL_URL}"),
                 id="httpx-generic",
+            ),
+            pytest.param(
+                _make_tool_error_with_cause(
+                    httpx.HTTPStatusError(
+                        f"forbidden {_INTERNAL_URL}",
+                        request=_make_httpx_request(),
+                        response=_make_httpx_response(403),
+                    )
+                ),
+                id="tool-error-httpx-403",
             ),
         ],
     )

@@ -7,6 +7,7 @@ from aidial_sdk.exceptions import InvalidRequestError, RequestValidationError, R
 from quickapp.common.exceptions import (
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
+    ToolErrorException,
 )
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
@@ -149,12 +150,22 @@ def _resolve_internal_error(e: Exception) -> str:
     return _FALLBACK_MESSAGE
 
 
+def _resolve_tool_error(e: ToolErrorException) -> str:
+    # ToolErrorException may wrap a transport/status error that already has a dedicated message.
+    if isinstance(e.__cause__, Exception):
+        return resolve_exception_message(e.__cause__)
+    return str(e)
+
+
 def resolve_exception_message(e: Exception) -> str:
     """Return a safe, user-friendly message for any exception."""
-    if isinstance(e, openai.OpenAIError):
-        return _resolve_openai_error(e)
-    if isinstance(e, httpx.HTTPError):
-        return _resolve_httpx_error(e)
-    if isinstance(e, AiDialHTTPException):
-        return _resolve_aidial_error(e)
-    return _resolve_internal_error(e)
+    error: Exception = e
+    if isinstance(error, ToolErrorException):
+        return _resolve_tool_error(error)
+    if isinstance(error, openai.OpenAIError):
+        return _resolve_openai_error(error)
+    if isinstance(error, httpx.HTTPError):
+        return _resolve_httpx_error(error)
+    if isinstance(error, AiDialHTTPException):
+        return _resolve_aidial_error(error)
+    return _resolve_internal_error(error)
