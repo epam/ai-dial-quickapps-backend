@@ -46,7 +46,7 @@ registering each entry separately: `core/` exposes `core_module` (the app's cent
 `AppModule` + `AgentModule`), and `shared/` exposes `shared_module` (cross-cutting utility modules with
 their own DI wiring; today `ExternalFetchModule` in `shared/external_fetch/`).
 
-→ Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md)
+→ Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md) | [`docs/error_handling.md`](docs/error_handling.md)
 
 ### Dependency Injection (Core Pattern)
 
