@@ -1,4 +1,5 @@
 import json
+from typing import TypeGuard
 
 from aidial_sdk.chat_completion import CustomContent
 from aidial_sdk.chat_completion.request import Message, Role
@@ -24,7 +25,7 @@ _ATTACHMENT_ERROR_SIGNALS: tuple[str, ...] = (
 )
 
 
-def _is_recoverable_api_error(error: Exception) -> bool:
+def _is_recoverable_api_error(error: Exception) -> TypeGuard[BadRequestError | APIError]:
     """True for ``BadRequestError`` and the base ``APIError`` class only.
 
     Other ``APIError`` subclasses (connection, rate limit, auth, 5xx, etc.) are
@@ -64,7 +65,7 @@ def _looks_like_attachment_error(error: Exception) -> bool:
     """
     if not _is_recoverable_api_error(error):
         return False
-    haystack = f"{error.message} {_body_text(getattr(error, 'body', None))}".lower()
+    haystack = f"{error.message} {_body_text(error.body)}".lower()
     return any(signal in haystack for signal in _ATTACHMENT_ERROR_SIGNALS)
 
 
