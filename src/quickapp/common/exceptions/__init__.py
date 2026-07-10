@@ -26,5 +26,5 @@ __all__ = [
     "ToolInitializationException",
     "ToolTimeoutError",
     "HookInitializationException",
-    "ToolErrorException"
+    "ToolErrorException",
 ]
