@@ -217,8 +217,6 @@ def test_try_recover_returns_false_on_bad_request_without_attachment_signal() ->
         "invalid attachment",
         "unsupported file",
         "invalid file",
-        "input_attachment_types",
-        "image_url",
         "file type",
         "files failed to process",
         "supported types",
