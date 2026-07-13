@@ -25,6 +25,10 @@ def _bad_request(message: str, body: object | None = None) -> openai.BadRequestE
     return openai.BadRequestError(message=message, response=MagicMock(status_code=400), body=body)
 
 
+def _api_error(message: str, body: object | None = None) -> openai.APIError:
+    return openai.APIError(message=message, request=MagicMock(), body=body)
+
+
 def _messages_with_get_content_pair(*, with_attachment: bool = True) -> list[Message]:
     content, state = GetContentToolResponse.success(
         display_url="files/bucket/r.pdf",
@@ -114,7 +118,7 @@ def test_try_recover_only_touches_current_turn() -> None:
     assert messages[2].content == "prior turn tool body"
 
 
-def test_try_recover_returns_false_on_non_bad_request() -> None:
+def test_try_recover_returns_false_on_non_api_error() -> None:
     policy = _GetContentRecoveryPolicy()
     messages = _messages_with_get_content_pair()
 
@@ -124,6 +128,71 @@ def test_try_recover_returns_false_on_non_bad_request() -> None:
     assert messages[2].custom_content is not None
     assert messages[2].custom_content.attachments is not None
     assert len(messages[2].custom_content.attachments) == 1
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        openai.RateLimitError(
+            message="files failed to process",
+            response=MagicMock(status_code=429),
+            body=None,
+        ),
+        openai.APIConnectionError(request=MagicMock()),
+        openai.InternalServerError(
+            message="supported types",
+            response=MagicMock(status_code=500),
+            body=None,
+        ),
+        openai.APIResponseValidationError(response=MagicMock(), body=None),
+    ],
+)
+def test_try_recover_returns_false_on_other_api_error_subclasses(error: Exception) -> None:
+    """Attachment-like text must not trigger recovery on non-BadRequest APIError subclasses."""
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
+
+    changed = policy.try_recover(messages, error)
+
+    assert changed is False
+    assert messages[2].content == original_content
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is not None
+
+
+def test_try_recover_returns_false_on_api_error_without_attachment_signal() -> None:
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
+
+    changed = policy.try_recover(messages, _api_error("upstream service unavailable"))
+
+    assert changed is False
+    assert messages[2].content == original_content
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is not None
+
+
+def test_try_recover_rewrites_get_content_on_unsupported_attachment_type_api_error() -> None:
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+
+    error = _api_error(
+        "The following files failed to process:\n"
+        "1. blue-ball-svgrepo-com.svg: the attachment isn't one of the supported types"
+    )
+
+    changed = policy.try_recover(messages, error)
+
+    assert changed is True
+    payload = GetContentToolResponse.from_state(
+        messages[2].custom_content.state if messages[2].custom_content else None
+    )
+    assert payload is not None
+    assert payload.status == GetContentStatus.FAIL
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is None
 
 
 def test_try_recover_returns_false_on_bad_request_without_attachment_signal() -> None:
@@ -148,9 +217,9 @@ def test_try_recover_returns_false_on_bad_request_without_attachment_signal() ->
         "invalid attachment",
         "unsupported file",
         "invalid file",
-        "input_attachment_types",
-        "image_url",
         "file type",
+        "files failed to process",
+        "supported types",
     ],
 )
 def test_try_recover_matches_each_attachment_signal_in_message(signal: str) -> None:
