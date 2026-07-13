@@ -7,7 +7,6 @@ import logging.config
 # dictConfig below, so LoggingConfig always has the last word regardless of the
 # caller's import order.
 import aidial_sdk  # noqa: F401
-import uvicorn.logging
 
 from quickapp.config.logging_settings import LoggingSettings
 
@@ -26,12 +25,6 @@ MANAGED_LOGGER_NAMES: tuple[str, ...] = (
     "openai",
     "aidial_sdk",
 )
-
-
-class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
-    def format(self, record):
-        res = super().format(record).replace("\n", r"\n")
-        return res
 
 
 class LoggingConfig:

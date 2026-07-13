@@ -10,7 +10,7 @@ _DEFAULT_LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
 
 class LoggingSettings(BaseSettings):
-    """Settings for logging. Use from_env() to load from os.environ (avoids pydantic-settings env quirks)."""
+    """Settings for logging, loaded from environment variables via the aliases below."""
 
     model_config = SettingsConfigDict()
 
@@ -18,7 +18,3 @@ class LoggingSettings(BaseSettings):
     log_date_format: str = Field(default=_DEFAULT_LOG_DATE_FORMAT, alias="LOG_DATE_FORMAT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
     quickapp_log_level: str = Field(default="INFO", alias="QUICKAPP_LOG_LEVEL")
-    log_multiline_mode_enabled: bool = Field(
-        default=False,
-        alias="LOG_MULTILINE_LOG_ENABLED",
-    )
