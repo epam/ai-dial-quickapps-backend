@@ -1,25 +1,17 @@
-from unittest.mock import MagicMock
-
 import pytest
 from aidial_client._exception import DialException, EtagMismatchError, ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._tool_configs import COPY_FILE_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(side_effect: Exception | None = None) -> _CopyFileTool:
     service = make_service()
     if side_effect:
         service.copy.side_effect = side_effect
-    return _CopyFileTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=COPY_FILE_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_CopyFileTool, COPY_FILE_TOOL_CONFIG, service=service)
 
 
 class TestCopyFile:

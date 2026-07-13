@@ -1,7 +1,4 @@
-from quickapp.common.tool_names import (
-    INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME,
-    INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
-)
+from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
@@ -17,11 +14,9 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
         function=OpenAiToolFunction(
             name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
             description=(
-                "Loads one allowed attachment by URL for use in this turn. "
-                f"Pass the exact `url` string from the "
-                f"`{INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME}` tool "
-                "result (`entries[].url`) or from user `<attachments>` metadata in messages. "
-                "Only URLs from current admin contexts or user attachments are accepted; arbitrary paths or URLs are rejected. "
+                "Loads one allowed file/attachment by reference for the orchestrator to read. "
+                "Attachment bytes are not kept across user turns; when you need the content from a file that was loaded in an earlier turn, call this tool "
+                "again with the same attachment_url."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,
@@ -29,8 +24,8 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
                     "attachment_url": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
                         description=(
-                            "Exact file `url` from `internal_attachments_available_context.entries[].url` "
-                            "or from user `<attachments>` section (same string, including path). "
+                            "File reference using ONLY the file:url:: form, e.g. "
+                            "file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected."
                         ),
                     )
                 },

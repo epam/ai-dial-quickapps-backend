@@ -6,6 +6,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
+from quickapp.dial_files_tooling._utils import reject_absolute_path
 
 
 class _EditFileTool(_DialFileTool):
@@ -25,9 +26,9 @@ class _EditFileTool(_DialFileTool):
                 "new_string", "new_string must differ from old_string"
             )
 
-        self._reject_absolute_path("path", "edit_file", path)
-        url = await self._resolve_appdata_url(path)
-        display_path = await self._to_display_path(url)
+        reject_absolute_path("path", "edit_file", path)
+        url = await self._home_resolver.resolve_appdata_url(path)
+        display_path = await self._home_resolver.to_display_path(url)
 
         content, metadata = await self._download_text(url, display_path=path)
         etag = metadata.etag if metadata else None

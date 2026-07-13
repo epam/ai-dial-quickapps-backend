@@ -1,24 +1,16 @@
-from unittest.mock import MagicMock
-
 import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
-from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
+from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
 def _make_tool(content: bytes = b"a\nb\nc\nd\ne") -> _ReadFileLinesTool:
     service = make_service()
     service.download_file.return_value = (content, None)
-    return _ReadFileLinesTool(
-        stage_wrapper_builder=MagicMock(),
-        tool_config=READ_FILE_LINES_TOOL_CONFIG,
-        perf_timer=MagicMock(),
-        dial_file_service=service,
-        dial_files_config=make_config(),
-    )
+    return make_tool(_ReadFileLinesTool, READ_FILE_LINES_TOOL_CONFIG, service=service)
 
 
 class TestReadFileLines:

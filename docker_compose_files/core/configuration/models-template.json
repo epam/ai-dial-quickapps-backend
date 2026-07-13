@@ -1,5 +1,16 @@
 {
-  "models": {},
+  "models": {
+    "error-injection-model": {
+      "type": "chat",
+      "endpoint": "http://host.docker.internal:5002/openai/deployments/error-injection-model/chat/completions",
+      "displayName": "Error Injection Model",
+      "description": "Local test model that deterministically injects error-handling failure modes. Run the sample app on the host: make run_error_injection_app",
+      "features": {
+        "systemPromptSupported": true,
+        "toolsSupported": true
+      }
+    }
+  },
   "applications": {},
   "routes": {},
   "keys": {

@@ -21,9 +21,9 @@ from quickapp.dial_core_services._interactive_login_service import InteractiveLo
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.mcp_tooling._mcp_connection_manager import _MCPConnectionManager
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
+from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
@@ -37,7 +37,7 @@ class _MCPTool(StagedBaseTool):
         self,
         tool: Tool,
         tool_config: MCPTool,
-        connection_manager: _MCPConnectionManager,
+        toolset_client: _MCPToolsetClient,
         stage_wrapper_builder: AssistedBuilder[_MCPStageWrapper],
         state_holder: StateHolder,
         dial_attachment_service: AttachmentService,
@@ -64,7 +64,7 @@ class _MCPTool(StagedBaseTool):
         self.__tool: Tool = tool
         self.__dial_attachment_service = dial_attachment_service
         self.__state_holder = state_holder
-        self.__connection_manager: _MCPConnectionManager = connection_manager
+        self.__toolset_client: _MCPToolsetClient = toolset_client
         self.__file_service: DialFileService = file_service
         self.__dial_toolset_id = dial_toolset_id
         self.__login_service: InteractiveLoginService = login_service
@@ -183,7 +183,7 @@ class _MCPTool(StagedBaseTool):
         # is not an Exception and would otherwise bypass `StagedBaseTool.arun()`.
         async with translate_timeout(self.__tool.name, timeout):
             try:
-                tool_call_result = await self.__connection_manager.call_mcp_tool(
+                tool_call_result = await self.__toolset_client.call_mcp_tool(
                     self.__tool.name, **kwargs
                 )
             except MCPUnauthorizedException:
@@ -192,7 +192,7 @@ class _MCPTool(StagedBaseTool):
                 login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
                 if login_result != LoginResult.SUCCESS:
                     raise
-                tool_call_result = await self.__connection_manager.call_mcp_tool(
+                tool_call_result = await self.__toolset_client.call_mcp_tool(
                     self.__tool.name, **kwargs
                 )
             contents = getattr(tool_call_result, "content", []) or []

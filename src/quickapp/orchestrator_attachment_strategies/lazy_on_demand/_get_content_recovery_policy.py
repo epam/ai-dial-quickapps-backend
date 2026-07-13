@@ -1,12 +1,16 @@
 import json
+from typing import TypeGuard
 
+from aidial_sdk.chat_completion import CustomContent
 from aidial_sdk.chat_completion.request import Message, Role
-from openai import BadRequestError
+from openai import APIError, BadRequestError
 
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
-from quickapp.common.get_content_recovery_payload import get_content_recovery_json_string
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_recovery_payload import (
+    get_content_recovery_parts,
+)
 
 _ATTACHMENT_ERROR_SIGNALS: tuple[str, ...] = (
     "attachment payload",
@@ -15,14 +19,25 @@ _ATTACHMENT_ERROR_SIGNALS: tuple[str, ...] = (
     "invalid attachment",
     "unsupported file",
     "invalid file",
-    "input_attachment_types",
-    "image_url",
     "file type",
+    "files failed to process",
+    "supported types",
 )
 
 
+def _is_recoverable_api_error(error: Exception) -> TypeGuard[BadRequestError | APIError]:
+    """True for ``BadRequestError`` and the base ``APIError`` class only.
+
+    Other ``APIError`` subclasses (connection, rate limit, auth, 5xx, etc.) are
+    left to propagate so this policy does not mask infrastructure failures.
+    """
+    if isinstance(error, BadRequestError):
+        return True
+    return type(error) is APIError
+
+
 def _body_text(body: object) -> str:
-    """Serialize a ``BadRequestError.body`` for substring scanning.
+    """Serialize an OpenAI error ``body`` for substring scanning.
 
     The OpenAI SDK populates ``body`` as ``None``, a ``str``, or a parsed JSON
     ``dict`` depending on the upstream error path. For dicts, ``json.dumps`` is
@@ -41,16 +56,16 @@ def _body_text(body: object) -> str:
 
 
 def _looks_like_attachment_error(error: Exception) -> bool:
-    """True when ``error`` is a BadRequest whose message/body mentions attachment payloads.
+    """True when ``error`` is recoverable and its message/body mentions attachments.
 
     The orchestrator wraps the model adapter's response; for attachment-related
     rejections the signal appears either in the ``message`` field or in the
-    structured ``body``. Non-BadRequest errors (RateLimit, 5xx, connection) never
-    indicate the attachment payload is at fault, so they are rejected outright.
+    structured ``body``. Only ``BadRequestError`` and the base ``APIError`` are
+    considered; other ``APIError`` subclasses are never recovered here.
     """
-    if not isinstance(error, BadRequestError):
+    if not _is_recoverable_api_error(error):
         return False
-    haystack = f"{error.message} {_body_text(getattr(error, 'body', None))}".lower()
+    haystack = f"{error.message} {_body_text(error.body)}".lower()
     return any(signal in haystack for signal in _ATTACHMENT_ERROR_SIGNALS)
 
 
@@ -68,7 +83,7 @@ class _GetContentRecoveryPolicy(ChatCompletionRecoveryPolicy):
         if turn_start is None:
             return False
 
-        error_content = get_content_recovery_json_string()
+        error_content, error_state = get_content_recovery_parts()
 
         changed = False
         for i in range(turn_start, len(messages)):
@@ -83,6 +98,11 @@ class _GetContentRecoveryPolicy(ChatCompletionRecoveryPolicy):
             msg.content = error_content
             if msg.custom_content is not None:
                 msg.custom_content.attachments = None
+                existing_state = dict(msg.custom_content.state or {})
+                existing_state.update(error_state)
+                msg.custom_content.state = existing_state
+            else:
+                msg.custom_content = CustomContent(state=error_state)
             changed = True
 
         return changed

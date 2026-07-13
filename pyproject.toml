@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     # Core framework & DI
-    "aidial-client (>=0.8.0,<0.9.0)",                # DIAL API client
+    "aidial-client (>=0.12.0,<0.13.0)",              # DIAL API client
     "aidial-sdk[telemetry]>=0.32.0,<0.33.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
     "pydantic-settings>=2.14.2,<3.0.0",           # Settings management
@@ -23,7 +23,7 @@ dependencies = [
     "plotly>=6.5.2,<7.0.0",                       # Data visualization
 
     # MCP (Model Context Protocol)
-    "mcp>=1.23.2,<2.0.0",                         # MCP protocol support
+    "mcp>=1.28.1,<2.0.0",                         # MCP protocol support
     "fastmcp>=3.4.0,<4.0.0",                      # High-level MCP server framework
 
     # HTML & web content
@@ -54,6 +54,7 @@ types-requests = "^2.31.0.20240406"
 pre-commit = "^3.8.0"
 flake8 = "^7.3.0"
 autoflake = "^2.3.1"
+requests = "^2.32.0"
 pyright = "^1.1.394"
 pandas-stubs = "^3.0.0.260204"
 types-authlib = "^1.6.8.20260215"
@@ -74,7 +75,8 @@ optional = true
 
 [tool.poetry.group.integration.dependencies]
 pytest = "^9.0.2"
-sentence-transformers = { version = "^3.4.1" }
+sentence-transformers = { version = "^5.6.0" }
+pillow = "^12.2.0"
 pytest-asyncio = "^1.3.0"
 pytest-xdist = "^3.8.0"
 pytest-cov = "^7.0.0"

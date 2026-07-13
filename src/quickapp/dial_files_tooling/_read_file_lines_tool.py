@@ -23,7 +23,7 @@ class _ReadFileLinesTool(_DialFileTool):
         if end_line < start_line:
             raise InvalidToolCallParameterException("end_line", "end_line must be >= start_line")
 
-        url = await self._resolve_appdata_url(path)
+        url = await self._home_resolver.resolve_appdata_url(path)
         text, _ = await self._download_text(url, display_path=path)
         lines = text.splitlines()
         sliced = "\n".join(lines[start_line:end_line])

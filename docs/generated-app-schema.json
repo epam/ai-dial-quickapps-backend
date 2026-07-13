@@ -1344,6 +1344,19 @@
           ],
           "default": null,
           "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
+        },
+        "representation_tooling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RepresentationToolingConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled.",
+          "x-preview": true
         }
       },
       "title": "Features",
@@ -2355,6 +2368,18 @@
       "title": "PredefinedToolSet",
       "type": "object"
     },
+    "RepresentationToolingConfig": {
+      "properties": {
+        "add_attachment": {
+          "default": true,
+          "description": "Set to false to disable the internal_representation_add_attachment tool.",
+          "title": "Add Attachment",
+          "type": "boolean"
+        }
+      },
+      "title": "RepresentationToolingConfig",
+      "type": "object"
+    },
     "ResponseAsAttachmentConfig": {
       "properties": {
         "enabled": {
@@ -3299,8 +3324,7 @@
             }
           ],
           "default": null,
-          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only).",
-          "x-preview": true
+          "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only)."
         }
       },
       "required": [

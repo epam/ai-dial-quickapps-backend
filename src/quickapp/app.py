@@ -34,7 +34,9 @@ def main():
     parser.add_argument('--port', type=int, default=5000, help='Port to run the app on')
     parser.add_argument('--reload', action='store_true', help='Enable auto-reload')
     args = parser.parse_args()
-    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload)
+    # log_config=None: logging is owned by LoggingConfig; uvicorn's default
+    # dictConfig would re-sever uvicorn.* from root (and from OTLP export).
+    uvicorn.run(app, host=args.host, port=args.port, reload=args.reload, log_config=None)
 
 
 if __name__ == "__main__":
