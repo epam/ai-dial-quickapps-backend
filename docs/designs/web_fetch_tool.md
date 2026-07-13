@@ -11,6 +11,8 @@ An earlier revision of this doc (Status: Approved) shipped this capability as **
 
 A subsequent revision re-examined the design against `internal_attachments_get_content` (the lazy-on-demand attachment tool, which also fetches external urls) and against dropping back to a minimal `download` tool in the file family. Both alternatives were rejected — the analysis confirmed the one-tool form unchanged and is recorded in [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content).
 
+A third revision, driven by field testing, changed the oversized-inline contract from **reject** to **truncate with an explicit notice**, and made every piece of agent-facing guidance **tool-neutral** (no `internal_file_*` name-drops). The prior contract silently assumed the file tools are enabled alongside this one — they are independently gated features, so an app can legitimately run `web_fetch` without them, and the reject-and-save flow then dead-ends (the agent saves a file no enabled tool can read). The rationale and the revised contract are in [Component 2](#component-2-inline-size-cap--truncation-no-save_path-only); a request-scoped fetch cache was added alongside (Component 3) so the save re-call after a truncated read does not re-download.
+
 ## Problem Statement
 
 The agent today has two halves of a capability but not the bridge between them:
@@ -27,8 +29,8 @@ Without it, an agent that needs the *contents* of a web page has no path: extern
 - **Read in one call.** Fetching a text URL returns the content inline in a single tool call — no file written, no follow-up required — with nothing more than a URL.
 - **Persist for the file tools, on demand.** The same tool, given a destination, pulls a resource into the workspace as a durable DIAL file so the existing `internal_file_*` tools can operate on it.
 - **One capability, one switch.** A single feature flag exposes the whole fetch capability; the agent chooses read-now vs. keep-it per call by supplying (or omitting) one argument.
-- **Self-contained.** The tool depends only on the shared fetch helper and the shared home-path resolver — not on the `internal_file_*` family or the large-tool-response offload processor.
-- **Bounded inline output.** Inline reads never dump unbounded content into the LLM context; a hard, tool-owned size guard redirects oversized fetches to a save.
+- **Self-contained.** The tool depends only on the shared fetch helper and the shared home-path resolver — not on the `internal_file_*` family or the large-tool-response offload processor. This extends to what the tool *says*: every agent-facing message is tool-neutral, because the file tools (or any other content-processing tool) are independently gated and may not be enabled.
+- **Bounded inline output.** Inline reads never dump unbounded content into the LLM context; a hard, tool-owned cap truncates oversized text to its head plus an explicit notice.
 - **Zero new egress surface.** Every fetch goes through the existing `ExternalUrlFetcher`, inheriting the two-tier egress policy, host allowlist, SSRF guard, and size/redirect/timeout caps verbatim.
 
 ---
@@ -42,7 +44,7 @@ The feature ships as **one dedicated tool, `internal_web_fetch(url, save_path=No
 | **Returns** | The fetched text inline in the tool result | The saved workspace-relative path (+ a short text preview when textual) |
 | **File written?** | No | Yes — durable DIAL file at `save_path` under the agent home |
 | **Content types** | Textual only | Any (text + binary) |
-| **Oversized text** | Rejected by the size guard — error telling the agent to pass a `save_path` | Saved; ranged reading is then `internal_file_read_lines` / `internal_file_search` |
+| **Oversized text** | Truncated to the head + an explicit notice (total size, pass a `save_path` for the rest) | Saved in full; the agent processes it with whatever tools the app enables |
 | **Best for** | Reading a page/README/code file once | Large files, binary files, or content the agent will read/search repeatedly with the file tools |
 
 Both branches share the same front half — classify, egress-gate, fetch, decode (Component 3). They diverge only on the presence of `save_path`.
@@ -99,11 +101,11 @@ Consequences:
 
 ### UC-3: Agent tries to load a large text file into context
 
-**Trigger:** Agent calls `internal_web_fetch(url="https://…/huge.log")` (no `save_path`) and the decoded text exceeds the size guard.
+**Trigger:** Agent calls `internal_web_fetch(url="https://…/huge.log")` (no `save_path`) and the decoded text reaches the inline cap.
 
-**Behavior:** The tool does **not** truncate-and-guess. It returns a parameter error explaining the content is too large to load inline and instructing the agent to re-call with a `save_path` (then read ranges via the file tools).
+**Behavior:** The tool returns an **explicit leading notice** — the total size, the content type, and that re-calling with a `save_path` persists the full content for whatever tools are available — followed by the **head of the content, truncated at a line boundary**. The notice + head together stay strictly below the cap, and the stage renders the notice outside the verbatim content block (Component 2). This is not truncate-and-guess: the notice makes the partiality explicit and impossible to miss.
 
-**Outcome:** The agent gets a clear, actionable next step; the context window is protected.
+**Outcome:** The first call is never wasted — for head-answerable questions (summarize, identify, check) the agent is done in one call; otherwise it has a clear next step, and the context window stays protected. Crucially this holds even when no other content-processing tool is enabled in the app.
 
 ### UC-4: Agent encounters non-text / binary content
 
@@ -125,9 +127,9 @@ Consequences:
 
 **Trigger:** Agent calls `internal_web_fetch(url="files/<bucket>/doc.md")`.
 
-**Behavior:** The URL is classified as DIAL (already in the workspace). The tool returns a parameter error pointing the agent at the existing file tools.
+**Behavior:** The URL is classified as DIAL (already in the workspace). The tool returns a parameter error saying the resource is already in DIAL storage and needs no fetching — tool-neutrally, without naming the file tools (which may not be enabled).
 
-**Outcome:** The fetch tool stays focused on *external* retrieval; in-workspace reads remain the job of `internal_file_read_lines` / `internal_file_search`.
+**Outcome:** The fetch tool stays focused on *external* retrieval; in-workspace reads remain the job of whatever workspace tools the app enables.
 
 ### UC-7: App enables or disables the whole capability
 
@@ -147,7 +149,7 @@ flowchart TD
 
     subgraph shared["shared fetch helper (Component 3)"]
       direction TB
-      B -->|DIAL| E1["parameter error:<br/>use internal_file_read_lines / _search"]
+      B -->|DIAL| E1["parameter error:<br/>already in DIAL storage (tool-neutral)"]
       B -->|unsupported| E2["unsupported-scheme error"]
       B -->|EXTERNAL| C["ExternalUrlFetcher.fetch(url)<br/>egress + SSRF + size/redirect/timeout"]
       C -->|"ExternalFetchDisabledError / ExternalFetchError"| E3["parameter error<br/>(existing messages)"]
@@ -155,9 +157,11 @@ flowchart TD
 
     C -->|"FetchedBytes"| M{"save_path given?"}
 
-    M -->|no| L{"textual & within<br/>size guard?"}
-    L -->|no| E4["parameter error:<br/>too large / binary &rarr; re-call with a save_path"]
-    L -->|yes| LR["ToolCallResult: inline text<br/>(no file written)"]
+    M -->|no| L{"textual?"}
+    L -->|no| E4["parameter error:<br/>binary &rarr; re-call with a save_path"]
+    L -->|yes| LT{"within inline cap?"}
+    LT -->|yes| LR["ToolCallResult: full inline text<br/>(no file written)"]
+    LT -->|no| LN["ToolCallResult: head + truncation notice<br/>(under the cap, no file written)"]
 
     M -->|yes| P["HomePathResolver.resolve_appdata_url(save_path) +<br/>DialFileService.write_bytes (unique on collision)"]
     P --> PR["ToolCallResult: saved relative path<br/>(+ text preview if textual)"]
@@ -170,22 +174,25 @@ flowchart TD
   - `url: str` (required) — the http(s) URL to fetch.
   - `save_path: str` (optional) — the workspace-relative destination for the fetched file (e.g. `data.py`, `docs/readme.md`). **Its presence is the switch:** omit it to read the content inline; provide it to persist the resource there and get back the saved path. Subdirectories are allowed; DIAL-style (`files/…`) paths are rejected (Component 4).
 - **Semantics:** run the shared helper to classify + fetch, then branch on whether `save_path` was given:
-  - **omitted** → require textual content (Component 3) within the size guard (Component 2). If either fails → parameter error telling the agent to re-call with a `save_path` (UC-3/UC-4). Otherwise return the decoded text inline (code-block wrapped, consistent with the file-tool stage formatting).
+  - **omitted** → require textual content (Component 3); binary → parameter error telling the agent to re-call with a `save_path` (UC-4). Textual content at or above the inline cap is truncated with a notice (Component 2, UC-3); otherwise the full decoded text is returned inline (code-block wrapped, consistent with the file-tool stage formatting).
   - **given** → persist any content type at `save_path` under the agent home (Component 4) and return the saved relative path (+ a short preview when textual). No size guard.
 - **Return shape:** without `save_path` → inline text in `ToolCallResult.content`. With `save_path` → the saved relative path (+ optional preview) in `ToolCallResult.content`. Never sets `result.attachments` (see Component 4, "No user-choice propagation").
 
-### Component 2: Inline size guard (no `save_path` only)
+### Component 2: Inline size cap & truncation (no `save_path` only)
 
-- **What:** a byte cap applied only on the inline (no-`save_path`) branch, **configurable** via `features.web_fetch.max_inline_size` (Component 5).
+- **What:** a byte cap applied only on the inline (no-`save_path`) branch, **configurable** via `features.web_fetch.max_inline_size` (Component 5). Text at or above the cap is **truncated with an explicit notice**, never rejected.
+- **Why truncate, not reject (third-revision reversal):** the original reject-and-save contract assumed the `internal_file_*` read-back tools exist to consume the saved file. They are an independently gated feature (`features.dial_files`, with per-tool `enabled_tools`), so `web_fetch` can legitimately be the *only* content tool in an app — and the reject flow then dead-ends. It was also wasteful even with file tools present (field-tested: a "summarize this URL" request cost two extra fetches and two dead-end searches): the rejection threw away the downloaded bytes and forced a save + ranged reads for questions the head alone answers. Truncation makes the first call always useful; the offload processor's own precedent (`_REQUIRED_READ_BACK_TOOLS` auto-disable in `dial_files_tooling_module.py`) confirms this dependency class must not be assumed.
+- **Truncation shape:** a **leading notice** stating the total byte size, content type, and that re-calling with a `save_path` persists the full content — worded **tool-neutrally** ("use your available tools on it"), never naming `internal_file_*` — followed by a blank line and the UTF-8 head of the decoded text, cut at the last line boundary within budget (falling back to a hard cut when a single line dominates the budget). The notice comes *first* so the truncation is obvious no matter how large the head is, and it deliberately embeds only values known *before* the cut: the head's own byte count is omitted (the model can see how much text it got; the total is what drives the save-or-not decision), which keeps the budget math circularity-free. The format lives in `web_tooling/_truncation.py`, shared with the stage wrapper, which splits the notice back off and renders it **outside** the verbatim content block — the user sees the tool's instruction separated from the fetched text, and fetched text can never pose as a notice (only a notice at position zero, before any fetched byte, is split).
 - **Default:** drawn from the **same env setting that governs the offload threshold's default** (`ToolCallResultOffloadSettings`, 40 KB; `config/dial_files.py`), so out of the box the two are equal and anything the tool returns inline is below the offloader's trigger — the "Read in one call" and "Bounded inline output" goals hold without the global processor silently rewriting the result (see Component 4a for the cases where an operator decouples the two).
-- **Comparison is `>=` (at-or-above rejects).** The guard compares the UTF-8 byte length of the decoded text and rejects when `size >= max_inline_size`, so a *returned* result is always **strictly** below the cap. The global offloader offloads when `size >= size_threshold` (`_offload_processor.py`: it skips only when `size < size_threshold`). So at the default (cap == threshold), a returned result — strictly `< cap == threshold` — is strictly below the offloader's `>= threshold` trigger, with no gap between the two operators. The invariant above is thus provable, not merely asserted.
-- **On exceed:** parameter error, no silent truncation, no pagination. Re-calling with a `save_path` + `internal_file_read_lines` / `internal_file_search` are the path to "more than fits inline."
+- **The invariant survives truncation (notice budgeting).** Because the notice embeds only up-front values, it is rendered once and the head budget is simply `max_inline_size` minus the notice's exact byte length, minus the separator, minus one — so notice + head together are always **strictly** below the cap. The global offloader offloads when `size >= size_threshold` (`_offload_processor.py`: it skips only when `size < size_threshold`), so at the default (cap == threshold) a returned result — full or truncated — never reaches the offloader's trigger. The invariant is thus provable, not merely asserted. (A pathological cap smaller than the notice itself yields the notice alone; `max_inline_size` is validated `gt=0` and realistic values are KBs.)
+- **Comparison is `>=` (at-or-above truncates),** so exactly-at-cap content is truncated too and a returned result is always strictly below the cap.
 
 ### Component 3: Shared fetch helper (`WebContentFetcher`)
 
 - **What:** a small helper (`shared/external_fetch/web_content_fetcher.py`, already present on the branch) covering the common front half both branches share. Its entry point is `fetch_external(url, parameter_name="url")`, plus the static `is_textual(content_type)` and `decode(data, content_type)` helpers.
 - **Classification:** `classify_url` (`common/url_classification.py`) → `UrlScheme.{DIAL,EXTERNAL,UNSUPPORTED}`. `DIAL` → parameter error (UC-6); unsupported scheme → unsupported-scheme error.
 - **Fetch:** wraps `ExternalUrlFetcher.fetch(url)` → `FetchedBytes{data, content_type, filename}`. This is where the **entire egress policy is enforced** (admin switch, per-app opt-out, host allowlist, SSRF guard, size/redirect/timeout caps). `fetch_external` already catches `ExternalFetchDisabledError` / `ExternalFetchError` and re-raises them as `InvalidToolCallParameterException` on the given `parameter_name`, matching `FileLoaderService` / `DialFilePromoter`.
+- **Request-scoped fetch cache (third revision):** successful fetches are cached by URL for the lifetime of the (request-scoped) instance, so the natural follow-up to a truncated inline read — re-calling the same URL with a `save_path` — does not re-download. Errors are not cached (they may be transient).
 - **Textual predicate (`is_textual`):** derived from `content_type` — `text/*`, `application/json`, `application/xml`, and common source/markup types are textual (decoded with the response charset, falling back to UTF-8 with replacement). Everything else is non-textual. Used by the inline branch to gate returning text and by the save branch to decide whether to attach a preview.
 - **No content-sniffing libraries** in phase-1. `FetchedBytes.filename` is still produced by `ExternalUrlFetcher` but is unused by this tool (saving always uses the caller's `save_path`).
 
@@ -243,7 +250,7 @@ Deferred from phase-1; each is a clean follow-on, not a rework:
 - **Binary-attach enrichment of the inline branch.** A phase-2 candidate: when the fetched content is binary and the orchestrator deployment accepts its MIME (`orchestrator_accepts_mime_type`), return it as a `result.attachments` entry — `get_content`-style multimodal delivery — instead of the "re-call with a `save_path`" error (UC-4). Closes the binary-read gap for capable deployments without touching phase-1's text-only inline contract.
 - **Routing fetched content to downstream tools.** Passing an external resource to a deployment/REST/MCP tool is already covered by PR #279's outward url-attachment path (capability-aware, with promoter fallback); this tool deliberately adds only durability and workspace identity on top (see [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content)).
 - **Special-casing the tool against the global offload processor.** The tool does not rely on offload (saving covers large content) and does not exempt itself from the global post-processor in phase-1; see Component 4a.
-- **Pagination / `start_index` on inline reads.** Unnecessary — a save + `internal_file_read_lines` / `internal_file_search` provide ranged access; inline fetch is for content that fits inline.
+- **Pagination / `start_index` on inline reads.** Considered again in the third revision as the alternative to truncate-with-notice and still deferred: truncation answers head-answerable questions in one call with zero new parameters, and a save covers full-content processing where the app enables tools for it. The accepted trade-off is that an app with `web_fetch` and *no* other content-processing tool cannot reach the tail of an oversized document — deep reads are what enabling a processing tool is for. If that trade-off proves wrong in the field, `start_index` (served from the request-scoped fetch cache, Component 3) is the natural extension.
 - **Content summarization** (Claude Code-style prompt-over-content).
 - **Surfacing the saved file to the user via `propagate_to_choice`** and richer binary metadata (thumbnails, structured metadata).
 - **Provenance-based URL allowlisting** (Anthropic-style: only fetch URLs that appeared in conversation context). A worthwhile future hardening; the existing egress policy + host allowlist already gate destinations today.
@@ -272,6 +279,13 @@ features:
 
 `internal_web_fetch(url="https://raw.githubusercontent.com/org/repo/main/README.md")`
 → returns the README text inline (no `save_path`). No file written.
+
+### Walkthrough — oversized text truncated (UC-3)
+
+`internal_web_fetch(url="https://…/huge.log")` where the log is 425 KB
+→ returns
+`[Truncated: fetched content is 424767 bytes (text/plain), larger than the inline cap; only the beginning follows. To process the full content, re-call with a save_path to persist it to the workspace, then use your available tools on it.]`
+followed by a blank line and the head of the log (cut at a line boundary; notice + head under the 40 KB cap). The stage shows the notice above the verbatim content block. A follow-up `internal_web_fetch(url=…, save_path="huge.log")` is served from the request-scoped fetch cache — no second download.
 
 ### Walkthrough — save to the workspace (UC-2)
 
@@ -306,6 +320,7 @@ None. The tool is purely additive and opt-in via app config.
 - `web_tooling/_web_fetch_tool.py` — the `internal_web_fetch` tool (plain `StagedBaseTool`; injects the shared fetch helper + shared home resolver; branches on `save_path`).
 - `web_tooling/_tool_configs.py` — the tool's `InternalTool` config (`WEB_FETCH_TOOL_CONFIG`), with `url` and optional `save_path` parameters.
 - `web_tooling/_web_fetch_stage_wrapper.py` — the tool's stage wrapper.
+- `web_tooling/_truncation.py` — the truncation-notice format, shared by the tool (composes notice + head) and the stage wrapper (splits the notice back off for display outside the verbatim block).
 - `config/web_fetch.py` — `WebFetchConfig` (`enabled`, `max_inline_size` with `gt=0`).
 - `shared/external_fetch/web_content_fetcher.py` — the shared fetch helper (Component 3), exposing `fetch_external` / `is_textual` / `decode`.
 - Unit tests for the tool (both branches) and the fetch helper.
@@ -332,13 +347,15 @@ The current branch already carries a superseded two-tool implementation. Bringin
 
 ### Tool exposed to the LLM
 
-- `internal_web_fetch(url, save_path=None)` — fetch an external resource; without `save_path` it returns text inline (text only; binary/oversize → directs the agent to pass a `save_path`); with `save_path` it persists the resource there under the agent home and returns the relative path (+ preview when textual).
+- `internal_web_fetch(url, save_path=None)` — fetch an external resource; without `save_path` it returns text inline (text only; binary → directs the agent to pass a `save_path`; oversized text → head + truncation notice); with `save_path` it persists the resource there under the agent home and returns the relative path (+ preview when textual).
 
 ### Tests
 
-- **inline:** textual within guard → full inline content, no file written.
-- **inline:** textual over size guard → parameter error telling the agent to pass a `save_path`.
+- **inline:** textual within the cap → full inline content, no file written.
+- **inline:** textual at/over the cap → leading truncation notice + head (line-boundary cut, accurate total byte count, `save_path` guidance, no `internal_file_*` name-drops), whole result strictly below the cap, no file written.
+- **stage rendering:** truncation notice split off and rendered outside the verbatim content block; non-truncated content untouched; fetched text merely resembling a notice (no composed separator) is not split.
 - **inline:** binary → parameter error telling the agent to pass a `save_path`.
+- **fetch helper:** repeat fetch of the same URL within a request → served from the cache (one download); fetch errors are not cached.
 - **save:** textual → persisted at `save_path` under agent home, relative path + preview returned.
 - **save:** binary → persisted at `save_path`, relative path + content type + size returned, no inline body.
 - **save:** `save_path` with a subdirectory → persisted at that workspace-relative path.

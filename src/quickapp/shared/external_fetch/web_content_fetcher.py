@@ -77,33 +77,46 @@ class WebContentFetcher:
     ) -> None:
         self.__external_fetcher = external_fetcher
         self.__dial_url = dial_settings.url
+        # Fetch cache, request-scoped because this class is bound request-scoped:
+        # a re-call for the same URL within one request — e.g. a save_path call
+        # after a truncated inline read — must not re-download.
+        self.__fetched_by_url: dict[str, FetchedBytes] = {}
 
     async def fetch_external(self, url: str, parameter_name: str = "url") -> FetchedBytes:
         """Classify ``url`` and fetch it, or raise a tool-facing parameter error.
 
-        * DIAL URL -> points the agent at the in-workspace file tools (the fetch
-          tools are for *external* retrieval only).
+        * DIAL URL -> rejected: the resource is already in DIAL storage and the
+          fetch tools are for *external* retrieval only. The message stays
+          tool-neutral — which workspace tools exist varies per app.
         * Unsupported scheme -> the canonical unsupported-scheme error.
         * External -> fetched through :class:`ExternalUrlFetcher`; its
           ``ExternalFetchError`` / ``ExternalFetchDisabledError`` (egress
           disabled, host not allowed, SSRF, size, timeout, transport) are
           re-raised as ``InvalidToolCallParameterException`` carrying the
-          existing operator/builder messages.
+          existing operator/builder messages. Successful fetches are cached for
+          the lifetime of this (request-scoped) instance, keyed by URL.
         """
         scheme = classify_url(url, self.__dial_url)
         if scheme == UrlScheme.DIAL:
             raise InvalidToolCallParameterException(
                 parameter_name,
-                f"URL {url} already points to a file in DIAL storage. "
-                "Use internal_file_read_lines or internal_file_search to read it.",
+                f"URL {url} already points to a file in DIAL storage and does not "
+                "need fetching. Access it with your available workspace tools.",
             )
         if scheme == UrlScheme.UNSUPPORTED:
             raise unsupported_scheme_error(url, parameter_name)
 
+        cached = self.__fetched_by_url.get(url)
+        if cached is not None:
+            return cached
+
         try:
-            return await self.__external_fetcher.fetch(url)
+            fetched = await self.__external_fetcher.fetch(url)
         except (ExternalFetchError, ExternalFetchDisabledError) as exc:
             raise InvalidToolCallParameterException(parameter_name, str(exc)) from exc
+
+        self.__fetched_by_url[url] = fetched
+        return fetched
 
     @staticmethod
     def is_textual(content_type: str | None) -> bool:

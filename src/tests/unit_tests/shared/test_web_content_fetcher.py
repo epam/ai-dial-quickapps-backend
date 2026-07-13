@@ -38,7 +38,37 @@ class TestFetchExternal:
         with pytest.raises(InvalidToolCallParameterException) as exc:
             await fetcher.fetch_external("files/bucket/doc.md")
         assert exc.value.parameter_name == "url"
-        assert "internal_file_read_lines" in exc.value.message
+        assert "DIAL storage" in exc.value.message
+        # Guidance must stay tool-neutral: no other tool availability is assumed.
+        assert "internal_file" not in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_repeat_fetch_served_from_request_cache(self):
+        fetched = FetchedBytes(data=b"hello", content_type="text/plain", filename="a.txt")
+        external = MagicMock()
+        external.fetch = AsyncMock(return_value=fetched)
+        dial_settings = MagicMock()
+        dial_settings.url = _DIAL_URL
+        fetcher = WebContentFetcher(external_fetcher=external, dial_settings=dial_settings)
+        first = await fetcher.fetch_external("https://example.com/a.txt")
+        second = await fetcher.fetch_external("https://example.com/a.txt")
+        assert second is first
+        external.fetch.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_fetch_errors_not_cached(self):
+        external = MagicMock()
+        external.fetch = AsyncMock(
+            side_effect=ExternalFetchError(reason="size_limit", url="https://x.com")
+        )
+        dial_settings = MagicMock()
+        dial_settings.url = _DIAL_URL
+        fetcher = WebContentFetcher(external_fetcher=external, dial_settings=dial_settings)
+        with pytest.raises(InvalidToolCallParameterException):
+            await fetcher.fetch_external("https://x.com")
+        with pytest.raises(InvalidToolCallParameterException):
+            await fetcher.fetch_external("https://x.com")
+        assert external.fetch.await_count == 2
 
     @pytest.mark.asyncio
     async def test_dial_host_url_rejected(self):

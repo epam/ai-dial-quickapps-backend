@@ -3260,7 +3260,7 @@
       "type": "object"
     },
     "WebFetchConfig": {
-      "description": "Per-app config for the built-in ``internal_web_fetch`` tool.\n\nToggled by the explicit ``enabled`` flag. ``max_inline_size`` caps how much\ndecoded text the tool returns inline; its default is drawn from the same env\nsetting that governs the offload threshold's default\n(``TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD``), so out of the box the inline\ncap and the global offload threshold are equal — anything returned inline is\nbelow the offloader's trigger. See docs/designs/web_fetch_tool.md (Component\n4a) for the cases where an operator intentionally decouples the two.",
+      "description": "Per-app config for the built-in ``internal_web_fetch`` tool.\n\nToggled by the explicit ``enabled`` flag. ``max_inline_size`` caps how much\ndecoded text the tool returns inline; larger textual content is truncated to\nfit under the cap (head + notice). The cap's default is drawn from the same\nenv setting that governs the offload threshold's default\n(``TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD``), so out of the box the inline\ncap and the global offload threshold are equal — anything returned inline is\nbelow the offloader's trigger. See docs/designs/web_fetch_tool.md (Component\n4a) for the cases where an operator intentionally decouples the two.",
       "properties": {
         "enabled": {
           "default": false,
@@ -3269,7 +3269,7 @@
           "type": "boolean"
         },
         "max_inline_size": {
-          "description": "Byte cap on the decoded text internal_web_fetch returns inline. Larger (or binary) resources are rejected with guidance to re-call with a save_path. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var so the inline cap matches the global offload threshold by default.",
+          "description": "Byte cap on the decoded text internal_web_fetch returns inline. Larger textual resources are truncated to fit under the cap, with a notice stating the total size and pointing at save_path; binary resources are rejected with guidance to re-call with a save_path. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var so the inline cap matches the global offload threshold by default.",
           "exclusiveMinimum": 0,
           "title": "Max Inline Size",
           "type": "integer"

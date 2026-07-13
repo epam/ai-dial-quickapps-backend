@@ -14,6 +14,11 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.shared.external_fetch.web_content_fetcher import WebContentFetcher
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
+from quickapp.web_tooling._truncation import (
+    TRUNCATION_NOTICE_TEMPLATE,
+    compose_truncated_content,
+    separator_byte_length,
+)
 from quickapp.web_tooling._web_fetch_stage_wrapper import _WebFetchStageWrapper
 
 # Preview shown for textual saves so the agent can decide whether to read the
@@ -30,12 +35,15 @@ class _WebFetchTool(StagedBaseTool):
 
     A single optional ``save_path`` selects the behaviour:
 
-    * **omitted** — the payload must be textual and within ``max_inline_size``;
-      the decoded text is returned inline. Binary or oversized content is rejected
-      with guidance to re-call with a ``save_path`` — the tool never truncates and
-      never offloads. The inline cap defaults to the global offload threshold, so a
-      returned result is always below the offloader's trigger
-      (see docs/designs/web_fetch_tool.md, Component 4a).
+    * **omitted** — the payload must be textual; the decoded text is returned
+      inline. Content at or above ``max_inline_size`` is truncated: a leading
+      notice (total size + how to get the rest) followed by the content head,
+      sized so the whole result stays strictly below the cap — and, at the
+      default where the cap equals the global offload threshold, below the
+      offloader's trigger (see docs/designs/web_fetch_tool.md, Component 4a).
+      Binary content is rejected with guidance to re-call with a ``save_path``.
+      Guidance never names other tools — which tools can process a saved file
+      varies per app.
     * **given** — the fetched bytes (any content type) are persisted at
       ``save_path`` under the agent home via the shared home-path resolver and a
       bytes write, and the saved workspace-relative path (+ a short preview for
@@ -97,29 +105,45 @@ class _WebFetchTool(StagedBaseTool):
                 f"URL {url} returned non-text content "
                 f"(content-type: {fetched.content_type or 'unknown'}), which cannot be "
                 "loaded into context. Re-call with a save_path to persist it to the "
-                "workspace instead.",
+                "workspace, then use your available tools on it.",
             )
 
         text = WebContentFetcher.decode(fetched.data, fetched.content_type)
+        content_type = fetched.content_type or "text/plain"
 
-        # Guard against dumping unbounded content into the LLM context. Reject at or
-        # above the cap so the returned content stays strictly below it (and, at the
-        # default where the cap equals the offload threshold, below the offloader's
-        # trigger too).
-        content_size = len(text.encode("utf-8"))
-        if content_size >= self.__max_inline_size:
-            raise InvalidToolCallParameterException(
-                "url",
-                f"URL {url} content is too large to load inline "
-                f"({content_size} bytes >= {self.__max_inline_size} byte limit). "
-                "Re-call with a save_path to persist it to the workspace, then read "
-                "ranges with internal_file_read_lines / internal_file_search.",
-            )
+        # Guard against dumping unbounded content into the LLM context: at or above
+        # the cap the head is returned with an explicit truncation notice, never an
+        # error — a truncated read must stay useful even when no other tool that
+        # could process a saved copy is enabled.
+        encoded = text.encode("utf-8")
+        if len(encoded) >= self.__max_inline_size:
+            text = self.__truncate_with_notice(encoded, content_type)
 
-        return ToolCallResult(
-            content=text,
-            content_type=fetched.content_type or "text/plain",
-        )
+        return ToolCallResult(content=text, content_type=content_type)
+
+    def __truncate_with_notice(self, encoded: bytes, content_type: str) -> str:
+        """Return the truncation notice followed by the head of ``encoded``.
+
+        The notice comes *first* so it stays visible however large the head is,
+        both to the model and — split back off by the stage wrapper — to the
+        user. It embeds only values known up front, so the head budget is simply
+        the cap minus the notice's exact length (plus separator), keeping notice
+        + content strictly below ``max_inline_size`` — an inline result never
+        reaches the global offload trigger (cap == threshold by default). The
+        cut prefers the last newline within budget (unless that drops more than
+        half of it) so the head ends on a whole line. A cap smaller than the
+        notice itself yields the notice alone.
+        """
+        notice = TRUNCATION_NOTICE_TEMPLATE.format(total=len(encoded), content_type=content_type)
+        reserved = len(notice.encode("utf-8")) + separator_byte_length() + 1
+        budget = max(self.__max_inline_size - reserved, 0)
+        head = encoded[:budget]
+        newline_cut = head.rfind(b"\n")
+        if newline_cut >= budget // 2:
+            head = head[:newline_cut]
+        # "ignore" drops only a UTF-8 sequence split by the byte cut; the rest of
+        # the head is valid by construction.
+        return compose_truncated_content(notice, head.decode("utf-8", errors="ignore"))
 
     async def __save_to_workspace(self, save_path: str, fetched: Any) -> ToolCallResult:
         # A ``files/``-prefixed path would be returned verbatim by
