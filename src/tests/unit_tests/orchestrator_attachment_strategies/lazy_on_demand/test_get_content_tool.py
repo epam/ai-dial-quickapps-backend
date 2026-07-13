@@ -14,6 +14,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment, CustomContent, Message, Role
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.utils import matches_type
@@ -32,6 +33,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 
 def _file_meta(url: str, name: str, content_type: str) -> SimpleNamespace:
@@ -46,10 +48,17 @@ def _user_msg_with(attachment: Attachment) -> Message:
     )
 
 
+def _make_home_resolver(home: str = "files/bucket/appdata/app/home/") -> MagicMock:
+    resolver = MagicMock(spec=HomePathResolver)
+    resolver.resolve_appdata_url = AsyncMock(side_effect=lambda path: f"{home}{path}")
+    return resolver
+
+
 def _make_tool(
     input_attachment_types: list[str],
     messages: list[Message] | None = None,
     promoter: DialFilePromoter | None = None,
+    home_resolver: MagicMock | None = None,
 ) -> _GetContentTool:
     caps = MagicMock(spec=OrchestratorCapabilities)
     caps.input_attachment_types = input_attachment_types
@@ -74,6 +83,7 @@ def _make_tool(
         messages_mixin=messages_mixin,
         deferred_stage_close_registry=MagicMock(),
         materializer=materializer,
+        home_resolver=home_resolver or _make_home_resolver(),
     )
 
 
@@ -195,6 +205,59 @@ class TestGetContentTool:
 
         result = await tool._run_in_stage_async(
             stage_wrapper=None, attachment_url="https://example.com/data.pdf"
+        )
+
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert payload.status_message == "Orchestrator deployment does not accept this file type."
+
+    @pytest.mark.asyncio
+    async def test_home_relative_path_is_resolved_under_agent_home(self):
+        # A schemeless reference (the agent-home-relative convention the file tools
+        # speak) resolves under the agent home: the attachment carries the resolved
+        # files/ url while the payload echoes the reference as passed. No promotion.
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock()
+        home_resolver = _make_home_resolver("files/bucket/appdata/app/home/")
+        tool = _make_tool(["image/*"], promoter=promoter, home_resolver=home_resolver)
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="reports/img.png"
+        )
+
+        promoter.promote.assert_not_awaited()
+        home_resolver.resolve_appdata_url.assert_awaited_once_with("reports/img.png")
+        assert result.attachments is not None
+        assert result.attachments[0].url == "files/bucket/appdata/app/home/reports/img.png"
+        assert result.attachments[0].type == "image/png"
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.SUCCESS
+        assert payload.attachment_url == to_file_url_reference("reports/img.png")
+        assert payload.title == "img.png"
+
+    @pytest.mark.asyncio
+    async def test_home_relative_resolution_failure_is_reported(self):
+        home_resolver = MagicMock(spec=HomePathResolver)
+        home_resolver.resolve_appdata_url = AsyncMock(
+            side_effect=InvalidToolCallParameterException("path", "path must not contain '..'")
+        )
+        tool = _make_tool(["image/*"], home_resolver=home_resolver)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
+
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert "path must not contain '..'" in (payload.status_message or "")
+
+    @pytest.mark.asyncio
+    async def test_home_relative_path_rejected_when_mime_not_accepted(self):
+        tool = _make_tool(["image/*"])
+
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="archives/data.zip"
         )
 
         payload = GetContentToolResponse.from_state(result.state)

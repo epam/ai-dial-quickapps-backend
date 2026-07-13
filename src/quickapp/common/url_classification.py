@@ -9,6 +9,7 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 class UrlScheme(str, Enum):
     DIAL = "dial"
     EXTERNAL = "external"
+    DIAL_APPDIR_RELATIVE = "dial_appdir_relative"
     UNSUPPORTED = "unsupported"
 
 
@@ -28,9 +29,12 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
 
     A bare DIAL relative path (e.g. ``files/bucket/foo.pdf``) or an absolute URL
     whose host matches the configured DIAL host is :attr:`UrlScheme.DIAL`. Any
-    other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. Anything else
-    (``file:``, ``ftp:``, ``data:``, malformed, empty hostname) is
-    :attr:`UrlScheme.UNSUPPORTED`.
+    other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. A schemeless,
+    hostless, colon-free path (e.g. ``reports/img.png``) is
+    :attr:`UrlScheme.DIAL_APPDIR_RELATIVE` — the agent-home-relative convention spoken by
+    the file tools; how (and whether) to resolve it is the
+    caller's decision. Anything else (``file:``, ``ftp:``, ``data:``,
+    malformed, empty hostname) is :attr:`UrlScheme.UNSUPPORTED`.
     """
     if not url:
         return UrlScheme.UNSUPPORTED
@@ -44,6 +48,12 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
         return UrlScheme.UNSUPPORTED
 
     scheme = (split.scheme or "").lower()
+    if not scheme:
+        # A ':' anywhere means scheme-like intent urlsplit could not parse
+        # (e.g. '://broken'); a netloc means a protocol-relative '//host' url.
+        if split.netloc or not split.path or ":" in url:
+            return UrlScheme.UNSUPPORTED
+        return UrlScheme.DIAL_APPDIR_RELATIVE
     if scheme not in ("http", "https"):
         return UrlScheme.UNSUPPORTED
 

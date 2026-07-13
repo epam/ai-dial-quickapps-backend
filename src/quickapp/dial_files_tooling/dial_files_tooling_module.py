@@ -20,7 +20,6 @@ from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
 from quickapp.dial_files_tooling._edit_file_tool import _EditFileTool
 from quickapp.dial_files_tooling._find_files_tool import _FindFilesTool
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
@@ -49,9 +48,7 @@ class DialFilesToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_FileStageWrapper, to=_FileStageWrapper, scope=request_scope)
-        # Request-scoped so the agent home dir is resolved once per request and shared
-        # between the file tools and the path-argument transformer.
-        binder.bind(_HomePathResolver, to=_HomePathResolver, scope=request_scope)
+        # HomePathResolver is bound by shared HomePathModule (shared_module).
         binder.bind(
             _AppdataHomePathTransformer, to=_AppdataHomePathTransformer, scope=request_scope
         )

@@ -65,14 +65,28 @@ def test_external_http_urls_classify_as_external(url: str):
         "ftp://files.example.com/x",
         "data:text/plain,hello",
         "javascript:alert(1)",
-        "not a url",
         "",
         "://broken",
         "https://",
+        "//example.com/protocol-relative.pdf",
+        "reports/colon:in:path.txt",
     ],
 )
 def test_unsupported_or_malformed_classify_as_unsupported(url: str):
     assert classify_url(url, DIAL_URL) == UrlScheme.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "butterfly.jpg",
+        "reports/img.png",
+        "a/b/c.txt",
+        "not a url",
+    ],
+)
+def test_schemeless_paths_classify_as_relative(url: str):
+    assert classify_url(url, DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE
 
 
 def test_dial_base_url_without_host_treats_http_url_as_external():

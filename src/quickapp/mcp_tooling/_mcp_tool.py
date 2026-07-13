@@ -119,7 +119,7 @@ class _MCPTool(StagedBaseTool):
                             "inline the content, or upload the file to DIAL first."
                         ),
                     )
-                if scheme == UrlScheme.UNSUPPORTED:
+                if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
                     raise InvalidToolCallParameterException(
                         parameter_name=key,
                         message=(

@@ -25,7 +25,11 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.string,
                         description=(
                             "File reference using ONLY the file:url:: form, e.g. "
-                            "file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected."
+                            "file:url::https://example.com/readme.md, "
+                            "file:url::files/bucket/doc.pdf, or "
+                            "file:url::reports/img.png (a path relative to the agent's "
+                            "home dir). Other forms are not valid here and will be "
+                            "rejected."
                         ),
                     )
                 },
