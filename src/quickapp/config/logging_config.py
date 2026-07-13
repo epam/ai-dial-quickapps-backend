@@ -1,8 +1,6 @@
 import logging
 import logging.config
 
-import uvicorn.logging
-
 from quickapp.config._otel_aware_formatter import OtelAwareFormatter
 from quickapp.config.logging_settings import LoggingSettings
 
@@ -16,12 +14,6 @@ MANAGED_LOGGER_NAMES: tuple[str, ...] = (
     "httpcore",
     "openai",
 )
-
-
-class SingleLineFormatter(uvicorn.logging.DefaultFormatter):
-    def format(self, record):
-        res = super().format(record).replace("\n", r"\n")
-        return res
 
 
 class LoggingConfig:

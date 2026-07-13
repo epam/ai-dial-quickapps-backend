@@ -9,11 +9,6 @@ class AgentSettings(BaseSettings):
 
     model_config = SettingsConfigDict()
 
-    chat_message_log_length: int | None = Field(
-        default=None,
-        description="Max length for chat message log preview (-1 or unset = no truncation)",
-        alias="CHAT_MESSAGE_LOG_LEN",
-    )
     default_agent_max_iterations: int = Field(
         default=15,
         description="Max orchestrator(agent) operations",
