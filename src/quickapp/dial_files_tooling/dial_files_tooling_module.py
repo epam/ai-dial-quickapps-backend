@@ -48,7 +48,6 @@ class DialFilesToolingModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(_FileStageWrapper, to=_FileStageWrapper, scope=request_scope)
-        # HomePathResolver is bound by shared HomePathModule (shared_module).
         binder.bind(
             _AppdataHomePathTransformer, to=_AppdataHomePathTransformer, scope=request_scope
         )

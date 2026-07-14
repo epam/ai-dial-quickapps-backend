@@ -241,16 +241,35 @@ class TestGetContentTool:
     async def test_home_relative_resolution_failure_is_reported(self):
         home_resolver = MagicMock(spec=HomePathResolver)
         home_resolver.resolve_appdata_url = AsyncMock(
-            side_effect=InvalidToolCallParameterException("path", "path must not contain '..'")
+            side_effect=InvalidToolCallParameterException(
+                "path", "appdata namespace is not available"
+            )
         )
         tool = _make_tool(["image/*"], home_resolver=home_resolver)
 
-        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, attachment_url="reports/img.png"
+        )
 
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == GetContentStatus.FAIL
-        assert "path must not contain '..'" in (payload.status_message or "")
+        assert "appdata namespace is not available" in (payload.status_message or "")
+
+    @pytest.mark.asyncio
+    async def test_traversal_reference_is_unsupported_before_resolution(self):
+        # '..' segments fail the appdir-relative grammar at classification, so the
+        # resolver is never consulted.
+        home_resolver = _make_home_resolver()
+        tool = _make_tool(["image/*"], home_resolver=home_resolver)
+
+        result = await tool._run_in_stage_async(stage_wrapper=None, attachment_url="../escape.png")
+
+        home_resolver.resolve_appdata_url.assert_not_awaited()
+        payload = GetContentToolResponse.from_state(result.state)
+        assert payload is not None
+        assert payload.status == GetContentStatus.FAIL
+        assert (payload.status_message or "").startswith("Unsupported file reference.")
 
     @pytest.mark.asyncio
     async def test_home_relative_path_rejected_when_mime_not_accepted(self):

@@ -15,6 +15,50 @@ class UrlScheme(str, Enum):
 
 _DIAL_RELATIVE_PATH = re.compile(r"^/*files/", re.IGNORECASE)
 
+# Characters the DIAL UI forbids in resource names (ui-kit NOT_ALLOWED_SYMBOLS,
+# minus '/' which is the path separator); control chars are rejected separately.
+_FORBIDDEN_REFERENCE_CHARS = frozenset(':;,={}%&\\"')
+# DIAL UI resource-name limits, in UTF-8 bytes: per path segment and for the whole
+# resource id. The whole-reference cap is conservative — the real 1024-byte cap
+# applies to the full id including the files/{appdata}/... prefix unknown here.
+_MAX_SEGMENT_BYTES = 255
+_MAX_REFERENCE_BYTES = 1024
+
+
+def _is_control_char(ch: str) -> bool:
+    """C0 control chars (0x00-0x1F, includes tab/newline), per ui-kit NOT_ALLOWED_SPACES."""
+    return ord(ch) < 0x20
+
+
+def is_appdir_relative(path: str) -> bool:
+    """Whether ``path`` is a well-formed agent-home-relative file/dir reference.
+
+    Accepted forms: a file (``file.md``, ``dir1/file.md``, extension optional) or a
+    dir with a trailing slash (``some_dir/``, ``dir_1/dir2/``). Segments must be
+    non-empty, must not be ``.``/``..`` or end with a dot, must not contain
+    DIAL-forbidden characters or control characters, and must respect the DIAL
+    resource-name length limits. This is the canonical detection predicate — every
+    consumer that needs to recognise the appdir-relative convention must use it (or
+    :func:`classify_url`) so the grammar cannot drift between call sites.
+    """
+    if not path:
+        return False
+    if len(path.encode("utf-8")) > _MAX_REFERENCE_BYTES:
+        return False
+    if any(ch in _FORBIDDEN_REFERENCE_CHARS or _is_control_char(ch) for ch in path):
+        return False
+    segments = path.split("/")
+    if segments[-1] == "":
+        segments = segments[:-1]  # dir form: a single trailing '/'
+    if not segments:
+        return False
+    for segment in segments:
+        if segment in ("", ".", "..") or segment.endswith("."):
+            return False
+        if len(segment.encode("utf-8")) > _MAX_SEGMENT_BYTES:
+            return False
+    return True
+
 
 @lru_cache(maxsize=8)
 def _dial_host(dial_base_url: str) -> str:
@@ -29,12 +73,12 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
 
     A bare DIAL relative path (e.g. ``files/bucket/foo.pdf``) or an absolute URL
     whose host matches the configured DIAL host is :attr:`UrlScheme.DIAL`. Any
-    other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. A schemeless,
-    hostless, colon-free path (e.g. ``reports/img.png``) is
-    :attr:`UrlScheme.DIAL_APPDIR_RELATIVE` — the agent-home-relative convention spoken by
-    the file tools; how (and whether) to resolve it is the
-    caller's decision. Anything else (``file:``, ``ftp:``, ``data:``,
-    malformed, empty hostname) is :attr:`UrlScheme.UNSUPPORTED`.
+    other ``http(s)://`` URL is :attr:`UrlScheme.EXTERNAL`. A schemeless path
+    matching :func:`is_appdir_relative` (e.g. ``reports/img.png``, ``some_dir/``)
+    is :attr:`UrlScheme.DIAL_APPDIR_RELATIVE` — the agent-home-relative convention
+    spoken by the file tools; how (and whether) to resolve it is the caller's
+    decision. Anything else (``file:``, ``ftp:``, ``data:``, malformed, empty
+    hostname) is :attr:`UrlScheme.UNSUPPORTED`.
     """
     if not url:
         return UrlScheme.UNSUPPORTED
@@ -49,11 +93,9 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
 
     scheme = (split.scheme or "").lower()
     if not scheme:
-        # A ':' anywhere means scheme-like intent urlsplit could not parse
-        # (e.g. '://broken'); a netloc means a protocol-relative '//host' url.
-        if split.netloc or not split.path or ":" in url:
-            return UrlScheme.UNSUPPORTED
-        return UrlScheme.DIAL_APPDIR_RELATIVE
+        if is_appdir_relative(url):
+            return UrlScheme.DIAL_APPDIR_RELATIVE
+        return UrlScheme.UNSUPPORTED
     if scheme not in ("http", "https"):
         return UrlScheme.UNSUPPORTED
 

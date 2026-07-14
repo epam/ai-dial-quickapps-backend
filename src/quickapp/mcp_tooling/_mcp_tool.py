@@ -119,6 +119,8 @@ class _MCPTool(StagedBaseTool):
                             "inline the content, or upload the file to DIAL first."
                         ),
                     )
+                # TODO(#445): resolve appdir-relative paths via HomePathResolver
+                #  instead of rejecting them.
                 if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
                     raise InvalidToolCallParameterException(
                         parameter_name=key,
