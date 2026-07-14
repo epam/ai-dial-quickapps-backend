@@ -588,33 +588,52 @@ async def test_propagate_history_and_stateful_are_independent():
 
 @pytest.mark.asyncio
 async def test_extract_session_id_filters_to_matching_thread():
-    """When session_id is provided, only calls with that session_id are included."""
+    """Anchor call (tc.id == session_id) and follow-ups (args session_id == session_id) are included; other threads excluded."""
     messages: list[Message] = [
         Message(role=Role.USER, content=StrictStr("Start")),
         _make_assistant_with_tool_calls(
             [
-                _make_tool_call("tc1", "my_tool", "thread-A step 1", session_id="session-A"),
-                _make_tool_call("tc2", "my_tool", "thread-B step 1", session_id="session-B"),
+                _make_tool_call("tc1", "my_tool", "thread-A step 1"),  # anchor for session tc1
+                _make_tool_call("tc2", "my_tool", "thread-B step 1"),  # anchor for session tc2
             ]
         ),
         _make_tool_result("tc1", "A answer 1"),
         _make_tool_result("tc2", "B answer 1"),
         _make_assistant_with_tool_calls(
             [
-                _make_tool_call("tc3", "my_tool", "thread-A step 2", session_id="session-A"),
+                _make_tool_call(
+                    "tc3", "my_tool", "thread-A step 2", session_id="tc1"
+                ),  # follow-up to A
             ]
         ),
         _make_tool_result("tc3", "A answer 2"),
     ]
 
     tool = _build_tool(messages)
-    history = await tool._extract_tool_history("my_tool", session_id="session-A")
+    history = await tool._extract_tool_history("my_tool", session_id="tc1")
 
     assert len(history) == 4
     assert history[0]["content"] == "thread-A step 1"
     assert history[1]["content"] == "A answer 1"
     assert history[2]["content"] == "thread-A step 2"
     assert history[3]["content"] == "A answer 2"
+
+
+@pytest.mark.asyncio
+async def test_extract_anchor_matches_by_tool_call_id():
+    """First call matched by tc.id == session_id (the anchor), even without session_id in its args."""
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Start")),
+        _make_assistant_with_tool_calls([_make_tool_call("call-abc", "my_tool", "first question")]),
+        _make_tool_result("call-abc", "first answer"),
+    ]
+
+    tool = _build_tool(messages)
+    history = await tool._extract_tool_history("my_tool", session_id="call-abc")
+
+    assert len(history) == 2
+    assert history[0]["content"] == "first question"
+    assert history[1]["content"] == "first answer"
 
 
 @pytest.mark.asyncio
@@ -684,6 +703,57 @@ async def test_run_in_stage_pops_session_id_before_forwarding():
     assert payload["query"] == "hello"
 
 
+@pytest.mark.asyncio
+async def test_run_in_stage_injects_session_id_into_first_result():
+    """First stateful call (no session_id) appends session_id from tool_call_id to result content."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        dial_completion_service=svc,
+    )
+
+    result = await tool._run_in_stage_async(
+        stage_wrapper=None, tool_call_id="call-xyz", query="hello"
+    )
+
+    assert "[session_id: call-xyz]" in result.content
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_no_injection_on_follow_up():
+    """Follow-up call (session_id already provided) does not modify result content."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        dial_completion_service=svc,
+    )
+
+    result = await tool._run_in_stage_async(
+        stage_wrapper=None, tool_call_id="call-xyz2", query="hello", session_id="call-xyz"
+    )
+
+    assert result.content == "ok"
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_no_injection_for_stateless():
+    """Stateless tool calls never inject session_id, even when tool_call_id is present."""
+    svc = _make_mock_completion_service()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATELESS),
+        dial_completion_service=svc,
+    )
+
+    result = await tool._run_in_stage_async(
+        stage_wrapper=None, tool_call_id="call-xyz", query="hello"
+    )
+
+    assert result.content == "ok"
+
+
 # ---------------------------------------------------------------------------
 # enrich_openai_tool_schema
 # ---------------------------------------------------------------------------
@@ -706,8 +776,8 @@ def _build_tool_with_content_propagation(
     )
 
 
-def test_enrich_stateful_injects_session_id_and_description_suffix():
-    """For conversation_mode=stateful, enrich_openai_tool_schema injects session_id and appends description."""
+def test_enrich_stateful_injects_session_id():
+    """For conversation_mode=stateful, enrich_openai_tool_schema injects session_id into the schema."""
     tool = _build_tool_with_content_propagation(
         ContentPropagation(conversation_mode=ConversationMode.STATEFUL)
     )
@@ -716,8 +786,6 @@ def test_enrich_stateful_injects_session_id_and_description_suffix():
     enriched = tool.enrich_openai_tool_schema(open_ai_tool)
 
     assert "session_id" in enriched.function.parameters.properties
-    assert enriched.function.description is not None
-    assert "stateful subagent" in enriched.function.description
 
 
 def test_enrich_stateless_is_noop():

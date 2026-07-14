@@ -78,15 +78,24 @@ class BaseDeploymentTool(StagedBaseTool):
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id: str | None = kwargs.pop("session_id", None)
+        is_stateful = (
+            self.__content_propagation is not None
+            and self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
+        )
+        is_first_call = is_stateful and session_id is None
+        if is_first_call:
+            session_id = tool_call_id
+            logger.info("Stateful tool first call — assigned session_id=%s", session_id)
+        elif is_stateful and session_id:
+            logger.info("Stateful tool follow-up — session_id=%s", session_id)
         history = None
         if self.__content_propagation and (
-            self.__content_propagation.propagate_history
-            or self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
+            self.__content_propagation.propagate_history or is_stateful
         ):
             history = await self._extract_tool_history(
                 tool_config.open_ai_tool.function.name, session_id=session_id
             )
-        return await self.__dial_completion_service.complete_request_async(
+        result = await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
             self.__application_name,
@@ -95,22 +104,16 @@ class BaseDeploymentTool(StagedBaseTool):
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
         )
-
-    _STATEFUL_DESCRIPTION_SUFFIX = (
-        "\n\nThis tool is a stateful subagent: it maintains conversation history across calls "
-        "within the same session. On each follow-up call, the backend automatically prepends "
-        "prior exchanges for that session. Send only the new information (delta) in `query` — "
-        "do not re-summarize prior context. Assign a unique `session_id` at the start of each "
-        "conversation thread and use the same value for all follow-up calls in that thread."
-    )
+        if is_first_call and session_id:
+            result.content = result.content + f"\n\n[session_id: {session_id}]"
+        return result
 
     _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(
         type=JsonTypeEnum.string,
         description=(
-            "Identifier for this conversation thread. Assign a unique value when starting a "
-            "new multi-turn exchange with this subagent (e.g. 'research-climate'). Use the "
-            "same session_id on all follow-up calls for that thread. Use a different "
-            "session_id to start an independent conversation thread."
+            "The session identifier returned at the end of a previous response from this tool. "
+            "Pass it back unchanged to continue that conversation thread. "
+            "Omit to start a new independent thread."
         ),
     )
 
@@ -120,9 +123,6 @@ class BaseDeploymentTool(StagedBaseTool):
             and self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
         ):
             return open_ai_tool
-        open_ai_tool.function.description = (
-            open_ai_tool.function.description or ""
-        ) + self._STATEFUL_DESCRIPTION_SUFFIX
         if "session_id" not in open_ai_tool.function.parameters.properties:
             open_ai_tool.function.parameters.properties["session_id"] = self._SESSION_ID_PARAM
         return open_ai_tool
@@ -164,15 +164,20 @@ class BaseDeploymentTool(StagedBaseTool):
                 if tc.function.name != tool_name:
                     continue
 
-                # When session_id is provided, only include calls from the same thread.
-                # Absent session_id falls back to tool_name-only filtering (propagate_history behaviour).
+                # When session_id is provided, match calls that are either:
+                # - the thread anchor (tc.id == session_id): the first call, identified by
+                #   the tool_call_id the backend returned to the LLM as the session identifier
+                # - a follow-up (args["session_id"] == session_id): the LLM echoed it back
                 if session_id is not None:
                     try:
                         call_args = json.loads(tc.function.arguments)
-                        if call_args.get("session_id") != session_id:
+                        is_anchor = tc.id == session_id
+                        is_followup = call_args.get("session_id") == session_id
+                        if not (is_anchor or is_followup):
                             continue
                     except (json.JSONDecodeError, AttributeError):
-                        continue
+                        if tc.id != session_id:
+                            continue
 
                 result_entry = tool_result_by_id.get(tc.id)
                 if result_entry is None:

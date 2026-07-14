@@ -41,7 +41,7 @@ A `session_id` argument lets the LLM tag each call with a thread identifier, ena
 
 **Trigger:** User asks the orchestrator: "Assign badge 'Happy 5th Anniversary' to John Smith."
 
-**Behavior:** Orchestrator calls `assign_badge` with `query: "Assign badge … to John Smith"` and `session_id: "badge-task-1"`. Subagent responds: "Please provide EmployeeID." Orchestrator calls `get_employee_id` → gets `123456`. Now the LLM knows `assign_badge` is history-aware (from the tool description), so it calls `assign_badge` again with `query: "123456"` and `session_id: "badge-task-1"`. The backend prepends the prior exchange for that session, and the subagent receives the full thread and completes the task.
+**Behavior:** Orchestrator calls `assign_badge` with `query: "Assign badge … to John Smith"` (no `session_id` — first call). The backend assigns `session_id = tool_call_id` and appends `[session_id: call-abc]` to the response. Subagent responds: "Please provide EmployeeID." Orchestrator calls `get_employee_id` → gets `123456`. Now the LLM echoes the session_id, calling `assign_badge` again with `query: "123456"` and `session_id: "call-abc"`. The backend prepends the prior exchange for that session, and the subagent receives the full thread and completes the task.
 
 **Outcome:** The second call's `query` contains only the delta. The subagent receives the correct full context without duplication.
 
@@ -57,7 +57,7 @@ A `session_id` argument lets the LLM tag each call with a thread identifier, ena
 
 **Trigger:** An operator configures a tool without `conversation_mode` (default) or with `conversation_mode: "stateless"`.
 
-**Behavior:** No `session_id` parameter is injected into the schema. No description suffix is added. `_extract_tool_history` is never called.
+**Behavior:** No `session_id` parameter is injected into the schema. `_extract_tool_history` is never called.
 
 **Outcome:** Identical to today's behavior. No migration required.
 
@@ -84,13 +84,9 @@ The admin configuring the manifest picks the mode based on what they know about 
 
 ### LLM awareness via `enrich_openai_tool_schema`
 
-**What:** For tools with `conversation_mode=stateful`, append a suffix to `function.description` informing the LLM of stateful semantics and delta-only expectations, and inject a `session_id` parameter into the tool schema.
+**What:** For tools with `conversation_mode=stateful`, inject a `session_id` parameter into the tool schema. Its description alone is sufficient for the LLM to use it correctly — no change to `function.description` is needed.
 
-**Where:** `StagedBaseTool.enrich_openai_tool_schema(open_ai_tool)` — no-op base method, overridden in `BaseDeploymentTool`. Wired into `AgentModule.provide_openai_tools` after `_append_default_props`, before serialization. The ordering is intentional: `_append_default_props` only touches `properties` (adds `query` and `attachment_urls`), never `description`, so `enrich_openai_tool_schema` always appends to the original description rather than to something `_append_default_props` may have written.
-
-**Description suffix (informative draft — exact wording TBD):**
-
-> "This tool is a stateful subagent: it maintains conversation history across calls within the same session. On each follow-up call, the backend automatically prepends prior exchanges for that session. **Send only the new information (delta)** in `query` — do not re-summarize prior context. Assign a unique `session_id` at the start of each conversation thread and use the same value for all follow-up calls in that thread."
+**Where:** `StagedBaseTool.enrich_openai_tool_schema(open_ai_tool)` — no-op base method, overridden in `BaseDeploymentTool`. Wired into `AgentModule.provide_openai_tools` after `_append_default_props`, before serialization.
 
 ---
 
@@ -98,21 +94,21 @@ The admin configuring the manifest picks the mode based on what they know about 
 
 **What:** An optional string parameter injected into the tool's JSON schema for all tools where `conversation_mode=stateful`.
 
-**Where:** Injected by `BaseDeploymentTool.enrich_openai_tool_schema()` alongside the description suffix.
+**Where:** Injected by `BaseDeploymentTool.enrich_openai_tool_schema()`.
 
 **Schema shape:**
 ```json
 "session_id": {
   "type": "string",
-  "description": "Identifier for this conversation thread. Assign a unique value when starting a new multi-turn exchange with this subagent (e.g. 'research-climate'). Use the same session_id on all follow-up calls for that thread. Use a different session_id to start an independent conversation thread."
+  "description": "The session identifier returned at the end of a previous response from this tool. Pass it back unchanged to continue that conversation thread. Omit to start a new independent thread."
 }
 ```
 
-**Who generates `session_id`:** The LLM. The tool description explicitly instructs it to create a unique identifier per thread and use it consistently. The LLM does not need to generate a UUID — any stable string it chooses (e.g., `"badge-task-1"`, `"research-climate"`) is sufficient. Modern instruction-following models reliably maintain such identifiers when clearly instructed.
+**Who generates `session_id`:** The **backend**. On the first call to a stateful tool (no `session_id` in kwargs), `_run_in_stage_async` assigns `session_id = tool_call_id` — the unique call identifier already provided by the LLM framework. The backend then appends `[session_id: {id}]` to the result content so the LLM can read and echo it on follow-up calls. This is more reliable than asking the LLM to invent an identifier: echoing a value you received is a much simpler task than generating a unique, stable, thread-consistent string.
 
 **`session_id` is NOT sent to the subagent** — it is popped from kwargs in `_run_in_stage_async` before `DialCompletionService.complete_request_async` is called, the same way `attachment_urls` is consumed at the tool layer.
 
-**Fallback when `session_id` is omitted:** If the LLM omits `session_id` on a stateful tool call (e.g., an older model that ignores injected parameters), `_extract_tool_history` falls back to `tool_name`-only filtering — all prior calls to that tool are included regardless of session, which is the same behaviour as `propagate_history=True`.
+**Fallback when `session_id` is omitted:** If the LLM omits `session_id` on a stateful follow-up call, `_extract_tool_history` falls back to `tool_name`-only filtering — all prior calls to that tool are included regardless of session, which is the same behaviour as `propagate_history=True`.
 
 ---
 
@@ -124,15 +120,18 @@ New signature: `_extract_tool_history(tool_name: str, session_id: str | None = N
 
 **First pass** (collecting TOOL results by `tool_call_id`) — unchanged.
 
-**Second pass** (walking ASSISTANT messages): when `session_id` is provided, only include a tool call if the parsed arguments for that call contain `"session_id": <matching value>`. Tool calls without a matching `session_id` are excluded when filtering is active.
+**Second pass** (walking ASSISTANT messages): when `session_id` is provided, include a tool call if it matches either condition:
 
-When `session_id` is `None`, falls back to filtering by `tool_name` only — preserving current behavior for `propagate_history=True` callers that do not use `session_id`.
+- **Anchor** (`tc.id == session_id`): the first call in the thread, identified by the `tool_call_id` the backend returned as the session identifier. It has no `session_id` in its own arguments.
+- **Follow-up** (`args["session_id"] == session_id`): a subsequent call where the LLM echoed the session identifier back.
+
+When `session_id` is `None`, falls back to filtering by `tool_name` only — preserving current behavior for `propagate_history=True` callers.
 
 ---
 
 ### `_run_in_stage_async` changes
 
-At the start of the method, `session_id` is popped from kwargs (consumed here, not forwarded to the subagent). It is then passed as a keyword argument to `_extract_tool_history` when history extraction is triggered by `propagate_history=True` or `conversation_mode=stateful`.
+`session_id` is popped from kwargs (consumed here, not forwarded to the subagent). If absent and `conversation_mode=stateful` (first call), the backend assigns `session_id = tool_call_id` and appends `[session_id: {id}]` to the result content. The `session_id` is then passed to `_extract_tool_history` when history extraction is triggered by `propagate_history=True` or `conversation_mode=stateful`.
 
 ---
 
@@ -171,14 +170,13 @@ At the start of the method, `session_id` is popped from kwargs (consumed here, n
 }
 ```
 
-The LLM will see `session_id` in the tool schema and call like:
+First call (no `session_id`):
 ```json
-{ "query": "Assign badge 'Happy 5th Anniversary' to John Smith", "session_id": "badge-task-1" }
+{ "query": "Assign badge 'Happy 5th Anniversary' to John Smith" }
 ```
-
-Follow-up (delta only):
+Backend appends `[session_id: call-abc123]` to the response. Follow-up (delta only, LLM echoes session_id):
 ```json
-{ "query": "123456", "session_id": "badge-task-1" }
+{ "query": "123456", "session_id": "call-abc123" }
 ```
 
 ### Stateless (default)
@@ -190,7 +188,7 @@ Follow-up (delta only):
 }
 ```
 
-No `session_id` in schema. No description suffix. No history extraction.
+No `session_id` in schema. No history extraction.
 
 ---
 
@@ -213,5 +211,5 @@ Default is `stateless`; existing manifests without `conversation_mode` and `prop
 | `config/tools/deployment.py` | `ConversationMode` enum with `STATELESS` and `STATEFUL`. `ContentPropagation.conversation_mode` documented. |
 | `common/staged_base_tool.py` | Add `enrich_openai_tool_schema(open_ai_tool)` extension hook (no-op in base, overridden in `BaseDeploymentTool`). |
 | `core/agent/agent_module.py` | `provide_openai_tools`: call `tool.enrich_openai_tool_schema(open_ai_tool)` for every tool after `_append_default_props`. |
-| `dial_deployment_tooling/base_deployment_tool.py` | Override `enrich_openai_tool_schema`: inject description suffix and `session_id` parameter when `conversation_mode=STATEFUL`. `_run_in_stage_async`: pop `session_id` from kwargs, pass to `_extract_tool_history`. `_extract_tool_history`: accept `session_id`, filter by `(tool_name, session_id)` when provided. Fix empty-content-with-state edge case. |
+| `dial_deployment_tooling/base_deployment_tool.py` | Override `enrich_openai_tool_schema`: inject `session_id` parameter when `conversation_mode=STATEFUL`. `_run_in_stage_async`: pop `session_id` from kwargs, generate from `tool_call_id` on first call, inject into result content, pass to `_extract_tool_history`. `_extract_tool_history`: accept `session_id`, filter by anchor (`tc.id`) or follow-up (`args["session_id"]`) when provided. Fix empty-content-with-state edge case. |
 | `docs/generated-app-schema.json` | Regenerated after config model changes. |
