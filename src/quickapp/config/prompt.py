@@ -11,7 +11,7 @@ class PredefinedSystemPromptConfig(BaseModel):
     type: Literal["predefined"] = Field(
         default="predefined", description="The type of the system prompt."
     )
-    template: str = Field(description="The predefined template name for a system prompt")
+    template: str = Field(description="The predefined template name for a system prompt", min_length=1)
     content: str | None = Field(description="The loaded prompt from template", default=None)
 
 
@@ -32,7 +32,7 @@ class DialSystemPromptConfig(BaseModel):
 
 
 AgentSystemPromptConfig = Annotated[
-    PredefinedSystemPromptConfig | CustomSystemPromptConfig | DialSystemPromptConfig,
+    CustomSystemPromptConfig | PredefinedSystemPromptConfig | DialSystemPromptConfig,
     Field(discriminator="type"),
 ]
 
