@@ -214,9 +214,10 @@ class _MCPTool(StagedBaseTool):
 
             tool_content = "\n\n".join(filter(None, text_parts))
 
-            # Raise on error flag so fallback strategies can apply
+            # Detect-and-raise only; the StagedBaseTool choke point owns the failure
+            # WARNING, so this stays at DEBUG (ownership rule). Body stripped by #436.
             if getattr(tool_call_result, "isError", False):
-                logger.error(
+                logger.debug(
                     "MCP tool '%s' returned isError=True; error: %s; structuredContent: %s",
                     self.__tool.name,
                     tool_content,

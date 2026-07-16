@@ -1,5 +1,6 @@
 import logging
 import sys
+import time
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
     ImmediateStageCloseRegistry,
@@ -122,12 +124,13 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     async def __run_tool_body(
         self, tool_call_id: str, stage_wrapper: BaseStageWrapper, *args: Any, **kwargs: Any
     ) -> ToolCallResult:
+        # The failure WARNING is written by _run_in_stage_report_success; here we only
+        # translate it into stage UI and a fallback result (hands-onward layer).
         try:
             return await self._run_in_stage_report_success(
                 tool_call_id, stage_wrapper, *args, **kwargs
             )
         except InvalidToolCallParameterException as e:
-            logger.exception("Invalid parameter detected while running tool")
             stage_wrapper.add_exception(e)
             return FallbackProcessor.process_fallback(
                 [
@@ -139,7 +142,6 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 e,
             )
         except Exception as e:
-            logger.exception("Error occurred while running tool")
             fallback = self._tool_config.fallback_configuration
             if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
                 stage_wrapper.add_exception(e)
@@ -154,6 +156,16 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             kwargs = await transformer.transform(kwargs)
         return kwargs
 
+    def _resolve_tool_name(self) -> str:
+        """Best-effort tool name for lifecycle logging (the OpenAI function name,
+        falling back to a set ``name`` attribute or the class name)."""
+        open_ai_tool = getattr(self._tool_config, "open_ai_tool", None)
+        function = getattr(open_ai_tool, "function", None)
+        name = getattr(function, "name", None)
+        if name:
+            return name
+        return getattr(self, "name", None) or type(self).__name__
+
     async def _run_in_stage_report_success(
         self,
         tool_call_id: str,
@@ -161,14 +173,18 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        params = await self._pre_process_params(**kwargs)
+        tool_name = self._resolve_tool_name()
         timer_name = f"tool_{tool_call_id}"
         if stage_wrapper:
-            # TODO: filter params ro remove attachment_urls if it's empty
-            stage_wrapper.add_parameters(params)
             timer_name = f"tool_{stage_wrapper.name}_{tool_call_id}"
+        start = time.perf_counter()
+        outcome = "success"
+        self.__perf_timer.start_period(timer_name, 3)
         try:
-            self.__perf_timer.start_period(timer_name, 3)
+            params = await self._pre_process_params(**kwargs)
+            if stage_wrapper:
+                # TODO: filter params ro remove attachment_urls if it's empty
+                stage_wrapper.add_parameters(params)
             result: ToolCallResult = await self._run_in_stage_async(
                 stage_wrapper, tool_call_id, *args, **params
             )
@@ -188,5 +204,28 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             logger.debug(f"Tool call {tool_call_id} finished with result {result}")
 
             return result
+        except Exception as e:
+            # The single failure WARNING for every tool type (ownership rule): exception
+            # type only, no response body or arguments.
+            outcome = "error"
+            logger.warning(
+                format_event(
+                    "Tool call failed",
+                    tool=tool_name,
+                    tool_call_id=tool_call_id,
+                    error=type(e).__name__,
+                ),
+                exc_info=True,
+            )
+            raise
         finally:
             self.__perf_timer.stop_period(timer_name)
+            logger.info(
+                format_event(
+                    "Tool call completed",
+                    tool=tool_name,
+                    tool_call_id=tool_call_id,
+                    duration=format_duration(time.perf_counter() - start),
+                    outcome=outcome,
+                )
+            )
