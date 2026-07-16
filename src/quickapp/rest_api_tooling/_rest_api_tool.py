@@ -97,7 +97,9 @@ class _RestApiTool(StagedBaseTool):
                     response.raise_for_status()
                 except httpx.HTTPStatusError as e:
                     error_message = self._extract_response_error_message(e.response)
-                    logger.error(
+                    # Detect-and-raise only; the StagedBaseTool choke point owns the
+                    # failure WARNING, so this stays at DEBUG (ownership rule).
+                    logger.debug(
                         "REST API tool '%s' returned HTTP %s; error: %s",
                         self._tool_config.open_ai_tool.function.name,
                         e.response.status_code,
