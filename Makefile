@@ -142,8 +142,8 @@ stop_test_server:
 
 # Canonical integration-test matrix (one per provider family). Update when DIAL deployments change.
 INTEGRATION_TEST_MODELS ?= \
-	gemini-2.5-pro \
-	gpt-5.2-2025-12-11 \
+	gemini-3.5-flash \
+	gpt-5.5-2026-04-24 \
 	anthropic.claude-opus-4-6-v1
 
 # Filesystem-safe JUnit report suffix (Claude deployment IDs may contain ':').

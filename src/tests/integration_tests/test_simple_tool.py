@@ -347,6 +347,7 @@ def test_pyinterpreter2(client):
                 "I'll create a NumPy function to calculate the hypotenuse using the Pythagorean theorem and then calculate the result for the values 3 and 4. I've created the `calculate_hypotenuse` function using NumPy that implements the Pythagorean theorem (c = √(a² + b²)). The function takes two arguments representing the two sides of a right triangle and returns the length of the hypotenuse.For the values a=3 and b=4, the result is:**5.0**",
                 "I'll help you create a NumPy function to calculate the hypotenuse and then compute the result for values 3 and 4. 5.0",
                 "np.float64(5.0)",
+                "The result of `calculate_hypotenuse(3, 4)` is **5.0**."
             ],
         )
         .add_user_message(
@@ -362,7 +363,7 @@ def test_pyinterpreter2(client):
                     name="code", value=["calculate_hypotenuse"], func=CustomFunction.contains
                 )
             ],
-            answer=["17.0", "The hypotenuse is: 17.0", "np.float64(17.0)"],
+            answer=["17.0", "The hypotenuse is: 17.0", "np.float64(17.0)", "The result of `calculate_hypotenuse(8, 15)` is **17.0**."],
         )
     ),
 )
