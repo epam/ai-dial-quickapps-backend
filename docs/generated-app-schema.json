@@ -504,6 +504,12 @@
           "description": "Instructions to LLM what to do next.",
           "title": "Instructions"
         },
+        "forward_tool_error_message": {
+          "default": false,
+          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "title": "Forward Tool Error Message",
+          "type": "boolean"
+        },
         "type": {
           "const": "continue",
           "default": "continue",
@@ -2911,6 +2917,12 @@
           "description": "Instructions to LLM what to do next. Must be provided for retry strategy.",
           "title": "Instructions",
           "type": "string"
+        },
+        "forward_tool_error_message": {
+          "default": false,
+          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "title": "Forward Tool Error Message",
+          "type": "boolean"
         },
         "type": {
           "const": "retry",
