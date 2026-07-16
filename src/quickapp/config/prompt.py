@@ -11,7 +11,9 @@ class PredefinedSystemPromptConfig(BaseModel):
     type: Literal["predefined"] = Field(
         default="predefined", description="The type of the system prompt."
     )
-    template: str = Field(description="The predefined template name for a system prompt", min_length=1)
+    template: str = Field(
+        description="The predefined template name for a system prompt", min_length=1
+    )
     content: str | None = Field(description="The loaded prompt from template", default=None)
 
 
