@@ -13,7 +13,8 @@ export PYDANTIC_V2=True
 .PHONY: init_venv install install_dev install_integration install_all clean \
 	lint mypy format install_pre_commit_hooks run_chat run_error_injection_app test test_cov \
 	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config start_test_server stop_test_server \
-	integration_test integration_test_run e2e_test run_python \
+	integration_test integration_test_run integration_test_ci integration_test_all print-integration-test-models \
+	e2e_test run_python \
 	black black_check isort isort_check autoflake autoflake_check flake8
 
 init_venv:
@@ -151,13 +152,45 @@ stop_test_server:
 		echo "PID file not found. Are servers running?"; \
 	fi
 
+# Canonical integration-test matrix (one per provider family). Update when DIAL deployments change.
+INTEGRATION_TEST_MODELS ?= \
+	gemini-2.5-pro \
+	gpt-5.2-2025-12-11 \
+	anthropic.claude-opus-4-6-v1
+
+# Filesystem-safe JUnit report suffix (Claude deployment IDs may contain ':').
+MODEL_REPORT_SUFFIX = $(subst /,-,$(subst :,-,$(MODEL)))
+
+INTEGRATION_PYTEST = ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) \
+	src/tests/integration_tests --model=$(MODEL) \
+	--junitxml=reports/tests-integration-$(MODEL_REPORT_SUFFIX).xml \
+	-m "integration" $(ARGS)
+
+print-integration-test-models:
+	@printf '%s\n' $(INTEGRATION_TEST_MODELS)
+
 integration_test: install_integration
 	$(MAKE) start_test_server
-	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
+	$(INTEGRATION_PYTEST)
 	$(MAKE) stop_test_server
 
 integration_test_run:
-	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
+	$(INTEGRATION_PYTEST)
+
+integration_test_ci:
+ifndef MODEL
+	$(error MODEL is required, e.g. make integration_test_ci MODEL=gemini-2.5-pro)
+endif
+	$(MAKE) integration_test MODEL=$(MODEL)
+
+integration_test_all: install_integration
+	$(MAKE) start_test_server
+	@set -e; \
+	for model in $(INTEGRATION_TEST_MODELS); do \
+		echo "=== Integration tests: $$model ==="; \
+		$(MAKE) integration_test_run MODEL="$$model"; \
+	done
+	$(MAKE) stop_test_server
 
 e2e_test: install_integration
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)
