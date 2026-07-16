@@ -3,6 +3,7 @@ MYPY_DIRS = src/quickapp src/scripts
 FILES ?= $(SRC_DIRS)
 POETRY ?= poetry
 PYTHON ?= python3
+WORKERS ?= 4
 
 -include .env
 export
@@ -130,27 +131,14 @@ generate_dial_config: install_dev
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag
 
-start_test_server:
+start_test_server: stop_test_server
 	echo "Starting MCP + REST servers..."
 	$(POETRY) run python src/tests/integration_tests/data_server_for_tests.py & echo $$! > .mcp_rest_server.pid
 	sleep 1
 	echo "Servers started with PID `cat .mcp_rest_server.pid`"
 
 stop_test_server:
-	@if [ -f .mcp_rest_server.pid ]; then \
-		pid=$$(cat .mcp_rest_server.pid); \
-		if kill -0 $$pid >/dev/null 2>&1; then \
-			echo "Stopping MCP + REST servers..."; \
-			kill $$pid; \
-			rm -f .mcp_rest_server.pid; \
-			echo "Servers stopped"; \
-		else \
-			echo "No running process found with PID $$pid"; \
-			rm -f .mcp_rest_server.pid; \
-		fi \
-	else \
-		echo "PID file not found. Are servers running?"; \
-	fi
+	@$(POETRY) run python src/tests/integration_tests/stop_data_server_for_tests.py stop || true
 
 # Canonical integration-test matrix (one per provider family). Update when DIAL deployments change.
 INTEGRATION_TEST_MODELS ?= \
@@ -171,8 +159,10 @@ print-integration-test-models:
 
 integration_test: install_integration
 	$(MAKE) start_test_server
-	$(INTEGRATION_PYTEST)
-	$(MAKE) stop_test_server
+	@status=0; \
+	$(INTEGRATION_PYTEST) || status=$$?; \
+	$(MAKE) stop_test_server; \
+	exit $$status
 
 integration_test_run:
 	$(INTEGRATION_PYTEST)
@@ -185,12 +175,19 @@ endif
 
 integration_test_all: install_integration
 	$(MAKE) start_test_server
-	@set -e; \
+	@failed=""; \
 	for model in $(INTEGRATION_TEST_MODELS); do \
 		echo "=== Integration tests: $$model ==="; \
-		$(MAKE) integration_test_run MODEL="$$model"; \
-	done
-	$(MAKE) stop_test_server
+		if ! $(MAKE) integration_test_run MODEL="$$model"; then \
+			echo "=== FAILED: $$model ==="; \
+			failed="$$failed $$model"; \
+		fi; \
+	done; \
+	$(MAKE) stop_test_server; \
+	if [ -n "$$failed" ]; then \
+		echo "Integration tests failed for:$$failed"; \
+		exit 1; \
+	fi
 
 e2e_test: install_integration
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)
