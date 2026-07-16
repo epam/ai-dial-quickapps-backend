@@ -4,14 +4,14 @@ from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 
 class RetryStrategyHandler(BaseStrategy[RetryStrategyModel]):
+    _DEFAULT_INSTRUCTIONS = (
+        "An error occurs, try to analyze what went wrong and retry the operation."
+    )
+
     @staticmethod
     def handle(strategy_config: RetryStrategyModel, error: Exception) -> str:
-        message = compose_tool_error_fallback_message(
-            instructions=strategy_config.instructions,
+        return compose_tool_error_fallback_message(
+            instructions=strategy_config.instructions or RetryStrategyHandler._DEFAULT_INSTRUCTIONS,
             error=error,
             forward_tool_error_message=strategy_config.forward_tool_error_message,
         )
-        if message:
-            return message
-
-        return "An error occurs, try to analyze what went wrong and retry the operation."

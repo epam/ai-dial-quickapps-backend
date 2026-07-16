@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
+from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -107,7 +108,7 @@ def test_tool_error_can_forward_tool_error_message():
     err = ToolErrorException("rag_search", "public error")
     strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error"
+    assert result.content == "public error\n\n" + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
 
 
 def test_tool_error_can_append_instructions_after_forwarded_error():

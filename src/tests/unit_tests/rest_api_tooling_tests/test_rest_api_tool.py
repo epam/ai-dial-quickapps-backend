@@ -13,6 +13,7 @@ from starlette.testclient import TestClient
 from quickapp.common import DIAL_API_KEY, DIAL_BEARER, ForwardedHeaders, StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -478,7 +479,11 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
     @app.get("/")
     async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
         result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
-        assert result.content == "HTTP error 400 while calling REST API tool."
+        assert (
+            result.content
+            == "HTTP error 400 while calling REST API tool.\n\n"
+            + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
+        )
         assert result.content_type == "text/markdown"
         return {"message": "success"}
 

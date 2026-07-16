@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common import ToolCallResult
+from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -157,7 +158,10 @@ async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
 
     result = await tool.arun("call-id")
 
-    assert result.content == "Internal server error"
+    assert (
+        result.content
+        == "Internal server error\n\n" + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
+    )
 
 
 @pytest.mark.asyncio
