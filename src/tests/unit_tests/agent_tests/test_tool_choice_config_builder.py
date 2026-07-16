@@ -24,7 +24,6 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
-        agent_settings=MagicMock(chat_message_log_length=100),
     )
 
 
@@ -71,7 +70,6 @@ class TestToolChoiceInPayload:
             pre_invocation_transformers=[],
             presentation_settings=MagicMock(show_usage_statistics=False),
             forwarded_headers=None,
-            agent_settings=MagicMock(chat_message_log_length=100),
         )
         first = builder.build([])
         assert first["tool_choice"] == "required"
