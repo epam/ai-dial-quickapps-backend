@@ -37,7 +37,9 @@ AGENT_MODELS = [
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
     "gemini-3.5-flash",
+    "gemini-3.1-pro-preview",
     "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "anthropic.claude-sonnet-5",
     "anthropic.claude-v4-5-sonnet-v1",
     "anthropic.claude-opus-4-6-v1",
 ]

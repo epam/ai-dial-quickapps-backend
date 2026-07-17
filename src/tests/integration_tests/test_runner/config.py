@@ -73,6 +73,8 @@ class TestConfig:
             template = "gemini_prompt"
         elif "claude" in model:
             template = "anthropic_prompt"
+            if "5" in model:
+                temperature = None
         else:
             if "gpt-5" in model:
                 temperature = 1

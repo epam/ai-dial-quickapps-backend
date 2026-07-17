@@ -15,7 +15,8 @@ _DOCS = Path(__file__).parent / "test_documents"
 _LAZY_CONTEXT_MODELS = [
     "gpt-5.5-2026-04-24",
     "gpt-5-2025-08-07",
-    "anthropic.claude-opus-4-6-v1",
+    "anthropic.claude-sonnet-5",
+    "gemini-3.1-pro-preview",
 ]
 
 
