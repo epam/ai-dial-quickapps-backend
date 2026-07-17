@@ -29,6 +29,9 @@ def _make_mock_dial_client(
     mock_files = MagicMock()
     mock_files.download = AsyncMock(return_value=mock_download_result)
     mock_files.upload = AsyncMock(return_value=mock_metadata)
+    mock_files.delete = AsyncMock(return_value=None)
+    mock_files.copy_to = AsyncMock(return_value=None)
+    mock_files.move_to = AsyncMock(return_value=None)
 
     # The service fetches file/folder metadata via metadata.get (not files.get_metadata).
     mock_metadata_resource = MagicMock()
@@ -231,6 +234,143 @@ class TestInvalidateCache:
 
         second, _ = await svc.download_file("files/b/f.txt")
         assert second == file_bytes_v2
+
+
+def _make_folder_item(
+    url: str, node_type: str = "ITEM", content_length: int | None = 5
+) -> MagicMock:
+    item = MagicMock()
+    item.node_type = node_type
+    item.url = url
+    item.content_length = content_length
+    return item
+
+
+def _make_folder_metadata(items: list[MagicMock]) -> MagicMock:
+    metadata = MagicMock()
+    metadata.node_type = "FOLDER"
+    metadata.items = items
+    return metadata
+
+
+class TestUrlEncoding:
+    @pytest.mark.asyncio
+    async def test_download_encodes_decoded_path_with_spaces_and_parens(self):
+        mock_client = _make_mock_dial_client()
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.download_file("files/b/Uno-Rules-PDF-Official-Rules-unorules.org_ (1).pdf")
+
+        encoded = "files/b/Uno-Rules-PDF-Official-Rules-unorules.org_%20%281%29.pdf"
+        mock_client.metadata.get.assert_awaited_once_with("files", encoded)
+        mock_client.files.download.assert_awaited_once_with(encoded)
+
+    @pytest.mark.asyncio
+    async def test_download_does_not_double_encode_encoded_input(self):
+        mock_client = _make_mock_dial_client()
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.download_file("files/b/file%20name.pdf")
+
+        mock_client.files.download.assert_awaited_once_with("files/b/file%20name.pdf")
+
+    @pytest.mark.asyncio
+    async def test_metadata_lookup_preserves_trailing_slash(self):
+        mock_client = _make_mock_dial_client()
+        mock_client.metadata.get = AsyncMock(return_value=_make_folder_metadata([]))
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.list_folder("files/b/my folder/")
+
+        mock_client.metadata.get.assert_awaited_once_with("files", "files/b/my%20folder/")
+
+    @pytest.mark.asyncio
+    async def test_delete_encodes_url(self):
+        mock_client = _make_mock_dial_client()
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.delete("files/b/report (final).txt")
+
+        mock_client.files.delete.assert_awaited_once_with("files/b/report%20%28final%29.txt")
+
+    @pytest.mark.asyncio
+    async def test_copy_encodes_source_and_destination(self):
+        mock_client = _make_mock_dial_client()
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.copy("files/b/src (1).pdf", "files/b/dst (1).pdf", overwrite=False)
+
+        mock_client.files.copy_to.assert_awaited_once_with(
+            source="files/b/src%20%281%29.pdf",
+            destination="files/b/dst%20%281%29.pdf",
+            overwrite=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_move_encodes_source_and_destination(self):
+        mock_client = _make_mock_dial_client()
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.move("files/b/src (1).pdf", "files/b/dst (1).pdf", overwrite=True)
+
+        mock_client.files.move_to.assert_awaited_once_with(
+            source="files/b/src%20%281%29.pdf",
+            destination="files/b/dst%20%281%29.pdf",
+            overwrite=True,
+        )
+
+    @pytest.mark.asyncio
+    async def test_upload_encodes_url_and_keeps_decoded_filename(self):
+        mock_client = _make_mock_dial_client(upload_url="files/b/my%20notes.txt")
+        svc = _make_service(dial_client=mock_client)
+
+        result = await svc.write_file(url="files/b/my notes.txt", content="hi", overwrite=True)
+
+        call_kwargs = mock_client.files.upload.call_args.kwargs
+        assert call_kwargs["url"] == "files/b/my%20notes.txt"
+        # Multipart filename stays human-readable.
+        assert call_kwargs["file"][0] == "my notes.txt"
+        # Core echoes the encoded URL; the service returns it decoded.
+        assert result == "files/b/my notes.txt"
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_across_encoded_and_decoded_spellings(self):
+        mock_client = _make_mock_dial_client(file_content=b"once")
+        svc = _make_service(dial_client=mock_client)
+
+        first, _ = await svc.download_file("files/b/file name.pdf")
+        second, _ = await svc.download_file("files/b/file%20name.pdf")
+
+        assert first == second == b"once"
+        mock_client.files.download.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_invalidate_cache_accepts_either_spelling(self):
+        mock_client = _make_mock_dial_client(file_content=b"v1")
+        svc = _make_service(dial_client=mock_client)
+
+        await svc.download_file("files/b/file name.pdf")
+        svc.invalidate_cache("files/b/file%20name.pdf")
+        await svc.download_file("files/b/file name.pdf")
+
+        assert mock_client.files.download.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_list_folder_returns_decoded_entry_urls(self):
+        mock_client = _make_mock_dial_client()
+        mock_client.metadata.get = AsyncMock(
+            return_value=_make_folder_metadata(
+                [
+                    _make_folder_item("files/b/My%20Report%20%281%29.pdf"),
+                    _make_folder_item("files/b/sub%20dir", node_type="FOLDER", content_length=None),
+                ]
+            )
+        )
+        svc = _make_service(dial_client=mock_client)
+
+        entries = await svc.list_folder("files/b/")
+
+        assert [e.url for e in entries] == ["files/b/My Report (1).pdf", "files/b/sub dir/"]
 
 
 class TestGrantPermissions:

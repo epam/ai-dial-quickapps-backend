@@ -114,6 +114,19 @@ class TestFindFiles:
         assert "appbucket" not in exc.value.message
 
     @pytest.mark.asyncio
+    async def test_space_bearing_name_matches_human_readable_glob(self):
+        # DialFileService returns decoded entry URLs, so globs match the
+        # human-readable spelling — no percent-encoding leaks into matching.
+        entries = [
+            _file("files/appbucket/Uno-Rules-PDF-Official-Rules-unorules.org_ (1).pdf"),
+            _file("files/appbucket/other.pdf"),
+        ]
+        tool = _make_tool(entries=entries)
+        result = await tool._run_in_stage_async(stage_wrapper=None, pattern="*(1).pdf")
+        assert "Uno-Rules-PDF-Official-Rules-unorules.org_ (1).pdf" in result.content
+        assert "other.pdf" not in result.content
+
+    @pytest.mark.asyncio
     async def test_no_matches_returns_no_files(self):
         tool = _make_tool(entries=[_file("files/appbucket/a.txt")])
         result = await tool._run_in_stage_async(stage_wrapper=None, pattern="*.csv")

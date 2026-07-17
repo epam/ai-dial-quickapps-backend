@@ -1,6 +1,7 @@
 import logging
 from hashlib import sha256
 from typing import Any
+from urllib.parse import quote, unquote
 
 from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment, ToolCall
@@ -54,4 +55,9 @@ class StateHolder(BaseModel):
 
     @staticmethod
     def _get_file_key_by_url(url: str) -> str:
-        return sha256(url.encode('utf-8')).hexdigest()
+        # Normalize percent-encoding (unquote-then-quote is idempotent) so the
+        # encoded and decoded spellings of one URL share a single cache entry —
+        # the file cache is populated by several services (DialFileService,
+        # FileLoaderService) that may receive either spelling of the same file.
+        normalized = quote(unquote(url), safe="/")
+        return sha256(normalized.encode("utf-8")).hexdigest()

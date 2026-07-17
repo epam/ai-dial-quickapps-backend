@@ -2,6 +2,7 @@ import logging
 from collections import deque
 from pathlib import PurePosixPath
 from typing import Literal, NoReturn
+from urllib.parse import quote, unquote
 
 from aidial_client import AsyncDial
 from aidial_client._exception import DialException, ResourceNotFoundError
@@ -17,6 +18,19 @@ from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
 logger = logging.getLogger(__name__)
 
 
+def _encode(url: str) -> str:
+    """Percent-encode a 'files/...' URL path for the DIAL Core API.
+
+    Unquote-then-quote makes this idempotent: a decoded input ('file name.pdf')
+    and an already-encoded one ('file%20name.pdf') both yield 'file%20name.pdf'.
+    Accepted edge case: a stored filename literally containing a valid '%XX'
+    sequence is indistinguishable from its encoded form and gets normalized —
+    this favors the overwhelmingly common case. `safe="/"` keeps path separators
+    (including a trailing '/', which distinguishes folders) intact.
+    """
+    return quote(unquote(url), safe="/")
+
+
 class FolderEntry(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -27,6 +41,13 @@ class FolderEntry(BaseModel):
 
 @inject
 class DialFileService:
+    """DIAL Core file API wrapper.
+
+    URL contract: decoded (human-readable) 'files/...' URLs in and out.
+    Percent-encoding for the wire is an internal egress concern (`_encode`);
+    ingress URLs from Core (`list_folder` items) are decoded before being
+    returned, so callers never handle encoded spellings.
+    """
 
     def __init__(
         self,
@@ -63,12 +84,14 @@ class DialFileService:
         pass pre-resolved relative 'files/...' URLs, so get_api_path normalization is moot.
         """
         try:
-            return await self.__dial_client.metadata.get("files", url)
+            return await self.__dial_client.metadata.get("files", _encode(url))
         except DialException as e:
             self._reraise_404_as_not_found(e)
 
     async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
         logger.debug(f"File url to download url:{file_url}")
+        # StateHolder normalizes percent-encoding in its cache keys, so encoded
+        # and decoded spellings of one file share a single entry.
         file_data = self.__state_holder.get_file_data(url=file_url)
         if file_data is not None:
             return file_data, self.__state_holder.get_file_metadata(file_url)
@@ -80,7 +103,9 @@ class DialFileService:
                 raise ValueError(
                     f"File size {size} exceeds the limit of {self.__content_size_limit} bytes."
                 )
-            file_data = await (await self.__dial_client.files.download(file_url)).aget_content()
+            file_data = await (
+                await self.__dial_client.files.download(_encode(file_url))
+            ).aget_content()
             self.__state_holder.store_file_data(file_url, file_data, metadata)
         except Exception as e:
             logger.error("Failed to download: %s", file_url, exc_info=True)
@@ -127,18 +152,20 @@ class DialFileService:
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
     ) -> str:
-        encoded = content.encode("utf-8")
-        filename = url.split("/")[-1]
+        content_bytes = content.encode("utf-8")
+        filename = unquote(url).split("/")[-1]
         metadata = await self.__dial_client.files.upload(
-            url=url,
-            file=(filename, encoded, content_type),
+            url=_encode(url),
+            file=(filename, content_bytes, content_type),
             etag_if_none_match=if_none_match,
             etag_if_match=if_match,
         )
-        return metadata.url
+        # Core echoes the encoded URL back; return the decoded spelling per the
+        # class contract.
+        return unquote(metadata.url)
 
     async def delete(self, file_url: str) -> None:
-        await self.__dial_client.files.delete(file_url)
+        await self.__dial_client.files.delete(_encode(file_url))
         self.invalidate_cache(file_url)
 
     def invalidate_cache(self, file_url: str) -> None:
@@ -160,7 +187,9 @@ class DialFileService:
             items: list[FileItem] = metadata.items or []
             for item in items:
                 is_folder = item.node_type == "FOLDER"
-                item_url = item.url
+                # Core returns percent-encoded item URLs; expose the decoded
+                # spelling per the class contract.
+                item_url = unquote(item.url)
                 if is_folder and not item_url.endswith("/"):
                     item_url = item_url + "/"
                 results.append(
@@ -175,16 +204,18 @@ class DialFileService:
         return results
 
     async def copy(self, source_url: str, destination_url: str, overwrite: bool) -> None:
+        # copy_to/move_to send the URLs in an ops/resource JSON body that the
+        # HTTP client never encodes, so both must be encoded here (#447).
         await self.__dial_client.files.copy_to(
-            source=source_url,
-            destination=destination_url,
+            source=_encode(source_url),
+            destination=_encode(destination_url),
             overwrite=overwrite,
         )
 
     async def move(self, source_url: str, destination_url: str, overwrite: bool) -> None:
         await self.__dial_client.files.move_to(
-            source=source_url,
-            destination=destination_url,
+            source=_encode(source_url),
+            destination=_encode(destination_url),
             overwrite=overwrite,
         )
         self.invalidate_cache(source_url)
