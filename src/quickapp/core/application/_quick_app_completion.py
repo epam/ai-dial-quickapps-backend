@@ -74,6 +74,7 @@ class _QuickAppCompletion(ChatCompletion):
                 except ConfigResolutionException:
                     # System prompt resolution is the only path that still raises;
                     # tool / toolset failures are skip-and-record inside the resolver.
+                    failed = True
                     outcome = "failed"
                     self.__injector.get(_InitializationErrorHandler).handle_initialization_issues()
                     return

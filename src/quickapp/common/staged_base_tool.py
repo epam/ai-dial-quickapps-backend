@@ -15,6 +15,7 @@ from quickapp.common.stage_close_registry import (
     ImmediateStageCloseRegistry,
 )
 from quickapp.config.application import StageDisplayLevel
+from quickapp.config.tools.base import BaseOpenAITool
 from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
@@ -159,11 +160,8 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     def _resolve_tool_name(self) -> str:
         """Best-effort tool name for lifecycle logging (the OpenAI function name,
         falling back to a set ``name`` attribute or the class name)."""
-        open_ai_tool = getattr(self._tool_config, "open_ai_tool", None)
-        function = getattr(open_ai_tool, "function", None)
-        name = getattr(function, "name", None)
-        if name:
-            return name
+        if isinstance(self._tool_config, BaseOpenAITool):
+            return self._tool_config.open_ai_tool.function.name
         return getattr(self, "name", None) or type(self).__name__
 
     async def _run_in_stage_report_success(
@@ -178,7 +176,6 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         if stage_wrapper:
             timer_name = f"tool_{stage_wrapper.name}_{tool_call_id}"
         start = time.perf_counter()
-        outcome = "success"
         self.__perf_timer.start_period(timer_name, 3)
         try:
             params = await self._pre_process_params(**kwargs)
@@ -202,17 +199,26 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                             result.propagate_to_choice.append(a)
                 result.attachments = filtered
             logger.debug(f"Tool call {tool_call_id} finished with result {result}")
-
+            logger.info(
+                format_event(
+                    "Tool call completed",
+                    tool=tool_name,
+                    tool_call_id=tool_call_id,
+                    duration=format_duration(time.perf_counter() - start),
+                    outcome="success",
+                )
+            )
             return result
         except Exception as e:
-            # The single failure WARNING for every tool type (ownership rule): exception
-            # type only, no response body or arguments.
-            outcome = "error"
+            # The single failure log for every tool type (ownership rule): exception type
+            # and duration only, no response body or arguments. This replaces the
+            # success-path completion event, so a failed call still yields exactly one line.
             logger.warning(
                 format_event(
                     "Tool call failed",
                     tool=tool_name,
                     tool_call_id=tool_call_id,
+                    duration=format_duration(time.perf_counter() - start),
                     error=type(e).__name__,
                 ),
                 exc_info=True,
@@ -220,12 +226,3 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             raise
         finally:
             self.__perf_timer.stop_period(timer_name)
-            logger.info(
-                format_event(
-                    "Tool call completed",
-                    tool=tool_name,
-                    tool_call_id=tool_call_id,
-                    duration=format_duration(time.perf_counter() - start),
-                    outcome=outcome,
-                )
-            )
