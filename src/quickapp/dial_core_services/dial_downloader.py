@@ -4,6 +4,7 @@ from aidial_client import AsyncDial
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
 
+from quickapp.common.url_classification import sanitize_url_for_log
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -35,7 +36,7 @@ class DialDownloader:
         self.__content_size_limit: int = size_limit_resolver.resolve()
 
     async def fetch(self, file_url: str) -> tuple[bytes, FileMetadata]:
-        logger.debug("Downloading DIAL file: %s", file_url)
+        logger.debug("Downloading DIAL file: %s", sanitize_url_for_log(file_url))
         metadata = await self.__dial_client.files.get_metadata(file_url)
         size = metadata.content_length or 0
         if size > self.__content_size_limit:

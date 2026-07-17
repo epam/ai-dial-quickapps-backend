@@ -10,6 +10,7 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.state_holder import StateHolder
+from quickapp.common.url_classification import sanitize_url_for_log
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -68,12 +69,13 @@ class DialFileService:
             self._reraise_404_as_not_found(e)
 
     async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
-        logger.debug(f"File url to download url:{file_url}")
+        safe_url = sanitize_url_for_log(file_url)
+        logger.debug("File url to download: %s", safe_url)
         file_data = self.__state_holder.get_file_data(url=file_url)
         if file_data is not None:
             return file_data, self.__state_holder.get_file_metadata(file_url)
         try:
-            logger.debug(f"Downloading file:{file_url}")
+            logger.debug("Downloading file: %s", safe_url)
             metadata = await self._get_metadata(file_url)
             size = metadata.content_length or 0
             if size > self.__content_size_limit:
@@ -83,7 +85,7 @@ class DialFileService:
             file_data = await (await self.__dial_client.files.download(file_url)).aget_content()
             self.__state_holder.store_file_data(file_url, file_data, metadata)
         except Exception as e:
-            logger.error("Failed to download: %s", file_url, exc_info=True)
+            logger.error("Failed to download: %s", safe_url, exc_info=True)
             raise e
         return file_data, metadata
 
@@ -193,7 +195,10 @@ class DialFileService:
         self, files_to_share: list[str], dial_toolset_id: str
     ) -> None:
         try:
-            logger.debug(f"Granting permissions to files: {files_to_share}")
+            logger.debug(
+                "Granting permissions to files: %s",
+                [sanitize_url_for_log(f) for f in files_to_share],
+            )
             await self.__dial_client.resource_permissions.grant(
                 resources=files_to_share,
                 receiver=dial_toolset_id,

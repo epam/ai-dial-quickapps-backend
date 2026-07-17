@@ -11,6 +11,7 @@ from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY
 from quickapp.common._di_types import CLIENT_CHANNEL_HEADER
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.lifecycle_logging import format_duration, format_event
+from quickapp.common.payload_logging import log_payload
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services._login_result import LoginResult
 
@@ -131,7 +132,10 @@ class InteractiveLoginService:
         try:
             entries = json.loads(data)
         except (json.JSONDecodeError, TypeError):
-            logger.exception("Failed to parse interactive login response: %s", data)
+            logger.exception(
+                "Failed to parse interactive login response (length=%d)", len(data) if data else 0
+            )
+            log_payload(logger, "Interactive login response body: %s", data)
             return {tid: LoginResult.ERROR for tid in toolset_dial_ids}
 
         if not isinstance(entries, list):
