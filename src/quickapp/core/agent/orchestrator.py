@@ -1,4 +1,5 @@
 import logging
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -22,6 +23,7 @@ from quickapp.common.chat_completion_stream.handler import (
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
+from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
@@ -67,6 +69,8 @@ class Orchestrator:
         self.__assistant_invoker_provider = assistant_invoker_provider
         self.__stream_handler = stream_handler
         self.__iterations_counter = 0
+        self.__total_tool_calls = 0
+        self.__completion_kind = "completed"
         self.__MAX_ITERATIONS_COUNT = app_config.orchestrator.max_iterations
         self.__orchestrator_deployment_name = app_config.orchestrator.deployment.deployment_id
         self.__propagate_orchestrator_stages: bool = app_config.orchestrator.propagate_stages
@@ -85,6 +89,19 @@ class Orchestrator:
             request_async_close_registry
         )
         self.__propagated_attachment_urls: set[str] = set()
+
+    @property
+    def iteration_count(self) -> int:
+        return self.__iterations_counter
+
+    @property
+    def total_tool_calls(self) -> int:
+        return self.__total_tool_calls
+
+    @property
+    def completion_kind(self) -> str:
+        """``completed`` or ``external_tool_calls`` — how the loop terminated."""
+        return self.__completion_kind
 
     @asynccontextmanager
     async def _persisting_state(self) -> AsyncIterator[None]:
@@ -131,9 +148,25 @@ class Orchestrator:
         period = f"{self.__period_name}_{self.__iterations_counter}"
         self.__perf_timer.start_period(period, level=2)
 
+        model_call_start = time.perf_counter()
         stream_result = await self.__invoke_and_accumulate_stream_with_recovery()
+        model_call_duration = time.perf_counter() - model_call_start
 
         tool_calls = stream_result.tool_calls
+
+        usage = stream_result.usage
+        logger.info(
+            format_event(
+                "Model call completed",
+                iteration=self.__iterations_counter,
+                deployment=self.__orchestrator_deployment_name,
+                duration=format_duration(model_call_duration),
+                finish="tool_calls" if tool_calls else "stop",
+                tools=[tc.name for tc in tool_calls] if tool_calls else None,
+                content_length=len(stream_result.content),
+                tokens=(f"{usage.prompt_tokens}/{usage.completion_tokens}" if usage else None),
+            )
+        )
 
         # Thinking stages stay in custom_content (streamed to choice), not in state.
         response_state = dict(stream_result.state or {})
@@ -194,6 +227,7 @@ class Orchestrator:
         return True
 
     async def _execute_internal_tool_calls(self, tool_calls: list[AccumulatedToolCall]) -> None:
+        self.__total_tool_calls += len(tool_calls)
         logger.debug("Agent requests internal tool calls: %s", tool_calls)
         tool_call_results = await self.__tool_executor.execute(tool_calls)
         if not tool_call_results:
@@ -217,6 +251,8 @@ class Orchestrator:
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str
     ) -> None:
+        self.__total_tool_calls += len(tool_calls)
+        self.__completion_kind = "external_tool_calls"
         logger.debug("Surfacing external tool calls to client: %s", tool_calls)
         for tc in tool_calls:
             self.__choice.create_function_tool_call(tc.id, tc.name, tc.arguments)

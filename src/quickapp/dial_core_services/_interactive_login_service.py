@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import time
 
 import httpx
 from httpx_sse import aconnect_sse
@@ -9,6 +10,7 @@ from injector import inject
 from quickapp.common import CLIENT_CHANNEL_ID, DIAL_API_KEY
 from quickapp.common._di_types import CLIENT_CHANNEL_HEADER
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services._login_result import LoginResult
 
@@ -39,12 +41,13 @@ class InteractiveLoginService:
         Returns a dict mapping each dial_id to its LoginResult.
         This method never raises exceptions — all failures are mapped to LoginResult values.
         """
+        start = time.perf_counter()
+        logger.info(format_event("Interactive login requested", toolsets=toolset_dial_ids))
+
         if self.__client_channel_id is None:
-            logger.info(
-                "Interactive login skipped: no client channel ID. Toolsets: %s",
-                toolset_dial_ids,
+            return self.__log_resolved(
+                {tid: LoginResult.NO_CHANNEL for tid in toolset_dial_ids}, start
             )
-            return {tid: LoginResult.NO_CHANNEL for tid in toolset_dial_ids}
 
         id_to_dial_id: dict[str, str] = {}
         rpc_batch: list[dict] = []
@@ -60,27 +63,32 @@ class InteractiveLoginService:
                 }
             )
 
-        logger.info(
-            "Requesting interactive login for toolsets %s (channel: %s)",
-            toolset_dial_ids,
-            self.__client_channel_id,
-        )
-
         try:
-            return await asyncio.wait_for(
+            results = await asyncio.wait_for(
                 self._do_interact(rpc_batch, id_to_dial_id, toolset_dial_ids),
                 timeout=self.__settings.interactive_login_timeout_seconds,
             )
         except TimeoutError:
-            logger.info(
-                "Interactive login timed out after %ss for toolsets %s",
-                self.__settings.interactive_login_timeout_seconds,
-                toolset_dial_ids,
-            )
-            return {tid: LoginResult.TIMEOUT for tid in toolset_dial_ids}
+            results = {tid: LoginResult.TIMEOUT for tid in toolset_dial_ids}
         except Exception:
-            logger.exception("Interactive login failed for toolsets %s", toolset_dial_ids)
-            return {tid: LoginResult.ERROR for tid in toolset_dial_ids}
+            # Handled (mapped to an ERROR outcome, request continues) -> WARNING.
+            logger.warning(
+                "Interactive login failed for toolsets %s", toolset_dial_ids, exc_info=True
+            )
+            results = {tid: LoginResult.ERROR for tid in toolset_dial_ids}
+        return self.__log_resolved(results, start)
+
+    def __log_resolved(
+        self, results: dict[str, LoginResult], start: float
+    ) -> dict[str, LoginResult]:
+        logger.info(
+            format_event(
+                "Interactive login resolved",
+                outcomes={tid: res.value for tid, res in results.items()},
+                duration=format_duration(time.perf_counter() - start),
+            )
+        )
+        return results
 
     async def _do_interact(
         self,
@@ -148,7 +156,6 @@ class InteractiveLoginService:
             if tid not in result_map:
                 result_map[tid] = LoginResult.ERROR
 
-        logger.info("Interactive login results: %s", result_map)
         return result_map
 
     async def request_signin(self, toolset_dial_id: str) -> LoginResult:
