@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict
 from quickapp.common.exceptions import (
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
+    ToolErrorException,
 )
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
@@ -276,6 +277,22 @@ def _resolve_status_or_type(e: Exception, details: ErrorDetails) -> _Resolution 
     return None
 
 
+def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
+    """Resolve a ToolErrorException.
+
+    - If it wraps an httpx cause, delegate to the cause's resolution so the caller gets
+      the appropriate HTTP-specific message (e.g. permission-denied, timeout).
+    - If there is no cause, expose the tool error text directly (contains tool name).
+    - If the cause is something other than an httpx error, return None to fall through
+      to the generic fallback.
+    """
+    if isinstance(e.__cause__, httpx.HTTPError):
+        return resolve_exception(e.__cause__)
+    if e.__cause__ is None:
+        return _compose(str(e), False, ErrorDetails())
+    return None
+
+
 def _resolve_internal(e: Exception) -> _Resolution | None:
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return (str(e), False)
@@ -330,8 +347,8 @@ def resolve_exception(e: Exception) -> ResolvedError:
     """Resolve any exception into user-facing text plus a retryability classification.
 
     Precedence: display_message -> code map -> status/type map -> stream-failure rule ->
-    internal map -> fallback. Never leaks raw internal detail: only ``display_message``
-    (user-safe by contract) and curated canned messages reach the user.
+    internal map -> tool-error -> fallback. Never leaks raw internal detail: only
+    ``display_message`` (user-safe by contract) and curated canned messages reach the user.
     """
     details = _extract_error_details(e)
 
@@ -367,5 +384,11 @@ def resolve_exception(e: Exception) -> ResolvedError:
     if resolution is not None:
         return _compose(*resolution, details)
 
-    # 6. Generic fallback (non-retryable).
+    # 6. Tool errors: delegate to cause-aware resolution.
+    if isinstance(e, ToolErrorException):
+        resolved = _resolve_tool_error(e)
+        if resolved is not None:
+            return resolved
+
+    # 7. Generic fallback (non-retryable).
     return _compose(_FALLBACK_MESSAGE, False, details)
