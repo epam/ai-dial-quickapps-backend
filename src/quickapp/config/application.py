@@ -18,7 +18,7 @@ from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
-from quickapp.config.prompt import AgentSystemPromptConfig
+from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
@@ -74,8 +74,10 @@ def _orchestrator_deployment_field() -> FieldInfo:
 
 class OrchestratorConfig(BaseModel):
     deployment: DialDeploymentConfig = _orchestrator_deployment_field()  # type: ignore[assignment]
-    system_prompt: AgentSystemPromptConfig = Field(
-        description="The configuration for the system prompt."
+    system_prompt: AgentSystemPromptConfig = Field(  # type: ignore[assignment]
+        default_factory=lambda: CustomSystemPromptConfig(content="", variables={}),
+        json_schema_extra={"default": {"type": "custom", "content": "", "variables": {}}},
+        description="The configuration for the system prompt.",
     )
     max_iterations: int = _max_iterations_field()  # type: ignore[assignment]
     propagate_stages: bool = Field(
