@@ -113,7 +113,11 @@ def test_continue_catchall_ignores_instructions(caplog):
     strategies = [
         ContinueStrategyModel(instructions="These instructions should be ignored."),
     ]
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING, logger="quickapp.common.tool_fallback.continue_strategy"):
         result = FallbackProcessor.process_fallback(strategies, "c", err)
     assert result.content == "auth failed"
-    assert "instructions" in " ".join(r.message for r in caplog.records).lower()
+    assert any(
+        r.name == "quickapp.common.tool_fallback.continue_strategy"
+        and "instructions" in r.message.lower()
+        for r in caplog.records
+    )
