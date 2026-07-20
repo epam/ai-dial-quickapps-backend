@@ -126,12 +126,12 @@ def test_continue_catchall_ignores_instructions(caplog):
 # -- retry new semantics (mirrors continue) ----------------------------------
 
 
-def test_retry_catchall_forwards_error_ignores_instructions(caplog):
+def test_retry_catchall_forwards_error_ignores_instructions():
     # retry with no trigger_on: error forwarded, instructions ignored (new semantics)
     err = ToolErrorException("my_tool", "db connection failed")
-    strategies = [RetryStrategyModel(instructions="Analyze and retry.")]
-    with caplog.at_level(logging.WARNING):
-        result = FallbackProcessor.process_fallback(strategies, "c", err)
+    result = FallbackProcessor.process_fallback(
+        [RetryStrategyModel(instructions="Analyze and retry.")], "c", err
+    )
     assert result.content == "db connection failed"
 
 
