@@ -3,7 +3,9 @@ import logging
 import pytest
 from pydantic import ValidationError
 
+from quickapp.common.exceptions import ToolErrorException
 from quickapp.common.exceptions.fallback_agent_stop import FallbackAgentStopException
+from quickapp.common.tool_fallback.processor import FallbackProcessor
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
     RetryStrategyModel,
@@ -63,3 +65,55 @@ def test_retry_strategy_still_parses(caplog):
 def test_retry_strategy_still_requires_instructions():
     with pytest.raises(ValidationError):
         RetryStrategyModel()  # type: ignore[call-arg]
+
+
+# -- continue always forwards error ------------------------------------------
+
+
+def test_continue_catchall_forwards_tool_error_message():
+    err = ToolErrorException("my_tool", "public error detail")
+    result = FallbackProcessor.process_fallback([ContinueStrategyModel()], "c", err)
+    assert result.content == "public error detail"
+
+
+def test_continue_catchall_forwards_plain_error_str():
+    err = ValueError("connection refused")
+    result = FallbackProcessor.process_fallback([ContinueStrategyModel()], "c", err)
+    assert result.content == "connection refused"
+
+
+def test_continue_with_trigger_appends_instructions_after_error():
+    err = ToolErrorException("my_tool", "rate limit hit")
+    strategies = [
+        ContinueStrategyModel(
+            trigger_on=TriggerOn(type=TriggerOnType.contains, value="rate limit"),
+            instructions="Wait and retry with a smaller request.",
+        ),
+        ContinueStrategyModel(),
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "rate limit hit\n\nWait and retry with a smaller request."
+
+
+def test_continue_with_trigger_no_instructions_forwards_error_only():
+    err = ToolErrorException("my_tool", "quota exceeded")
+    strategies = [
+        ContinueStrategyModel(
+            trigger_on=TriggerOn(type=TriggerOnType.contains, value="quota"),
+        ),
+        ContinueStrategyModel(),
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "quota exceeded"
+
+
+def test_continue_catchall_ignores_instructions(caplog):
+    # instructions on catch-all (no trigger_on) are deprecated and ignored
+    err = ToolErrorException("my_tool", "auth failed")
+    strategies = [
+        ContinueStrategyModel(instructions="These instructions should be ignored."),
+    ]
+    with caplog.at_level(logging.WARNING):
+        result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "auth failed"
+    assert "instructions" in " ".join(r.message for r in caplog.records).lower()

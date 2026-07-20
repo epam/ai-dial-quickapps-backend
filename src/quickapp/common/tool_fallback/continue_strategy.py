@@ -1,19 +1,21 @@
+import logging
+
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
-from quickapp.common.tool_fallback.utils import compose_tool_error_fallback_message
+from quickapp.common.tool_fallback.utils import extract_error_content
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel
+
+logger = logging.getLogger(__name__)
 
 
 class ContinueStrategyHandler(BaseStrategy[ContinueStrategyModel]):
-    _DEFAULT_INSTRUCTIONS = (
-        "An error occurs, try to call another applicable tool with the same functionality. "
-        "If no such tool is available, notify user that something went wrong during tool calling but you're trying to use your own knowledge to proceed and provide the result."
-    )
-
     @staticmethod
     def handle(strategy_config: ContinueStrategyModel, error: Exception) -> str:
-        return compose_tool_error_fallback_message(
-            instructions=strategy_config.instructions
-            or ContinueStrategyHandler._DEFAULT_INSTRUCTIONS,
-            error=error,
-            forward_tool_error_message=strategy_config.forward_tool_error_message,
-        )
+        if strategy_config.trigger_on is None and strategy_config.instructions is not None:
+            logger.warning(
+                "ContinueStrategyModel: instructions on catch-all (no trigger_on) are deprecated "
+                "and will be ignored. The tool error message is forwarded to the LLM directly."
+            )
+        content = extract_error_content(error)
+        if strategy_config.trigger_on is not None and strategy_config.instructions:
+            return f"{content}\n\n{strategy_config.instructions}"
+        return content

@@ -6,7 +6,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common import ToolCallResult
-from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -127,7 +126,10 @@ async def test_is_error_false_returns_result_normally():
 
 @pytest.mark.asyncio
 async def test_is_error_applies_continue_fallback_strategy():
-    """isError=True → MCPToolErrorException → catch-all ContinueStrategy returns its instructions."""
+    """isError=True → MCPToolErrorException → catch-all ContinueStrategy forwards the error message.
+
+    Instructions on catch-all (no trigger_on) are deprecated and ignored.
+    """
     fallback_config = ToolFallbackConfig(
         strategies=[ContinueStrategyModel(instructions="Use your own knowledge instead.")]
     )
@@ -141,12 +143,13 @@ async def test_is_error_applies_continue_fallback_strategy():
 
     assert isinstance(result, ToolCallResult)
     assert result.tool_call_id == "call-id"
-    assert result.content == "Use your own knowledge instead."
+    # catch-all instructions deprecated and ignored; error message forwarded
+    assert result.content == "Internal server error"
 
 
 @pytest.mark.asyncio
 async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
-    """Configured fallback can return the raw MCP error text to the model."""
+    """Error message is always forwarded to the model by the catch-all ContinueStrategy."""
     fallback_config = ToolFallbackConfig(
         strategies=[ContinueStrategyModel(forward_tool_error_message=True)]
     )
@@ -158,15 +161,13 @@ async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
 
     result = await tool.arun("call-id")
 
-    assert (
-        result.content
-        == "Internal server error\n\n" + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
-    )
+    assert result.content == "Internal server error"
 
 
 @pytest.mark.asyncio
-async def test_is_error_empty_payload_falls_back_to_generic_continue_text_when_forwarding():
-    """Empty MCP error payload falls back to the generic continue fallback text."""
+async def test_is_error_empty_payload_propagates_when_error_message_is_empty():
+    """Empty MCP error payload → MCPToolErrorException with empty message → empty content string
+    is considered "no message" by the processor, so the exception propagates."""
     fallback_config = ToolFallbackConfig(
         strategies=[ContinueStrategyModel(forward_tool_error_message=True)]
     )
@@ -176,14 +177,17 @@ async def test_is_error_empty_payload_falls_back_to_generic_continue_text_when_f
         isError=True,
     )
 
-    result = await tool.arun("call-id")
-
-    assert "An error occurs" in result.content
+    with pytest.raises(MCPToolErrorException):
+        await tool.arun("call-id")
 
 
 @pytest.mark.asyncio
 async def test_is_error_applies_strategy_matching_error_text():
-    """isError=True with trigger_on that matches the error text applies the strategy."""
+    """isError=True with trigger_on that matches the error text applies the strategy.
+
+    With trigger_on set and instructions provided, the error content is forwarded
+    and the instructions are appended.
+    """
     fallback_config = ToolFallbackConfig(
         strategies=[
             ContinueStrategyModel(
@@ -200,7 +204,7 @@ async def test_is_error_applies_strategy_matching_error_text():
 
     result = await tool.arun("call-id")
 
-    assert result.content == "Rate limited — try again later."
+    assert result.content == "Rate limit exceeded\n\nRate limited — try again later."
 
 
 @pytest.mark.asyncio

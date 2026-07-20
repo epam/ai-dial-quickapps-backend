@@ -1,5 +1,5 @@
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
-from quickapp.common.tool_fallback.utils import compose_tool_error_fallback_message
+from quickapp.common.tool_fallback.utils import extract_error_content
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 
@@ -10,8 +10,8 @@ class RetryStrategyHandler(BaseStrategy[RetryStrategyModel]):
 
     @staticmethod
     def handle(strategy_config: RetryStrategyModel, error: Exception) -> str:
-        return compose_tool_error_fallback_message(
-            instructions=strategy_config.instructions or RetryStrategyHandler._DEFAULT_INSTRUCTIONS,
-            error=error,
-            forward_tool_error_message=strategy_config.forward_tool_error_message,
-        )
+        instructions = strategy_config.instructions or RetryStrategyHandler._DEFAULT_INSTRUCTIONS
+        if strategy_config.forward_tool_error_message:
+            content = extract_error_content(error)
+            return f"{content}\n\n{instructions}"
+        return instructions

@@ -35,8 +35,9 @@ def log_customised_catch_all_strategies(app_config: ApplicationConfig) -> None:
                     _logged_keys.add(key)
                     logger.info(
                         "Toolset %r has a customised ContinueStrategyModel catch-all "
-                        "(trigger_on=None, instructions=...); note that this strategy "
-                        "no longer applies to ToolTimeoutError.",
+                        "(trigger_on=None, instructions=...); note that instructions on catch-all "
+                        "strategies are deprecated and ignored — the tool error is forwarded to the LLM "
+                        "directly. Also note that this strategy no longer applies to ToolTimeoutError.",
                         toolset_name,
                     )
             continue
@@ -59,8 +60,9 @@ def log_customised_catch_all_strategies(app_config: ApplicationConfig) -> None:
                     _logged_keys.add(key)
                     logger.info(
                         "Tool %r in toolset %r has a customised ContinueStrategyModel "
-                        "catch-all (trigger_on=None, instructions=...); note that "
-                        "this strategy no longer applies to ToolTimeoutError.",
+                        "catch-all (trigger_on=None, instructions=...); note that instructions on "
+                        "catch-all strategies are deprecated and ignored — the tool error is forwarded "
+                        "to the LLM directly. Also note that this strategy no longer applies to ToolTimeoutError.",
                         tool_name,
                         toolset_name,
                     )

@@ -2,7 +2,6 @@ import pytest
 from pydantic import ValidationError
 
 from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
-from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -47,7 +46,9 @@ def test_explicit_trigger_continue_preempts_builtin():
         ContinueStrategyModel(),  # implicit catch-all, should be skipped
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "custom tool-timeout instructions"
+    # trigger matched: error forwarded + instructions appended
+    assert "timed out" in result.content
+    assert "custom tool-timeout instructions" in result.content
 
 
 def test_non_matching_trigger_falls_through_to_builtin():
@@ -92,26 +93,25 @@ def test_stop_strategy_with_trigger_preempts():
 def test_non_timeout_error_uses_default_catchall():
     err = ValueError("something else")
     result = FallbackProcessor.process_fallback(_default_strategies(), "c", err)
-    # Default ContinueStrategyModel catch-all returns the generic text.
-    assert "An error occurs" in result.content
+    assert "something else" in result.content
     assert "timed out" not in result.content
 
 
-def test_non_timeout_error_ignores_forward_tool_error_message_for_non_tool_errors():
+def test_non_timeout_error_forwards_error_regardless_of_deprecated_flag():
     err = ValueError("something else")
     strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert "An error occurs" in result.content
+    assert "something else" in result.content
 
 
-def test_tool_error_can_forward_tool_error_message():
+def test_tool_error_always_forwarded_without_explicit_flag():
     err = ToolErrorException("rag_search", "public error")
-    strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
+    strategies = [ContinueStrategyModel()]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\n" + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
+    assert result.content == "public error"
 
 
-def test_tool_error_can_append_instructions_after_forwarded_error():
+def test_continue_catchall_instructions_ignored_error_forwarded():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         ContinueStrategyModel(
@@ -120,7 +120,8 @@ def test_tool_error_can_append_instructions_after_forwarded_error():
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\nTry another applicable tool."
+    # catch-all with instructions — instructions ignored, error forwarded
+    assert result.content == "public error"
 
 
 def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error():
