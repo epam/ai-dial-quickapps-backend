@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from quickapp.common.payload_logging import (
+    PAYLOAD_LOG_MARKER,
     _truncate,
     configure_payload_logging,
     log_payload,
@@ -68,6 +69,13 @@ class TestLogPayload:
         rendered = caplog.records[0].getMessage()
         assert "abcd" in rendered
         assert "abcdefgh" not in rendered
+
+    def test_records_carry_payload_marker(self, caplog):
+        configure_payload_logging(enabled=True, max_length=2000)
+        logger = logging.getLogger("quickapp.test.payload")
+        with caplog.at_level(logging.DEBUG, logger="quickapp.test.payload"):
+            log_payload(logger, "body: %s", "content")
+        assert caplog.records[0].getMessage().startswith(PAYLOAD_LOG_MARKER)
 
 
 class TestSummarizeRoles:

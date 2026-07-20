@@ -14,7 +14,8 @@ from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
-from quickapp.common.url_classification import UrlScheme, classify_url, sanitize_url_for_log
+from quickapp.common.url_classification import UrlScheme, classify_url
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool

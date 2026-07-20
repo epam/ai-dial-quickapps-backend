@@ -20,6 +20,9 @@ from typing import Any
 
 _DEFAULT_MAX_LENGTH = 2000
 _TRUNCATION_MARKER = "…[truncated]"
+# Prefixed to every record emitted by log_payload so payload-bearing lines can be
+# found (or excluded) with a single filter, regardless of which logger emitted them.
+PAYLOAD_LOG_MARKER = "[payload]"
 
 _enabled = False
 _max_length = _DEFAULT_MAX_LENGTH
@@ -56,13 +59,14 @@ def _truncate(value: Any) -> str:
 def log_payload(logger: logging.Logger, msg: str, *args: Any) -> None:
     """Emit a payload-bearing DEBUG record, but only when ``LOG_PAYLOADS`` is on.
 
-    Each ``%s`` argument is truncated to the configured cap. A no-op (nothing is rendered
-    or emitted) when the switch is off, so callers can pair it with an unconditional
-    structure summary without guarding it themselves.
+    Each ``%s`` argument is truncated to the configured cap, and the rendered message is
+    prefixed with :data:`PAYLOAD_LOG_MARKER` so payload lines are easy to filter. A no-op
+    (nothing is rendered or emitted) when the switch is off, so callers can pair it with
+    an unconditional structure summary without guarding it themselves.
     """
     if not _enabled:
         return
-    logger.debug(msg, *(_truncate(arg) for arg in args))
+    logger.debug(f"{PAYLOAD_LOG_MARKER} {msg}", *(_truncate(arg) for arg in args))
 
 
 def summarize_roles(messages: Iterable[Any]) -> Counter[str]:

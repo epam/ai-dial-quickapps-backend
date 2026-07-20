@@ -31,7 +31,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY

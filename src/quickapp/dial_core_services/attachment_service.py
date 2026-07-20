@@ -6,7 +6,7 @@ from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.common.utils import generate_attachment_filename
 
 logger = logging.getLogger(__name__)

@@ -10,7 +10,7 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )

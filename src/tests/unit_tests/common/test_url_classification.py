@@ -1,6 +1,6 @@
 import pytest
 
-from quickapp.common.url_classification import UrlScheme, classify_url, sanitize_url_for_log
+from quickapp.common.url_classification import UrlScheme, classify_url
 
 DIAL_URL = "https://dial.example.com"
 
@@ -77,26 +77,3 @@ def test_unsupported_or_malformed_classify_as_unsupported(url: str):
 
 def test_dial_base_url_without_host_treats_http_url_as_external():
     assert classify_url("https://example.com/x", "not-a-real-url") == UrlScheme.EXTERNAL
-
-
-class TestSanitizeUrlForLog:
-    def test_strips_query_string_and_fragment(self):
-        url = "https://host.example.com/path/to/file.pdf?sig=SECRET&exp=123#frag"
-        assert sanitize_url_for_log(url) == "https://host.example.com/path/to/file.pdf"
-
-    def test_strips_userinfo(self):
-        url = "https://user:password@host.example.com/path?token=x"
-        assert sanitize_url_for_log(url) == "https://host.example.com/path"
-
-    def test_preserves_port(self):
-        url = "https://host.example.com:8443/path?q=1"
-        assert sanitize_url_for_log(url) == "https://host.example.com:8443/path"
-
-    def test_relative_dial_path_preserved_without_query(self):
-        assert sanitize_url_for_log("files/bucket/foo.pdf?token=x") == "files/bucket/foo.pdf"
-
-    def test_relative_dial_path_without_query_unchanged(self):
-        assert sanitize_url_for_log("files/bucket/foo.pdf") == "files/bucket/foo.pdf"
-
-    def test_empty_string_returned_as_is(self):
-        assert sanitize_url_for_log("") == ""

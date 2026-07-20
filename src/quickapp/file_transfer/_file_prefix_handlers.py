@@ -2,7 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)

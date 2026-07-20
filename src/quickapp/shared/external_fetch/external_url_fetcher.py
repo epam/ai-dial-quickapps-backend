@@ -12,7 +12,7 @@ import httpx
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.common.utils import filename_from_url_path, sanitize_filename
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,

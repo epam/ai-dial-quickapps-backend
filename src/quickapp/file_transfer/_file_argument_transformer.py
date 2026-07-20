@@ -7,7 +7,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import FILE_PATTERN
 from quickapp.common.payload_logging import log_payload
-from quickapp.common.url_classification import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 

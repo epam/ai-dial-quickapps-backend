@@ -1,9 +1,10 @@
 import re
 from enum import Enum
 from functools import lru_cache
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import urlsplit
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.url_sanitization import sanitize_url_for_log
 
 
 class UrlScheme(str, Enum):
@@ -56,25 +57,6 @@ def classify_url(url: str, dial_base_url: str) -> UrlScheme:
         return UrlScheme.DIAL
 
     return UrlScheme.EXTERNAL
-
-
-def sanitize_url_for_log(url: str) -> str:
-    """Strip a URL to scheme, host, and path for logging (content rule, issue #436).
-
-    Query strings and fragments — where signed-URL tokens live — are dropped, along with
-    any userinfo (``user:pass@``). A relative DIAL path (``files/...``) has no scheme or
-    host and is returned with only its query/fragment removed. A URL that cannot be parsed
-    falls back to the substring before the first ``?`` / ``#``.
-    """
-    if not url:
-        return url
-    try:
-        split = urlsplit(url)
-    except ValueError:
-        return url.split("?", 1)[0].split("#", 1)[0]
-    host = split.hostname or ""
-    netloc = f"{host}:{split.port}" if split.port else host
-    return urlunsplit((split.scheme, netloc, split.path, "", ""))
 
 
 def unsupported_scheme_error(url: str, parameter_name: str) -> InvalidToolCallParameterException:

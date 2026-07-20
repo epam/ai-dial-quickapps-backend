@@ -245,7 +245,8 @@ content into the logs.
 
 `LOG_PAYLOADS=true` is the single, explicit exception: it re-enables the payload-bearing DEBUG records (message
 context, tool-call arguments, raw responses), each field truncated to `LOG_PAYLOADS_MAX_LENGTH`, and lifts the
-INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Forwarded header **values** are
+INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Every payload record is prefixed
+with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values** are
 never logged, even with the switch on. The switch is additive to the level — content appears only when
 `QUICKAPP_LOG_LEVEL=DEBUG` **and** `LOG_PAYLOADS=true`.
 
