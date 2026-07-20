@@ -2,7 +2,7 @@
 while preserving the body on ``error_message`` for the LLM/user channels (#408)."""
 
 from quickapp.common.exceptions.tool_error import ToolErrorException
-from quickapp.common.tool_fallback.utils import compose_tool_error_fallback_message
+from quickapp.common.tool_fallback.utils import extract_error_content
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 from quickapp.rest_api_tooling._rest_api_tool_error_exception import RestApiToolErrorException
 
@@ -34,12 +34,7 @@ class TestBodyPreservedForNonLogChannels:
 
     def test_forwarding_to_llm_still_carries_body(self):
         e = MCPToolErrorException("mcp_tool", _BODY)
-        message = compose_tool_error_fallback_message(
-            instructions="Try a different approach.",
-            error=e,
-            forward_tool_error_message=True,
-        )
-        assert _BODY in message
+        assert _BODY in extract_error_content(e)
 
     def test_rest_error_message_is_status_only(self):
         # REST's error_message is already a status string (no body); left as-is.
