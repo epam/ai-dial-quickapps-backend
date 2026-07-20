@@ -10,10 +10,12 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.common.utils import generate_attachment_filename, matches_type
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
@@ -124,7 +126,7 @@ class _MCPTool(StagedBaseTool):
                         parameter_name=key,
                         message=(
                             f"Parameter `{key}` requires a DIAL file but received an "
-                            f"unsupported URL: {candidate}."
+                            f"unsupported URL: {sanitize_url_for_log(candidate)}."
                         ),
                     )
             files_to_share.extend(candidates)
@@ -176,7 +178,8 @@ class _MCPTool(StagedBaseTool):
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
-        logger.debug(f"MCP tool called with {kwargs}")
+        logger.debug("MCP tool called with args: keys=%s", list(kwargs))
+        log_payload(logger, "MCP tool called with args: %s", kwargs)
 
         timeout = self.__timeout_resolver.resolve()
         # Wrap the outer body: anyio task groups can raise BaseExceptionGroup, which
@@ -215,13 +218,14 @@ class _MCPTool(StagedBaseTool):
             tool_content = "\n\n".join(filter(None, text_parts))
 
             # Detect-and-raise only; the StagedBaseTool choke point owns the failure
-            # WARNING, so this stays at DEBUG (ownership rule). Body stripped by #436.
+            # WARNING, so this stays at DEBUG (ownership rule). Structure only — the
+            # response body and structuredContent are not logged (content rule, #436).
             if getattr(tool_call_result, "isError", False):
                 logger.debug(
-                    "MCP tool '%s' returned isError=True; error: %s; structuredContent: %s",
+                    "MCP tool '%s' returned isError=True; content_length=%d, structured_content=%s",
                     self.__tool.name,
-                    tool_content,
-                    getattr(tool_call_result, "structuredContent", None),
+                    len(tool_content),
+                    getattr(tool_call_result, "structuredContent", None) is not None,
                 )
                 raise MCPToolErrorException(self.__tool.name, tool_content)
 

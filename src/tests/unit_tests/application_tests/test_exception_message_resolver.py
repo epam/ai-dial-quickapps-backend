@@ -10,6 +10,7 @@ from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
+from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 
 
 def _make_httpx_request() -> httpx.Request:
@@ -309,7 +310,20 @@ class TestExtraction:
 
     def test_tool_error_without_cause_uses_tool_error_message(self) -> None:
         e = ToolErrorException("some_tool", "public tool error")
-        assert "some_tool" in _resolve(e).lower()
+        resolved = _resolve(e)
+        assert "some_tool" in resolved.lower()
+        # The user message is built from error_message, not the structural str(e).
+        assert "public tool error" in resolved
+        assert "content_length" not in resolved
+
+    def test_mcp_tool_error_without_cause_surfaces_body_not_structural_str(self) -> None:
+        # str(e) is structural for logs; the user-facing message keeps the real MCP text
+        # and the "MCP tool" label (tool_kind), not the generic "Tool".
+        e = MCPToolErrorException("mcp_tool", "the real mcp error text")
+        resolved = _resolve(e)
+        assert "the real mcp error text" in resolved
+        assert "MCP tool" in resolved
+        assert "content_length" not in resolved
 
     def test_tool_error_with_non_http_cause_uses_generic_fallback(self) -> None:
         e = ToolErrorException("rest_tool", "public tool error")

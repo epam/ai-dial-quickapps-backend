@@ -120,7 +120,11 @@ class _RestApiTool(StagedBaseTool):
                     title = generate_attachment_filename(
                         mime_type, base_filename=self._tool_config.open_ai_tool.function.name
                     )
-                    logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
+                    logger.debug(
+                        "Building attachment %s for REST tool %s",
+                        title,
+                        self._tool_config.open_ai_tool.function.name,
+                    )
                     attachment = Attachment(title=title, type=mime_type, data=response.text)
                     attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                         attachment

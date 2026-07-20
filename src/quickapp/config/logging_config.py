@@ -6,6 +6,7 @@ import logging
 # word regardless of the caller's import order.
 from aidial_sdk import LogConfig, configure_root_logger
 
+from quickapp.common.payload_logging import configure_payload_logging
 from quickapp.config._otel_aware_formatter import OtelAwareFormatter
 from quickapp.config.logging_settings import LoggingSettings
 
@@ -26,6 +27,22 @@ MANAGED_LOGGER_NAMES: tuple[str, ...] = (
     "openai",
     "aidial_sdk",
 )
+
+# Third-party loggers that emit payload content at DEBUG (openai logs full
+# chat-completion request bodies; httpx/httpcore log wire-level detail). They are capped
+# at INFO unless the payload switch is on, so raising LOG_LEVEL alone never brings their
+# payloads into the pipeline (design #434 / issue #436).
+PAYLOAD_CAPPED_LOGGERS: tuple[str, ...] = ("openai", "httpx", "httpcore")
+
+
+def _cap_at_info(level_name: str) -> str:
+    """Return ``level_name`` unless it is more verbose than INFO, in which case ``INFO``.
+
+    Only ever raises the floor to INFO — an already-restrictive level (WARNING/ERROR) is
+    left untouched.
+    """
+    numeric = logging.getLevelNamesMapping().get(level_name.upper(), logging.INFO)
+    return "INFO" if numeric < logging.INFO else level_name
 
 
 class _ExcTextBlankingFormatter(logging.Formatter):
@@ -77,6 +94,7 @@ class LoggingConfig:
         # formatting below applies — drop that variable from deployments.
         configure_root_logger(self._build_log_config())
         self._pin_logger_levels()
+        configure_payload_logging(settings.log_payloads, settings.log_payloads_max_length)
         self._warn_deprecated_vars()
 
     def _build_log_config(self) -> LogConfig:
@@ -100,6 +118,13 @@ class LoggingConfig:
             )
         return config
 
+    def _level_for(self, name: str) -> str:
+        if name == "quickapp":
+            return self._settings.quickapp_log_level
+        if name in PAYLOAD_CAPPED_LOGGERS and not self._settings.log_payloads:
+            return _cap_at_info(self._settings.log_level)
+        return self._settings.log_level
+
     def _pin_logger_levels(self) -> None:
         logging.getLogger().setLevel(self._settings.log_level)
         for name in MANAGED_LOGGER_NAMES:
@@ -112,11 +137,7 @@ class LoggingConfig:
             # export. Kept uniform across all managed names for simplicity.
             managed.handlers = []
             managed.propagate = True
-            managed.setLevel(
-                self._settings.quickapp_log_level
-                if name == "quickapp"
-                else self._settings.log_level
-            )
+            managed.setLevel(self._level_for(name))
 
     def _warn_deprecated_vars(self) -> None:
         deprecated = self._settings.deprecated_format_vars_set

@@ -1,7 +1,8 @@
 # Design: Log Levels & Content Policy
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-07-14
+- **Implemented:** 2026-07-17 ([#435](https://github.com/epam/ai-dial-quickapps-backend/issues/435) lifecycle skeleton + level rebalance; [#436](https://github.com/epam/ai-dial-quickapps-backend/issues/436) content rule + payload switch)
 - **Issue:** [#434](https://github.com/epam/ai-dial-quickapps-backend/issues/434) (epic [#441](https://github.com/epam/ai-dial-quickapps-backend/issues/441))
 - **Dependencies:**
   - None. Informed by the logging review of 2026-07-13. Gates the implementation issues

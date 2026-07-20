@@ -137,6 +137,8 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DIAL_SDK_JSON_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom template for `json` output — a JSON document whose string leaves are `%`-style format strings, values escaped via `json.dumps`. |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
+| `LOG_PAYLOADS`                             | `false`                    | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
+| `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                     | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
 | `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
@@ -197,6 +199,26 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
 Moved to [docs/logging.md](docs/logging.md), which covers the text and JSON output modes, format
 customization, OTEL trace correlation, and OTLP log export.
+
+#### Payload Logging
+
+By policy, logs carry **structure** — roles, counts, sizes, names, ids, statuses, durations, HTTP codes,
+header **names**, and URLs stripped to scheme/host/path — and never **content**: message bodies, tool-call
+argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings. This
+holds at every level, DEBUG included, so raising verbosity during an incident never brings conversation
+content into the logs.
+
+`LOG_PAYLOADS=true` is the single, explicit exception: it re-enables the payload-bearing DEBUG records (message
+context, tool-call arguments, raw responses), each field truncated to `LOG_PAYLOADS_MAX_LENGTH`, and lifts the
+INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Every payload record is prefixed
+with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values** are
+never logged, even with the switch on. The switch is additive to the level — content appears only when
+`QUICKAPP_LOG_LEVEL=DEBUG` **and** `LOG_PAYLOADS=true`.
+
+> [!CAUTION]
+> `LOG_PAYLOADS` is intended for **local development only**. It writes conversation content and wire-level
+> third-party payloads to the log pipeline (including any OTLP export). Do **not** enable it in shared or
+> production environments.
 
 ## Local Development
 

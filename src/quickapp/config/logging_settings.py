@@ -45,6 +45,13 @@ class LoggingSettings(BaseSettings):
     json_log_format: dict[str, Any] = Field(
         default=_DEFAULT_JSON_LOG_FORMAT, alias="DIAL_SDK_JSON_LOG_FORMAT"
     )
+    # Payload-debugging switch (content policy, design #434 / issue #436). When false
+    # (default), content-bearing records are not emitted at any level, and the
+    # payload-capable third-party loggers (openai/httpx/httpcore) are capped at INFO. When
+    # true, those records are emitted at DEBUG with each field truncated. Local development
+    # only — must not be enabled in shared environments.
+    log_payloads: bool = Field(default=False, alias="LOG_PAYLOADS")
+    log_payloads_max_length: int = Field(default=2000, alias="LOG_PAYLOADS_MAX_LENGTH")
 
     @field_validator("log_output_format", mode="before")
     @classmethod

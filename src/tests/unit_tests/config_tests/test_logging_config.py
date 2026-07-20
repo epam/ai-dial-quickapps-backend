@@ -7,8 +7,14 @@ import pytest
 import uvicorn.logging
 from pydantic import ValidationError
 
+from quickapp.common import payload_logging
+from quickapp.common.payload_logging import configure_payload_logging
 from quickapp.config._otel_aware_formatter import OtelAwareFormatter
-from quickapp.config.logging_config import MANAGED_LOGGER_NAMES, LoggingConfig
+from quickapp.config.logging_config import (
+    MANAGED_LOGGER_NAMES,
+    PAYLOAD_CAPPED_LOGGERS,
+    LoggingConfig,
+)
 from quickapp.config.logging_settings import LoggingSettings
 
 
@@ -110,6 +116,7 @@ def reset_logging_state():
             )
         )
     saved_factory = logging.getLogRecordFactory()
+    saved_payloads = (payload_logging.payloads_enabled(), payload_logging._max_length)
 
     yield
 
@@ -119,6 +126,8 @@ def reset_logging_state():
         logger.setLevel(level)
         logger.propagate = propagate
         logger.filters = filters
+    # LoggingConfig mutates the module-global payload switch; restore it too.
+    configure_payload_logging(*saved_payloads)
 
 
 @pytest.fixture
@@ -419,3 +428,52 @@ class TestLoggingSettings:
 
     def test_no_deprecated_vars_by_default(self, no_format_env):
         assert LoggingSettings().deprecated_format_vars_set == ()
+
+
+class TestThirdPartyPayloadCap:
+    """openai/httpx/httpcore emit payloads at DEBUG; they must stay capped at INFO
+    unless the LOG_PAYLOADS switch is on, regardless of LOG_LEVEL (issue #436)."""
+
+    @pytest.mark.parametrize("name", PAYLOAD_CAPPED_LOGGERS)
+    def test_capped_at_info_when_payloads_disabled(self, name, monkeypatch, reset_logging_state):
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        monkeypatch.delenv("LOG_PAYLOADS", raising=False)
+
+        LoggingConfig(LoggingSettings())
+
+        assert logging.getLogger(name).level == logging.INFO
+
+    @pytest.mark.parametrize("name", PAYLOAD_CAPPED_LOGGERS)
+    def test_uncapped_when_payloads_enabled(self, name, monkeypatch, reset_logging_state):
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        monkeypatch.setenv("LOG_PAYLOADS", "true")
+
+        LoggingConfig(LoggingSettings())
+
+        assert logging.getLogger(name).level == logging.DEBUG
+
+    def test_cap_never_lowers_a_more_restrictive_level(self, monkeypatch, reset_logging_state):
+        monkeypatch.setenv("LOG_LEVEL", "WARNING")
+        monkeypatch.delenv("LOG_PAYLOADS", raising=False)
+
+        LoggingConfig(LoggingSettings())
+
+        assert logging.getLogger("openai").level == logging.WARNING
+
+    def test_non_capped_managed_logger_follows_log_level(self, monkeypatch, reset_logging_state):
+        monkeypatch.setenv("LOG_LEVEL", "DEBUG")
+        monkeypatch.delenv("LOG_PAYLOADS", raising=False)
+
+        LoggingConfig(LoggingSettings())
+
+        # aidial_sdk is managed but not payload-capped -> tracks LOG_LEVEL.
+        assert logging.getLogger("aidial_sdk").level == logging.DEBUG
+
+    def test_logging_config_configures_payload_switch(self, monkeypatch, reset_logging_state):
+        monkeypatch.setenv("LOG_PAYLOADS", "true")
+        monkeypatch.setenv("LOG_PAYLOADS_MAX_LENGTH", "77")
+
+        LoggingConfig(LoggingSettings())
+
+        assert payload_logging.payloads_enabled() is True
+        assert payload_logging._max_length == 77

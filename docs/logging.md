@@ -13,6 +13,14 @@ environment variables.
 | `LOG_LEVEL`          | `INFO`  | Root logger and managed third-party loggers (`uvicorn*`, `httpx`, `httpcore`, `openai`, `aidial_sdk`). |
 | `QUICKAPP_LOG_LEVEL` | `INFO`  | The application's own `quickapp.*` loggers.                                                |
 
+## Payload content
+
+Logs carry structure, not content: message bodies, tool-call arguments, and response bodies are
+never logged at any level. The `LOG_PAYLOADS` switch (local development only) routes truncated
+payload detail through dedicated DEBUG records, and while it is off the payload-capable third-party
+loggers (`openai`, `httpx`, `httpcore`) are capped at INFO regardless of `LOG_LEVEL`. See
+[Payload Logging](../README.md#payload-logging) in the README for the switch reference.
+
 ## Output format
 
 `DIAL_SDK_LOG_FORMAT` selects the console format: `text` (default, human-readable) or `json`

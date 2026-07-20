@@ -177,8 +177,9 @@ Pick the level from what the record *means for the service*, not from how it rea
 
 ### Content rule (metadata over payload)
 
-- Records at **every** level (DEBUG included) carry structure, not content: roles, counts/sizes, durations, tool/skill/deployment/model names, identifiers, statuses/outcomes, error codes and types, MIME types, HTTP status codes, header **names**, and URLs stripped to scheme/host/path.
-- Never log message bodies, tool-call argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings/fragments. The rule is an allowlist: when in doubt, a value is content. (Payload debugging is gated behind the `LOG_PAYLOADS` switch — delivered by #436.)
+- Records at **every** level (DEBUG included) carry structure, not content: roles, counts/sizes, durations, tool/skill/deployment/model names, identifiers, statuses/outcomes, error codes and types, MIME types, HTTP status codes, header **names**, and URLs stripped to scheme/host/path (use `common.url_sanitization.sanitize_url_for_log`).
+- Never log message bodies, tool-call argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings/fragments. The rule is an allowlist: when in doubt, a value is content. This includes exception messages our own code raises — keep response bodies off them (e.g. `ToolErrorException.__str__` is structural; the body stays on the `error_message` attribute for the LLM/user channels).
+- Payload debugging is gated behind the `LOG_PAYLOADS` switch: emit an unconditional structure summary, then pass the payload through `common.payload_logging.log_payload` (a no-op unless `LOG_PAYLOADS=true`, truncating each field and prefixing the record with the `[payload]` marker). Never log payload content unconditionally.
 - Lifecycle-skeleton records use `common.lifecycle_logging.format_event` — a stable prefix plus `key=value` fields — so structured output (#438) and request ids (#439) can enrich them later without rewording.
 
 ---
