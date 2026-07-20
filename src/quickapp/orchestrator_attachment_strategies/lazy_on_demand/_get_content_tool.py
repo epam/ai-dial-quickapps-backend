@@ -99,7 +99,7 @@ class _GetContentTool(StagedBaseTool):
         **kwargs: Any,
     ) -> ToolCallResult:
         if attachment_url is None or not str(attachment_url).strip():
-            logger.info("get_content tool rejected: empty attachment_url")
+            logger.debug("get_content tool rejected: empty attachment_url")
             return self._error_result("Missing or empty attachment_url.")
 
         normalized_url = normalize_attachment_url_argument(str(attachment_url))
@@ -110,19 +110,19 @@ class _GetContentTool(StagedBaseTool):
             try:
                 resolved = await self._resolve_external(normalized_url)
             except InvalidToolCallParameterException as exc:
-                logger.info("get_content tool rejected: external promotion failed (%s)", exc)
+                logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
                 return self._error_result(str(exc))
         elif scheme == UrlScheme.DIAL:
             if not normalized_url.startswith("files/"):
-                logger.info("get_content tool rejected: URL does not start with files/")
+                logger.debug("get_content tool rejected: URL does not start with files/")
                 return self._error_result("Invalid storage path for attachment file.")
             resolved = self._resolve_dial(normalized_url)
         else:
-            logger.info("get_content tool rejected: unsupported url scheme")
+            logger.debug("get_content tool rejected: unsupported url scheme")
             return self._error_result("Invalid storage path for attachment file.")
 
         if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(resolved.mime):
-            logger.info(
+            logger.debug(
                 "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
                 resolved.mime,
                 self.__orchestrator_capabilities.deployment_id,

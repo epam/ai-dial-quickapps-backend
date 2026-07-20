@@ -97,7 +97,9 @@ class _RestApiTool(StagedBaseTool):
                     response.raise_for_status()
                 except httpx.HTTPStatusError as e:
                     error_message = self._extract_response_error_message(e.response)
-                    logger.error(
+                    # Detect-and-raise only; the StagedBaseTool choke point owns the
+                    # failure WARNING, so this stays at DEBUG (ownership rule).
+                    logger.debug(
                         "REST API tool '%s' returned HTTP %s; error: %s",
                         self._tool_config.open_ai_tool.function.name,
                         e.response.status_code,
@@ -118,7 +120,11 @@ class _RestApiTool(StagedBaseTool):
                     title = generate_attachment_filename(
                         mime_type, base_filename=self._tool_config.open_ai_tool.function.name
                     )
-                    logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
+                    logger.debug(
+                        "Building attachment %s for REST tool %s",
+                        title,
+                        self._tool_config.open_ai_tool.function.name,
+                    )
                     attachment = Attachment(title=title, type=mime_type, data=response.text)
                     attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                         attachment

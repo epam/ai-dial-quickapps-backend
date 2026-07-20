@@ -31,6 +31,7 @@ from quickapp.common.chat_completion_stream.stream_result import (
     ChatStreamAccumulator,
     ensure_attachment_url_or_data,
 )
+from quickapp.common.payload_logging import log_payload
 
 logger = logging.getLogger(__name__)
 
@@ -178,8 +179,9 @@ class ChatCompletionStreamHandler:
         if stage is None:
             if not stage_name:
                 logger.warning(
-                    "Skipping stage delta propagation because stage name is missing: %s", delta
+                    "Skipping stage delta propagation because stage name is missing (index=%s)", idx
                 )
+                log_payload(logger, "Stage delta with missing name: %s", delta)
                 return
             try:
                 stage = dest.create_stage(stage_name)
@@ -258,23 +260,28 @@ class ChatCompletionStreamHandler:
 
     @staticmethod
     def _log_stream_accumulator(result: ChatStreamAccumulator) -> None:
-        logger.debug("===================")
-        logger.debug(" ---- Captured values:")
-        logger.debug(" ----- text llm response: %s", result.content)
-        if result.tool_calls:
-            logger.debug(" ------ tool_calls:")
-            for tool in result.tool_calls:
-                logger.debug(" -------- %s - %s - %s", tool.name, tool.arguments, tool)
+        tool_calls = result.tool_calls  # property rebuilds a list on each access
+        logger.debug(
+            "LLM response accumulated: content_length=%d, tool_calls=%s, attachments=%d, "
+            "stages=%d, state_keys=%s, usage=%s",
+            len(result.content),
+            [tool.name for tool in tool_calls] if tool_calls else [],
+            len(result.attachments),
+            len(result.stages),
+            list(result.state) if result.state else [],
+            (
+                f"{result.usage.prompt_tokens}/{result.usage.completion_tokens}"
+                if result.usage
+                else None
+            ),
+        )
+        if result.content:
+            log_payload(logger, "LLM response content: %s", result.content)
+        for tool in tool_calls or []:
+            log_payload(logger, "LLM tool call args (%s): %s", tool.name, tool.arguments)
         if result.attachments:
-            logger.debug(" ------ attachments: %s", result.attachments)
+            log_payload(logger, "LLM response attachments: %s", result.attachments)
         if result.stages:
-            logger.debug(" ------ stages: %s", result.stages)
+            log_payload(logger, "LLM response stages: %s", result.stages)
         if result.state:
-            logger.debug(" ------ state: %s", result.state)
-        if result.usage:
-            logger.debug(
-                " ------ usage: prompt_tokens=%s completion_tokens=%s",
-                result.usage.prompt_tokens,
-                result.usage.completion_tokens,
-            )
-        logger.debug("===================")
+            log_payload(logger, "LLM response state: %s", result.state)

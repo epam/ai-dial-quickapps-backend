@@ -16,6 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
@@ -215,7 +216,8 @@ class BaseDeploymentTool(StagedBaseTool):
         # Standard params override defaults as flat keys
         prepared.update(other_kwargs)
 
-        logger.debug(f"Pre-processed tool parameters: {prepared}")
+        logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
+        log_payload(logger, "Pre-processed tool parameters: %s", prepared)
 
         return prepared
 

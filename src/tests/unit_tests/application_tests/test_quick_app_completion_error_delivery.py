@@ -40,7 +40,7 @@ class TestHandleException:
     def test_raises_dial_error_with_reference(self) -> None:
         e = openai.APITimeoutError(request=httpx.Request("GET", "http://x/api"))
         with pytest.raises(DialHTTPException) as excinfo:
-            _handle_exception(e)
+            _handle_exception(e, "0a1b2c3d")
         exc = excinfo.value
         assert exc.status_code == 500
         assert exc.type == "runtime_error"
@@ -56,7 +56,7 @@ class TestHandleException:
             body=None,
         )
         with pytest.raises(DialHTTPException) as excinfo:
-            _handle_exception(e)
+            _handle_exception(e, "0a1b2c3d")
         assert excinfo.value.status_code == 400
         # No upstream type -> the OpenAI-idiomatic default for a client-attributable 4xx.
         assert excinfo.value.type == "invalid_request_error"
@@ -68,7 +68,7 @@ class TestHandleException:
             body=None,
         )
         with pytest.raises(DialHTTPException) as excinfo:
-            _handle_exception(e)
+            _handle_exception(e, "0a1b2c3d")
         assert excinfo.value.status_code == 500
         # The default type keys on the *outgoing* (downgraded) status, not the upstream one.
         assert excinfo.value.type == "runtime_error"
@@ -80,7 +80,7 @@ class TestHandleException:
             body={"error": {"code": "content_filter", "type": "invalid_request_error"}},
         )
         with pytest.raises(DialHTTPException) as excinfo:
-            _handle_exception(e)
+            _handle_exception(e, "0a1b2c3d")
         exc = excinfo.value
         assert exc.code == "content_filter"
         assert exc.type == "invalid_request_error"

@@ -4,6 +4,7 @@ from typing import Any
 from injector import inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,11 @@ class _AppdataHomePathTransformer(ToolArgumentTransformer):
             # home dir, or when the appdata namespace cannot be resolved.
             relative = await self._home_resolver.to_display_path(value)
             if relative != value:
-                logger.debug("Relativized argument %s: %s -> %s", name, value, relative)
+                logger.debug(
+                    "Relativized argument %s: %s -> %s",
+                    name,
+                    sanitize_url_for_log(value),
+                    sanitize_url_for_log(relative),
+                )
                 kwargs[name] = relative
         return kwargs

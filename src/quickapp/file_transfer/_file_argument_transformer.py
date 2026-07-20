@@ -6,6 +6,8 @@ from injector import inject
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import FILE_PATTERN
+from quickapp.common.payload_logging import log_payload
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
@@ -40,8 +42,10 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
     async def _resolve_value_and_log(self, key: str, value: str) -> str:
         resolved_value = await self._resolve_value(key, value)
         if resolved_value is not value:
-            logger.debug(
-                "Argument %s resolved to new value (original: %s, resolved: %s)",
+            logger.debug("Argument %s resolved (resolved_length=%d)", key, len(resolved_value))
+            log_payload(
+                logger,
+                "Argument %s resolved (original: %s, resolved: %s)",
                 key,
                 value,
                 resolved_value,
@@ -60,7 +64,7 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             logger.debug(
                 "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                file_url_part,
+                sanitize_url_for_log(file_url_part),
             )
             return await FilePrefixHandlers.handle_base64(
                 file_url_part, self.__file_service, parameter_name=key
@@ -69,22 +73,21 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             logger.debug(
                 "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                file_url_part,
+                sanitize_url_for_log(file_url_part),
             )
             return file_url_part
         elif detected_prefix == "text":
             logger.debug(
-                "Detected 'text' prefix for key %s (text: %s) - placeholder handling",
+                "Detected 'text' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                file_url_part,
+                sanitize_url_for_log(file_url_part),
             )
             return await FilePrefixHandlers.handle_text(
                 file_url_part, self.__file_service, parameter_name=key
             )
         else:
-            logger.warning(
-                "Detected file reference without prefix for key %s (value: %s)", key, value
-            )
+            logger.warning("Detected file reference without prefix for key %s", key)
+            log_payload(logger, "File reference without prefix for key %s: %s", key, value)
             raise InvalidToolCallParameterException(
                 parameter_name=key,
                 message="Missing required file prefix (base64::, url::, text::)",
