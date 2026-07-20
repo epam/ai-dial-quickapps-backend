@@ -16,4 +16,4 @@ class StopStrategyHandler(BaseStrategy[StopStrategyModel]):
                 "Fallback applied", tool_call_id=tool_call_id, strategy=strategy_config.type
             )
         )
-        raise FallbackAgentStopException()
+        raise FallbackAgentStopException(tool_call_id)
