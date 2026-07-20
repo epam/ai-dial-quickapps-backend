@@ -912,21 +912,30 @@ The `fallback_configuration` field allows you to define strategies for handling 
 
 ### Strategy Models
 
-There are two types of strategy models that can be used:
+There are two strategy types:
 
-1. **StopStrategyModel** - The agent stops execution
-2. **ContinueStrategyModel** - The agent continues execution, attempting to call another suitable tool or give an answer
-   based on its own knowledge.
+1. **StopStrategyModel** (`type: stop`) — Terminates the agent loop. `FallbackAgentStopException`
+   propagates through the orchestrator and the user receives a generic "agent was stopped" message.
+   No content is sent to the LLM.
+2. **ContinueStrategyModel** (`type: continue`) — The agent continues execution. The actual tool
+   error text is forwarded to the LLM as the tool-result content so the LLM can make an informed
+   recovery decision. Optionally appends `instructions` when a `trigger_on` condition matches.
+
+> **Deprecated:** `type: retry` is a deprecated alias for `type: continue` and behaves identically.
+> Replace with `type: continue`; a warning is logged at runtime for configs that still use it.
 
 ### Common Strategy Fields
 
-| Field                                     | Required | Type                      | Description                                       | Default Value                         |
-|-------------------------------------------|----------|---------------------------|---------------------------------------------------|---------------------------------------|
-| type                                      | Yes      | Enum `stop` or `continue` | The type of the strategy                          |                                       |
-| trigger_on                                | No       | Object                    | Condition that triggers this strategy             | by default triggers on all exceptions |
-| instructions (for continue/retry strategies) | No       | String                    | Instructions to the agent what to do on exception |                                       |
-| forward_tool_error_message                | No       | Boolean                   | Whether to include the tool error message in the fallback message returned to the model. It applies only to `ToolErrorException` and its subtypes (including `MCPToolErrorException`). When `true` and `instructions` is omitted on a `continue` strategy, the error message itself is returned. | `false`                               |
-| display_error_in_stage                    | No       | Boolean                   | Whether to display the error in the stage         | `true`                                |
+| Field                  | Required | Type                      | Description                                                                                                             | Default Value                         |
+|------------------------|----------|---------------------------|-------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| type                   | Yes      | Enum `stop` or `continue` | The type of the strategy                                                                                                |                                       |
+| trigger_on             | No       | Object                    | Condition that triggers this strategy                                                                                   | triggers on all exceptions (catch-all) |
+| instructions           | No       | String                    | Additional instructions appended to the error text when this strategy is triggered. Only meaningful when `trigger_on` is set — instructions on a catch-all (no `trigger_on`) are deprecated and ignored. | —                                     |
+| display_error_in_stage | No       | Boolean                   | Whether to display the error in the stage                                                                               | `true`                                |
+
+> **Deprecated:** `forward_tool_error_message` is a no-op. The tool error message is now always
+> forwarded to the LLM. Remove this field from your configs; it is ignored at runtime and a warning
+> is logged when it is set to `true`.
 
 ### `TriggerOn` Structure
 
@@ -947,40 +956,48 @@ There are two types of strategy models that can be used:
         "type": "stop",
         "trigger_on": {
           "type": "contains",
-          "value": "connection error",
+          "value": "quota exceeded",
           "case_sensitive": false
         }
       },
       {
         "type": "continue",
-        "instructions": "try to call tool 'web_search' to find the answer",
         "trigger_on": {
-          "type": "equals",
-          "value": "Something went wrong during tool execution",
+          "type": "contains",
+          "value": "rate limit",
           "case_sensitive": false
         },
+        "instructions": "Wait a moment and retry with a smaller request.",
         "display_error_in_stage": false
       },
       {
-        "type": "continue",
-        "forward_tool_error_message": true,
-        "trigger_on": {
-          "type": "contains",
-          "value": "returned an error",
-          "case_sensitive": false
-        }
+        "type": "continue"
       }
     ]
   }
 }
 ```
 
+The first strategy terminates the agent loop on a quota error. The second strategy forwards the
+rate-limit error text to the LLM with additional instructions. The final catch-all forwards any
+other error text as-is.
+
 </details>
 
 ### Behavior Notes
 
-- If no Fallback strategy for tool provided, the default behaviour is to continue with predefined instructions
-- Strategies are evaluated in the order they appear in the array
-- The first strategy with a matching trigger condition is used
-- `forward_tool_error_message` is opt-in and affects only the message returned to the model; stage rendering is still controlled by `display_error_in_stage`
-- When both `forward_tool_error_message` and `instructions` are set on a `continue`/`retry` strategy, the model receives the tool error text first and the instructions after it
+- If no fallback configuration is provided, the default behaviour is to forward the error text to
+  the LLM and continue (`ContinueStrategyModel` catch-all).
+- Strategies are evaluated in the order they appear in the array. The first matching strategy is used.
+- A `stop` strategy raises `FallbackAgentStopException`, which terminates the agent loop
+  immediately. The LLM does not receive any tool-result content for that call; the user sees a
+  generic "agent was stopped" message.
+- A `continue` strategy always forwards the actual tool error text to the LLM as the tool-result
+  content. When `trigger_on` matches and `instructions` is set, the instructions are appended
+  after the error text.
+- `instructions` on a catch-all strategy (no `trigger_on`) are **deprecated and ignored**. A
+  warning is logged at startup when such a configuration is detected. To preserve instruction
+  injection, add a `trigger_on` matcher.
+- For `ToolTimeoutError`, implicit catch-all strategies are skipped and a built-in timeout message
+  is used instead. Explicit `trigger_on: contains("timed out")` strategies still pre-empt the
+  built-in. See [Configurable Tool Timeouts](docs/designs/configurable_timeouts.md).
