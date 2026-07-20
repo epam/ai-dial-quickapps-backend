@@ -1,7 +1,10 @@
+import logging
 from enum import StrEnum
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+logger = logging.getLogger(__name__)
 
 
 class TriggerOnType(StrEnum):
@@ -31,41 +34,58 @@ class StopStrategyModel(BaseToolFallbackStrategyModel):
 class BaseHandleStrategyModel(BaseToolFallbackStrategyModel):
     instructions: str | None = Field(
         default=None,
-        description="Instructions to LLM what to do next.",
+        description=(
+            "Instructions appended to the forwarded error when trigger_on is set. "
+            "Ignored on catch-all strategies (no trigger_on)."
+        ),
     )
     forward_tool_error_message: bool = Field(
         default=False,
+        deprecated=(
+            "forward_tool_error_message is deprecated and has no effect. "
+            "Tool error messages are now always forwarded to the LLM."
+        ),
         description=(
-            "Whether to include the Tool error message in the fallback message returned "
-            "to the model. Applies only to `ToolErrorException`."
+            "Deprecated: no longer has any effect. "
+            "Tool error messages are now always forwarded to the LLM."
         ),
     )
+
+    @model_validator(mode="after")
+    def _warn_deprecated_forward_flag(self) -> "BaseHandleStrategyModel":
+        if self.forward_tool_error_message:
+            logger.warning(
+                "forward_tool_error_message=True is set but has no effect; "
+                "tool error messages are now always forwarded to the LLM regardless of this setting."
+            )
+        return self
 
 
 class ContinueStrategyModel(BaseHandleStrategyModel):
     type: Literal["continue"] = Field(default="continue", description="The type of the strategy.")
 
-    @model_validator(mode="after")
-    def _require_instructions_with_trigger(self) -> "ContinueStrategyModel":
-        if (
-            self.trigger_on is not None
-            and self.instructions is None
-            and not self.forward_tool_error_message
-        ):
-            raise ValueError(
-                "ContinueStrategyModel with `trigger_on` set must also provide "
-                "`instructions` or enable `forward_tool_error_message`. Otherwise the "
-                "generic fallback text would silently replace any built-in handling."
-            )
-        return self
-
 
 class RetryStrategyModel(BaseHandleStrategyModel):
-    type: Literal["retry"] = Field(default="retry", description="The type of the strategy.")
+    type: Literal["retry"] = Field(
+        default="retry",
+        deprecated=(
+            "Strategy type 'retry' is deprecated. Use type 'continue' instead. "
+            "The instructions field remains effective for triggered strategies."
+        ),
+        description="Deprecated: use type 'continue' instead.",
+    )
     instructions: str = Field(
         ...,
-        description="Instructions to LLM what to do next. Must be provided for retry strategy.",
+        description="Instructions to LLM what to do next.",
     )
+
+    @model_validator(mode="after")
+    def _warn_deprecated_retry(self) -> "RetryStrategyModel":
+        logger.warning(
+            "Strategy type 'retry' is deprecated and will be removed in the next major release. "
+            "Use type 'continue' instead."
+        )
+        return self
 
 
 ToolFallbackStrategyModel = Annotated[

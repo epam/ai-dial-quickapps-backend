@@ -150,11 +150,13 @@ def test_non_timeout_no_matching_strategy_reraises():
 # -- ContinueStrategyModel validator ---------------------------------------
 
 
-def test_continue_strategy_bare_trigger_without_instructions_rejected():
-    with pytest.raises(ValidationError):
-        ContinueStrategyModel(
-            trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
-        )
+def test_continue_strategy_trigger_without_instructions_now_valid():
+    # Validator removed — trigger_on without instructions is now valid (error always forwarded)
+    cs = ContinueStrategyModel(
+        trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+    )
+    assert cs.trigger_on is not None
+    assert cs.instructions is None
 
 
 def test_continue_strategy_trigger_with_instructions_ok():
