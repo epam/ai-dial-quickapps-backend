@@ -9,6 +9,7 @@ from quickapp.common.tool_fallback.processor import FallbackProcessor
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
     RetryStrategyModel,
+    StopStrategyModel,
     TriggerOn,
     TriggerOnType,
 )
@@ -146,3 +147,43 @@ def test_retry_with_trigger_appends_instructions():
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
     assert result.content == "rate limit hit\n\nWait 30 seconds and retry."
+
+
+# -- stop raises FallbackAgentStopException ----------------------------------
+
+
+def test_stop_catchall_raises_fallback_stop_exception():
+    err = ValueError("tool failed badly")
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback([StopStrategyModel()], "c", err)
+
+
+def test_stop_with_matching_trigger_raises():
+    err = ToolErrorException("my_tool", "quota exceeded for this billing period")
+    strategies = [
+        StopStrategyModel(trigger_on=TriggerOn(type=TriggerOnType.contains, value="quota")),
+        ContinueStrategyModel(),
+    ]
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback(strategies, "c", err)
+
+
+def test_stop_with_non_matching_trigger_falls_through_to_continue():
+    err = ToolErrorException("my_tool", "transient network error")
+    strategies = [
+        StopStrategyModel(trigger_on=TriggerOn(type=TriggerOnType.contains, value="quota")),
+        ContinueStrategyModel(),
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "transient network error"
+
+
+def test_stop_with_timeout_raises_when_trigger_matches():
+    from quickapp.common.exceptions import ToolTimeoutError
+
+    err = ToolTimeoutError("rag_search", 300)
+    strategies = [
+        StopStrategyModel(trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out")),
+    ]
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback(strategies, "c", err)

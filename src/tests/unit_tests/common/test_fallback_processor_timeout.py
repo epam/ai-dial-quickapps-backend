@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
+from quickapp.common.exceptions import FallbackAgentStopException, ToolErrorException, ToolTimeoutError
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
@@ -75,16 +75,15 @@ def test_customised_catch_all_is_skipped_for_timeout():
     assert "customised-catch-all" not in result.content
 
 
-def test_stop_strategy_with_trigger_preempts():
+def test_stop_strategy_with_trigger_preempts_by_raising():
     err = ToolTimeoutError("rag_search", 300)
     strategies = [
         StopStrategyModel(
             trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
         ),
     ]
-    result = FallbackProcessor.process_fallback(strategies, "c", err)
-    # Stop strategy returns its handler's message (non-empty per handler)
-    assert result.content
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback(strategies, "c", err)
 
 
 # -- Non-timeout path unchanged --------------------------------------------
