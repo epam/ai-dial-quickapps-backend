@@ -7,6 +7,7 @@ from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import (
+    FallbackAgentStopException,
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
     ToolErrorException,
@@ -89,6 +90,12 @@ _MSG_HTTP_UNEXPECTED = (
     "An unexpected HTTP error occurred. Please try again or contact your administrator."
 )
 _MSG_HTTP_GENERIC = "An HTTP error occurred. Please try again or contact your administrator."
+
+# --- Internal / orchestration wording ---
+_MSG_FALLBACK_STOP = (
+    "A tool encountered an error and the agent was stopped. "
+    "Please try again or contact your administrator if the issue persists."
+)
 
 # Error codes that resolve to a specific message ahead of the status ladder. All are
 # non-retryable: re-sending the same request will not change the outcome.
@@ -294,6 +301,8 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 
 
 def _resolve_internal(e: Exception) -> _Resolution | None:
+    if isinstance(e, FallbackAgentStopException):
+        return (_MSG_FALLBACK_STOP, False)
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return (str(e), False)
     if isinstance(e, OrchestratorInitializationException):

@@ -378,3 +378,18 @@ class TestNoLeakage:
         result = _resolve(exc)
         assert self._INTERNAL_URL not in result
         assert self._RAW_DETAIL not in result
+
+
+class TestResolveFallbackStop:
+    def test_stop_exception_resolves_to_stop_message(self) -> None:
+        from quickapp.common.exceptions import FallbackAgentStopException
+        from quickapp.core.application._exception_message_resolver import _MSG_FALLBACK_STOP
+        resolved = resolve_exception(FallbackAgentStopException())
+        assert resolved.message == _MSG_FALLBACK_STOP
+        assert resolved.retryable is False
+
+    def test_stop_exception_message_does_not_contain_raw_error_detail(self) -> None:
+        from quickapp.common.exceptions import FallbackAgentStopException
+        resolved = resolve_exception(FallbackAgentStopException())
+        assert "FallbackAgentStopException" not in resolved.message
+        assert "Traceback" not in resolved.message
