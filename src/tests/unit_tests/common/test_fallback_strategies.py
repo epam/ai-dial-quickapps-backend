@@ -1,5 +1,3 @@
-import pytest
-
 from quickapp.common.exceptions.fallback_agent_stop import FallbackAgentStopException
 
 
@@ -10,3 +8,5 @@ def test_fallback_agent_stop_exception_is_exception():
 
 def test_fallback_agent_stop_exception_importable_from_package():
     from quickapp.common.exceptions import FallbackAgentStopException  # noqa: F401
+
+    assert issubclass(FallbackAgentStopException, Exception)
