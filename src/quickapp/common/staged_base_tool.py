@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.lifecycle_logging import format_duration, format_event
+from quickapp.common.payload_logging import log_payload
 from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
     ImmediateStageCloseRegistry,
@@ -198,7 +199,13 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                         if matches_type(a.type, attachment_cfg.propagate_types_to_choice):
                             result.propagate_to_choice.append(a)
                 result.attachments = filtered
-            logger.debug(f"Tool call {tool_call_id} finished with result {result}")
+            logger.debug(
+                "Tool call %s finished: content_length=%d, attachments=%d",
+                tool_call_id,
+                len(result.content) if result.content else 0,
+                len(result.attachments) if result.attachments else 0,
+            )
+            log_payload(logger, "Tool call %s result: %s", tool_call_id, result)
             logger.info(
                 format_event(
                     "Tool call completed",

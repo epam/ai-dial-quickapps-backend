@@ -25,11 +25,13 @@ from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.payload_logging import log_payload, summarize_roles
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
@@ -37,6 +39,19 @@ from quickapp.core.agent.tool_executor import ToolExecutor
 from quickapp.usage_statistics.usage_statistics_service import UsageStatisticsService
 
 logger = logging.getLogger(__name__)
+
+
+def _log_messages(label: str, messages: list[Message]) -> None:
+    """Log a message list as structure (count + role histogram) plus a gated payload."""
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug("%s: count=%d, roles=%s", label, len(messages), summarize_roles(messages))
+    log_payload(logger, f"{label}: %s", messages)
+
+
+def _log_tool_calls(label: str, tool_calls: list[AccumulatedToolCall]) -> None:
+    """Log tool calls as structure (names) plus a gated payload (arguments)."""
+    logger.debug("%s: %s", label, [tc.name for tc in tool_calls])
+    log_payload(logger, f"{label}: %s", tool_calls)
 
 
 @inject
@@ -129,7 +144,9 @@ class Orchestrator:
                 await self.__usage_statistics_service.process_usage_statistics(
                     self.__usage_statistics_list
                 )
-            logger.debug(f"State holder: {self.__state_holder.get_state()}")
+            state = self.__state_holder.get_state()
+            logger.debug("State holder keys: %s", list(state))
+            log_payload(logger, "State holder: %s", state)
 
         if exc_to_reraise is not None:
             raise exc_to_reraise
@@ -201,7 +218,7 @@ class Orchestrator:
                 )
             )
         self.__perf_timer.add_milestone(period, "assistant_response_received")
-        logger.debug("Message from agent: %s", self.__messages_context.messages)
+        _log_messages("Message from agent", self.__messages_context.messages)
 
         if not tool_calls:
             self.__perf_timer.stop_period(period)
@@ -223,17 +240,19 @@ class Orchestrator:
             return False
 
         self.__perf_timer.stop_period(period)
-        logger.debug("Message from context: %s", self.__messages_context.messages)
+        _log_messages("Message from context", self.__messages_context.messages)
         return True
 
     async def _execute_internal_tool_calls(self, tool_calls: list[AccumulatedToolCall]) -> None:
         self.__total_tool_calls += len(tool_calls)
-        logger.debug("Agent requests internal tool calls: %s", tool_calls)
+        _log_tool_calls("Agent requests internal tool calls", tool_calls)
         tool_call_results = await self.__tool_executor.execute(tool_calls)
         if not tool_call_results:
-            raise RuntimeError(f"Tool call(s) {tool_calls} doesn't return any result.")
+            names = [tc.name for tc in tool_calls]
+            raise RuntimeError(f"Tool call(s) {names} doesn't return any result.")
 
-        logger.debug("Tool call results: %s", tool_call_results)
+        logger.debug("Tool call results: count=%d", len(tool_call_results))
+        log_payload(logger, "Tool call results: %s", tool_call_results)
         for tool_call_result in tool_call_results:
             tool_call_result_message = tool_call_result.to_tool_message()
             self.__messages_context.append_message(tool_call_result_message)
@@ -241,7 +260,9 @@ class Orchestrator:
                 url = attachment.url
                 if url is not None:
                     if url in self.__propagated_attachment_urls:
-                        logger.debug("Skipping duplicate attachment URL %s", url)
+                        logger.debug(
+                            "Skipping duplicate attachment URL %s", sanitize_url_for_log(url)
+                        )
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
@@ -253,7 +274,7 @@ class Orchestrator:
     ) -> None:
         self.__total_tool_calls += len(tool_calls)
         self.__completion_kind = "external_tool_calls"
-        logger.debug("Surfacing external tool calls to client: %s", tool_calls)
+        _log_tool_calls("Surfacing external tool calls to client", tool_calls)
         for tc in tool_calls:
             self.__choice.create_function_tool_call(tc.id, tc.name, tc.arguments)
         self.__perf_timer.stop_period(period)

@@ -100,7 +100,7 @@ See `CODESTYLE.md` for full details. Key rules:
 - **Types**: Always add type hints. Use modern generics: `list[str]`, `dict[str, int]`, `str | None`.
 - **Data containers**: Use Pydantic `BaseModel` (not `@dataclass`) for value objects; use `model_config = ConfigDict(frozen=True)` when immutability is wanted.
 - **Visibility**: `_` prefix for all internal attributes/methods.
-- **Logging**: Use `logging` module; never `print()`.
+- **Logging**: Use `logging` module; never `print()`. Logs carry structure, not content — never log message bodies, tool-call arguments, response bodies, header values, or URL query strings at any level. Route payload detail through `common.payload_logging.log_payload` (gated by `LOG_PAYLOADS`) and sanitize URLs with `common.url_sanitization.sanitize_url_for_log`. See `CODESTYLE.md` §9.
 - **Imports**: stdlib → third-party → local, explicit only (no `*` imports).
 
 ## Testing

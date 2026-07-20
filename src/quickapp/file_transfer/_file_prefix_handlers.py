@@ -2,6 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)
@@ -27,7 +28,10 @@ class FilePrefixHandlers:
             try:
                 content = bytes(content)
             except Exception:
-                logger.exception("Failed to coerce downloaded content to bytes for %s", file_url)
+                logger.exception(
+                    "Failed to coerce downloaded content to bytes for %s",
+                    sanitize_url_for_log(file_url),
+                )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
                     message="Downloaded content is not bytes and cannot be converted to base64.",
@@ -44,7 +48,10 @@ class FilePrefixHandlers:
             try:
                 content_bytes = bytes(content_bytes)
             except Exception:
-                logger.exception("Failed to coerce downloaded content to bytes for %s", file_url)
+                logger.exception(
+                    "Failed to coerce downloaded content to bytes for %s",
+                    sanitize_url_for_log(file_url),
+                )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
                     message="Downloaded content is not bytes and cannot be converted to text.",
@@ -52,15 +59,16 @@ class FilePrefixHandlers:
 
         for sig, desc in _BINARY_SIGNATURES:
             if content_bytes.startswith(sig):
+                safe_url = sanitize_url_for_log(file_url)
                 logger.warning(
                     "Downloaded file %s appears to be binary (%s); 'text' prefix is invalid for binary files",
-                    file_url,
+                    safe_url,
                     desc,
                 )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
                     message=(
-                        f"File at {file_url} appears to be binary ({desc}). "
+                        f"File at {safe_url} appears to be binary ({desc}). "
                         "Use `file:base64::...` or `file:URL::...` instead of `file:text::...`."
                     ),
                 )

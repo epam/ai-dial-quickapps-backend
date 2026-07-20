@@ -2,7 +2,10 @@ from quickapp.common.exceptions.tool_error import ToolErrorException
 
 
 class RestApiToolErrorException(ToolErrorException):
-    """Raised when a REST API tool call returns a non-success HTTP status."""
+    """Raised when a REST API tool call returns a non-success HTTP status.
 
-    def __str__(self) -> str:
-        return f"REST API tool '{self.tool_name}' returned an error: {self.error_message}"
+    Inherits the base's structural ``__str__``; the (already status-only) ``error_message``
+    stays available for the LLM/user channels.
+    """
+
+    tool_kind = "REST API tool"
