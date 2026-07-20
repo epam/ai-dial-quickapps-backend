@@ -124,7 +124,7 @@ def test_continue_catchall_instructions_ignored_error_forwarded():
     assert result.content == "public error"
 
 
-def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error():
+def test_retry_catchall_forwards_error_without_instructions():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         RetryStrategyModel(
@@ -133,7 +133,8 @@ def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\nAnalyze the error and retry."
+    # catch-all retry: error forwarded, instructions ignored
+    assert result.content == "public error"
 
 
 def test_non_timeout_no_matching_strategy_reraises():

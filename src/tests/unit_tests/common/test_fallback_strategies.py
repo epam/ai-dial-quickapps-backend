@@ -121,3 +121,28 @@ def test_continue_catchall_ignores_instructions(caplog):
         and "instructions" in r.message.lower()
         for r in caplog.records
     )
+
+
+# -- retry new semantics (mirrors continue) ----------------------------------
+
+
+def test_retry_catchall_forwards_error_ignores_instructions(caplog):
+    # retry with no trigger_on: error forwarded, instructions ignored (new semantics)
+    err = ToolErrorException("my_tool", "db connection failed")
+    strategies = [RetryStrategyModel(instructions="Analyze and retry.")]
+    with caplog.at_level(logging.WARNING):
+        result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "db connection failed"
+
+
+def test_retry_with_trigger_appends_instructions():
+    err = ToolErrorException("my_tool", "rate limit hit")
+    strategies = [
+        RetryStrategyModel(
+            instructions="Wait 30 seconds and retry.",
+            trigger_on=TriggerOn(type=TriggerOnType.contains, value="rate limit"),
+        ),
+        ContinueStrategyModel(),
+    ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == "rate limit hit\n\nWait 30 seconds and retry."
