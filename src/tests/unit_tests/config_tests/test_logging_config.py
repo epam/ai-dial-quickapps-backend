@@ -1,6 +1,5 @@
 import io
 import logging
-import logging.config
 import re
 
 import pytest
@@ -241,12 +240,12 @@ class TestRecordRouting:
         assert uvicorn_logger.propagate is True
 
     def test_aidial_sdk_import_time_config_is_overridden(self, reset_logging_state):
-        # aidial_sdk applies this dictConfig at import time (application.py):
-        # uvicorn gets propagate=False and aidial_sdk a WARNING level with a
-        # private handler. LoggingConfig must undo both.
-        from aidial_sdk.utils.log_config import LogConfig
+        # aidial_sdk runs configure_sdk_logger() at import time (application.py):
+        # aidial_sdk and uvicorn get private handlers, uvicorn propagate=False
+        # and aidial_sdk a WARNING level. LoggingConfig must undo all of it.
+        from aidial_sdk.utils.log_config import configure_sdk_logger
 
-        logging.config.dictConfig(LogConfig().model_dump())
+        configure_sdk_logger()
 
         LoggingConfig(LoggingSettings())
 

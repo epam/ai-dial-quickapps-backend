@@ -1,11 +1,11 @@
 import logging
 import logging.config
 
-# aidial_sdk applies its own dictConfig at import time (aidial_sdk/application.py),
-# setting uvicorn to propagate=False and aidial_sdk to WARNING with a private
-# handler. Importing it here guarantees that side effect lands before our
-# dictConfig below, so LoggingConfig always has the last word regardless of the
-# caller's import order.
+# aidial_sdk configures its own loggers at import time (configure_sdk_logger()
+# in aidial_sdk/application.py), giving aidial_sdk and uvicorn private handlers
+# and setting uvicorn to propagate=False. Importing it here guarantees that
+# side effect lands before our dictConfig below, so LoggingConfig always has
+# the last word regardless of the caller's import order.
 import aidial_sdk  # noqa: F401
 
 from quickapp.common.payload_logging import configure_payload_logging
