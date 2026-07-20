@@ -1,4 +1,5 @@
 from .config_resolution import ConfigResolutionException
+from .fallback_agent_stop import FallbackAgentStopException
 from .hook_initialization import HookInitializationException
 from .initialization import InitializationException
 from .invalid_tool_call_parameter import InvalidToolCallParameterException
@@ -16,6 +17,7 @@ from .tool_error import ToolErrorException
 __all__ = [
     "TOOL_TIMEOUT_PHRASE",
     "ConfigResolutionException",
+    "FallbackAgentStopException",
     "InitializationException",
     "InvalidToolCallParameterException",
     "OffloadConfigurationException",
