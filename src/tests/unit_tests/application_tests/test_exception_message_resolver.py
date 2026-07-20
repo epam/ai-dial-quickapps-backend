@@ -4,8 +4,16 @@ import pytest
 from aidial_sdk.exceptions import ContextLengthExceededError as AiDialContextLengthError
 from aidial_sdk.exceptions import InvalidRequestError as AiDialInvalidRequestError
 
-from quickapp.common.exceptions import OrchestratorExceedMaxIterationsException, ToolErrorException
-from quickapp.core.application._exception_message_resolver import _RETRY_SENTENCE, resolve_exception
+from quickapp.common.exceptions import (
+    FallbackAgentStopException,
+    OrchestratorExceedMaxIterationsException,
+    ToolErrorException,
+)
+from quickapp.core.application._exception_message_resolver import (
+    _MSG_FALLBACK_STOP,
+    _RETRY_SENTENCE,
+    resolve_exception,
+)
 from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
@@ -382,14 +390,11 @@ class TestNoLeakage:
 
 class TestResolveFallbackStop:
     def test_stop_exception_resolves_to_stop_message(self) -> None:
-        from quickapp.common.exceptions import FallbackAgentStopException
-        from quickapp.core.application._exception_message_resolver import _MSG_FALLBACK_STOP
         resolved = resolve_exception(FallbackAgentStopException())
         assert resolved.message == _MSG_FALLBACK_STOP
         assert resolved.retryable is False
 
     def test_stop_exception_message_does_not_contain_raw_error_detail(self) -> None:
-        from quickapp.common.exceptions import FallbackAgentStopException
         resolved = resolve_exception(FallbackAgentStopException())
         assert "FallbackAgentStopException" not in resolved.message
         assert "Traceback" not in resolved.message
