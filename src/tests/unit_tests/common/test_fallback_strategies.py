@@ -3,7 +3,7 @@ import logging
 import pytest
 from pydantic import ValidationError
 
-from quickapp.common.exceptions import ToolErrorException
+from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
 from quickapp.common.exceptions.fallback_agent_stop import FallbackAgentStopException
 from quickapp.common.tool_fallback.processor import FallbackProcessor
 from quickapp.config.tools.tool_fallback import (
@@ -179,8 +179,6 @@ def test_stop_with_non_matching_trigger_falls_through_to_continue():
 
 
 def test_stop_with_timeout_raises_when_trigger_matches():
-    from quickapp.common.exceptions import ToolTimeoutError
-
     err = ToolTimeoutError("rag_search", 300)
     strategies = [
         StopStrategyModel(trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out")),
