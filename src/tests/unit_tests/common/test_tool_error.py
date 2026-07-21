@@ -45,3 +45,13 @@ class TestBodyPreservedForNonLogChannels:
         # REST's error_message is already a status string (no body); left as-is.
         e = RestApiToolErrorException("rest_tool", "HTTP error 500 while calling REST API tool.")
         assert e.error_message == "HTTP error 500 while calling REST API tool."
+
+
+class TestUserFacingMessage:
+    def test_base_carries_body_and_tool_name(self):
+        e = ToolErrorException("my_tool", _BODY)
+        assert e.user_facing_message == f"Tool 'my_tool' returned an error: {_BODY}"
+
+    def test_mcp_uses_tool_kind_label(self):
+        e = MCPToolErrorException("mcp_tool", _BODY)
+        assert e.user_facing_message == f"MCP tool 'mcp_tool' returned an error: {_BODY}"
