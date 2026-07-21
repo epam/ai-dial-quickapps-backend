@@ -404,11 +404,11 @@ class TestNoLeakage:
 
 class TestResolveFallbackStop:
     def test_stop_exception_resolves_to_stop_message(self) -> None:
-        resolved = resolve_exception(FallbackAgentStopException())
+        resolved = resolve_exception(FallbackAgentStopException(tool_call_id="call_1"))
         assert resolved.message == _MSG_FALLBACK_STOP
         assert resolved.retryable is False
 
     def test_stop_exception_message_does_not_contain_raw_error_detail(self) -> None:
-        resolved = resolve_exception(FallbackAgentStopException())
+        resolved = resolve_exception(FallbackAgentStopException(tool_call_id="call_1"))
         assert "FallbackAgentStopException" not in resolved.message
         assert "Traceback" not in resolved.message
