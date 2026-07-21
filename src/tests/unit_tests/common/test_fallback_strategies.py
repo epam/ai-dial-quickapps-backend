@@ -16,7 +16,7 @@ from quickapp.config.tools.tool_fallback import (
 
 
 def test_fallback_agent_stop_exception_is_exception():
-    exc = FallbackAgentStopException()
+    exc = FallbackAgentStopException(tool_call_id="call_1")
     assert isinstance(exc, Exception)
 
 
