@@ -60,7 +60,8 @@ class AgentSkillsProvider:
 
         self._skills = skills
         self._contents = contents
-        logger.info(f"Loaded {len(skills)} skill(s)")
+        # DEBUG: superseded at INFO by the request-initialized lifecycle event.
+        logger.debug("Loaded %d skill(s)", len(skills))
 
     def get_all_skills(self) -> list[SkillMetadata]:
         """Return the cached list of predefined skill metadata."""

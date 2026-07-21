@@ -132,10 +132,13 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
 | **Logging**                                |                            |          |                                                                                                              |
-| `LOG_FORMAT`                               | [see below](#log-format-configuration) | No | Custom logging format string (Python `logging` `%`-style). See [Log Format Configuration](#log-format-configuration) for the built-in default and available placeholders (including OTEL trace-correlation fields). |
-| `LOG_DATE_FORMAT`                          | `%Y-%m-%d %H:%M:%S`        | No       | `strftime`-style format for the `%(asctime)s` field                                                          |
+| `DIAL_SDK_LOG_FORMAT`                      | `text`                     | No       | Console log output format: `text` (human-readable) or `json` (escape-safe, one record per line). See [docs/logging.md](docs/logging.md). |
+| `DIAL_SDK_TEXT_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom `%`-style format string for `text` output. Unset (default) keeps the built-in format with the conditional OTEL trace block. |
+| `DIAL_SDK_JSON_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom template for `json` output — a JSON document whose string leaves are `%`-style format strings, values escaped via `json.dumps`. |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
+| `LOG_PAYLOADS`                             | `false`                    | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
+| `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                     | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
 | `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
@@ -181,6 +184,8 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 |---------------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                           | If set alone, treated as a single extra layer on top of the built-in content                                                 |
 | `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
+| `LOG_FORMAT`                    | `DIAL_SDK_TEXT_LOG_FORMAT` or `DIAL_SDK_LOG_FORMAT=json`           | When set, still controls the `text` output format (and wins over the replacements); a warning is emitted at startup. See [docs/logging.md](docs/logging.md). |
+| `LOG_DATE_FORMAT`               | —                                                                  | Still honored alongside `LOG_FORMAT`; going forward the timestamp format is fixed to `%Y-%m-%d %H:%M:%S` (the previous default). |
 
 **Notes:**
 
@@ -192,46 +197,28 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
 #### Log Format Configuration
 
-`LOG_FORMAT` is a standard Python `logging` [`%`-style](https://docs.python.org/3/library/logging.html#logrecord-attributes)
-format string, rendered by uvicorn's `DefaultFormatter`. The built-in default is:
+Moved to [docs/logging.md](docs/logging.md), which covers the text and JSON output modes, format
+customization, OTEL trace correlation, and OTLP log export.
 
-```
-%(levelprefix)s | %(asctime)s | %(process)d | %(name)s | %(otel_context)s%(message)s
-```
+#### Payload Logging
 
-Any `LogRecord` attribute can be referenced, e.g. `%(levelprefix)s` (padded, colorized level), `%(levelname)s`,
-`%(asctime)s` (formatted via `LOG_DATE_FORMAT`), `%(process)d`, `%(name)s`, `%(message)s`.
+By policy, logs carry **structure** — roles, counts, sizes, names, ids, statuses, durations, HTTP codes,
+header **names**, and URLs stripped to scheme/host/path — and never **content**: message bodies, tool-call
+argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings. This
+holds at every level, DEBUG included, so raising verbosity during an incident never brings conversation
+content into the logs.
 
-**OTEL trace correlation.** Custom formats can reference either the composite `%(otel_context)s` field or the
-individual `otel*` placeholders:
+`LOG_PAYLOADS=true` is the single, explicit exception: it re-enables the payload-bearing DEBUG records (message
+context, tool-call arguments, raw responses), each field truncated to `LOG_PAYLOADS_MAX_LENGTH`, and lifts the
+INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Every payload record is prefixed
+with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values** are
+never logged, even with the switch on. The switch is additive to the level — content appears only when
+`QUICKAPP_LOG_LEVEL=DEBUG` **and** `LOG_PAYLOADS=true`.
 
-| Placeholder            | Rendered value                                                                                                                                                     |
-|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `%(otel_context)s`     | Synthesized by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] \| ` block when a span is active, and to an empty string otherwise. |
-| `%(otelTraceID)s`      | Active trace id (`0` when no span is in scope).                                                                                                                     |
-| `%(otelSpanID)s`       | Active span id (`0` when no span is in scope).                                                                                                                      |
-| `%(otelServiceName)s`  | Resource service name (from `OTEL_SERVICE_NAME`).                                                                                                                   |
-| `%(otelTraceSampled)s` | Whether the active trace is sampled.                                                                                                                                |
-
-The individual `otel*` placeholders are stamped by the `LoggingInstrumentor` (enabled by aidial-sdk when
-`OTEL_PYTHON_LOG_CORRELATION=true`) and only resolve while a span is in scope; otherwise they render as `0` / empty.
-Prefer `%(otel_context)s`, which collapses to nothing when no trace is present, unless you need a specific field.
-
-<details>
-<summary><strong>Example — JSON-shaped output</strong></summary>
-
-Because the value is a plain `%`-style string, you can lay the fields out as a JSON object to get one JSON line per
-log record:
-
-```bash
-LOG_FORMAT='{"level": "%(levelname)s", "time": "%(asctime)s", "pid": %(process)d, "logger": "%(name)s", "trace_id": "%(otelTraceID)s", "span_id": "%(otelSpanID)s", "message": "%(message)s"}'
-```
-
-Use `%(levelname)s` here, not `%(levelprefix)s` — the latter embeds ANSI color codes and padding. Note that field
-values are **not** JSON-escaped, so a message containing a `"`, a backslash, or a newline will produce a line that is
-not strictly valid JSON. For guaranteed-valid structured logs, plug in a dedicated JSON log formatter instead.
-
-</details>
+> [!CAUTION]
+> `LOG_PAYLOADS` is intended for **local development only**. It writes conversation content and wire-level
+> third-party payloads to the log pipeline (including any OTLP export). Do **not** enable it in shared or
+> production environments.
 
 ## Local Development
 

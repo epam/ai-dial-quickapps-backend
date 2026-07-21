@@ -3,6 +3,7 @@ from typing import Any
 
 from quickapp.common import ToolCallResult
 from quickapp.common.exceptions import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
+from quickapp.common.lifecycle_logging import format_event
 from quickapp.common.tool_fallback.applicable_mixin import ApplicableStrategyMixin
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
 from quickapp.common.tool_fallback.mapping import STRATEGY_TYPE_TO_HANDLER
@@ -43,6 +44,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
             return FallbackProcessor._process_timeout(strategies, tool_call_id, error)
 
         message: str = ""
+        matched_strategy: str | None = None
         for strategy in strategies:
             if FallbackProcessor._is_applicable(strategy, error):
                 logger.debug(
@@ -53,6 +55,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
                 strategy_message = FallbackProcessor._handle_fallback_strategy(strategy, error)
                 if strategy_message:
                     message = strategy_message
+                    matched_strategy = strategy.type
                     break
 
         if not message:
@@ -64,8 +67,7 @@ class FallbackProcessor(ApplicableStrategyMixin):
             raise error
 
         logger.info(
-            "Fallback applied for tool_call_id=%s; returning fallback message to LLM",
-            tool_call_id,
+            format_event("Fallback applied", tool_call_id=tool_call_id, strategy=matched_strategy)
         )
         return ToolCallResult(
             content=message, tool_call_id=tool_call_id, content_type="text/markdown"
@@ -77,6 +79,8 @@ class FallbackProcessor(ApplicableStrategyMixin):
         tool_call_id: str,
         error: ToolTimeoutError,
     ) -> ToolCallResult:
+        message = ""
+        strategy_label = "timeout_default"
         for strategy in strategies:
             if strategy.trigger_on is None:
                 continue
@@ -84,14 +88,15 @@ class FallbackProcessor(ApplicableStrategyMixin):
                 continue
             strategy_message = FallbackProcessor._handle_fallback_strategy(strategy, error)
             if strategy_message:
-                return ToolCallResult(
-                    content=strategy_message,
-                    tool_call_id=tool_call_id,
-                    content_type="text/markdown",
-                )
+                message = strategy_message
+                strategy_label = strategy.type
+                break
 
+        logger.info(
+            format_event("Fallback applied", tool_call_id=tool_call_id, strategy=strategy_label)
+        )
         return ToolCallResult(
-            content=_format_timeout_message(error),
+            content=message or _format_timeout_message(error),
             tool_call_id=tool_call_id,
             content_type="text/markdown",
         )

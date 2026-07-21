@@ -33,6 +33,13 @@ class BaseHandleStrategyModel(BaseToolFallbackStrategyModel):
         default=None,
         description="Instructions to LLM what to do next.",
     )
+    forward_tool_error_message: bool = Field(
+        default=False,
+        description=(
+            "Whether to include the Tool error message in the fallback message returned "
+            "to the model. Applies only to `ToolErrorException`."
+        ),
+    )
 
 
 class ContinueStrategyModel(BaseHandleStrategyModel):
@@ -40,11 +47,15 @@ class ContinueStrategyModel(BaseHandleStrategyModel):
 
     @model_validator(mode="after")
     def _require_instructions_with_trigger(self) -> "ContinueStrategyModel":
-        if self.trigger_on is not None and self.instructions is None:
+        if (
+            self.trigger_on is not None
+            and self.instructions is None
+            and not self.forward_tool_error_message
+        ):
             raise ValueError(
                 "ContinueStrategyModel with `trigger_on` set must also provide "
-                "`instructions`. Otherwise the generic fallback text would silently "
-                "replace any built-in handling."
+                "`instructions` or enable `forward_tool_error_message`. Otherwise the "
+                "generic fallback text would silently replace any built-in handling."
             )
         return self
 

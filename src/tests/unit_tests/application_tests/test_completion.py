@@ -149,6 +149,15 @@ def make_request_completion():
             _MessagesSetup: messages_setup,
             ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
+            quick_app_completion.ApplicationConfig: SimpleNamespace(
+                orchestrator=SimpleNamespace(
+                    deployment=SimpleNamespace(deployment_id="default-deployment")
+                ),
+                skills=None,
+                contexts=[],
+            ),
+            list[quick_app_completion.StagedBaseTool]: [],
+            quick_app_completion.AgentSkillsProvider: SimpleNamespace(get_all_skills=lambda: []),
         }
         if orchestrator is not None:
             mapping[quick_app_completion.Orchestrator] = orchestrator
@@ -176,6 +185,10 @@ async def test_chat_completion_success(make_request_completion):
     orchestrator_called = {"count": 0}
 
     class OrchestratorFake:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             orchestrator_called["count"] += 1
 
@@ -196,6 +209,10 @@ async def test_chat_completion_orchestrator_exceed_raises_dial_error(make_reques
     response = FakeResponse(choice)
 
     class OrchRaise:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             raise OrchestratorExceedMaxIterationsException()
 
@@ -218,6 +235,10 @@ async def test_chat_completion_generic_exception_raises_generic_message(make_req
     response = FakeResponse(choice)
 
     class OrchRaise:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             raise ValueError("boom")
 
@@ -282,6 +303,10 @@ async def test_chat_completion_http_error_raises_safe_message(make_request_compl
     response = FakeResponse(choice)
 
     class OrchRaise:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             raise HTTPError("http://internal-service/secret-endpoint failure")
 
@@ -313,6 +338,10 @@ async def test_chat_completion_openai_internal_server_error_raises_safe_message(
     _response = _httpx.Response(500, request=_request)
 
     class OrchRaise:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             raise _openai.InternalServerError(
                 "upstream internal error", response=_response, body=None
@@ -345,6 +374,10 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
     response = FakeResponse(choice)
 
     class OrchestratorFake:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
         async def invoke(self):
             return None
 

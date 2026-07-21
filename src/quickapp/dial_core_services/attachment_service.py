@@ -6,6 +6,7 @@ from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
+from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.common.utils import generate_attachment_filename
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,10 @@ class AttachmentService:
 
     async def upload_attachment_to_core(self, attachment: Attachment) -> Attachment:
         logger.debug(
-            f"Uploading attachment: {attachment.title}, url: {attachment.url}, data present: {attachment.data is not None}"
+            "Uploading attachment: %s, url: %s, data present: %s",
+            attachment.title,
+            sanitize_url_for_log(attachment.url) if attachment.url else None,
+            attachment.data is not None,
         )
         if attachment.url is None and attachment.data:
             try:
@@ -41,7 +45,11 @@ class AttachmentService:
                 # Use URL instead of data for uploaded attachment.
                 attachment.data = None
                 attachment.url = metadata.url
-                logger.debug(f"Uploaded attachment {attachment_name} to {attachment.url}")
+                logger.debug(
+                    "Uploaded attachment %s to %s",
+                    attachment_name,
+                    sanitize_url_for_log(attachment.url),
+                )
             except Exception:
                 logger.exception(
                     "Exception during uploading attachment to DIAL. Original attachment left in place."

@@ -158,6 +158,30 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 - **Use the logging module**: Use Python’s `logging` (e.g. `logger.info`, `logger.debug`, `logger.exception`) instead of `print()` for production behavior. Configure log levels appropriately (e.g. via `LoggingSettings` / `QUICKAPP_LOG_LEVEL`).
 - **Graceful error handling**: Use exceptions where appropriate. Avoid silent failures; log or re-raise with clear messages so issues are visible and debuggable.
 
+### Level semantics
+
+Pick the level from what the record *means for the service*, not from how it reads while developing (design: [`docs/designs/log_levels_and_content_policy.md`](docs/designs/log_levels_and_content_policy.md)):
+
+| Level | Meaning | Examples |
+|---|---|---|
+| **DEBUG** | Developer diagnostics: control flow, intermediate values, structure summaries. Verbose, not a narrative. | State-holder summaries, routine rejections/skips, perf reports |
+| **INFO** | The operational narrative: startup/config summaries plus the per-request lifecycle skeleton. Metadata-only, low bounded volume per request. | Request received, model call, tool executed, fallback applied, request completed |
+| **WARNING** | Something unexpected happened and the service handled it; the request continues, possibly degraded. | Stream recovery applied, unsupported content block tolerated, tool failure handed to a fallback, deprecated config |
+| **ERROR** | A failure that affected the request outcome or cost the service functionality; each occurrence is worth investigating. | Unhandled request exception (with `error_reference`), toolset init failure surfaced to the user |
+
+### Single-writer rule for ERROR (and WARNING)
+
+- A failure is logged at **ERROR exactly once**, by the layer that *owns its final handling*. In the request path that owner is `_QuickAppCompletion` (the `error_reference` record).
+- A layer that hands a failure onward — to a fallback strategy, a recovery policy, or by (re-)raising for an upstream handler — logs at **WARNING or not at all**, never ERROR. `StagedBaseTool` (the tool choke point) writes the single WARNING for a tool failure; layers beneath it that merely detect and raise (e.g. `_MCPTool`) stay at DEBUG.
+- One failure gets **one salient record per severity** — do not re-log the same failure as it propagates up.
+
+### Content rule (metadata over payload)
+
+- Records at **every** level (DEBUG included) carry structure, not content: roles, counts/sizes, durations, tool/skill/deployment/model names, identifiers, statuses/outcomes, error codes and types, MIME types, HTTP status codes, header **names**, and URLs stripped to scheme/host/path (use `common.url_sanitization.sanitize_url_for_log`).
+- Never log message bodies, tool-call argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings/fragments. The rule is an allowlist: when in doubt, a value is content. This includes exception messages our own code raises — keep response bodies off them (e.g. `ToolErrorException.__str__` is structural; the body stays on the `error_message` attribute for the LLM/user channels).
+- Payload debugging is gated behind the `LOG_PAYLOADS` switch: emit an unconditional structure summary, then pass the payload through `common.payload_logging.log_payload` (a no-op unless `LOG_PAYLOADS=true`, truncating each field and prefixing the record with the `[payload]` marker). Never log payload content unconditionally.
+- Lifecycle-skeleton records use `common.lifecycle_logging.format_event` — a stable prefix plus `key=value` fields — so structured output (#438) and request ids (#439) can enrich them later without rewording.
+
 ---
 
 ## 10. Linters and formatters
