@@ -479,7 +479,7 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
     async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
         result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
         # catch-all forwards error directly; deprecated flag has no additional effect
-        assert result.content == "HTTP error 400 while calling REST API tool."
+        assert result.content == 'HTTP error 400 while calling REST API tool. Response: {"error":"Invalid API key"}'
         assert result.content_type == "text/markdown"
         return {"message": "success"}
 
@@ -542,7 +542,7 @@ async def test_http_status_error_can_append_instructions_after_forwarded_error(m
     async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
         result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
         # catch-all with instructions — instructions deprecated and ignored; error forwarded
-        assert result.content == "HTTP error 429 while calling REST API tool."
+        assert result.content == 'HTTP error 429 while calling REST API tool. Response: {"detail":"Rate limit exceeded"}'
         return {"message": "success"}
 
     client = TestClient(app)
