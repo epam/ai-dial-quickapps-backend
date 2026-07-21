@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A hyper-realistic, photorealistic dinosaur, likely a Tyrannosaurus Rex, standing in a natural prehistoric jungle environment. Highly detailed textured skin with scales, realistic lighting and shadows, sharp focus, cinematic quality, lifelike eyes, dramatic natural lighting, as if captured by a professional wildlife photographer."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Tue, 21 Jul 2026 07:33:00 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-5101a607-9b77-48cb-9fb2-99d8228fa94b\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1784619220,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-5101a607-9b77-48cb-9fb2-99d8228fa94b\",\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":null,\"index\":0}],\"created\":1784619220,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-5101a607-9b77-48cb-9fb2-99d8228fa94b\",\"choices\":[{\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/684f6Lz7ubje66aoCRsa5c/appdata/gpt-image-1/images/296f06fa200228f82e499662cdb3cf4d75b5bd4d8745635e85a623bf7bdb4118.png\"}]}},\"finish_reason\":null,\"index\":0}],\"created\":1784619220,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-5101a607-9b77-48cb-9fb2-99d8228fa94b\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1784619220,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
