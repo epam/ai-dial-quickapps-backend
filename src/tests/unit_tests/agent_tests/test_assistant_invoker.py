@@ -12,10 +12,6 @@ from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionC
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 
 
-def _presentation_settings(show_usage: bool):
-    return SimpleNamespace(show_usage_statistics=show_usage)
-
-
 class FakeMessage:
     def __init__(self, content: str):
         self.content = content
@@ -56,7 +52,6 @@ def _make_config_builder(
     *,
     config: DummyConfig | None = None,
     tools: list | None = None,
-    show_usage: bool = False,
     forwarded_headers=None,
     response_format=None,
     tool_choice=None,
@@ -67,7 +62,6 @@ def _make_config_builder(
         response_format=response_format,
         tool_choice_holder=_ToolChoiceHolder(tool_choice=tool_choice),
         pre_invocation_transformers=[mock_filter],
-        presentation_settings=_presentation_settings(show_usage),
         forwarded_headers=forwarded_headers,
     )
 
@@ -92,7 +86,6 @@ def _make_invoker(
     messages,
     azure_client,
     tools: list | None = None,
-    show_usage: bool = False,
     chat_completion_recovery_policies=None,
     deferred_stage_close_registry=None,
     chat_completion_recovery: ChatCompletionRecoveryService | None = None,
@@ -101,8 +94,7 @@ def _make_invoker(
     return AssistantInvoker(
         messages=messages,
         azure_client=azure_client,
-        chat_completion_config_builder=config_builder
-        or _make_config_builder(tools=tools, show_usage=show_usage),
+        chat_completion_config_builder=config_builder or _make_config_builder(tools=tools),
         chat_completion_recovery=chat_completion_recovery
         or _make_recovery_service(
             messages,
@@ -113,7 +105,9 @@ def _make_invoker(
 
 
 @pytest.mark.asyncio
-async def test_invoke_without_show_usage():
+async def test_invoke_always_requests_usage():
+    # Usage is now requested unconditionally so the app can report an accurate
+    # top-level ``usage`` regardless of the Usage Statistics presentation stage.
     create_mock = AsyncMock(return_value="stream-result")
     azure_client = SimpleNamespace(
         chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
@@ -135,32 +129,7 @@ async def test_invoke_without_show_usage():
     assert called_kwargs["stream"] is True
     assert called_kwargs["messages"] == [{"role": "user", "content": "hello"}]
     assert called_kwargs["tools"] == tools
-    assert "stream_options" not in called_kwargs
-
-
-@pytest.mark.asyncio
-async def test_invoke_with_show_usage_true():
-    create_mock = AsyncMock(return_value="stream-result")
-    azure_client = SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create_mock))
-    )
-
-    tools = [{"name": "t2"}]
-    invoker = _make_invoker(
-        messages=[FakeMessage("hello2")],
-        azure_client=azure_client,
-        tools=tools,
-        show_usage=True,
-    )
-
-    result = await invoker.invoke()
-    assert result == "stream-result"
-    assert create_mock.await_count == 1
-    called_kwargs = create_mock.await_args.kwargs
     assert called_kwargs["stream_options"] == {"include_usage": True}
-    assert called_kwargs["tools"] == tools
-    assert called_kwargs["messages"] == [{"role": "user", "content": "hello2"}]
-    assert called_kwargs["stream"] is True
 
 
 @pytest.mark.asyncio

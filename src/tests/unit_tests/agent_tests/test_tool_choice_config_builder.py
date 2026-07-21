@@ -22,7 +22,6 @@ def _make_builder(
         response_format=None,
         tool_choice_holder=holder,
         pre_invocation_transformers=[],
-        presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
     )
 
@@ -68,7 +67,6 @@ class TestToolChoiceInPayload:
             response_format=None,
             tool_choice_holder=holder,
             pre_invocation_transformers=[],
-            presentation_settings=MagicMock(show_usage_statistics=False),
             forwarded_headers=None,
         )
         first = builder.build([])

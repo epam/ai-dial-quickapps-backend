@@ -1087,3 +1087,50 @@ async def test_propagation_keeps_urlless_attachments():
 
     # Attachments without a URL have no stable dedup key, so both are streamed.
     assert len(choice.add_attachment_kwargs) == 2
+
+
+class TestUsageAccessors:
+    """total_usage / usage_per_model aggregate the collected per-deployment usage."""
+
+    @staticmethod
+    def _set_usage(orchestrator: Orchestrator, usage: list[DeploymentUsage]) -> None:
+        orchestrator._Orchestrator__usage_statistics_list = usage  # type: ignore[attr-defined]
+
+    def test_total_usage_none_when_empty(self):
+        orchestrator = _make_orchestrator([])
+        assert orchestrator.total_usage is None
+        assert orchestrator.usage_per_model == []
+
+    def test_total_usage_sums_orchestrator_and_tools(self):
+        orchestrator = _make_orchestrator([])
+        self._set_usage(
+            orchestrator,
+            [
+                DeploymentUsage(model_name="orch-model", prompt_tokens=100, completion_tokens=10),
+                DeploymentUsage(model_name="orch-model", prompt_tokens=200, completion_tokens=20),
+                DeploymentUsage(model_name="rag-tool", prompt_tokens=50, completion_tokens=5),
+            ],
+        )
+
+        total = orchestrator.total_usage
+        assert total is not None
+        assert total.prompt_tokens == 350
+        assert total.completion_tokens == 35
+
+    def test_usage_per_model_aggregates_by_model(self):
+        orchestrator = _make_orchestrator([])
+        self._set_usage(
+            orchestrator,
+            [
+                DeploymentUsage(model_name="orch-model", prompt_tokens=100, completion_tokens=10),
+                DeploymentUsage(model_name="orch-model", prompt_tokens=200, completion_tokens=20),
+                DeploymentUsage(model_name="rag-tool", prompt_tokens=50, completion_tokens=5),
+            ],
+        )
+
+        per_model = {u.model_name: u for u in orchestrator.usage_per_model}
+        assert set(per_model) == {"orch-model", "rag-tool"}
+        assert per_model["orch-model"].prompt_tokens == 300
+        assert per_model["orch-model"].completion_tokens == 30
+        assert per_model["rag-tool"].prompt_tokens == 50
+        assert per_model["rag-tool"].completion_tokens == 5

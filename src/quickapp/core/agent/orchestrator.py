@@ -118,6 +118,35 @@ class Orchestrator:
         """``completed`` or ``external_tool_calls`` — how the loop terminated."""
         return self.__completion_kind
 
+    @property
+    def total_usage(self) -> DeploymentUsage | None:
+        """Aggregated token usage for the whole turn — orchestrator LLM calls plus
+        every tool sub-call. ``None`` when no upstream usage was reported."""
+        if not self.__usage_statistics_list:
+            return None
+        return DeploymentUsage(
+            prompt_tokens=sum(u.prompt_tokens for u in self.__usage_statistics_list),
+            completion_tokens=sum(u.completion_tokens for u in self.__usage_statistics_list),
+        )
+
+    @property
+    def usage_per_model(self) -> list[DeploymentUsage]:
+        """Per-model token usage aggregated across the turn (orchestrator plus tool
+        sub-calls), one entry per distinct model. Empty when no usage was reported."""
+        aggregated: dict[str, DeploymentUsage] = {}
+        for usage in self.__usage_statistics_list:
+            existing = aggregated.get(usage.model_name)
+            if existing is None:
+                aggregated[usage.model_name] = DeploymentUsage(
+                    model_name=usage.model_name,
+                    prompt_tokens=usage.prompt_tokens,
+                    completion_tokens=usage.completion_tokens,
+                )
+            else:
+                existing.prompt_tokens += usage.prompt_tokens
+                existing.completion_tokens += usage.completion_tokens
+        return list(aggregated.values())
+
     @asynccontextmanager
     async def _persisting_state(self) -> AsyncIterator[None]:
         exc_to_reraise: BaseException | None = None
@@ -209,7 +238,7 @@ class Orchestrator:
             )
         )
 
-        if stream_result.usage and self.__SHOW_USAGE_STATISTICS:
+        if stream_result.usage:
             self.__usage_statistics_list.append(
                 DeploymentUsage(
                     model_name=self.__orchestrator_deployment_name,
@@ -266,7 +295,7 @@ class Orchestrator:
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
-            if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
+            if tool_call_result.usage:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
 
     def _surface_external_tool_calls(

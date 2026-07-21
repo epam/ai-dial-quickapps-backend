@@ -112,6 +112,20 @@ class _QuickAppCompletion(ChatCompletion):
                         error_reference=error_reference,
                     )
                 )
+
+                # Report the turn's aggregated token usage (orchestrator LLM calls plus
+                # every tool sub-call) as the standard top-level ``usage`` field. Only on
+                # the success path — an error response carries no meaningful usage.
+                if not failed and agent_invoker is not None:
+                    total_usage = agent_invoker.total_usage
+                    if total_usage is not None:
+                        response.set_usage(total_usage.prompt_tokens, total_usage.completion_tokens)
+                    for model_usage in agent_invoker.usage_per_model:
+                        response.add_usage_per_model(
+                            model_usage.model_name,
+                            model_usage.prompt_tokens,
+                            model_usage.completion_tokens,
+                        )
                 # Skip the execution-time stage when an error is propagating, so no
                 # spurious stage trails the delivered error.
                 if not failed and self.__presentation_settings.show_execution_time_stage:

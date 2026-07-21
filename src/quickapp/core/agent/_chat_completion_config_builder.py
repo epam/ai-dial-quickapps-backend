@@ -9,7 +9,6 @@ from injector import inject
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
-from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
@@ -26,7 +25,6 @@ class _ChatCompletionConfigBuilder:
         response_format: RESPONSE_FORMAT,
         tool_choice_holder: _ToolChoiceHolder,
         pre_invocation_transformers: list[PreInvocationTransformer],
-        presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
     ) -> None:
         self.__config: ApplicationConfig = config
@@ -34,7 +32,6 @@ class _ChatCompletionConfigBuilder:
         self.__response_format = response_format
         self.__tool_choice_holder = tool_choice_holder
         self.__pre_invocation_transformers = pre_invocation_transformers
-        self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
@@ -66,8 +63,10 @@ class _ChatCompletionConfigBuilder:
 
         self._apply_tool_choice(payload)
 
-        if self.__presentation_settings.show_usage_statistics:
-            payload["stream_options"] = {"include_usage": True}
+        # Always request usage from the orchestrator model so the app can report an
+        # accurate top-level ``usage`` regardless of whether the Usage Statistics
+        # stage (a separate presentation opt-in) is shown.
+        payload["stream_options"] = {"include_usage": True}
 
         if self.__forwarded_headers:
             payload["extra_headers"] = self.__forwarded_headers

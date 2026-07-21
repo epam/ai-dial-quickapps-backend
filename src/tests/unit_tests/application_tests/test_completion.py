@@ -9,6 +9,7 @@ from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
 import quickapp.core.application._quick_app_completion as quick_app_completion
+from quickapp.common import DeploymentUsage
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
@@ -42,6 +43,14 @@ class FakeChoice:
 class FakeResponse:
     def __init__(self, choice: FakeChoice):
         self._choice = choice
+        self.usage: tuple[int, int] | None = None
+        self.usage_per_model: list[tuple[str, int, int]] = []
+
+    def set_usage(self, prompt_tokens: int, completion_tokens: int):
+        self.usage = (prompt_tokens, completion_tokens)
+
+    def add_usage_per_model(self, model: str, prompt_tokens: int, completion_tokens: int):
+        self.usage_per_model.append((model, prompt_tokens, completion_tokens))
 
     def create_single_choice(self):
         # synchronous context manager used inside async method
@@ -188,6 +197,11 @@ async def test_chat_completion_success(make_request_completion):
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
+        total_usage = DeploymentUsage(prompt_tokens=300, completion_tokens=35)
+        usage_per_model = [
+            DeploymentUsage(model_name="orch-model", prompt_tokens=250, completion_tokens=30),
+            DeploymentUsage(model_name="rag-tool", prompt_tokens=50, completion_tokens=5),
+        ]
 
         async def invoke(self):
             orchestrator_called["count"] += 1
@@ -200,6 +214,12 @@ async def test_chat_completion_success(make_request_completion):
     # Assert
     assert orchestrator_called["count"] == 1
     assert choice.contents == []
+    # Aggregated usage is reported on the success path.
+    assert response.usage == (300, 35)
+    assert response.usage_per_model == [
+        ("orch-model", 250, 30),
+        ("rag-tool", 50, 5),
+    ]
 
 
 @pytest.mark.asyncio
@@ -226,6 +246,9 @@ async def test_chat_completion_orchestrator_exceed_raises_dial_error(make_reques
     assert display is not None
     assert "Agent stopped due to max iterations." in display
     assert choice.contents == []
+    # No usage is reported on the error path.
+    assert response.usage is None
+    assert response.usage_per_model == []
 
 
 @pytest.mark.asyncio
@@ -377,6 +400,8 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
+        total_usage = None
+        usage_per_model: list = []
 
         async def invoke(self):
             return None
