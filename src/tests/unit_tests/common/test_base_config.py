@@ -99,6 +99,32 @@ class TestModelJsonSchema:
             DialJSONSchemaExtensions.PROPERTY_ORDER: 3,
         }
 
+    def test_app_schema_id_env_overrides_full_id(self, monkeypatch: pytest.MonkeyPatch):
+        """APP_SCHEMA_ID replaces the entire $id (no suffix appended)."""
+        override = "https://example.com/schemas/my-quickapps"
+        monkeypatch.setenv("APP_SCHEMA_ID", override)
+
+        class TestConfig(BaseApplicationTypeConfig):
+            _dial_schema_id = "quickapps2"
+            _dial_application_type_display_name = "Quick App 2.0"
+            name: str
+
+        assert TestConfig.model_json_schema()["$id"] == override
+
+    def test_blank_app_schema_id_env_keeps_default(self, monkeypatch: pytest.MonkeyPatch):
+        """Empty APP_SCHEMA_ID is treated as unset and keeps the composed default."""
+        monkeypatch.setenv("APP_SCHEMA_ID", "   ")
+
+        class TestConfig(BaseApplicationTypeConfig):
+            _dial_schema_id = "quickapps2"
+            _dial_application_type_display_name = "Quick App 2.0"
+            name: str
+
+        assert (
+            TestConfig.model_json_schema()["$id"]
+            == "https://mydial.epam.com/custom_application_schemas/quickapps2"
+        )
+
     def test_schema_with_override_append_header(self):
         """Test schema generation with overridden _dial_append_application_properties_header."""
 
