@@ -67,6 +67,11 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__dial_completion_service: DialCompletionService = dial_completion_service
         self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
+        if content_propagation and content_propagation.propagate_history:
+            logger.warning(
+                "The 'propagate_history' parameter is deprecated and will be removed in a future release. "
+                "Use 'conversation_mode: stateful' instead."
+            )
         self.__messages_mixin: MessagesMixin = messages_mixin
 
     async def _run_in_stage_async(

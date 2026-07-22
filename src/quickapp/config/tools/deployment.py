@@ -25,7 +25,15 @@ class ContentPropagation(BaseModel):
     )
     propagate_history: bool = Field(
         default=False,
-        description="Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
+        deprecated=(
+            "Deprecated and will be removed in a future release. "
+            "Use 'conversation_mode: stateful' instead."
+        ),
+        description=(
+            "**Deprecated, use `conversation_mode: stateful`**. "
+            "Flag to propagate messages to deployment. If True, the messages will be "
+            "propagated in such way: [assistant, tool] -> [user, assistant]."
+        ),
     )
     propagate_headers: list[str] | None = Field(
         default=None,
