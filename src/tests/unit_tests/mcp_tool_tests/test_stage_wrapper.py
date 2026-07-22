@@ -9,6 +9,7 @@ from quickapp.common import ToolCallResult
 
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
+from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 
 
 @pytest.fixture
@@ -196,6 +197,18 @@ def test_build_debug_info_from_params_and_exception(mock_stage, wrapper, params)
     assert mock_stage.append_content.call_count == 2
     mock_stage.append_content.assert_any_call(expected_params)
     mock_stage.append_content.assert_any_call(expected_exception)
+
+
+def test_tool_error_stage_shows_body_not_structural_str(mock_stage, wrapper):
+    # The stage is a user channel: it must show the MCP error body, not the
+    # content_length-only str(e) mandated for logs by the content rule (#436).
+    body = "the real mcp error text"
+    exception = MCPToolErrorException("mcp_tool", body)
+
+    wrapper.add_exception(exception)
+
+    expected = f"> ##### Error:\nMCP tool 'mcp_tool' returned an error: {body}\n"
+    mock_stage.append_content.assert_called_once_with(expected)
 
 
 def test_plain_text_response_is_fenced_without_language(mock_stage, wrapper):
