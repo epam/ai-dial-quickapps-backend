@@ -21,11 +21,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
-from quickapp.config.tools.deployment import (
-    ContentPropagation,
-    ConversationMode,
-    DialDeploymentTool,
-)
+from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
@@ -70,7 +66,7 @@ class BaseDeploymentTool(StagedBaseTool):
         if content_propagation and content_propagation.propagate_history:
             logger.warning(
                 "The 'propagate_history' parameter is deprecated and will be removed in a future release. "
-                "Use 'conversation_mode: stateful' instead."
+                "Use 'conversation_mode.resumable: true' instead."
             )
         self.__messages_mixin: MessagesMixin = messages_mixin
 
@@ -83,20 +79,20 @@ class BaseDeploymentTool(StagedBaseTool):
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id: str | None = kwargs.pop("session_id", None)
-        is_stateful = (
-            self.__content_propagation is not None
-            and self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
+        is_resumable = (
+            tool_config.conversation_mode is not None and tool_config.conversation_mode.resumable
         )
-        is_first_call = is_stateful and session_id is None
+        is_first_call = is_resumable and session_id is None
         if is_first_call:
             session_id = tool_call_id
-            logger.info("Stateful tool first call — assigned session_id=%s", session_id)
-        elif is_stateful and session_id:
-            logger.info("Stateful tool follow-up — session_id=%s", session_id)
+            logger.info("Resumable tool first call — assigned session_id=%s", session_id)
+        elif is_resumable and session_id:
+            logger.info("Resumable tool follow-up — session_id=%s", session_id)
         history = None
-        if self.__content_propagation and (
-            self.__content_propagation.propagate_history or is_stateful
-        ):
+        propagate_history = bool(
+            self.__content_propagation and self.__content_propagation.propagate_history
+        )
+        if propagate_history or is_resumable:
             history = await self._extract_tool_history(
                 tool_config.open_ai_tool.function.name, session_id=session_id
             )
@@ -123,10 +119,8 @@ class BaseDeploymentTool(StagedBaseTool):
     )
 
     def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
-        if not (
-            self.__content_propagation
-            and self.__content_propagation.conversation_mode == ConversationMode.STATEFUL
-        ):
+        tool_config = cast(DialDeploymentTool, self.tool_config)
+        if not (tool_config.conversation_mode and tool_config.conversation_mode.resumable):
             return open_ai_tool
         if "session_id" not in open_ai_tool.function.parameters.properties:
             open_ai_tool.function.parameters.properties["session_id"] = self._SESSION_ID_PARAM

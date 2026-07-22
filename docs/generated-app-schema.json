@@ -451,14 +451,10 @@
     },
     "ContentPropagation": {
       "properties": {
-        "conversation_mode": {
-          "$ref": "#/$defs/ConversationMode",
-          "default": "stateless",
-          "description": "Controls how prior interactions with this deployment are replayed. 'stateless': each call is independent (default). 'stateful': prior [user, assistant] pairs including the subagent's internal tool-execution state are sent, enabling stateful multi-turn subagents."
-        },
         "propagate_history": {
           "default": false,
-          "description": "Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
+          "deprecated": true,
+          "description": "**Deprecated, use `conversation_mode.resumable: true`**. Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
           "title": "Propagate History",
           "type": "boolean"
         },
@@ -527,12 +523,16 @@
       "type": "object"
     },
     "ConversationMode": {
-      "enum": [
-        "stateless",
-        "stateful"
-      ],
+      "properties": {
+        "resumable": {
+          "default": false,
+          "description": "Whether the deployment tool maintains a resumable conversation. When true, the tool issues a session_id on the first call, accepts it back on follow-up calls, and the backend threads prior [user, assistant] history — including the subagent's internal tool-execution state — for that session. When false (default), each call is independent.",
+          "title": "Resumable",
+          "type": "boolean"
+        }
+      },
       "title": "ConversationMode",
-      "type": "string"
+      "type": "object"
     },
     "ConversationStarter": {
       "properties": {
@@ -1050,6 +1050,18 @@
           ],
           "default": null,
           "description": "The configuration with propagations to DIAL deployment."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
         },
         "supports_url_attachments": {
           "default": false,

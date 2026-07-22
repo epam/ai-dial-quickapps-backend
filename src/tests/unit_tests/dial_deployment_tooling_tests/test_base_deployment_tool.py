@@ -360,6 +360,7 @@ async def test_extract_resolves_request_attachments():
 def _make_tool_config(
     parameters: DialDeploymentParameters | None = None,
     configuration_param_names: set[str] | None = None,
+    conversation_mode: ConversationMode | None = None,
 ) -> DialDeploymentTool:
     """Build a real DialDeploymentTool for _pre_process_params tests."""
     deployment = DialDeploymentConfig(
@@ -370,6 +371,7 @@ def _make_tool_config(
         deployment._configuration_param_names = configuration_param_names
     return DialDeploymentTool(
         deployment=deployment,
+        conversation_mode=conversation_mode,
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name="test_tool",
@@ -498,16 +500,17 @@ async def test_extract_preserves_state_with_empty_content():
 
 def _build_tool_with_propagation(
     messages: list[Message],
-    content_propagation: ContentPropagation | None,
+    content_propagation: ContentPropagation | None = None,
     dial_completion_service: Any = None,
+    conversation_mode: ConversationMode | None = None,
 ) -> BaseDeploymentTool:
-    """Build a BaseDeploymentTool with a real tool_config and configurable content_propagation."""
+    """Build a BaseDeploymentTool with a real tool_config and configurable propagation/mode."""
     if dial_completion_service is None:
         dial_completion_service = AsyncMock()
     return BaseDeploymentTool(
         application_id="test-app",
         application_name="Test App",
-        tool_config=_make_tool_config(),
+        tool_config=_make_tool_config(conversation_mode=conversation_mode),
         content_propagation=content_propagation,
         dial_completion_service=dial_completion_service,
         attachment_resolver=MagicMock(),
@@ -527,12 +530,12 @@ def _make_mock_completion_service() -> Any:
 
 
 @pytest.mark.asyncio
-async def test_conversation_mode_stateful_triggers_extract():
-    """conversation_mode=stateful causes history to be built and passed to the service."""
+async def test_resumable_triggers_extract():
+    """conversation_mode.resumable=True causes history to be built and passed to the service."""
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        conversation_mode=ConversationMode(resumable=True),
         dial_completion_service=svc,
     )
 
@@ -543,15 +546,13 @@ async def test_conversation_mode_stateful_triggers_extract():
 
 
 @pytest.mark.asyncio
-async def test_conversation_mode_stateless_skips_extract():
-    """conversation_mode=stateless with propagate_history=False passes history=None."""
+async def test_not_resumable_skips_extract():
+    """No resumable mode with propagate_history=False passes history=None."""
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(
-            conversation_mode=ConversationMode.STATELESS,
-            propagate_history=False,
-        ),
+        content_propagation=ContentPropagation(propagate_history=False),
+        conversation_mode=ConversationMode(resumable=False),
         dial_completion_service=svc,
     )
 
@@ -562,23 +563,26 @@ async def test_conversation_mode_stateless_skips_extract():
 
 
 @pytest.mark.asyncio
-async def test_propagate_history_and_stateful_are_independent():
-    """propagate_history=True and conversation_mode=stateful each independently trigger extraction."""
-    for propagation in [
-        ContentPropagation(propagate_history=True, conversation_mode=ConversationMode.STATELESS),
-        ContentPropagation(propagate_history=False, conversation_mode=ConversationMode.STATEFUL),
+async def test_propagate_history_and_resumable_are_independent():
+    """propagate_history=True and conversation_mode.resumable=True each independently trigger extraction."""
+    for content_propagation, conversation_mode in [
+        (ContentPropagation(propagate_history=True), None),
+        (ContentPropagation(propagate_history=False), ConversationMode(resumable=True)),
     ]:
         svc = _make_mock_completion_service()
         tool = _build_tool_with_propagation(
             messages=[],
-            content_propagation=propagation,
+            content_propagation=content_propagation,
+            conversation_mode=conversation_mode,
             dial_completion_service=svc,
         )
 
         await tool._run_in_stage_async(stage_wrapper=None, query="hello")
 
         _, kwargs = svc.complete_request_async.call_args
-        assert kwargs["history"] is not None, f"Expected history for {propagation}"
+        assert (
+            kwargs["history"] is not None
+        ), f"Expected history for {content_propagation}, {conversation_mode}"
 
 
 # ---------------------------------------------------------------------------
@@ -691,7 +695,7 @@ async def test_run_in_stage_pops_session_id_before_forwarding():
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        conversation_mode=ConversationMode(resumable=True),
         dial_completion_service=svc,
     )
 
@@ -705,11 +709,11 @@ async def test_run_in_stage_pops_session_id_before_forwarding():
 
 @pytest.mark.asyncio
 async def test_run_in_stage_injects_session_id_into_first_result():
-    """First stateful call (no session_id) appends session_id from tool_call_id to result content."""
+    """First resumable call (no session_id) appends session_id from tool_call_id to result content."""
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        conversation_mode=ConversationMode(resumable=True),
         dial_completion_service=svc,
     )
 
@@ -726,7 +730,7 @@ async def test_run_in_stage_no_injection_on_follow_up():
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATEFUL),
+        conversation_mode=ConversationMode(resumable=True),
         dial_completion_service=svc,
     )
 
@@ -738,12 +742,12 @@ async def test_run_in_stage_no_injection_on_follow_up():
 
 
 @pytest.mark.asyncio
-async def test_run_in_stage_no_injection_for_stateless():
-    """Stateless tool calls never inject session_id, even when tool_call_id is present."""
+async def test_run_in_stage_no_injection_when_not_resumable():
+    """Non-resumable tool calls never inject session_id, even when tool_call_id is present."""
     svc = _make_mock_completion_service()
     tool = _build_tool_with_propagation(
         messages=[],
-        content_propagation=ContentPropagation(conversation_mode=ConversationMode.STATELESS),
+        conversation_mode=ConversationMode(resumable=False),
         dial_completion_service=svc,
     )
 
@@ -761,11 +765,12 @@ async def test_run_in_stage_no_injection_for_stateless():
 
 def _build_tool_with_content_propagation(
     content_propagation: ContentPropagation | None,
+    conversation_mode: ConversationMode | None = None,
 ) -> BaseDeploymentTool:
     return BaseDeploymentTool(
         application_id="test-app",
         application_name="Test App",
-        tool_config=_make_tool_config(),
+        tool_config=_make_tool_config(conversation_mode=conversation_mode),
         content_propagation=content_propagation,
         dial_completion_service=MagicMock(),
         attachment_resolver=MagicMock(),
@@ -776,10 +781,10 @@ def _build_tool_with_content_propagation(
     )
 
 
-def test_enrich_stateful_injects_session_id():
-    """For conversation_mode=stateful, enrich_openai_tool_schema injects session_id into the schema."""
+def test_enrich_resumable_injects_session_id():
+    """For conversation_mode.resumable=True, enrich_openai_tool_schema injects session_id into the schema."""
     tool = _build_tool_with_content_propagation(
-        ContentPropagation(conversation_mode=ConversationMode.STATEFUL)
+        None, conversation_mode=ConversationMode(resumable=True)
     )
     tool_config = _make_tool_config()
     open_ai_tool = copy.deepcopy(tool_config.open_ai_tool)
@@ -788,10 +793,10 @@ def test_enrich_stateful_injects_session_id():
     assert "session_id" in enriched.function.parameters.properties
 
 
-def test_enrich_stateless_is_noop():
-    """For conversation_mode=stateless (default), enrich_openai_tool_schema returns the tool unchanged."""
+def test_enrich_not_resumable_is_noop():
+    """For conversation_mode.resumable=False, enrich_openai_tool_schema returns the tool unchanged."""
     tool = _build_tool_with_content_propagation(
-        ContentPropagation(conversation_mode=ConversationMode.STATELESS)
+        None, conversation_mode=ConversationMode(resumable=False)
     )
     tool_config = _make_tool_config()
     open_ai_tool = copy.deepcopy(tool_config.open_ai_tool)

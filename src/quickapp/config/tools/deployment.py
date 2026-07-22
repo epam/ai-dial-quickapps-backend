@@ -1,4 +1,3 @@
-from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -8,29 +7,28 @@ from quickapp.config.prompt import ToolSystemPromptConfig
 from quickapp.config.tools.base import BaseOpenAITool
 
 
-class ConversationMode(str, Enum):
-    STATELESS = "stateless"
-    STATEFUL = "stateful"
+class ConversationMode(BaseModel):
+    resumable: bool = Field(
+        default=False,
+        description=(
+            "Whether the deployment tool maintains a resumable conversation. When true, "
+            "the tool issues a session_id on the first call, accepts it back on follow-up "
+            "calls, and the backend threads prior [user, assistant] history — including the "
+            "subagent's internal tool-execution state — for that session. When false "
+            "(default), each call is independent."
+        ),
+    )
 
 
 class ContentPropagation(BaseModel):
-    conversation_mode: ConversationMode = Field(
-        default=ConversationMode.STATELESS,
-        description=(
-            "Controls how prior interactions with this deployment are replayed. "
-            "'stateless': each call is independent (default). "
-            "'stateful': prior [user, assistant] pairs including the subagent's "
-            "internal tool-execution state are sent, enabling stateful multi-turn subagents."
-        ),
-    )
     propagate_history: bool = Field(
         default=False,
         deprecated=(
             "Deprecated and will be removed in a future release. "
-            "Use 'conversation_mode: stateful' instead."
+            "Use 'conversation_mode.resumable: true' instead."
         ),
         description=(
-            "**Deprecated, use `conversation_mode: stateful`**. "
+            "**Deprecated, use `conversation_mode.resumable: true`**. "
             "Flag to propagate messages to deployment. If True, the messages will be "
             "propagated in such way: [assistant, tool] -> [user, assistant]."
         ),
@@ -52,6 +50,10 @@ class DialDeploymentTool(BaseOpenAITool):
     )
     content_propagation: ContentPropagation | None = Field(
         default=None, description="The configuration with propagations to DIAL deployment."
+    )
+    conversation_mode: ConversationMode | None = Field(
+        default=None,
+        description="Conversation session behavior for the DIAL deployment tool.",
     )
     supports_url_attachments: bool = Field(
         default=False,
