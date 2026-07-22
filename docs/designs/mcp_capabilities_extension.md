@@ -10,8 +10,8 @@
 > every section of this document:
 > - The `initialize`/`initialized` handshake is **eliminated**. Capabilities
 >   and client info will travel in `_meta` on every request. The single-session
->   design described in §3.2 and §3.4 will need to be revisited.
-> - A new `server/discover` method replaces capability negotiation (§3.4).
+>   design described in §3.6 and §3.7 will need to be revisited.
+> - A new `server/discover` method replaces capability negotiation (§3.7).
 > - Roots, Sampling, and Logging are deprecated.
 > - Resources gain `ttlMs` / `cacheScope` caching hints.
 > - Tool schemas adopt full JSON Schema 2020-12.
@@ -48,81 +48,100 @@ As a result:
 
 ## Design Goals
 
-- MCP servers that declare the `resources` capability automatically supply their resource
-  content as attributed context blocks in every request — no changes required to existing
-  client manifests.
-- Users can optionally restrict which resources are loaded by URI, or load all of them
-  with a single flag.
+- MCP servers that declare the `resources` capability surface their resource list as
+  attribution cards in the system context — the LLM sees what data is available and how
+  to request it, without bearing the token cost of all content upfront.
+- The LLM fetches resource content on demand by calling `read_mcp_resource`, mirroring
+  how predefined skills are read via `read_skill`.
+- Users can opt specific resources into eager loading: their content is pre-fetched at
+  init time and injected as synthetic tool call pairs — the natural in-context
+  representation for tool-based operations, and the preferred over direct system prompt injection.
+- Users can restrict which resources are listed by URI.
 - Existing `MCPToolSet` and `DialMCPToolSet` manifests without the new fields behave
   identically to today. No migration is required.
 - Server-advertised capabilities from `InitializeResult` are captured and stored per
-  toolset. Each capability (resources, prompts, tools) is only invoked when the server
-  explicitly declares support for it.
+  toolset. Each capability is only invoked when the server explicitly declares support for it.
 
 ---
 
 ## Use Cases
 
-### UC-1: MCP server as a context source
+### UC-1: LLM reads a resource on demand
 
-**Trigger:** A toolset config has `resources.enabled: true`. The MCP server exposes a
-resource `schema://tables` (name: "Database Schema", description: "Table definitions for
-the orders database").
+**Trigger:** A toolset config has `resources.enabled: true`. The MCP server exposes
+`schema://tables` (name: "Database Schema", description: "Table definitions for the
+orders database"). No resources are marked `eager`.
 
-**Behavior:** During request initialization, QuickApps calls `resources/list` and then
-`resources/read` for the resource URI. The text content is wrapped in an attributed block
-and prepended to the system context:
+**Behavior:** During request initialization, QuickApps calls `resources/list`. Resource
+metadata is injected into the system context as a frontmatter card:
 
 ```
 --- Resource: Database Schema (database-assistant) ---
 URI: schema://tables
 Table definitions for the orders database.
-
-CREATE TABLE orders (id INT, ...);
 ```
 
-**Outcome:** The LLM receives the schema with explicit attribution to the server that
-owns it. When deciding which SQL tool to call, it can correlate the schema with the
-`database-assistant` toolset.
+When the LLM decides it needs the schema, it calls `read_mcp_resource(uri="schema://tables")`.
+QuickApps opens a session to the server and calls `resources/read`. The content is returned
+as the tool result.
+
+**Outcome:** The LLM received the resource exactly when it needed it, without the schema
+content occupying system-prompt tokens on queries that don't need it.
 
 ---
 
-### UC-2: Filtering resources by URI
+### UC-2: Eagerly loaded resource injected as synthetic tool call
+
+**Trigger:** A toolset config specifies `resources.items: [{uri: "config://app-settings", eager: true}]`.
+
+**Behavior:** During initialization, QuickApps fetches the resource content within the
+same init session that loads tools. Before the LLM's first invocation, a synthetic tool
+call pair is prepended to the message history:
+
+```
+[assistant] → read_mcp_resource(uri="config://app-settings")
+[tool result] → {content of config://app-settings}
+```
+
+**Outcome:** The LLM sees the resource content as if it had already called the tool.
+Configuration that is always needed is available from the start of the conversation
+without bloating the system prompt.
+
+---
+
+### UC-3: Filtering resources by URI
 
 **Trigger:** A server exposes 20 resources. The user specifies
-`resources.uris: ["schema://tables", "schema://indexes"]` in the toolset config.
+`resources.items: [{uri: "schema://tables"}, {uri: "schema://indexes"}]`.
 
-**Behavior:** QuickApps fetches the full resource list from the server but only calls
-`resources/read` for the two listed URIs. All other resources are ignored.
+**Behavior:** QuickApps fetches the full resource list from the server and injects
+frontmatter cards for only the two listed URIs. All others are ignored.
 
-**Outcome:** The system context contains only the two relevant resources, reducing token
-usage.
+**Outcome:** The system context exposes only the two relevant resources.
 
 ---
 
-### UC-3: Existing config unchanged
+### UC-4: Existing config unchanged
 
-**Trigger:** An existing `MCPToolSet` manifest with no `resources` or `prompts` fields.
+**Trigger:** An existing `MCPToolSet` manifest with no `resources` field.
 
-**Behavior:** Both fields default to `enabled: false`. Initialization runs exactly as
+**Behavior:** `resources` defaults to `enabled: false`. Initialization runs exactly as
 today — only `tools/list` is called.
 
 **Outcome:** Zero behavioral change for existing deployments.
 
 ---
 
-### UC-4: Capability negotiation guards capability loading
+### UC-5: Capability negotiation guards resource loading
 
 **Trigger:** A toolset config has `resources.enabled: true`. The MCP server returns an
-`InitializeResult` with `capabilities.resources = null` (resources not advertised).
+`InitializeResult` with `capabilities.resources = null`.
 
-**Behavior:** `_process_toolset` captures `InitializeResult` at session open, sees that
-`capabilities.resources` is absent, and skips `resources/list`. A warning is logged:
-`"Toolset 'database-assistant' has resources.enabled=true but server does not advertise
-resources capability — skipping"`. An `MCPServerCapabilities` entry with
-`supports_resources=false` is stored in `_MCPToolingContext.server_capabilities`.
+**Behavior:** QuickApps captures `InitializeResult`, sees that `capabilities.resources`
+is absent, skips `resources/list`, and logs a warning: `"Toolset 'X' has resources.enabled=true
+but server does not advertise resources capability — skipping"`.
 
-**Outcome:** No error. Tools are loaded as normal. Resources are silently skipped.
+**Outcome:** No error. Tools are loaded as normal.
 
 ---
 
@@ -130,36 +149,44 @@ resources capability — skipping"`. An `MCPServerCapabilities` entry with
 
 ### 3.1 Config extension
 
-One new frozen Pydantic model is added in `config/toolsets/mcp.py` and applied as an
-optional field to both `MCPToolSet` and `DialMCPToolSet`. Default values ensure full
-backward compatibility.
+Two new frozen Pydantic models in `config/toolsets/mcp.py`:
 
 ```python
+class MCPResourceConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+    uri: str
+    eager: bool = Field(
+        default=False,
+        description=(
+            "Pre-fetch this resource at init time and inject its content as a "
+            "synthetic read_mcp_resource tool call pair before the first LLM invocation."
+        ),
+    )
+
 class MCPResourcesConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
     enabled: bool = Field(default=False)
-    uris: list[str] | None = Field(
+    items: list[MCPResourceConfig] | None = Field(
         default=None,
-        description="URIs to fetch. None means all resources exposed by the server.",
+        description=(
+            "Resources to expose. None = expose all resources the server declares, all lazy. "
+            "Provide a list to restrict to specific URIs and/or mark some as eager."
+        ),
     )
 ```
 
-`MCPToolSet` gains one new field:
+`MCPToolSet` and `DialMCPToolSet` each gain:
 
 ```python
-resources: MCPResourcesConfig = Field(default_factory=MCPResourcesConfig)
+resources: MCPResourcesConfig | None = Field(default=None)
 ```
-
-`DialMCPToolSet` gains the same field with the same default.
 
 ---
 
-### 3.2 Resources
+### 3.2 Resource metadata model
 
-#### Data model
-
-A new frozen model `MCPFetchedResource` (in `mcp_tooling/_mcp_fetched_resource.py`)
-carries the resolved content of a single resource alongside its attribution metadata:
+A new frozen model `MCPResourceMeta` (in `mcp_tooling/_mcp_resource_meta.py`) carries
+server-side metadata for a listed resource. No content is stored here.
 
 | Field | Source |
 |---|---|
@@ -168,100 +195,199 @@ carries the resolved content of a single resource alongside its attribution meta
 | `resource_name` | `Resource.name` |
 | `resource_uri` | `Resource.uri` |
 | `resource_description` | `Resource.description` (optional) |
-| `text` | `TextResourceContents.text` |
-| `blob` | `BlobResourceContents.blob` (base64) |
-| `mime_type` | `ResourceContents.mimeType` (optional) |
+| `mime_type` | `Resource.mimeType` (optional) |
 
-Exactly one of `text` or `blob` is set; the other is `None`.
+Eager content is modeled as a discriminated union in `mcp_tooling/_mcp_eager_resource.py`
+to leave room for blob support in Phase 2:
 
-#### Loading
+```python
+class MCPEagerTextResource(MCPResourceMeta):
+    content_type: Literal["text"] = "text"
+    text: str
 
-`_MCPConnectionManager` gains two new helper methods. Each accepts a
-`session: ClientSession` parameter (the session is opened once per toolset in
-`_process_toolset`; see §3.4):
+# Phase 2 will add:
+# class MCPEagerBlobResource(MCPResourceMeta):
+#     content_type: Literal["blob"] = "blob"
+#     dial_url: str  # uploaded to DIAL via AttachmentService
 
-- `get_resources_list(session) -> list[Resource]` — paginates `resources/list` identically
-  to the existing `get_tools_list`.
-- `read_resource(session, uri: str) -> ResourceContents` — calls `resources/read` for a
-  single URI.
+MCPEagerResource = MCPEagerTextResource  # | MCPEagerBlobResource in Phase 2
+```
 
-`_MCPToolInitializer._process_toolset` is extended: after tools are loaded, if
-`toolset.resources.enabled` and the server advertised `capabilities.resources` in
-`InitializeResult` (see §3.4), the same session is used to:
+`_MCPToolingContext` gains:
 
-1. Call `get_resources_list()`.
-2. Filter the result to `toolset.resources.uris` if the list is non-empty.
-3. Call `read_resource(uri)` for each retained resource.
-4. Construct `MCPFetchedResource` objects and store them in
-   `_MCPToolingContext.resources: list[MCPFetchedResource]`.
+```python
+resource_metas: list[MCPResourceMeta] = []    # all listed resources (text + blob)
+eager_resources: list[MCPEagerResource] = []   # eager text resources only in Phase 1
+server_capabilities: list[MCPServerCapabilities] = []
+```
 
-Resource loading errors are caught independently of tool loading: a failure to load
-resources does not prevent tools from being registered. Errors are recorded in
-`_MCPToolingContext.exceptions` with the toolset name.
+With matching thread-safe helpers following the existing `extend_tools` / `append_exception` pattern.
 
-Blob resources whose `mime_type` matches `toolset.attachment.supported_types` are
-uploaded to DIAL via `AttachmentService` (the same path used for tool result blobs).
-Their DIAL URL replaces the raw base64 `blob` field in the stored `MCPFetchedResource`.
+---
 
-#### Injection into system context
+### 3.3 System context injection (frontmatter cards)
 
-A new component `_MCPResourceContextBuilder` (wired in `MCPToolingModule`) reads
-`_MCPToolingContext.resources` and converts each entry into a Markdown attribution block:
+A new component `_MCPResourceCardProvider` (in `mcp_tooling/_mcp_resource_card_provider.py`)
+implements `PromptPartProvider`. It reads `_MCPToolingContext.resource_metas` and renders
+one attribution card per resource:
 
 ```
 --- Resource: {resource_name} ({toolset_name}) ---
 URI: {resource_uri}
-{toolset_description or resource_description, whichever is more specific}
-
-{text content}
+MIME type: {mime_type}           (omitted when not provided by the server)
+{resource_description or toolset_description}
 ```
 
-When `resource_description` and `toolset_description` are both present, `resource_description`
-takes precedence as it is more specific to the individual resource.
+When both `resource_description` and `toolset_description` are present, `resource_description`
+takes precedence (more specific to the individual resource). When neither is present, the
+description line is omitted. `mime_type` is rendered only when the server provides it — for
+blob resources it lets the LLM infer that content is binary before attempting to read it.
 
-The orchestrator prepends these blocks to the system context before the first LLM call,
-in the order the resources were returned by the server.
+The instruction on how to load resource content lives exclusively in the `read_mcp_resource`
+tool description — not repeated per card, consistent with how `<available_skills>` lists
+skill metadata without embedding "call `read_skill`" in every entry.
+
+Both text and blob resources are included in the card list — the LLM sees they exist
+regardless of content type. The `mime_type` field in the card allows the LLM to infer the
+content type. Whether content can be fetched is a runtime concern handled by the tool.
+
+Registered in `MCPToolingModule.configure` via `@multiprovider` as `list[PromptPartProvider]`,
+consistent with how `SkillsRegistry` contributes to the system prompt. Returns `""` when
+`resource_metas` is empty.
+
+---
+
+### 3.4 `read_mcp_resource` internal tool
+
+A new internal tool `_ReadMcpResourceTool` (in `mcp_tooling/_read_mcp_resource_tool.py`),
+registered per-request when at least one toolset has `resources.enabled: true`.
+
+**Tool schema:**
+
+```python
+{
+  "name": "read_mcp_resource",
+  "description": "Read the content of an MCP resource by its URI.",
+  "input_schema": {
+    "type": "object",
+    "properties": {
+      "uri": {"type": "string", "description": "URI of the resource to read."}
+    },
+    "required": ["uri"]
+  }
+}
+```
+
+**Semantics:**
+
+1. Look up the `MCPResourceMeta` for the requested URI in `_MCPToolingContext.resource_metas`.
+2. If not found: return an error response — `"No resource registered with URI '{uri}'"`.
+3. Obtain a per-request session via `_MCPSessionManager` for the owning toolset.
+4. Call `resources/read(uri)` and return `TextResourceContents.text`.
+
+Blob resources (`BlobResourceContents`) are skipped in Phase 1. If the server returns only
+blob content, the tool returns: `"Resource '{uri}' contains binary content (blob). Binary
+resources are not supported in this version."` A follow-up design covers blob upload via
+`AttachmentService`.
+
+The tool appears as a single shared entry in the tool list alongside MCP tools. The lookup
+in step 1 determines which toolset's session is used; the tool is not duplicated per toolset.
+
+---
+
+### 3.5 Eager loading via synthetic tool call injection
+
+**Owner:** `mcp_tooling/_mcp_eager_resource_transformer.py`
+
+A new `MessagesTransformer`, `_MCPEagerResourceTransformer`, reads
+`_MCPToolingContext.eager_resources` and prepends one synthetic tool call pair per eager
+resource to the message list before the first user message.
+
+Each pair:
+
+1. An **assistant message** with a `tool_use` block:
+   `{"name": "read_mcp_resource", "input": {"uri": "<resource_uri>"}}`
+2. A **tool result message** with the pre-fetched `text` as the tool result content.
+
+Pairs are inserted in declaration order (the order items appear in `toolset.resources.items`
+across all toolsets, in toolset registration order). When `eager_resources` is empty,
+the transformer is a no-op.
+
+**Rationale for synthetic injection over direct prompt injection:**
+The content arrives in the position the LLM expects for tool results, rather than embedded
+in the system prompt. The LLM understands that it "already called" the tool, which is more
+semantically accurate than presenting resource content as authorless system context. This
+also avoids system-prompt bloat for resources whose content can be large.
+
+**Eager content loading at init time:**
+
+Within `_MCPToolInitializer._process_toolset`, after the resource metadata pass, for each
+item with `eager: True`:
+
+1. Call `read_resource(session, uri)` on the already-open init session (no extra sessions).
+2. If the result is `TextResourceContents`: construct `MCPEagerTextResource` and append to
+   `_MCPToolingContext.eager_resources`.
+3. If the result is `BlobResourceContents`: skip with `log.warning` — blob eager loading
+   is deferred to Phase 2.
+
+Failures on individual eager reads are caught independently and recorded as
+`ToolInitializationException` entries, consistent with tool-loading failures.
+
+---
+
+### 3.6 Resource listing at init
+
+`_MCPToolsetClient` gains two new session-accepting helpers:
+
+- `get_resources_list(session: ClientSession) -> list[Resource]` — paginates `resources/list`
+  with the same `nextCursor` loop and `MAX_ITERATIONS = 1000` guard as `get_tools_list`.
+- `read_resource(session: ClientSession, uri: str) -> ResourceContents` — calls `resources/read`.
+
+`_MCPToolInitializer._process_toolset` is extended: after tools are loaded, if
+`toolset.resources.enabled` and the server advertised `capabilities.resources`:
+
+1. Call `get_resources_list(session)`.
+2. When `toolset.resources.items` is a non-empty list, filter to those URIs only.
+3. Build `MCPResourceMeta` for each resource and append to `_MCPToolingContext.resource_metas`.
+4. For each item with `eager: True`: call `read_resource(session, uri)`, build
+   `MCPEagerResource`, append to `_MCPToolingContext.eager_resources`.
+
+All resource operations reuse the same `open_init_session` span that loads tools.
 
 ```mermaid
 sequenceDiagram
     participant Init as _MCPToolInitializer
-    participant CM as _MCPConnectionManager
+    participant Client as _MCPToolsetClient
     participant Ctx as _MCPToolingContext
-    participant Builder as _MCPResourceContextBuilder
+    participant CardProvider as _MCPResourceCardProvider
+    participant Transformer as _MCPEagerResourceTransformer
     participant LLM
 
-    Init->>CM: get_resources_list()
-    CM-->>Init: [Resource, ...]
-    Init->>CM: read_resource(uri) × N
-    CM-->>Init: ResourceContents × N
-    Init->>Ctx: store MCPFetchedResource × N
+    Init->>Client: open_init_session()
+    Client-->>Init: (session, InitializeResult)
+    Init->>Client: get_tools_list(session) → register MCPTool objects
+    Init->>Client: get_resources_list(session)
+    Client-->>Init: [Resource, ...]
+    Init->>Ctx: store MCPResourceMeta × N
+    Note over Init: for eager items:
+    Init->>Client: read_resource(session, uri) × M
+    Client-->>Init: ResourceContents × M
+    Init->>Ctx: store MCPEagerResource × M
 
-    Note over Builder,LLM: At request time (before first LLM call)
-    Builder->>Ctx: read resources
-    Builder->>LLM: prepend attribution blocks to system context
+    Note over CardProvider,Transformer,LLM: At request time — before first LLM call
+    CardProvider->>Ctx: read resource_metas
+    CardProvider->>LLM: inject frontmatter cards into system prompt
+    Transformer->>Ctx: read eager_resources
+    Transformer->>LLM: prepend synthetic tool call pairs to messages
 ```
 
 ---
 
-### 3.3 Structured output (success path)
+### 3.7 Capability negotiation
 
-**Owner:** `_MCPTool._run_in_stage_async`
+**Data model**
 
-**Change:** `structuredContent` is currently only referenced in the error logging path.
-In the success path, if `text_parts` is empty (the server returned no `TextContent`
-blocks) and `tool_call_result.structuredContent` is non-empty, the structured content
-is serialized as a JSON string and used as `tool_content`. This matches the MCP spec's
-backward-compatibility recommendation: servers that return structured output should also
-include a text serialization, but not all do.
-
----
-
-### 3.4 Capability Negotiation
-
-#### Data model
-
-A new frozen model `MCPServerCapabilities` (in `mcp_tooling/_mcp_server_capabilities.py`)
-records the capabilities and identity advertised by the server at session initialisation:
+A new frozen model `MCPServerCapabilities` (in `mcp_tooling/_mcp_server_capabilities.py`):
 
 | Field | Source |
 |---|---|
@@ -271,40 +397,37 @@ records the capabilities and identity advertised by the server at session initia
 | `protocol_version` | `InitializeResult.protocolVersion` |
 | `supports_tools` | `InitializeResult.capabilities.tools is not None` |
 | `supports_resources` | `InitializeResult.capabilities.resources is not None` |
-| `supports_prompts` | `InitializeResult.capabilities.prompts is not None` (stored for future use) |
+| `supports_prompts` | `InitializeResult.capabilities.prompts is not None` (stored for Phase 2) |
 
-`_MCPToolingContext` gains a new field `server_capabilities: list[MCPServerCapabilities]`.
+**Session refactor**
 
-#### Session refactor
+`_MCPToolsetClient` gains `open_init_session()` — an `@asynccontextmanager` that yields
+`(session, InitializeResult)`, capturing the currently-discarded initialize result. Reuses
+the same connection setup as the existing session context to avoid duplication.
 
-`_MCPConnectionManager.__session_context()` is changed to yield `(session, result)` where
-`result: InitializeResult` is the return value of `await session.initialize()`, which is
-currently discarded. All callers are updated to destructure the tuple.
+`_MCPToolInitializer._process_toolset` uses a **single** `open_init_session` span for the
+entire toolset initialization (tools + resource metadata + eager reads), resolving the
+N+1 session issue.
 
-`_MCPToolInitializer._process_toolset` is restructured to use a **single**
-`__session_context` span for the entire toolset initialisation (tools + resources).
-This resolves the N+1 session issue identified in Review Notes §2 Blocking issue #2.
-
-The helper methods `get_tools_list`, `get_resources_list`, and `read_resource` are
-refactored to accept a `session: ClientSession` parameter; they no longer open sessions
-internally.
-
-#### Capability gating
-
-At the start of `_process_toolset`, `MCPServerCapabilities` is constructed from the
-`InitializeResult` and appended to `_MCPToolingContext.server_capabilities`. Loading is
-then gated as follows:
+**Capability gating**
 
 | Condition | Behaviour |
 |---|---|
 | `capabilities.tools is not None` | Load tools (existing behaviour) |
-| `capabilities.tools is None` | Skip tools; log warning; toolset registered with no tools |
-| `toolset.resources.enabled AND capabilities.resources is not None` | Load resources |
-| `toolset.resources.enabled AND capabilities.resources is None` | Skip silently; log warning |
+| `capabilities.tools is None` | Skip tools; log warning |
+| `resources.enabled AND capabilities.resources is not None` | List resources |
+| `resources.enabled AND capabilities.resources is None` | Skip; log warning |
 
-Capabilities are advisory per the MCP spec and are never enforced at the protocol level.
-`enabled: true` in the toolset config expresses intent; the server's declared capabilities
-are the authoritative gate.
+---
+
+### 3.8 Structured output (success path)
+
+**Owner:** `_MCPTool._run_in_stage_async`
+
+**Change:** In the success path, if `text_parts` is empty and
+`tool_call_result.structuredContent` is non-None, serialize it as a JSON string and use
+it as `tool_content`. This matches the MCP spec's backward-compatibility recommendation
+for servers that return structured output without a text serialization.
 
 ---
 
@@ -312,68 +435,47 @@ are the authoritative gate.
 
 ### Independent error handling per capability
 
-Resources and prompts loading must not block tool registration. Each capability is
-wrapped in its own try/except inside `_process_toolset`. Errors produce a
-`ToolInitializationException` with a `toolset_name` and a capability-specific message
-(e.g. `"Failed to load resources for toolset 'database-assistant'"`), appended to
-`_MCPToolingContext.exceptions`.
+Resource metadata listing, eager content reads, and tool loading are wrapped in independent
+`try/except` blocks inside `_process_toolset`. Failures are recorded as
+`ToolInitializationException` entries in `_MCPToolingContext.exceptions`; a resource
+failure never prevents tools from being registered.
 
-### `get_resources_list` and `get_prompts_list` pagination
+### `get_resources_list` pagination
 
-Both methods follow the same pagination loop as `get_tools_list`: iterate with
-`nextCursor` until exhausted, with a `MAX_ITERATIONS = 1000` guard against infinite
-loops.
+Follows the same `nextCursor` loop and `MAX_ITERATIONS = 1000` guard as `get_tools_list`.
 
 ---
 
 ## Out of Scope
 
 **MCP Prompts (deferred to Phase 2)**
-Loading and integrating MCP server prompts (`prompts/list` + `prompts/get`) is deferred
-to a follow-up iteration. Two integration strategies are under consideration:
-P1 — prompts as skills registered in `SkillsRegistry` (preferred, requires
-argument-resolution design); P2 — prompts injected into the system prompt at
-initialisation. `MCPServerCapabilities.supports_prompts` is stored now so Phase 2 can
-use it without reopening this design.
+Loading and integrating MCP server prompts (`prompts/list` + `prompts/get`) is deferred.
+`MCPServerCapabilities.supports_prompts` is stored now so Phase 2 can use it without
+reopening this design.
 
 **Tool annotations (deferred to Phase 2)**
-Surfacing `title`, `readOnlyHint`, and `destructiveHint` from tool annotations in the
-tool description exposed to the LLM is deferred to a follow-up iteration.
+Surfacing `title`, `readOnlyHint`, and `destructiveHint` in tool descriptions exposed to the LLM.
 
-**Prompts with argument resolution (Option P1 full implementation)**
-The preferred integration (P1) requires deciding how `PromptArgument` values are
-resolved from conversation context. This will be addressed in a follow-up design after
-the team discussion on Option P1 vs P2.
+**Blob resources (deferred to Phase 2)**
+Binary resource contents require DIAL attachment upload via `AttachmentService`. In Phase 1,
+blob resources are skipped with `log.warning` in both listing and eager reads.
 
 **Resource subscriptions (`resources/subscribe`)**
-QuickApps processes resources per-request in a stateless manner. Subscriptions require
-a persistent client session that can receive `notifications/resources/updated` pushes,
-which is not compatible with the current request lifecycle.
+Requires a persistent client session for push notifications — incompatible with the current
+request lifecycle.
 
 **Resource templates (`resources/templates/list`)**
-Parameterized URIs require user input to materialize. There is no UI mechanism for
-providing template arguments in the current QuickApps model.
+Parameterized URIs require user input to materialize. No UI mechanism exists.
 
 **Elicitation**
-The MCP elicitation capability allows a server to request additional data from the user
-mid-tool-call. Implementing it requires a pause/resume mechanism in the orchestrator
-and a DIAL-side UI for presenting the elicitation form. This is a separate design effort.
+Requires a pause/resume mechanism in the orchestrator and DIAL-side UI.
 
 **Stateless protocol (RC 2026-07-28)**
-The upcoming RC eliminates the `initialize()`/`initialized` handshake and `Mcp-Session-Id`.
-Capability negotiation (§3.4) is directly affected: `InitializeResult`-based capability
-gating and the single-session `__session_context` approach will need to be redesigned.
-The RC introduces a `server/discover` method as the replacement mechanism; based on
-available RC documentation it likely returns an `InitializeResult`-equivalent, meaning
-migration would involve replacing `session.initialize()` with a `server/discover()` call
-and processing the response identically. This is speculative pending the finalised RC
-specification. A follow-up design will cover the full transport and capability lifecycle
-refactor once the RC stabilises.
-Reference: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
+Capability negotiation (§3.7) and the single-session approach will need redesigning once
+the RC stabilises. Reference: https://blog.modelcontextprotocol.io/posts/2026-07-28-release-candidate/
 
 **Logging capability**
-MCP log messages sent from server to client (`notifications/message`). Deprecated in
-the 2026-07-28 RC in favour of stderr/OpenTelemetry; not implemented.
+Deprecated in the 2026-07-28 RC; not implemented.
 
 **Roots and Sampling**
 Both deprecated in the 2026-07-28 RC; not implemented.
@@ -382,52 +484,67 @@ Both deprecated in the 2026-07-28 RC; not implemented.
 
 ## Configuration / Usage Examples
 
-### Full example: resources + prompts enabled
-
-```json
-{
-  "tool_sets": [
-    {
-      "type": "mcp",
-      "name": "database-assistant",
-      "description": "PostgreSQL access tools for the orders database",
-      "mcp_server_info": {
-        "url": "https://my-mcp-server/mcp",
-        "protocol": "streamable_http",
-        "authorization": {
-          "type": "bearer",
-          "token": "..."
-        }
-      },
-      "resources": {
-        "enabled": true,
-        "uris": ["schema://tables", "schema://indexes"]
-      }
-    }
-  ]
-}
-```
-
-### Load all resources
-
-```json
-"resources": { "enabled": true }
-```
-
-`uris: null` (the default) means "fetch everything the server exposes".
-
-### Existing config — no change required
+### Lazy loading — all resources from server
 
 ```json
 {
   "type": "mcp",
-  "name": "my-server",
-  "mcp_server_info": { "url": "...", "protocol": "streamable_http" }
+  "name": "database-assistant",
+  "description": "PostgreSQL access tools for the orders database",
+  "mcp_server_info": {
+    "url": "https://my-mcp-server/mcp",
+    "protocol": "streamable_http"
+  },
+  "resources": {"enabled": true}
 }
 ```
 
-`resources` defaults to `{ "enabled": false }`. Behavior is identical to the current
-implementation.
+All resources the server declares are listed as frontmatter cards. The LLM calls
+`read_mcp_resource` to fetch any content it needs.
+
+### Lazy loading with URI filter
+
+```json
+"resources": {
+  "enabled": true,
+  "items": [
+    {"uri": "schema://tables"},
+    {"uri": "schema://indexes"}
+  ]
+}
+```
+
+Only these two resources are exposed. Both are lazy.
+
+### Mixed: one eager, one lazy
+
+```json
+"resources": {
+  "enabled": true,
+  "items": [
+    {"uri": "config://app-settings", "eager": true},
+    {"uri": "schema://tables"}
+  ]
+}
+```
+
+`config://app-settings` is pre-fetched at init and injected as a synthetic tool call pair
+before the first user message. `schema://tables` appears as a frontmatter card only —
+fetched when the LLM calls `read_mcp_resource`.
+
+### All resources eager
+
+```json
+"resources": {
+  "enabled": true,
+  "items": [
+    {"uri": "config://app-settings", "eager": true},
+    {"uri": "schema://tables", "eager": true}
+  ]
+}
+```
+
+Both resources are pre-fetched. Two synthetic tool call pairs are injected.
 
 ### `DialMCPToolSet` — same fields apply
 
@@ -435,9 +552,21 @@ implementation.
 {
   "type": "dial-mcp",
   "deployment_id": "toolsets/abc123/MyServer",
-  "resources": { "enabled": true }
+  "resources": {"enabled": true}
 }
 ```
+
+### Existing config — no change required
+
+```json
+{
+  "type": "mcp",
+  "name": "my-server",
+  "mcp_server_info": {"url": "...", "protocol": "streamable_http"}
+}
+```
+
+`resources` defaults to `None`. Behaviour is identical to the current implementation.
 
 ---
 
@@ -451,7 +580,7 @@ None. All new fields are optional with `enabled: false` defaults.
 
 Running `make dump_app_schema` after this change regenerates the JSON manifest schema to
 include `resources` as an optional object on `MCPToolSet` and `DialMCPToolSet`. Existing
-manifests that omit this field continue to validate and behave as before.
+manifests that omit this field continue to validate and behave identically.
 
 ---
 
@@ -461,60 +590,23 @@ manifests that omit this field continue to validate and behave as before.
 
 | Change | Detail |
 |---|---|
-| ✚ `MCPResourcesConfig` in `mcp.py` | New frozen model: `enabled`, `uris` |
-| ~ `MCPToolSet` in `mcp.py` | Add `resources: MCPResourcesConfig` |
-| ~ `DialMCPToolSet` in `dial_mcp.py` | Add `resources: MCPResourcesConfig` |
+| ✚ `MCPResourceConfig` in `mcp.py` | New frozen model: `uri`, `eager: bool = False` |
+| ✚ `MCPResourcesConfig` in `mcp.py` | New frozen model: `enabled`, `items: list[MCPResourceConfig] \| None` |
+| ~ `MCPToolSet` in `mcp.py` | Add `resources: MCPResourcesConfig \| None = None` |
+| ~ `DialMCPToolSet` in `dial_mcp.py` | Add `resources: MCPResourcesConfig \| None = None` |
 
 ### `mcp_tooling/`
 
 | Change | Detail |
 |---|---|
-| ✚ `_mcp_fetched_resource.py` | New frozen Pydantic model `MCPFetchedResource` |
-| ✚ `_mcp_resource_context_builder.py` | Converts `MCPFetchedResource` list to attributed Markdown blocks; injected into orchestrator system context |
-| ✚ `_mcp_server_capabilities.py` | New frozen Pydantic model `MCPServerCapabilities` |
-| ~ `_mcp_tooling_context.py` | Add `resources: list[MCPFetchedResource]`, `server_capabilities: list[MCPServerCapabilities]` |
-| ~ `_mcp_connection_manager.py` | `__session_context` yields `(session, InitializeResult)`; helpers (`get_tools_list`, `get_resources_list`, `read_resource`) accept `session` parameter; single session per toolset initialisation |
-| ~ `_mcp_tool_initializer.py` | Load resources after tools in `_process_toolset`; gate each capability on `InitializeResult.capabilities` (§3.4) |
-| ~ `mcp_tooling_module.py` | Wire `_MCPResourceContextBuilder` |
+| ✚ `_mcp_resource_meta.py` | New frozen model `MCPResourceMeta` (URI, name, description, mime_type, toolset attribution — no content; covers text and blob resources) |
+| ✚ `_mcp_eager_resource.py` | `MCPEagerTextResource(MCPResourceMeta)` with `text: str`; `MCPEagerResource` type alias (union, blob variant added in Phase 2) |
+| ✚ `_mcp_server_capabilities.py` | New frozen model `MCPServerCapabilities` |
+| ✚ `_mcp_resource_card_provider.py` | Implements `PromptPartProvider`; renders frontmatter cards for all listed resources; registered via `@multiprovider` |
+| ✚ `_mcp_eager_resource_transformer.py` | Implements `MessagesTransformer`; prepends synthetic `read_mcp_resource` tool call pairs for eager resources |
+| ✚ `_read_mcp_resource_tool.py` | Internal tool; resolves URI to toolset via `_MCPToolingContext.resource_metas`; fetches content via `_MCPSessionManager` on demand |
+| ~ `_mcp_tooling_context.py` | Add `resource_metas`, `eager_resources`, `server_capabilities` fields with thread-safe helpers |
+| ~ `_mcp_toolset_client.py` | Add `open_init_session()` context manager; add `get_resources_list(session)`, `read_resource(session, uri)` helpers |
+| ~ `_mcp_tool_initializer.py` | Use `open_init_session`; capability gating via `InitializeResult`; list resources and read eager content in `_process_toolset` |
+| ~ `mcp_tooling_module.py` | Register `_MCPResourceCardProvider`, `_MCPEagerResourceTransformer`, `_ReadMcpResourceTool` |
 | ~ `_mcp_tool.py` | Surface `structuredContent` as text in success path when no text blocks present |
-
----
-
-## Review Notes — Round 1
-
-- **Reviewer:** Claude (quickapps-design-review skill)
-- **Date:** 2026-06-24
-
-### Verdict
-
-`Blocking issues must be addressed`
-
-The doc is thorough, well-structured, and well-grounded in the codebase. The resources design is production-ready; the secondary fixes section is accurate and code-verified. Two issues require resolution before approval: an unresolved integration decision (§3.3) that should either be decided here or its deferral explicitly committed in Out of Scope, and an uncovered concurrency / session-lifetime concern that emerges from §3.2 Loading. A small number of other gaps follow.
-
-### Blocking issues
-
-1. **§3.3 Prompts — open integration decision left inline** — The doc acknowledges that the P1 vs P2 decision is unresolved and defers it, but this appears in the middle of the *Proposed Design* section rather than being handled cleanly. The *Proposed Design* section describes what will be built; a design that defers its own core decision is incomplete. Either (a) make the decision here (P2 is described as fully implementable without further design), or (b) move the entire §3.3 prose to *Out of Scope* — which already contains "Prompts with argument resolution (Option P1 full implementation)" — and replace §3.3 with a single placeholder sentence explaining that prompts loading is deferred. As written, the doc mixes deferred and decided work in the same section, which will confuse implementers.
-   **Suggestion:** Either decide P1 vs P2 and write the section completely, or retire §3.3 from *Proposed Design* and fold everything into *Out of Scope*.
-
-2. **§3.2 Resources — Loading: session-per-resource opens N+1 MCP sessions** — `get_resources_list()` and `read_resource(uri)` are described as methods on `_MCPConnectionManager`, which opens a new `ClientSession` (via `__session_context`) for every call. `_process_toolset` would call `read_resource(uri)` once per retained resource URI. For a server exposing 20 resources, this is 21 MCP sessions (1 list + 20 reads). SSE sessions are especially expensive. The design should specify whether (a) all resource reads happen within a single session, (b) a separate single-session helper method handles both list + reads, or (c) the existing single-session approach is preserved by adding an in-session helper. This also applies to `get_prompts_list`. Currently `get_tools_list` opens one session; extending `_process_toolset` with per-call methods would silently balloon session count.
-   **Suggestion:** Specify that resource listing and all reads happen within a single `__session_context` span — e.g., a new `get_resources_with_contents(uris)` method that lists, filters, and reads inside one session — rather than describing them as independent callable methods.
-
-### Suggestions
-
-1. **§3.2 Resources — Injection into system context: `_MCPResourceContextBuilder` integration path not specified** — The doc states the orchestrator "prepends these blocks to the system context" and that `_MCPResourceContextBuilder` is "wired in `MCPToolingModule`", but the actual wiring mechanism is not described. The system prompt is assembled by `_AddSystemPromptTransformer` consuming all `PromptPartProvider` multibindings (see `core/agent/_messages_transformers.py`). The doc should state that `_MCPResourceContextBuilder` implements `PromptPartProvider` and is registered as a `PromptPartProvider` in `MCPToolingModule` via `@multiprovider`, or describe an alternative approach. Without this, an implementer will not know how to wire it.
-   **Suggestion:** Add one sentence to §3.2 Injection: "`_MCPResourceContextBuilder` implements `PromptPartProvider` and is registered via `@multiprovider` in `MCPToolingModule.configure`, consistent with how `SkillsRegistry` contributes its skills XML to the system prompt."
-
-2. **§3.3 Prompts — `_MCPToolingContext.prompts` stores `Prompt` alongside `toolset_name` but the data model doesn't show this** — §3.3 says "stored in `_MCPToolingContext.prompts: list[Prompt]` alongside their originating `toolset_name`", but a `list[Prompt]` cannot carry `toolset_name` per element. The design should introduce a small wrapper (similar to `MCPFetchedResource`) or clarify that `toolset_name` is stored separately. This mismatch between prose and proposed type will cause an implementation ambiguity.
-   **Suggestion:** Either define a `MCPPromptEntry` wrapper (name, toolset_name, prompt) analogous to `MCPFetchedResource`, or clarify the data model.
-
-3. **§3.4 Tool annotations — `_convert_to_openai_tool` signature change not called out** — The current method signature is `_convert_to_openai_tool(name, description, input_schema)` and is a `@staticmethod`. Adding annotation support requires either passing the `Tool` object or the `AnnotatedTool.annotations` field. The doc says the method is "extended to incorporate `tool.annotations` when present" but doesn't address what its new signature looks like. The Summary of Changes table notes only the semantic effect, not the interface change.
-   **Suggestion:** Add a note to §3.4 clarifying that the `@staticmethod` will receive a `tool: Tool` parameter (replacing the current three-argument form) and that the `# todo add Title to config` comment in `_mcp_tool_initializer.py:135` is resolved by this change.
-
-4. **§3.2 Resources — blob handling detail is disproportionate and partially speculative** — The paragraph about uploading blob resources to DIAL via `AttachmentService` (last paragraph of §3.2 Loading) is an edge-case concern that goes down to implementation detail. It also contradicts the `MCPFetchedResource` data model table, which says `blob` holds "base64" content — but then states the DIAL URL "replaces the raw base64 `blob` field in the stored `MCPFetchedResource`", meaning the field has a semantically ambiguous dual role (raw base64 vs DIAL URL). This needs either a clearer data model (separate `dial_url` field?) or simpler scoping (defer blob resource handling entirely).
-   **Suggestion:** Clarify the `MCPFetchedResource.blob` field semantics when it is replaced by a DIAL URL, or defer blob resource support to a follow-up and note it in *Out of Scope*.
-
-### Nits
-
-1. **§3.2 Resources — Injection: description attribution logic** — The prose says "when `resource_description` and `toolset_description` are both present, `resource_description` takes precedence." But the Markdown template shows only one of the two, not both. If only one is ever rendered, the precedence rule is the full behavior — calling it "whichever is more specific" without showing both being rendered simultaneously is slightly misleading. Minor wording cleanup recommended.
-
-2. **Migration — Non-breaking changes: "no migration required" prose** — The non-breaking changes subsection says "Running `make dump_app_schema` ... regenerates the JSON manifest schema ... Existing manifests that omit these fields continue to validate and behave as before." Per project documentation conventions, this section is the one sanctioned home for such facts, so the placement is correct — but the sentence about existing manifests is a restatement of what was already said in Design Goals ("Existing `MCPToolSet` and `DialMCPToolSet` manifests without the new fields behave identically to today"). Consider trimming to avoid repetition.
