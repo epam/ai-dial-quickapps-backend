@@ -8,11 +8,11 @@ When the orchestrator LLM calls a deployment tool (subagent), it has no way to k
 
 ### 1. Redundant context injection
 
-The LLM's universal fallback assumption is that every tool call is stateless. So when it calls a history-aware subagent for the second time — say, to provide an employee ID that the subagent asked for — it re-summarizes the entire prior exchange into `query`:
+The LLM's universal fallback assumption is that every tool call is stateless. So when it calls a history-aware subagent for the second time — say, to provide an employee ID that the subagent asked for — it re-summarizes the entire prior exchange into its request:
 
 > "Previously you asked me to assign badge 'Happy 5th Anniversary' to John Smith and requested an EmployeeID. The ID is 123456, please proceed."
 
-But because `conversation_mode.resumable=true`, the backend has already reconstructed and prepended the prior `[user, assistant]` exchange. The subagent now receives the prior context twice: once in the prepended history, once in the new `query`. This causes confusion, wasted tokens, and potentially incorrect behavior.
+But because `conversation_mode.resumable=true`, the backend has already reconstructed and prepended the prior `[user, assistant]` exchange. The subagent now receives the prior context twice: once in the prepended history, once in the new request. This causes confusion, wasted tokens, and potentially incorrect behavior.
 
 The LLM should instead send only the **delta** — the new information that wasn't in the prior exchange:
 
@@ -77,7 +77,7 @@ resumable=true             — backend reconstructs [user, assistant] pairs from
 
 The admin configuring the manifest sets `resumable` based on what they know about the target DIAL app: `true` if it needs prior history sent to it; `false` (or omit `conversation_mode` entirely) if it handles continuity itself or has no memory.
 
-**Location:** `ConversationMode` group model in `src/quickapp/config/tools/deployment.py`, exposed as the `conversation_mode` field on `DialDeploymentTool` (sibling to `content_propagation`).
+**Location:** `ConversationMode` group model in `src/quickapp/config/tools/deployment.py`, exposed as the `conversation_mode` field on `DialDeploymentTool`. The same field is also accepted on the two shorthand forms that resolve to a deployment tool — `DialDeploymentSimpleTool` and `DialAppToolSet` — and is threaded onto the synthetic `DialDeploymentTool` when they are expanded. On `DialAppToolSet` it applies only to the chat-completion branch; if the toolset resolves to MCP, a set `resumable` is ignored with a warning.
 
 `propagate_history=True` is **deprecated** (superseded by `conversation_mode.resumable=true`) but still triggers the same extraction path during its grace period.
 
@@ -147,16 +147,6 @@ When `session_id` is `None`, falls back to filtering by `tool_name` only — pre
 
 ---
 
-## Out of Scope
-
-**LLM choosing `conversation_mode`.** Issue #88 proposed `conversation_mode` as a runtime tool argument. This design keeps it as operator config: the app author knows at wiring time whether the subagent is resumable. Making the LLM choose adds prompt-engineering fragility — the LLM must correctly infer statefulness from a description and reliably pick the right mode on every call.
-
-**`conversation_summary` mode.** Mentioned in issue #88 as a future extension. Deferred until there is a concrete use case and a summary provider is defined.
-
-**Removal of `propagate_history`.** Triggers the same extraction path as `conversation_mode.resumable=true`. It is now deprecated in favor of `conversation_mode.resumable`.
-
----
-
 ## Configuration / Usage Examples
 
 ### Resumable subagent — multi-step task with session isolation
@@ -210,6 +200,8 @@ Default is non-resumable; existing manifests without `conversation_mode` and `pr
 | Component | Change |
 |---|---|
 | `config/tools/deployment.py` | `ConversationMode` group model with a `resumable` boolean flag, exposed as the `conversation_mode` field on `DialDeploymentTool`. `ContentPropagation.propagate_history` deprecated in favor of it. |
+| `config/tools/deployment_simple.py`, `config/toolsets/dial_app.py` | Accept the same `conversation_mode` field on the two shorthand forms that expand into a deployment tool. |
+| `dial_app_tooling/_dial_app_resolver.py`, `dial_deployment_tooling/_deployment_tool_initializer.py` | Thread `conversation_mode` onto the synthetic `DialDeploymentTool` when expanding those forms; warn when `resumable` is set on a toolset that resolves to MCP. |
 | `common/staged_base_tool.py` | Add `enrich_openai_tool_schema(open_ai_tool)` extension hook (no-op in base, overridden in `BaseDeploymentTool`). |
 | `core/agent/agent_module.py` | `provide_openai_tools`: call `tool.enrich_openai_tool_schema(open_ai_tool)` for every tool after `_append_default_props`. |
 | `dial_deployment_tooling/base_deployment_tool.py` | Override `enrich_openai_tool_schema`: inject `session_id` parameter when `conversation_mode.resumable=true`. `_run_in_stage_async`: pop `session_id` from kwargs, generate from `tool_call_id` on first call, inject into result content, pass to `_extract_tool_history`. `_extract_tool_history`: accept `session_id`, filter by anchor (`tc.id`) or follow-up (`args["session_id"]`) when provided. Fix empty-content-with-state edge case. |

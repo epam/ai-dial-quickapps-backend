@@ -772,6 +772,18 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool. Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP."
         }
       },
       "required": [
@@ -956,6 +968,18 @@
           "description": "Whether the tool is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
         },
         "type": {
           "const": "dial-deployment-simple",
