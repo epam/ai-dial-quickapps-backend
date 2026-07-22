@@ -1,13 +1,13 @@
 import pytest
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._utils import reject_absolute_path
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
-def _resolver(agent_home_dir: str = "", appdata: str | None = "appbucket") -> _HomePathResolver:
-    return _HomePathResolver(
+def _resolver(agent_home_dir: str = "", appdata: str | None = "appbucket") -> HomePathResolver:
+    return HomePathResolver(
         dial_file_service=make_service(appdata=appdata),
         dial_files_config=make_config(agent_home_dir),
     )
