@@ -43,6 +43,14 @@ class TestFetchExternal:
         assert "internal_file" not in exc.value.message
 
     @pytest.mark.asyncio
+    async def test_home_relative_path_rejected_as_already_in_storage(self):
+        fetcher = _make_fetcher()
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await fetcher.fetch_external("reports/img.png")
+        assert exc.value.parameter_name == "url"
+        assert "DIAL storage" in exc.value.message
+
+    @pytest.mark.asyncio
     async def test_repeat_fetch_served_from_request_cache(self):
         fetched = FetchedBytes(data=b"hello", content_type="text/plain", filename="a.txt")
         external = MagicMock()

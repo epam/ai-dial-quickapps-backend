@@ -85,9 +85,10 @@ class WebContentFetcher:
     async def fetch_external(self, url: str, parameter_name: str = "url") -> FetchedBytes:
         """Classify ``url`` and fetch it, or raise a tool-facing parameter error.
 
-        * DIAL URL -> rejected: the resource is already in DIAL storage and the
-          fetch tools are for *external* retrieval only. The message stays
-          tool-neutral — which workspace tools exist varies per app.
+        * DIAL URL or agent-home-relative path -> rejected: the resource is
+          already in DIAL storage and the fetch tools are for *external*
+          retrieval only. The message stays tool-neutral — which workspace
+          tools exist varies per app.
         * Unsupported scheme -> the canonical unsupported-scheme error.
         * External -> fetched through :class:`ExternalUrlFetcher`; its
           ``ExternalFetchError`` / ``ExternalFetchDisabledError`` (egress
@@ -97,7 +98,7 @@ class WebContentFetcher:
           the lifetime of this (request-scoped) instance, keyed by URL.
         """
         scheme = classify_url(url, self.__dial_url)
-        if scheme == UrlScheme.DIAL:
+        if scheme in (UrlScheme.DIAL, UrlScheme.DIAL_APPDIR_RELATIVE):
             raise InvalidToolCallParameterException(
                 parameter_name,
                 f"URL {url} already points to a file in DIAL storage and does not "
