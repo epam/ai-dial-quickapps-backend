@@ -8,7 +8,6 @@ helper owns exactly that shared half; the tool decides what to do with the
 returned :class:`FetchedBytes`.
 """
 
-import logging
 from email.message import Message
 
 from injector import inject
@@ -22,8 +21,6 @@ from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalUrlFetcher,
     FetchedBytes,
 )
-
-logger = logging.getLogger(__name__)
 
 # Non-``text/*`` MIME types that are nevertheless textual and safe to decode /
 # inline. Kept small and explicit in phase-1 (no content-sniffing library).

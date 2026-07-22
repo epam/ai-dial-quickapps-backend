@@ -12,6 +12,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
+from quickapp.shared.external_fetch.external_url_fetcher import FetchedBytes
 from quickapp.shared.external_fetch.web_content_fetcher import WebContentFetcher
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from quickapp.web_tooling._truncation import (
@@ -98,7 +99,7 @@ class _WebFetchTool(StagedBaseTool):
             stage_wrapper.add_result(result)
         return result
 
-    def __load_into_context(self, url: str, fetched: Any) -> ToolCallResult:
+    def __load_into_context(self, url: str, fetched: FetchedBytes) -> ToolCallResult:
         if not WebContentFetcher.is_textual(fetched.content_type):
             raise InvalidToolCallParameterException(
                 "url",
@@ -145,7 +146,7 @@ class _WebFetchTool(StagedBaseTool):
         # the head is valid by construction.
         return compose_truncated_content(notice, head.decode("utf-8", errors="ignore"))
 
-    async def __save_to_workspace(self, save_path: str, fetched: Any) -> ToolCallResult:
+    async def __save_to_workspace(self, save_path: str, fetched: FetchedBytes) -> ToolCallResult:
         # A ``files/``-prefixed path would be returned verbatim by
         # ``resolve_appdata_url`` (bypassing home-prefixing and traversal validation),
         # escaping the agent home. Require a home-relative destination.
