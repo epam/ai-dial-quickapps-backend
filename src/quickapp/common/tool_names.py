@@ -10,6 +10,7 @@ INTERNAL_SKILLS_READ_SKILL_TOOL_NAME = "internal_skills_read_skill"
 INTERNAL_TIMEAWARENESS_CURRENT_TIMESTAMP_TOOL_NAME = "internal_timeawareness_current_timestamp"
 INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME = "internal_code_execution_python_interpreter"
 INTERNAL_WEB_FETCH_TOOL_NAME = "internal_web_fetch"
+INTERNAL_REPRESENTATION_ADD_ATTACHMENT_TOOL_NAME = "internal_representation_add_attachment"
 
 # DIAL files tools — all share the ``internal_file_`` prefix.
 INTERNAL_FILE_TOOL_NAME_PREFIX = "internal_file_"

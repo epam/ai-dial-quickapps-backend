@@ -61,7 +61,7 @@ class AgentModule(Module):
 - **Define it in (or next to) that module** (e.g. `core/agent/agent_settings.py`, `internal_tooling/internal_tooling_settings.py`, `config/logging_settings.py`). Settings shared across modules live in `config/` (e.g. `config/agent_settings.py`).
 - Use **pydantic-settings** (`BaseSettings`) for the class. Use `Field(..., alias="ENV_VAR_NAME")` so existing env var names (often with different prefixes) are supported.
 - **Bind the settings class in that module’s `configure()`** (e.g. `binder.bind(AgentSettings, to=AgentSettings, scope=singleton)`). Consumers receive the same instance via constructor injection.
-- **Do not** add `os.getenv` / `os.environ` in application or tooling code. The only place that should read env for app config is inside the settings classes (or a dedicated loader like `LoggingSettings.from_env()` when you need guaranteed env reads).
+- **Do not** add `os.getenv` / `os.environ` in application or tooling code. The only place that should read env for app config is inside the settings classes.
 - **Document** the purpose and default of each env variable (e.g. in the settings class docstring or the table below).
 
 ### Example (settings class)
@@ -75,7 +75,6 @@ class AgentSettings(BaseSettings):
     model_config = SettingsConfigDict()
 
     show_usage_statistics: bool = Field(default=False, alias="SHOW_USAGE_STATISTICS")
-    chat_message_log_length: Optional[int] = Field(default=None, alias="CHAT_MESSAGE_LOG_LEN")
     default_agent_max_iterations: int = Field(default=15, alias="DEFAULT_AGENT_MAX_ITERATIONS")
 ```
 
@@ -158,6 +157,30 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 
 - **Use the logging module**: Use Python’s `logging` (e.g. `logger.info`, `logger.debug`, `logger.exception`) instead of `print()` for production behavior. Configure log levels appropriately (e.g. via `LoggingSettings` / `QUICKAPP_LOG_LEVEL`).
 - **Graceful error handling**: Use exceptions where appropriate. Avoid silent failures; log or re-raise with clear messages so issues are visible and debuggable.
+
+### Level semantics
+
+Pick the level from what the record *means for the service*, not from how it reads while developing (design: [`docs/designs/log_levels_and_content_policy.md`](docs/designs/log_levels_and_content_policy.md)):
+
+| Level | Meaning | Examples |
+|---|---|---|
+| **DEBUG** | Developer diagnostics: control flow, intermediate values, structure summaries. Verbose, not a narrative. | State-holder summaries, routine rejections/skips, perf reports |
+| **INFO** | The operational narrative: startup/config summaries plus the per-request lifecycle skeleton. Metadata-only, low bounded volume per request. | Request received, model call, tool executed, fallback applied, request completed |
+| **WARNING** | Something unexpected happened and the service handled it; the request continues, possibly degraded. | Stream recovery applied, unsupported content block tolerated, tool failure handed to a fallback, deprecated config |
+| **ERROR** | A failure that affected the request outcome or cost the service functionality; each occurrence is worth investigating. | Unhandled request exception (with `error_reference`), toolset init failure surfaced to the user |
+
+### Single-writer rule for ERROR (and WARNING)
+
+- A failure is logged at **ERROR exactly once**, by the layer that *owns its final handling*. In the request path that owner is `_QuickAppCompletion` (the `error_reference` record).
+- A layer that hands a failure onward — to a fallback strategy, a recovery policy, or by (re-)raising for an upstream handler — logs at **WARNING or not at all**, never ERROR. `StagedBaseTool` (the tool choke point) writes the single WARNING for a tool failure; layers beneath it that merely detect and raise (e.g. `_MCPTool`) stay at DEBUG.
+- One failure gets **one salient record per severity** — do not re-log the same failure as it propagates up.
+
+### Content rule (metadata over payload)
+
+- Records at **every** level (DEBUG included) carry structure, not content: roles, counts/sizes, durations, tool/skill/deployment/model names, identifiers, statuses/outcomes, error codes and types, MIME types, HTTP status codes, header **names**, and URLs stripped to scheme/host/path (use `common.url_sanitization.sanitize_url_for_log`).
+- Never log message bodies, tool-call argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings/fragments. The rule is an allowlist: when in doubt, a value is content. This includes exception messages our own code raises — keep response bodies off them (e.g. `ToolErrorException.__str__` is structural; the body stays on the `error_message` attribute for the LLM/user channels).
+- Payload debugging is gated behind the `LOG_PAYLOADS` switch: emit an unconditional structure summary, then pass the payload through `common.payload_logging.log_payload` (a no-op unless `LOG_PAYLOADS=true`, truncating each field and prefixing the record with the `[payload]` marker). Never log payload content unconditionally.
+- Lifecycle-skeleton records use `common.lifecycle_logging.format_event` — a stable prefix plus `key=value` fields — so structured output (#438) and request ids (#439) can enrich them later without rewording.
 
 ---
 

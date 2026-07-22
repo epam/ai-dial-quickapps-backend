@@ -18,7 +18,7 @@ from quickapp.config.dial_deployment import DialDeploymentConfig
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.hooks import HookConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
-from quickapp.config.prompt import AgentSystemPromptConfig
+from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
@@ -75,8 +75,10 @@ def _orchestrator_deployment_field() -> FieldInfo:
 
 class OrchestratorConfig(BaseModel):
     deployment: DialDeploymentConfig = _orchestrator_deployment_field()  # type: ignore[assignment]
-    system_prompt: AgentSystemPromptConfig = Field(
-        description="The configuration for the system prompt."
+    system_prompt: AgentSystemPromptConfig = Field(  # type: ignore[assignment]
+        default_factory=lambda: CustomSystemPromptConfig(content="", variables={}),
+        json_schema_extra={"default": {"type": "custom", "content": "", "variables": {}}},
+        description="The configuration for the system prompt.",
     )
     max_iterations: int = _max_iterations_field()  # type: ignore[assignment]
     propagate_stages: bool = Field(
@@ -167,6 +169,13 @@ class ExternalUrlFetchConfig(BaseModel):
     )
 
 
+class RepresentationToolingConfig(BaseModel):
+    add_attachment: bool = Field(
+        default=True,
+        description="Set to false to disable the internal_representation_add_attachment tool.",
+    )
+
+
 class Features(BaseModel):
     timestamp: TimestampConfig | None = Field(
         default_factory=ToolCallTimestampConfig,
@@ -197,6 +206,15 @@ class Features(BaseModel):
             "Built-in internal_web_fetch tool: fetch an external resource and return "
             "it inline, or persist it to the workspace when a save_path is given "
             "(binary / oversized content must be saved rather than read inline)."
+        ),
+    )
+    representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Enables tools that control how the agent surfaces its output to the user. "
+            "Omit or set to null to disable the whole section. "
+            "Set to {} to enable with defaults, or set individual sub-fields to false to "
+            "disable specific tools while keeping the section enabled."
         ),
     )
 

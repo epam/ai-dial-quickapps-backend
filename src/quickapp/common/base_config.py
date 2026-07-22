@@ -9,9 +9,9 @@ from pydantic.fields import FieldInfo
 
 from quickapp.common.dial_schema import DialJSONSchemaExtensions
 from quickapp.common.feature_settings import FeatureSettings
+from quickapp.common.schema_settings import SchemaSettings
 
 _DIAL_SCHEMA_URL = "https://dial.epam.com/application_type_schemas/schema#"
-_DIAL_ID_PREFIX = "https://mydial.epam.com/custom_application_schemas/"
 
 _PREVIEW_MARKER = "x-preview"
 
@@ -535,7 +535,7 @@ class BaseApplicationTypeConfig(BaseModel):
 
         # Add DIAL-specific root properties
         if include_dial_fields:
-            schema["$id"] = f"{_DIAL_ID_PREFIX}{cls._dial_schema_id}"
+            schema["$id"] = SchemaSettings().resolve_schema_id(cls._dial_schema_id)
             schema["$schema"] = _DIAL_SCHEMA_URL
             schema[DialJSONSchemaExtensions.DISPLAY_NAME] = cls._dial_application_type_display_name
             schema[DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER] = (

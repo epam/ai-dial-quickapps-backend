@@ -31,7 +31,12 @@ from pydantic import SecretStr
 
 from quickapp.app_factory import AppFactory
 from quickapp.common import StagedBaseTool
-from quickapp.config.application import ApplicationConfig, Features, OrchestratorConfig
+from quickapp.config.application import (
+    ApplicationConfig,
+    Features,
+    OrchestratorConfig,
+    RepresentationToolingConfig,
+)
 from quickapp.config.context import FileContextConfig
 from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
 from quickapp.config.dial_files import DialFilesConfig
@@ -77,6 +82,7 @@ def build_dump_application_config() -> ApplicationConfig:
             timestamp=ToolCallTimestampConfig(),
             dial_files=DialFilesConfig(),
             web_fetch=WebFetchConfig(enabled=True),
+            representation_tooling=RepresentationToolingConfig(),
         ),
     )
 

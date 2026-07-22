@@ -3,7 +3,28 @@ from injector import inject
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.dial_files_tooling._utils import validate_relative_path
+
+
+def _validate_relative_path(path: str) -> None:
+    """Reject relative paths that are unsafe or malformed (leading '/', '..', etc.).
+
+    Deliberately laxer than ``is_appdir_relative`` in ``common.url_classification``:
+    this guards ``path`` parameters already known to be home-relative (file tools
+    pass dirs without a trailing slash, arbitrary names, etc.), while the predicate
+    detects the convention in arbitrary strings.
+    """
+    if path != path.strip():
+        raise InvalidToolCallParameterException(
+            "path", "path must not have leading/trailing whitespace"
+        )
+    if path.startswith("/"):
+        raise InvalidToolCallParameterException("path", "path must not start with '/'")
+    segments = path.split("/")
+    if ".." in segments:
+        raise InvalidToolCallParameterException("path", "path must not contain '..'")
+    # Trailing '' (caused by a trailing '/') is allowed to denote a folder URL.
+    if "" in segments[:-1]:
+        raise InvalidToolCallParameterException("path", "path must not contain empty segments")
 
 
 @inject
@@ -12,8 +33,8 @@ class HomePathResolver:
 
     The agent home prefix (``files/{appdata}/{agent_home_dir}``) is resolved once
     per request (it may require a ``my_appdata_home()`` API call) and cached. Shared
-    by the file tools, the path-argument transformer, and the web-fetch tool so the
-    home is resolved a single time per request.
+    by the file tools, the path-argument transformer, and any other agent-home
+    consumer so the home is resolved a single time per request.
     """
 
     def __init__(
@@ -34,7 +55,7 @@ class HomePathResolver:
             )
         if path.startswith("files/"):
             return path
-        validate_relative_path(path)
+        _validate_relative_path(path)
         home = await self.resolve_home_dir()
         return f"{home}{path}"
 

@@ -1,6 +1,6 @@
 # Design: Enforce Tool Call
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Dependencies:**
   - None
 

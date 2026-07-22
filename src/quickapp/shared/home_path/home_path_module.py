@@ -8,7 +8,7 @@ class HomePathModule(Module):
     """DI binding for the shared agent-home path resolver.
 
     Request-scoped so the agent home dir is resolved once per request and shared
-    between the DIAL-files tools, the path-argument transformer, and the web-fetch
+    between the DIAL-files tools, the path-argument transformer, and any other
     tool. Previously bound inline in ``DialFilesToolingModule``.
     """
 

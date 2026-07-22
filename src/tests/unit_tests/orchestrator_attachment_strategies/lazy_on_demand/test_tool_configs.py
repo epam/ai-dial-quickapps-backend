@@ -13,6 +13,15 @@ def _attachment_url_description(tool):
 
 
 class TestRenderGetContentToolConfig:
+    def test_describes_cross_turn_reload_behavior(self):
+        description = _function_description(GET_CONTENT_TOOL_CONFIG)
+        assert "not kept across user turns" in description
+        assert "call this tool again" in description
+
+    def test_attachment_url_parameter_describes_file_url_form(self):
+        param_description = _attachment_url_description(GET_CONTENT_TOOL_CONFIG)
+        assert "file:url::" in (param_description or "")
+
     def test_appends_accepted_mime_types_to_function_description(self):
         rendered = render_get_content_tool_config(["application/pdf", "text/csv"])
         description = _function_description(rendered)

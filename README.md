@@ -131,16 +131,18 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | **DIAL Core**                              |                            |          |                                                                                                              |
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
+| `APP_SCHEMA_ID`                            | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used. |
 | **Logging**                                |                            |          |                                                                                                              |
-| `LOG_FORMAT`                               | See below ¹                | No       | Custom logging format string. The default references `%(otel_context)s`, a synthetic field populated by `OtelAwareFormatter` to a `[trace_id=… span_id=… resource.service.name=… trace_sampled=…] ` block when OTEL log correlation is active (`OTEL_PYTHON_LOG_CORRELATION=true` and a span is in scope) and to an empty string otherwise. Custom formats may reference `%(otelTraceID)s`/`%(otelSpanID)s`/`%(otelServiceName)s`/`%(otelTraceSampled)s` directly, but those placeholders only resolve while correlation is on. |
-| `LOG_DATE_FORMAT`                          | `%Y-%m-%d %H:%M:%S`        | No       | `strftime`-style format for the `%(asctime)s` field                                                          |
+| `DIAL_SDK_LOG_FORMAT`                      | `text`                     | No       | Console log output format: `text` (human-readable) or `json` (escape-safe, one record per line). See [docs/logging.md](docs/logging.md). |
+| `DIAL_SDK_TEXT_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom `%`-style format string for `text` output. Unset (default) keeps the built-in format with the conditional OTEL trace block. |
+| `DIAL_SDK_JSON_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom template for `json` output — a JSON document whose string leaves are `%`-style format strings, values escaped via `json.dumps`. |
 | `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
 | `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
-| `LOG_MULTILINE_LOG_ENABLED`                | `false`                    | No       | Enable multiline log mode                                                                                    |
+| `LOG_PAYLOADS`                             | `false`                    | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
+| `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                     | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
 | **Agent**                                  |                            |          |                                                                                                              |
 | `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
 | `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
-| `CHAT_MESSAGE_LOG_LEN`                     | `-1` (unlimited)           | No       | Character limit for message content previews in logs                                                         |
 | `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
 | **Python Interpreter**                     |                            |          |                                                                                                              |
@@ -169,7 +171,12 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
 | `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
 | **Observability**                          |                            |          |                                                                                                              |
-| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                           |
+| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name stamped on all exported telemetry (traces, metrics, logs)                                       |
+| `OTEL_TRACES_EXPORTER`                     | —                          | No       | Set to `otlp` to enable tracing and export spans over OTLP/gRPC. Instruments the FastAPI server and outgoing HTTP clients (`httpx`, `requests`, `aiohttp`, `urllib`) and stamps trace context onto log records — see [docs/logging.md](docs/logging.md). |
+| `OTEL_METRICS_EXPORTER`                    | —                          | No       | Comma-separated metric exporters: `otlp` (push over OTLP/gRPC) and/or `prometheus` (serve a scrape endpoint). Enables FastAPI and system/process metrics.  |
+| `OTEL_LOGS_EXPORTER`                       | —                          | No       | Set to `otlp` to export log records (INFO and above) over OTLP/gRPC alongside console output — see [docs/logging.md](docs/logging.md). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`              | `http://localhost:4317`    | No       | OTLP/gRPC collector endpoint shared by trace, metric, and log export. One of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/), which the underlying exporters honor as usual (per-signal endpoints, headers, timeouts, resource attributes, …). |
+| `OTEL_EXPORTER_PROMETHEUS_PORT`            | `9464`                     | No       | Port of the Prometheus scrape endpoint (effective only with `prometheus` in `OTEL_METRICS_EXPORTER`)         |
 | **Scripts & Tests**                        |                            |          |                                                                                                              |
 | `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests            |
 | `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests        |
@@ -183,23 +190,44 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 |---------------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                           | If set alone, treated as a single extra layer on top of the built-in content                                                 |
 | `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
+| `LOG_FORMAT`                    | `DIAL_SDK_TEXT_LOG_FORMAT` or `DIAL_SDK_LOG_FORMAT=json`           | When set, still controls the `text` output format (and wins over the replacements); a warning is emitted at startup. See [docs/logging.md](docs/logging.md). |
+| `LOG_DATE_FORMAT`               | —                                                                  | Still honored alongside `LOG_FORMAT`; going forward the timestamp format is fixed to `%Y-%m-%d %H:%M:%S` (the previous default). |
+| `OTEL_PYTHON_LOG_CORRELATION`   | — *(automatic)*                                                    | Deprecated by aidial-sdk; a warning is emitted at startup. Trace fields are stamped onto log records whenever tracing is enabled, so the switch is redundant — and setting it installs OTel's legacy root-logger format, which double-logs SDK records and bypasses this service's console formatting. See [docs/logging.md](docs/logging.md). |
 
-¹**Notes:**
+**Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
   `REMOTE_DIAL_*`) are only used when running the full local stack via docker-compose or during testing.
+- Telemetry is opt-in: when none of `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER`
+  is set, OpenTelemetry is not initialized at all.
 - For a standalone Quick Apps deployment the essential variable is only `DIAL_URL`
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
 
-### Deprecated: Agent Instructions
+#### Log Format Configuration
 
-> [!WARNING]
-> The `config/predefined/instructions/` directory convention (formerly documented as "Agent instructions") has been
-> removed. Instructions are replaced by [Agent Skills](docs/skills.md), which offer richer
-> metadata,
-> on-demand retrieval, and layered overrides. See the
-> [migration guide](docs/skills.md#migrating-from-agent-instructions) for details.
+Moved to [docs/logging.md](docs/logging.md), which covers the text and JSON output modes, format
+customization, OTEL trace correlation, and OTLP log export.
+
+#### Payload Logging
+
+By policy, logs carry **structure** — roles, counts, sizes, names, ids, statuses, durations, HTTP codes,
+header **names**, and URLs stripped to scheme/host/path — and never **content**: message bodies, tool-call
+argument values, tool/LLM response bodies, attachment content, header **values**, or URL query strings. This
+holds at every level, DEBUG included, so raising verbosity during an incident never brings conversation
+content into the logs.
+
+`LOG_PAYLOADS=true` is the single, explicit exception: it re-enables the payload-bearing DEBUG records (message
+context, tool-call arguments, raw responses), each field truncated to `LOG_PAYLOADS_MAX_LENGTH`, and lifts the
+INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Every payload record is prefixed
+with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values** are
+never logged, even with the switch on. The switch is additive to the level — content appears only when
+`QUICKAPP_LOG_LEVEL=DEBUG` **and** `LOG_PAYLOADS=true`.
+
+> [!CAUTION]
+> `LOG_PAYLOADS` is intended for **local development only**. It writes conversation content and wire-level
+> third-party payloads to the log pipeline (including any OTLP export). Do **not** enable it in shared or
+> production environments.
 
 ## Local Development
 

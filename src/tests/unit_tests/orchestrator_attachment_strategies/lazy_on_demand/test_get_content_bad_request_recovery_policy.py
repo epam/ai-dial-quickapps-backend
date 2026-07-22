@@ -1,4 +1,3 @@
-import json
 from unittest.mock import MagicMock
 
 import openai
@@ -16,21 +15,35 @@ from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAM
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_recovery_policy import (
     _GetContentRecoveryPolicy,
 )
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
+    GetContentStatus,
+    GetContentToolResponse,
+)
 
 
 def _bad_request(message: str, body: object | None = None) -> openai.BadRequestError:
     return openai.BadRequestError(message=message, response=MagicMock(status_code=400), body=body)
 
 
+def _api_error(message: str, body: object | None = None) -> openai.APIError:
+    return openai.APIError(message=message, request=MagicMock(), body=body)
+
+
 def _messages_with_get_content_pair(*, with_attachment: bool = True) -> list[Message]:
+    content, state = GetContentToolResponse.success(
+        display_url="files/bucket/r.pdf",
+        title="r.pdf",
+        mime_type="application/pdf",
+    ).tool_parts()
     custom_content = (
         CustomContent(
             attachments=[
                 Attachment(title="r.pdf", url="files/bucket/r.pdf", type="application/pdf")
-            ]
+            ],
+            state=state,
         )
         if with_attachment
-        else None
+        else CustomContent(state=state)
     )
     return [
         Message(role=Role.USER, content="hi"),
@@ -50,7 +63,7 @@ def _messages_with_get_content_pair(*, with_attachment: bool = True) -> list[Mes
         ),
         Message(
             role=Role.TOOL,
-            content='{"ok": true}',
+            content=content,
             tool_call_id="tc-gc",
             custom_content=custom_content,
         ),
@@ -64,11 +77,15 @@ def test_try_recover_rewrites_get_content_tool_result_on_attachment_error() -> N
     changed = policy.try_recover(messages, _bad_request("unsupported file type"))
 
     assert changed is True
-    payload = json.loads(str(messages[2].content))
-    assert payload == {
-        "ok": False,
-        "error": "The AI model service rejected the attachment payload; the file was not forwarded.",
-    }
+    payload = GetContentToolResponse.from_state(
+        messages[2].custom_content.state if messages[2].custom_content else None
+    )
+    assert payload is not None
+    assert payload.status == GetContentStatus.FAIL
+    assert payload.status_message == (
+        "The AI model service rejected the attachment payload; the file was not forwarded."
+    )
+    assert "Failed to load attachment" in str(messages[2].content)
     assert messages[2].custom_content is not None
     assert messages[2].custom_content.attachments is None
 
@@ -91,17 +108,17 @@ def test_try_recover_only_touches_current_turn() -> None:
                 )
             ],
         ),
-        Message(role=Role.TOOL, content='{"ok": true}', tool_call_id="tc-old"),
+        Message(role=Role.TOOL, content="prior turn tool body", tool_call_id="tc-old"),
         Message(role=Role.USER, content="turn two"),
     ]
 
     changed = policy.try_recover(messages, _bad_request("unsupported attachment"))
 
     assert changed is False
-    assert messages[2].content == '{"ok": true}'
+    assert messages[2].content == "prior turn tool body"
 
 
-def test_try_recover_returns_false_on_non_bad_request() -> None:
+def test_try_recover_returns_false_on_non_api_error() -> None:
     policy = _GetContentRecoveryPolicy()
     messages = _messages_with_get_content_pair()
 
@@ -113,14 +130,80 @@ def test_try_recover_returns_false_on_non_bad_request() -> None:
     assert len(messages[2].custom_content.attachments) == 1
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        openai.RateLimitError(
+            message="files failed to process",
+            response=MagicMock(status_code=429),
+            body=None,
+        ),
+        openai.APIConnectionError(request=MagicMock()),
+        openai.InternalServerError(
+            message="supported types",
+            response=MagicMock(status_code=500),
+            body=None,
+        ),
+        openai.APIResponseValidationError(response=MagicMock(), body=None),
+    ],
+)
+def test_try_recover_returns_false_on_other_api_error_subclasses(error: Exception) -> None:
+    """Attachment-like text must not trigger recovery on non-BadRequest APIError subclasses."""
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
+
+    changed = policy.try_recover(messages, error)
+
+    assert changed is False
+    assert messages[2].content == original_content
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is not None
+
+
+def test_try_recover_returns_false_on_api_error_without_attachment_signal() -> None:
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
+
+    changed = policy.try_recover(messages, _api_error("upstream service unavailable"))
+
+    assert changed is False
+    assert messages[2].content == original_content
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is not None
+
+
+def test_try_recover_rewrites_get_content_on_unsupported_attachment_type_api_error() -> None:
+    policy = _GetContentRecoveryPolicy()
+    messages = _messages_with_get_content_pair()
+
+    error = _api_error(
+        "The following files failed to process:\n"
+        "1. blue-ball-svgrepo-com.svg: the attachment isn't one of the supported types"
+    )
+
+    changed = policy.try_recover(messages, error)
+
+    assert changed is True
+    payload = GetContentToolResponse.from_state(
+        messages[2].custom_content.state if messages[2].custom_content else None
+    )
+    assert payload is not None
+    assert payload.status == GetContentStatus.FAIL
+    assert messages[2].custom_content is not None
+    assert messages[2].custom_content.attachments is None
+
+
 def test_try_recover_returns_false_on_bad_request_without_attachment_signal() -> None:
     policy = _GetContentRecoveryPolicy()
     messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
 
     changed = policy.try_recover(messages, _bad_request("context length exceeded"))
 
     assert changed is False
-    assert messages[2].content == '{"ok": true}'
+    assert messages[2].content == original_content
     assert messages[2].custom_content is not None
     assert messages[2].custom_content.attachments is not None
 
@@ -134,9 +217,9 @@ def test_try_recover_returns_false_on_bad_request_without_attachment_signal() ->
         "invalid attachment",
         "unsupported file",
         "invalid file",
-        "input_attachment_types",
-        "image_url",
         "file type",
+        "files failed to process",
+        "supported types",
     ],
 )
 def test_try_recover_matches_each_attachment_signal_in_message(signal: str) -> None:
@@ -164,11 +247,12 @@ def test_try_recover_ignores_bare_attachment_word_in_unrelated_errors(
     specific signal phrase."""
     policy = _GetContentRecoveryPolicy()
     messages = _messages_with_get_content_pair()
+    original_content = messages[2].content
 
     changed = policy.try_recover(messages, _bad_request(looks_like_attachment_word_only))
 
     assert changed is False
-    assert messages[2].content == '{"ok": true}'
+    assert messages[2].content == original_content
 
 
 def test_try_recover_matches_signal_in_body_dict() -> None:
@@ -200,7 +284,7 @@ def test_try_recover_returns_false_when_no_user_message_exists() -> None:
         ),
         Message(
             role=Role.TOOL,
-            content='{"ok": true}',
+            content="rehydrated tool body",
             tool_call_id="tc-gc",
             custom_content=CustomContent(
                 attachments=[
@@ -214,7 +298,7 @@ def test_try_recover_returns_false_when_no_user_message_exists() -> None:
 
     assert changed is False
     # History untouched.
-    assert messages[1].content == '{"ok": true}'
+    assert messages[1].content == "rehydrated tool body"
     assert messages[1].custom_content is not None
     assert messages[1].custom_content.attachments is not None
 

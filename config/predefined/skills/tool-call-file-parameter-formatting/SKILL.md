@@ -22,7 +22,7 @@ Inspect the **Parameter Name** and **Parameter Description** in the tool definit
     *   *Action:* Use `base64` prefix.
 *   **Requirement: Plain Text**
     *   *Purpose:* *   *Purpose:* Use this mode to indicate the tool expects the actual text file content as the parameter. When a file is marked with the `text` prefix, the tool-call processor will read the file's contents and pass that text as the tool call parameter.
-    *   *Clues:* Description mentions "text," "string content," "read file," or the file type is code/markdown/logs.
+    *   *Clues:* Description mentions "text", "string content".
     *   *Action:* Use `text` prefix.
 *   **Requirement: URL/Path Reference**
     *   *Clues:* Parameter name contains `url`, `link`, `uri`, or description says "pass the link" or "reference."

@@ -269,6 +269,50 @@ class TestExtractToolCallsFromStateProcessor:
         assert result[1].custom_content is not None
         assert result[1].custom_content.state == {"marker": "kept"}
 
+    @pytest.mark.asyncio
+    async def test_mixed_internal_external_reconstructs_valid_history(self):
+        """When history ASSISTANT has only internal calls (external stripped at persist time),
+        reconstruction produces valid pairing: ASST(int) -> TOOL(int) -> ASST(ext) -> TOOL(ext)."""
+        msgs_setup = _MessagesSetup([])
+        tc_int = make_tool_call("tc-int", "internal_tool")
+        tc_ext = make_tool_call("tc-ext", "external_tool")
+
+        # Persisted history: ASSISTANT with only internal tool calls (external stripped)
+        tool_history = [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [tc_int.model_dump(mode="json")],
+            },
+            {"role": "tool", "content": "internal result", "tool_call_id": "tc-int"},
+        ]
+
+        # Client-visible ASSISTANT has only ext tool call
+        messages = [
+            Message(
+                role=Role.ASSISTANT,
+                content="",
+                tool_calls=[tc_ext],
+                custom_content=CustomContent(state={TOOL_EXECUTION_HISTORY: tool_history}),
+            ),
+            Message(role=Role.TOOL, content="external result", tool_call_id="tc-ext"),
+        ]
+
+        result = msgs_setup.extract_tool_calls(messages)
+
+        # ASSISTANT(int), TOOL(int), ASSISTANT(ext), TOOL(ext)
+        assert len(result) == 4
+        assert result[0].role == Role.ASSISTANT
+        assert len(result[0].tool_calls) == 1
+        assert result[0].tool_calls[0].id == "tc-int"
+        assert result[1].role == Role.TOOL
+        assert result[1].tool_call_id == "tc-int"
+        assert result[2].role == Role.ASSISTANT
+        assert len(result[2].tool_calls) == 1
+        assert result[2].tool_calls[0].id == "tc-ext"
+        assert result[3].role == Role.TOOL
+        assert result[3].tool_call_id == "tc-ext"
+
     def test_is_legacy_format_detection(self):
         """Test format detection helper."""
         # Legacy format has "tool_call" key

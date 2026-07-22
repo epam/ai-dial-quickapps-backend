@@ -1,0 +1,41 @@
+name: "🎯 Epic"
+description: A larger initiative delivered through multiple child issues
+title: "[EPIC] "
+type: Feature
+labels: ["enhancement", "epic"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for initiatives too large for a single feature request.
+        Keep it conceptual — details belong in the child issues and design docs.
+  - type: textarea
+    attributes:
+      label: Goal
+      description: What outcome does this epic deliver, and why now?
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Scope — child issues
+      description: Task list of child issues in suggested delivery order. Link issues as they are filed.
+      placeholder: |
+        - [ ] #123 First increment
+        - [ ] #124 Second increment
+        - [ ] (not yet filed) Third increment
+    validations:
+      required: true
+  - type: textarea
+    attributes:
+      label: Out of scope
+      description: Explicitly excluded work, to keep the epic bounded.
+  - type: textarea
+    attributes:
+      label: Dependencies and sequencing
+      description: >
+        External blockers (other DIAL components, upstream releases) and ordering
+        constraints between child issues.
+  - type: textarea
+    attributes:
+      label: Additional information
+      description: Links to design docs, related issues, prior discussions.

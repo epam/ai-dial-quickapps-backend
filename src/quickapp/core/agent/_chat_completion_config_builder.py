@@ -8,11 +8,10 @@ from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
+from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
-from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
-from quickapp.core.agent.message_logger import format_openai_message_pipe_tree
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,6 @@ class _ChatCompletionConfigBuilder:
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
-        agent_settings: AgentSettings,
     ) -> None:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
@@ -38,7 +36,6 @@ class _ChatCompletionConfigBuilder:
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
-        self.__agent_settings = agent_settings
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
@@ -53,7 +50,8 @@ class _ChatCompletionConfigBuilder:
         }
 
         if self.__response_format:
-            logger.debug("Setting response format: %s", self.__response_format)
+            logger.debug("Setting response format (type=%s)", type(self.__response_format).__name__)
+            log_payload(logger, "Response format: %s", self.__response_format)
             if hasattr(self.__response_format, "model_dump"):
                 payload["response_format"] = self.__response_format.model_dump(
                     exclude_none=True, mode="json"
@@ -77,7 +75,24 @@ class _ChatCompletionConfigBuilder:
         chat_completion_config.update(payload)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "Chat completion config: %s", json.dumps(chat_completion_config, ensure_ascii=False)
+                "Chat completion config: messages=%d, roles=%s, tools=%d, response_format=%s, "
+                "model=%s, forwarded_headers=%s",
+                len(prepared_messages),
+                summarize_roles(prepared_messages),
+                len(self.__tools),
+                "response_format" in chat_completion_config,
+                chat_completion_config.get("model"),
+                # Header NAMES only — forwarded X-* header values are never logged, even
+                # under the payload switch (they may carry auth-adjacent material).
+                list(self.__forwarded_headers or []),
+            )
+        # Guard the (potentially large) serialization: log_payload no-ops when the switch
+        # is off, but its json.dumps argument would otherwise still run every request.
+        # The dump excludes extra_headers entirely — header values are never emitted.
+        if payloads_enabled():
+            loggable = {k: v for k, v in chat_completion_config.items() if k != "extra_headers"}
+            log_payload(
+                logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
         return chat_completion_config
 
@@ -111,11 +126,6 @@ class _ChatCompletionConfigBuilder:
             self._promote_orchestrator_state_to_top_level(msg_dict)
             result.append(msg_dict)
         return result
-
-    def _log_messages(self, messages: list[dict[str, Any]]) -> None:
-        preview_len = self.__agent_settings.chat_message_log_length
-        for idx, msg in enumerate(messages, start=1):
-            format_openai_message_pipe_tree(msg, idx, preview_len=preview_len)
 
     @staticmethod
     def _promote_orchestrator_state_to_top_level(msg_dict: dict[str, Any]) -> None:
