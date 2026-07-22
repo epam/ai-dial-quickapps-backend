@@ -170,7 +170,12 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
 | `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
 | **Observability**                          |                            |          |                                                                                                              |
-| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name for OpenTelemetry tracing and metrics                                                           |
+| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name stamped on all exported telemetry (traces, metrics, logs)                                       |
+| `OTEL_TRACES_EXPORTER`                     | —                          | No       | Set to `otlp` to enable tracing and export spans over OTLP/gRPC. Instruments the FastAPI server and outgoing HTTP clients (`httpx`, `requests`, `aiohttp`, `urllib`) and stamps trace context onto log records — see [docs/logging.md](docs/logging.md). |
+| `OTEL_METRICS_EXPORTER`                    | —                          | No       | Comma-separated metric exporters: `otlp` (push over OTLP/gRPC) and/or `prometheus` (serve a scrape endpoint). Enables FastAPI and system/process metrics.  |
+| `OTEL_LOGS_EXPORTER`                       | —                          | No       | Set to `otlp` to export log records (INFO and above) over OTLP/gRPC alongside console output — see [docs/logging.md](docs/logging.md). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`              | `http://localhost:4317`    | No       | OTLP/gRPC collector endpoint shared by trace, metric, and log export. One of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/), which the underlying exporters honor as usual (per-signal endpoints, headers, timeouts, resource attributes, …). |
+| `OTEL_EXPORTER_PROMETHEUS_PORT`            | `9464`                     | No       | Port of the Prometheus scrape endpoint (effective only with `prometheus` in `OTEL_METRICS_EXPORTER`)         |
 | **Scripts & Tests**                        |                            |          |                                                                                                              |
 | `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests            |
 | `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests        |
@@ -186,11 +191,14 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
 | `LOG_FORMAT`                    | `DIAL_SDK_TEXT_LOG_FORMAT` or `DIAL_SDK_LOG_FORMAT=json`           | When set, still controls the `text` output format (and wins over the replacements); a warning is emitted at startup. See [docs/logging.md](docs/logging.md). |
 | `LOG_DATE_FORMAT`               | —                                                                  | Still honored alongside `LOG_FORMAT`; going forward the timestamp format is fixed to `%Y-%m-%d %H:%M:%S` (the previous default). |
+| `OTEL_PYTHON_LOG_CORRELATION`   | — *(automatic)*                                                    | Deprecated by aidial-sdk; a warning is emitted at startup. Trace fields are stamped onto log records whenever tracing is enabled, so the switch is redundant — and setting it installs OTel's legacy root-logger format, which double-logs SDK records and bypasses this service's console formatting. See [docs/logging.md](docs/logging.md). |
 
 **Notes:**
 
 - Variables listed above are a superset used across development and deployment modes. Some variables (e.g.
   `REMOTE_DIAL_*`) are only used when running the full local stack via docker-compose or during testing.
+- Telemetry is opt-in: when none of `OTEL_TRACES_EXPORTER` / `OTEL_METRICS_EXPORTER` / `OTEL_LOGS_EXPORTER`
+  is set, OpenTelemetry is not initialized at all.
 - For a standalone Quick Apps deployment the essential variable is only `DIAL_URL`
 - For PyInterpreter tool setup
   see: [DIAL Core](https://github.com/epam/ai-dial-core), [PyInterpreter](https://github.com/epam/ai-dial-code-interpreter).
