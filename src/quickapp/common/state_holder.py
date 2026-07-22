@@ -6,6 +6,8 @@ from aidial_client.types.metadata import FileMetadata
 from aidial_sdk.chat_completion import Attachment, ToolCall
 from pydantic import BaseModel, Field, PrivateAttr
 
+from quickapp.common.payload_logging import log_payload
+
 logger = logging.getLogger(__name__)
 
 
@@ -17,11 +19,13 @@ class StateHolder(BaseModel):
     _file_metadata_dict: dict[str, FileMetadata] = PrivateAttr(default_factory=dict)
 
     def add_state(self, key: str, value: Any) -> None:
-        logger.debug(f"Added state [{key}]={value}")
+        logger.debug("Added state [%s] (type=%s)", key, type(value).__name__)
+        log_payload(logger, "Added state [%s]=%s", key, value)
         self._state[key] = value
 
     def get_state(self) -> dict[str, Any]:
-        logger.debug(f"Read state {self._state}")
+        logger.debug("Read state keys: %s", list(self._state))
+        log_payload(logger, "Read state: %s", self._state)
         return self._state
 
     def get_file_data(self, url: str | None = None, key: str | None = None) -> bytes | None:

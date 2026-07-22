@@ -504,6 +504,12 @@
           "description": "Instructions to LLM what to do next.",
           "title": "Instructions"
         },
+        "forward_tool_error_message": {
+          "default": false,
+          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "title": "Forward Tool Error Message",
+          "type": "boolean"
+        },
         "type": {
           "const": "continue",
           "default": "continue",
@@ -2268,6 +2274,7 @@
         },
         "template": {
           "description": "The predefined template name for a system prompt",
+          "minLength": 1,
           "title": "Template",
           "type": "string"
         },
@@ -2912,6 +2919,12 @@
           "title": "Instructions",
           "type": "string"
         },
+        "forward_tool_error_message": {
+          "default": false,
+          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "title": "Forward Tool Error Message",
+          "type": "boolean"
+        },
         "type": {
           "const": "retry",
           "default": "retry",
@@ -3280,6 +3293,11 @@
           "description": "The configuration for the orchestrator DIAL deployment."
         },
         "system_prompt": {
+          "default": {
+            "type": "custom",
+            "content": "",
+            "variables": {}
+          },
           "description": "The configuration for the system prompt.",
           "discriminator": {
             "mapping": {
@@ -3291,10 +3309,10 @@
           },
           "oneOf": [
             {
-              "$ref": "#/$defs/PredefinedSystemPromptConfig"
+              "$ref": "#/$defs/CustomSystemPromptConfig"
             },
             {
-              "$ref": "#/$defs/CustomSystemPromptConfig"
+              "$ref": "#/$defs/PredefinedSystemPromptConfig"
             },
             {
               "$ref": "#/$defs/DialSystemPromptConfig"
@@ -3328,8 +3346,7 @@
         }
       },
       "required": [
-        "deployment",
-        "system_prompt"
+        "deployment"
       ],
       "title": "OrchestratorConfig",
       "type": "object",

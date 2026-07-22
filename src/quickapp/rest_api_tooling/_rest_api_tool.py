@@ -19,6 +19,7 @@ from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutRe
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
+from ._rest_api_tool_error_exception import RestApiToolErrorException
 
 logger = logging.getLogger(__name__)
 
@@ -92,7 +93,22 @@ class _RestApiTool(StagedBaseTool):
                     params=request_details.params,
                     json=request_details.data,
                 )
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    error_message = self._extract_response_error_message(e.response)
+                    # Detect-and-raise only; the StagedBaseTool choke point owns the
+                    # failure WARNING, so this stays at DEBUG (ownership rule).
+                    logger.debug(
+                        "REST API tool '%s' returned HTTP %s; error: %s",
+                        self._tool_config.open_ai_tool.function.name,
+                        e.response.status_code,
+                        error_message,
+                    )
+                    raise RestApiToolErrorException(
+                        self._tool_config.open_ai_tool.function.name,
+                        error_message,
+                    ) from e
 
                 raw_mime = response.headers.get('Content-Type')
                 mime_type = raw_mime.split(';', 1)[0].strip() if raw_mime else None
@@ -104,7 +120,11 @@ class _RestApiTool(StagedBaseTool):
                     title = generate_attachment_filename(
                         mime_type, base_filename=self._tool_config.open_ai_tool.function.name
                     )
-                    logger.debug(f"Attachment: {title}, Tool Config: {self._tool_config}")
+                    logger.debug(
+                        "Building attachment %s for REST tool %s",
+                        title,
+                        self._tool_config.open_ai_tool.function.name,
+                    )
                     attachment = Attachment(title=title, type=mime_type, data=response.text)
                     attachment = await self.__dial_attachment_service.upload_attachment_to_core(
                         attachment
@@ -125,3 +145,7 @@ class _RestApiTool(StagedBaseTool):
                     stage_wrapper.add_result(result)
 
                 return result
+
+    @staticmethod
+    def _extract_response_error_message(response: httpx.Response) -> str:
+        return f"HTTP error {response.status_code} while calling REST API tool."

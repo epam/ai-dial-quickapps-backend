@@ -1,7 +1,12 @@
-class MCPToolErrorException(Exception):
-    """Raised when an MCP tool call returns isError=True."""
+from quickapp.common.exceptions.tool_error import ToolErrorException
 
-    def __init__(self, tool_name: str, error_message: str):
-        super().__init__(f"MCP tool '{tool_name}' returned an error: {error_message}")
-        self.tool_name = tool_name
-        self.error_message = error_message
+
+class MCPToolErrorException(ToolErrorException):
+    """Raised when an MCP tool call returns isError=True.
+
+    Inherits the base's structural ``__str__`` (no response body) so the failure's
+    log/traceback records honor the content rule; the body stays on ``error_message`` for
+    the LLM/user channels.
+    """
+
+    tool_kind = "MCP tool"

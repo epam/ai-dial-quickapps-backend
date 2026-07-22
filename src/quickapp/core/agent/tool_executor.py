@@ -11,6 +11,7 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,8 @@ class ToolExecutor:
             if tool is None:
                 continue
             args = json.loads(tc.arguments)
-            logger.debug(f"Making tool calls: {tc.name} with args:{args}")
+            logger.debug("Making tool call: %s", tc.name)
+            log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
             tasks.append(tool.arun(tool_call_id=tc.id, **args))
             valid_calls.append(tc)
 

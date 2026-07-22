@@ -153,7 +153,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
             return attachment
         if scheme == UrlScheme.EXTERNAL:
             return await self._promote_external(attachment, url)
-        logger.info("get_content injector: skipping attachment with unsupported url scheme")
+        logger.debug("get_content injector: skipping attachment with unsupported url scheme")
         return None
 
     async def _promote_external(self, attachment: Attachment, url: str) -> Attachment | None:
@@ -163,7 +163,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
         try:
             promoted = await self.__materializer.materialize_external(url)
         except InvalidToolCallParameterException as exc:
-            logger.info(
+            logger.debug(
                 "get_content injector: skipping external attachment, promotion blocked (%s)",
                 exc,
             )
