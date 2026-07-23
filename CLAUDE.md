@@ -46,7 +46,8 @@ Cross-cutting shared code lives in `common/` (a flat utility bag). Two packages 
 `<pkg>_module: list[Module]` array that `app_factory` splices into the module list instead of
 registering each entry separately: `core/` exposes `core_module` (the app's central modules —
 `AppModule` + `AgentModule`), and `shared/` exposes `shared_module` (cross-cutting utility modules with
-their own DI wiring; today `ExternalFetchModule` in `shared/external_fetch/`).
+their own DI wiring; e.g. `ExternalFetchModule` in `shared/external_fetch/` and `HomePathModule`
+(the shared agent-home path resolver) in `shared/home_path/`).
 
 → Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md) | [`docs/error_handling.md`](docs/error_handling.md)
 
@@ -102,7 +103,7 @@ See `CODESTYLE.md` for full details. Key rules:
 - **Types**: Always add type hints. Use modern generics: `list[str]`, `dict[str, int]`, `str | None`.
 - **Data containers**: Use Pydantic `BaseModel` (not `@dataclass`) for value objects; use `model_config = ConfigDict(frozen=True)` when immutability is wanted.
 - **Visibility**: `_` prefix for all internal attributes/methods.
-- **Logging**: Use `logging` module; never `print()`.
+- **Logging**: Use `logging` module; never `print()`. Logs carry structure, not content — never log message bodies, tool-call arguments, response bodies, header values, or URL query strings at any level. Route payload detail through `common.payload_logging.log_payload` (gated by `LOG_PAYLOADS`) and sanitize URLs with `common.url_sanitization.sanitize_url_for_log`. See `CODESTYLE.md` §9.
 - **Imports**: stdlib → third-party → local, explicit only (no `*` imports).
 
 ## Testing

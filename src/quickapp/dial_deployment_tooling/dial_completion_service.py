@@ -62,7 +62,8 @@ class DialCompletionService:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
         if not content:
-            logger.warning(
+            # Treated as normal (at most a config smell), so DEBUG rather than WARNING.
+            logger.debug(
                 "Tool call content is empty. Check the tool configuration,"
                 " it should use `query` parameter"
             )

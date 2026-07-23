@@ -1,14 +1,14 @@
 import pytest
 
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service
 
 
 def _make_transformer(
     appdata: str | None = "appbucket", agent_home_dir: str = ""
 ) -> _AppdataHomePathTransformer:
-    resolver = _HomePathResolver(
+    resolver = HomePathResolver(
         dial_file_service=make_service(appdata=appdata),
         dial_files_config=make_config(agent_home_dir=agent_home_dir),
     )

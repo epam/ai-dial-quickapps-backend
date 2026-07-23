@@ -13,6 +13,11 @@ Schema reference:
 - Generated locally via: make dump_app_schema
 - Hosted reference: https://mydial.epam.com/custom_application_schemas/quickapps2
 
+The `$id` written into the generated schema defaults to that hosted URL. Override it with
+`APP_SCHEMA_ID` when your DIAL installation uses a different hostname or schema name
+(see [README.md](./README.md#environment-variables)). When unset, the current default is kept
+for backward compatibility.
+
 ## Agent Configuration:
 
 <details>
@@ -924,7 +929,8 @@ There are two types of strategy models that can be used:
 |-------------------------------------------|----------|---------------------------|---------------------------------------------------|---------------------------------------|
 | type                                      | Yes      | Enum `stop` or `continue` | The type of the strategy                          |                                       |
 | trigger_on                                | No       | Object                    | Condition that triggers this strategy             | by default triggers on all exceptions |
-| instructions (for continue strategy only) | No       | String                    | Instructions to the agent what to do on exception |                                       |
+| instructions (for continue/retry strategies) | No       | String                    | Instructions to the agent what to do on exception |                                       |
+| forward_tool_error_message                | No       | Boolean                   | Whether to include the tool error message in the fallback message returned to the model. It applies only to `ToolErrorException` and its subtypes (including `MCPToolErrorException`). When `true` and `instructions` is omitted on a `continue` strategy, the error message itself is returned. | `false`                               |
 | display_error_in_stage                    | No       | Boolean                   | Whether to display the error in the stage         | `true`                                |
 
 ### `TriggerOn` Structure
@@ -959,6 +965,15 @@ There are two types of strategy models that can be used:
           "case_sensitive": false
         },
         "display_error_in_stage": false
+      },
+      {
+        "type": "continue",
+        "forward_tool_error_message": true,
+        "trigger_on": {
+          "type": "contains",
+          "value": "returned an error",
+          "case_sensitive": false
+        }
       }
     ]
   }
@@ -972,3 +987,5 @@ There are two types of strategy models that can be used:
 - If no Fallback strategy for tool provided, the default behaviour is to continue with predefined instructions
 - Strategies are evaluated in the order they appear in the array
 - The first strategy with a matching trigger condition is used
+- `forward_tool_error_message` is opt-in and affects only the message returned to the model; stage rendering is still controlled by `display_error_in_stage`
+- When both `forward_tool_error_message` and `instructions` are set on a `continue`/`retry` strategy, the model receives the tool error text first and the instructions after it

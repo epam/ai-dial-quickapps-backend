@@ -29,6 +29,7 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_too
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._tool_configs import (
     GET_CONTENT_TOOL_CONFIG,
 )
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 
 def _make_tool(
@@ -53,6 +54,10 @@ def _make_tool(
         dial_promoter=promoter,
         dial_settings=settings,
     )
+    home_resolver = MagicMock(spec=HomePathResolver)
+    home_resolver.resolve_appdata_url = AsyncMock(
+        side_effect=lambda path: f"files/bucket/appdata/app/home/{path}"
+    )
     return _GetContentTool(
         stage_wrapper_builder=MagicMock(),
         contexts=[],
@@ -62,6 +67,7 @@ def _make_tool(
         messages_mixin=messages_mixin,
         deferred_stage_close_registry=MagicMock(),
         materializer=materializer,
+        home_resolver=home_resolver,
     )
 
 
@@ -115,7 +121,8 @@ class TestErrorResultPayload:
         payload = GetContentToolResponse.from_state(result.state)
         assert payload is not None
         assert payload.status == GetContentStatus.FAIL
-        assert payload.status_message == "Invalid storage path for attachment file."
+        assert payload.status_message is not None
+        assert payload.status_message.startswith("Unsupported file reference.")
         assert payload.accepted_types == ["application/pdf"]
 
     @pytest.mark.asyncio

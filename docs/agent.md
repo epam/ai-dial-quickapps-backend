@@ -118,6 +118,38 @@ The orchestrator is retrieved from the DI container and its invoke method is cal
 
 ---
 
+## Logging
+
+At `INFO`, one request emits a compact, metadata-only **lifecycle skeleton** — enough to reconstruct what a
+request did during an incident without raising verbosity or exposing conversation content:
+
+| Event | Owner |
+|---|---|
+| `Request received` (deployment, message/attachment counts) | `_QuickAppCompletion` |
+| `Request initialized` (tool counts per type, skills, contexts) | `_QuickAppCompletion` |
+| `Interactive login requested` / `resolved` (toolsets, per-toolset outcome, duration) | `InteractiveLoginService` |
+| `Model call completed` (iteration, deployment, duration, finish, requested tools, token usage) | `Orchestrator` |
+| `Tool call completed` (tool, tool_call_id, duration, outcome) | `StagedBaseTool` |
+| `Fallback applied` (tool_call_id, strategy) | `FallbackProcessor` |
+| `Request completed` (outcome, iterations, tool calls, duration, `error_reference` on failure) | `_QuickAppCompletion` |
+
+Events are formatted by `common.lifecycle_logging.format_event` as a stable prefix plus `key=value` fields.
+A handled tool failure produces exactly one `WARNING` (the failure) plus the fallback and completion `INFO`
+events; an unhandled failure adds the single `ERROR` (with `error_reference`) owned by `_QuickAppCompletion`.
+
+**Content rule.** At every level (DEBUG included) records carry structure — roles, counts, sizes, names, ids,
+statuses, durations, header **names**, and URLs stripped to scheme/host/path — never message bodies, tool-call
+arguments, response bodies, header values, or URL query strings. Payload dumps in the agent loop and toolsets
+emit an unconditional structure summary and route the payload through `common.payload_logging.log_payload`,
+which is a no-op (and truncates) unless `LOG_PAYLOADS=true`. The switch also lifts the INFO cap that
+`LoggingConfig` otherwise applies to the wire-level third-party loggers (`openai`/`httpx`/`httpcore`), so
+raising a log level alone never brings payloads into the pipeline.
+
+Level semantics, the single-writer ERROR rule, and the content policy live in `CODESTYLE.md` §9 and
+[`docs/designs/log_levels_and_content_policy.md`](designs/log_levels_and_content_policy.md).
+
+---
+
 ## Agent Loop (Orchestrator)
 
 The orchestrator implements an iterative agent loop that continues until the LLM produces a final response without tool
@@ -468,6 +500,13 @@ no-op unless both gates pass. When active it contributes:
   orchestrator accepts (the `files/` prefix is the storage-path validity check; it covers both DIAL
   passthrough and promoted-external attachments).
 
+`_GetContentTool` accepts three reference forms, dispatched on `classify_url`: a DIAL `files/` path
+(passthrough), an external `http(s)` URL (promoted via `_AttachmentMaterializer`), and a schemeless
+**agent-home-relative** path (`UrlScheme.DIAL_APPDIR_RELATIVE`, e.g. `reports/img.png` — the convention
+the `internal_file_*` tools speak). The relative form is resolved under the agent home to a `files/` URL
+via the shared `HomePathResolver` (see the Dependency Injection section) and then follows the DIAL
+passthrough path, so the model can hand a file-tool path straight to `internal_attachments_get_content`.
+
 The orchestrator deployment metadata feed (`_OrchestratorDeploymentInitializer`, `OrchestratorCapabilities`,
 `OrchestratorDeploymentCacheService`) lives in `src/quickapp/core/agent/` as a shared facility for any future
 module that needs DialCore deployment metadata, not only this strategy.
@@ -484,9 +523,11 @@ The application is composed of 15 specialized DI modules. Rather than registerin
 individually, `app_factory` splices in two package-level arrays:
 
 - `quickapp.core` exposes `core_module` — the app's central modules (`App Module` + `Agent Module`). Both `agent/` and `application/` physically live under `core/`.
-- `quickapp.shared` exposes `shared_module` — cross-cutting utility modules. Today it holds a single
-  entry, `ExternalFetchModule` (the external-URL fetch egress envelope, see module 11), and is the seam
-  future utility modules join by appending.
+- `quickapp.shared` exposes `shared_module` — cross-cutting utility modules, the seam future utility
+  modules join by appending. Today it holds `ConfigResolversModule`, `ExternalFetchModule` (the
+  external-URL fetch egress envelope, see module 11), and `HomePathModule` (`HomePathResolver` in
+  `shared/home_path/` — resolves agent-home-relative file paths to DIAL `files/` URLs and back, shared
+  by the DIAL-files tools, the path-argument transformer, and the `internal_attachments_get_content` tool).
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers

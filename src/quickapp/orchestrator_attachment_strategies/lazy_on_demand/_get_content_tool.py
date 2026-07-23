@@ -1,9 +1,12 @@
 """Lazy-load a single attachment by url for the current turn.
 
 External ``http(s)`` urls are promoted to a durable DIAL file via
-``_AttachmentMaterializer``; DIAL ``files/`` urls pass through. Authorization of the
-underlying fetch is enforced upstream — DIAL Core gates ``files/`` access by the
-caller's bucket permissions, and the external-fetch policy gates ``http(s)``.
+``_AttachmentMaterializer``; DIAL ``files/`` urls pass through; schemeless references
+(the agent-home-relative convention spoken by the file tools, e.g.
+``reports/img.png``) are resolved under the agent home via ``HomePathResolver``.
+Authorization of the underlying fetch is enforced upstream — DIAL Core gates
+``files/`` access by the caller's bucket permissions, and the external-fetch policy
+gates ``http(s)``.
 """
 
 import logging
@@ -39,8 +42,15 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_sta
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_tool_response import (
     GetContentToolResponse,
 )
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
+
+_UNSUPPORTED_REFERENCE_MESSAGE = (
+    "Unsupported file reference. Pass a DIAL storage path ('files/...'), a path "
+    "relative to the agent's home dir (e.g. 'reports/img.png'), or an external "
+    "http(s) URL."
+)
 
 
 class _ResolvedAttachment(BaseModel):
@@ -65,6 +75,7 @@ class _GetContentTool(StagedBaseTool):
         messages_mixin: MessagesMixin,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         materializer: _AttachmentMaterializer,
+        home_resolver: HomePathResolver,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -81,6 +92,7 @@ class _GetContentTool(StagedBaseTool):
         self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__materializer: _AttachmentMaterializer = materializer
+        self.__home_resolver: HomePathResolver = home_resolver
 
     def _error_result(self, message: str) -> ToolCallResult:
         response = GetContentToolResponse.fail(
@@ -99,7 +111,7 @@ class _GetContentTool(StagedBaseTool):
         **kwargs: Any,
     ) -> ToolCallResult:
         if attachment_url is None or not str(attachment_url).strip():
-            logger.info("get_content tool rejected: empty attachment_url")
+            logger.debug("get_content tool rejected: empty attachment_url")
             return self._error_result("Missing or empty attachment_url.")
 
         normalized_url = normalize_attachment_url_argument(str(attachment_url))
@@ -110,19 +122,29 @@ class _GetContentTool(StagedBaseTool):
             try:
                 resolved = await self._resolve_external(normalized_url)
             except InvalidToolCallParameterException as exc:
-                logger.info("get_content tool rejected: external promotion failed (%s)", exc)
+                logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
                 return self._error_result(str(exc))
         elif scheme == UrlScheme.DIAL:
             if not normalized_url.startswith("files/"):
-                logger.info("get_content tool rejected: URL does not start with files/")
-                return self._error_result("Invalid storage path for attachment file.")
+                logger.debug("get_content tool rejected: URL does not start with files/")
+                return self._error_result(_UNSUPPORTED_REFERENCE_MESSAGE)
             resolved = self._resolve_dial(normalized_url)
+        elif scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
+            # Agent-home-relative reference (the convention spoken by the file
+            # tools); the attachment carries the resolved files/ url while
+            # the payload echoes the reference as passed.
+            try:
+                home_url = await self.__home_resolver.resolve_appdata_url(normalized_url)
+            except InvalidToolCallParameterException as exc:
+                logger.info("get_content tool rejected: home-relative resolution failed (%s)", exc)
+                return self._error_result(str(exc))
+            resolved = self._resolve_dial(home_url)
         else:
-            logger.info("get_content tool rejected: unsupported url scheme")
-            return self._error_result("Invalid storage path for attachment file.")
+            logger.debug("get_content tool rejected: unsupported url scheme")
+            return self._error_result(_UNSUPPORTED_REFERENCE_MESSAGE)
 
         if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(resolved.mime):
-            logger.info(
+            logger.debug(
                 "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
                 resolved.mime,
                 self.__orchestrator_capabilities.deployment_id,

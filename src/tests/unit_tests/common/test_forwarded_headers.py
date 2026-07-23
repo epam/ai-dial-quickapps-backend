@@ -3,6 +3,8 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from starlette.datastructures import MutableHeaders
+
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 
 
@@ -55,8 +57,22 @@ class TestExtractXHeadersFromRequest:
         result = extract_x_headers_from_request(request)
         assert result is None
 
-    def test_extract_when_headers_not_dict_returns_empty(self):
-        """When request.headers is not a dict, returns empty (no crash)."""
+    def test_extract_from_mutable_headers(self):
+        """Regression (#466): since aidial-sdk 0.38, request.headers is a Starlette
+        MutableHeaders (a Mapping, not a dict); X- headers must still be extracted."""
+        request = SimpleNamespace(
+            headers=MutableHeaders(
+                raw=[
+                    (b"x-dial-client-channel-id", b"channel-abc"),
+                    (b"content-type", b"application/json"),
+                ]
+            )
+        )
+        result = extract_x_headers_from_request(request)
+        assert result == {"x-dial-client-channel-id": "channel-abc"}
+
+    def test_extract_when_headers_not_mapping_returns_empty(self):
+        """When request.headers is not a mapping, returns empty (no crash)."""
         request = SimpleNamespace(headers=MagicMock())
         result = extract_x_headers_from_request(request)
         assert result is None
