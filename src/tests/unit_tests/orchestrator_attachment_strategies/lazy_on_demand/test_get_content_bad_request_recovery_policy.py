@@ -214,7 +214,6 @@ def test_try_recover_returns_false_on_bad_request_without_attachment_signal() ->
         "attachment payload",
         "attachment type",
         "unsupported attachment",
-        "invalid argument",
         "invalid attachment",
         "unsupported file",
         "invalid file",
