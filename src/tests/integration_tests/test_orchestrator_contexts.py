@@ -52,16 +52,24 @@ _LAZY_CONTEXT_MODELS = [
         ],
         answer=[
             """Based on the ontology guide PDF, here is the numbered list of tools to use when working with ontologies:
-            1. Protégé
-            2. OWL API
-            3. Jena
-            4. RDF4J
-            5. SWRL
-            6. SPARQL
-            7. SHACL
-            8. TopBraid Composer
-            9. OntoGraf
-            10. VOWL""",
+1. Protégé
+2. OWL API
+3. Jena
+4. RDF4J
+5. SWRL
+6. SPARQL
+7. SHACL
+8. TopBraid Composer
+9. OntoGraf
+10. VOWL""",
+            """1. Protégé
+2. Topbraid Composer
+3. Ontostudio
+4. Fluent Editor
+5. VocBench
+6. Swoop
+7. Obo-edit"""
+
         ],
     ),
 )

@@ -33,7 +33,7 @@ AGENT_MODELS = [
     "gpt-5-2025-08-07",
     "gpt-5-mini-2025-08-07",
     "gpt-5.2-2025-12-11",
-    "gpt-5.5-2026-04-24"
+    "gpt-5.5-2026-04-24",
     "gemini-2.5-pro",
     "gemini-3-pro-preview",
     "gemini-3.5-flash",
