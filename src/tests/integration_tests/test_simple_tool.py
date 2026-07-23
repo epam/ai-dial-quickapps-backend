@@ -348,7 +348,7 @@ def test_pyinterpreter2(client):
                 "I'll help you create a NumPy function to calculate the hypotenuse and then compute the result for values 3 and 4. 5.0",
                 "np.float64(5.0)",
                 "The result of `calculate_hypotenuse(3, 4)` is **5.0**.",
-                "**Result:** 5.0"
+                "**Result:** 5.0",
             ],
         )
         .add_user_message(
@@ -364,7 +364,13 @@ def test_pyinterpreter2(client):
                     name="code", value=["calculate_hypotenuse"], func=CustomFunction.contains
                 )
             ],
-            answer=["17.0", "The hypotenuse is: 17.0", "np.float64(17.0)", "The result of `calculate_hypotenuse(8, 15)` is **17.0**.", "**Result:** 17.0"],
+            answer=[
+                "17.0",
+                "The hypotenuse is: 17.0",
+                "np.float64(17.0)",
+                "The result of `calculate_hypotenuse(8, 15)` is **17.0**.",
+                "**Result:** 17.0",
+            ],
         )
     ),
 )

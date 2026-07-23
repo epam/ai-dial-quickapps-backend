@@ -34,8 +34,7 @@ _LAZY_CONTEXT_MODELS = [
         "Lazy admin context (PDF)",
         "Two admin PDFs; model must list then get_content the ontology doc only",
         similarity_threshold=0.8,
-    )
-    .add_user_message(
+    ).add_user_message(
         user_message=(
             "Admin context includes two PDF files: one about ontology tooling and one IMF WEO. "
             "Answer using ONLY the internal tools `internal_attachments_available_context` and "
@@ -68,8 +67,7 @@ _LAZY_CONTEXT_MODELS = [
 4. Fluent Editor
 5. VocBench
 6. Swoop
-7. Obo-edit"""
-
+7. Obo-edit""",
         ],
     ),
 )

@@ -22,8 +22,9 @@ from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_settings i
     _PyInterpreterSettings,
 )
 from quickapp.mcp_tooling import MCPToolingModule
-from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import \
-    LazyOnDemandStrategyModule
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
+    LazyOnDemandStrategyModule,
+)
 from quickapp.predefined_tooling import PredefinedToolingModule
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
