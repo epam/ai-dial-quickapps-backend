@@ -8,8 +8,14 @@ from quickapp.config.tools.base import (
 )
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
+from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
 
 WEB_FETCH_TOOL_CONFIG = InternalTool(
+    # Forward fetch-error messages (egress denied, non-text body, ...) so the model
+    # sees the reason and can react, e.g. re-call with a save_path.
+    fallback_configuration=ToolFallbackConfig(
+        strategies=[ContinueStrategyModel(forward_tool_error_message=True)],
+    ),
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(
             name=INTERNAL_WEB_FETCH_TOOL_NAME,
@@ -19,14 +25,12 @@ WEB_FETCH_TOOL_CONFIG = InternalTool(
                 "text inline in a single call — text only: binary content (images, "
                 "PDFs, archives) is rejected, re-call with a save_path instead. Text "
                 "larger than the inline cap is returned truncated to its head with a "
-                "notice stating the total size; the head is often enough (e.g. to "
-                "summarize), otherwise re-call with a save_path. With save_path it "
-                "persists the resource (any content type) at that workspace-relative "
-                "path under the agent home and returns the saved path (+ a short "
-                "preview for text), so other available tools can process the full "
-                "content. Note: URLs of HTML viewer pages (e.g. github.com /blob/ "
-                "pages) return the whole HTML page; prefer the raw/plain endpoint "
-                "when one exists. DIAL file paths (files/...) are not fetched here."
+                "notice stating the total size; the head is often enough, otherwise "
+                "re-call with a save_path. With save_path it persists the resource "
+                "(any content type) at that workspace-relative path under the agent "
+                "home and returns the saved path (+ a short preview for text), so "
+                "other available tools can process the full content. DIAL file paths "
+                "(files/...) are not fetched here."
             ),
             parameters=OpenAiToolFunctionParameters(
                 type=JsonTypeEnum.object,

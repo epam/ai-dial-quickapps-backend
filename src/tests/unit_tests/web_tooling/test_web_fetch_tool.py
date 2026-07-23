@@ -4,10 +4,16 @@ import pytest
 from aidial_client._exception import DialException, EtagMismatchError
 
 from quickapp.common import ToolCallResult
-from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.exceptions import InvalidToolCallParameterException, ToolErrorException
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.shared.external_fetch.external_url_fetcher import FetchedBytes
-from quickapp.shared.external_fetch.web_content_fetcher import WebContentFetcher
+from quickapp.shared.external_fetch.external_url_fetcher import (
+    ExternalFetchDisabledError,
+    FetchedBytes,
+)
+from quickapp.shared.external_fetch.web_content_fetcher import (
+    WebContentFetcher,
+    WebContentFetchError,
+)
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from quickapp.web_tooling._tool_configs import WEB_FETCH_TOOL_CONFIG
 from quickapp.web_tooling._truncation import compose_truncated_content, split_truncation_notice
@@ -63,32 +69,41 @@ class TestLoadIntoContext:
         service.write_bytes.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_charset_respected(self):
+    async def test_utf8_content_returned_inline(self):
         fetched = FetchedBytes(
-            data="café".encode("latin-1"),
-            content_type="text/plain; charset=latin-1",
-            filename="a.txt",
+            data="café".encode("utf-8"), content_type="text/plain", filename="a.txt"
         )
         tool, _ = _make_tool(fetched)
         result = await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/a.txt")
         assert result.content == "café"
 
     @pytest.mark.asyncio
+    async def test_non_utf8_text_rejected_as_binary(self):
+        # Text detection is a UTF-8 decode attempt; non-UTF-8 (e.g. latin-1) fails
+        # closed and is treated as a binary body.
+        fetched = FetchedBytes(
+            data="café".encode("latin-1"), content_type="text/plain", filename="a.txt"
+        )
+        tool, _ = _make_tool(fetched)
+        with pytest.raises(ToolErrorException) as exc:
+            await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/a.txt")
+        assert "save_path" in exc.value.error_message
+
+    @pytest.mark.asyncio
     async def test_binary_rejected_pointing_at_save_path(self):
         fetched = FetchedBytes(data=b"\x89PNG\r\n", content_type="image/png", filename="a.png")
         tool, _ = _make_tool(fetched)
-        with pytest.raises(InvalidToolCallParameterException) as exc:
+        with pytest.raises(ToolErrorException) as exc:
             await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/a.png")
-        assert exc.value.parameter_name == "url"
-        assert "save_path" in exc.value.message
+        assert "save_path" in exc.value.error_message
 
     @pytest.mark.asyncio
-    async def test_missing_content_type_treated_as_binary(self):
+    async def test_missing_content_type_but_decodable_returned_inline(self):
         fetched = FetchedBytes(data=b"plain", content_type=None, filename="a")
         tool, _ = _make_tool(fetched)
-        with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/a")
-        assert "save_path" in exc.value.message
+        result = await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/a")
+        assert result.content == "plain"
+        assert result.content_type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_oversized_text_truncated_with_leading_notice(self):
@@ -111,7 +126,7 @@ class TestLoadIntoContext:
         service.write_bytes.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_truncated_result_stays_below_cap_and_cuts_on_line_boundary(self):
+    async def test_truncated_result_stays_below_cap(self):
         # The whole result (notice + head) must stay strictly below the cap so it
         # never reaches the offload trigger (which fires at >= threshold).
         text = "\n".join(f"line-{i:03d}" for i in range(200))
@@ -124,7 +139,6 @@ class TestLoadIntoContext:
         notice, head = split_truncation_notice(result.content)
         assert notice is not None
         assert head  # a realistic cap leaves room for content, not just the notice
-        assert head.split("\n")[-1].startswith("line-")  # complete last line
 
     @pytest.mark.asyncio
     async def test_content_at_cap_truncated(self):
@@ -138,11 +152,21 @@ class TestLoadIntoContext:
         assert len(result.content.encode("utf-8")) < 500
 
     @pytest.mark.asyncio
-    async def test_fetch_error_propagates(self):
-        tool, _ = _make_tool(InvalidToolCallParameterException("url", "egress disabled"))
+    async def test_scheme_error_mapped_to_parameter_error(self):
+        # A wrong-kind-of-URL domain error becomes a retryable parameter error.
+        tool, _ = _make_tool(WebContentFetchError("URL files/x is already in DIAL storage."))
         with pytest.raises(InvalidToolCallParameterException) as exc:
-            await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com/x")
-        assert "egress disabled" in exc.value.message
+            await tool._run_in_stage_async(stage_wrapper=None, url="files/x")
+        assert exc.value.parameter_name == "url"
+        assert "DIAL storage" in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_egress_failure_mapped_to_tool_error(self):
+        # The URL is valid; an egress failure is a tool error, not a bad parameter.
+        tool, _ = _make_tool(ExternalFetchDisabledError(reason="admin", url="https://x.com"))
+        with pytest.raises(ToolErrorException) as exc:
+            await tool._run_in_stage_async(stage_wrapper=None, url="https://x.com")
+        assert "EXTERNAL_URL_FETCH_ENABLED" in exc.value.error_message
 
 
 class TestSaveToWorkspace:

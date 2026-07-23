@@ -13,6 +13,8 @@ A subsequent revision re-examined the design against `internal_attachments_get_c
 
 A third revision, driven by field testing, changed the oversized-inline contract from **reject** to **truncate with an explicit notice**, and made every piece of agent-facing guidance **tool-neutral** (no `internal_file_*` name-drops). The prior contract silently assumed the file tools are enabled alongside this one — they are independently gated features, so an app can legitimately run `web_fetch` without them, and the reject-and-save flow then dead-ends (the agent saves a file no enabled tool can read). The rationale and the revised contract are in [Component 2](#component-2-inline-size-cap--truncation-no-save_path-only); a request-scoped fetch cache was added alongside (Component 3) so the save re-call after a truncated read does not re-download.
 
+A fourth revision, from PR review, made three refinements. **(a) Text detection is a UTF-8 decode attempt**, not a content-type allowlist: the tool decodes the body and treats a `UnicodeDecodeError` as binary — `WebContentFetcher` is slimmed to fetch + scheme-classify and no longer owns `is_textual`/`decode`. **(b) The shared fetcher raises only domain errors** (`WebContentFetchError`, or the egress `ExternalFetchError` / `ExternalFetchDisabledError`), leaving the tool to choose the agent-facing exception — the shared helper knows nothing about tools. **(c) A fetch outcome on a *valid* URL is a tool error, not a parameter error**: an egress failure (disabled, host, SSRF, size, timeout, transport) or a non-text body raises `WebFetchToolErrorException` (a `ToolErrorException`), forwarded to the model via the tool's `fallback_configuration`; only a wrong *kind* of URL (DIAL path, unsupported scheme) is an `InvalidToolCallParameterException`. The oversized-inline head is also simplified to a plain byte cut (no line-boundary trim), preserving only the strictly-below-cap budget.
+
 ## Problem Statement
 
 The agent today has two halves of a capability but not the bridge between them:
@@ -103,7 +105,7 @@ Consequences:
 
 **Trigger:** Agent calls `internal_web_fetch(url="https://…/huge.log")` (no `save_path`) and the decoded text reaches the inline cap.
 
-**Behavior:** The tool returns an **explicit leading notice** — the total size, the content type, and that re-calling with a `save_path` persists the full content for whatever tools are available — followed by the **head of the content, truncated at a line boundary**. The notice + head together stay strictly below the cap, and the stage renders the notice outside the verbatim content block (Component 2). This is not truncate-and-guess: the notice makes the partiality explicit and impossible to miss.
+**Behavior:** The tool returns an **explicit leading notice** — the total size, the content type, and that re-calling with a `save_path` persists the full content for whatever tools are available — followed by the **head of the content** (a plain byte cut). The notice + head together stay strictly below the cap, and the stage renders the notice outside the verbatim content block (Component 2). This is not truncate-and-guess: the notice makes the partiality explicit and impossible to miss.
 
 **Outcome:** The first call is never wasted — for head-answerable questions (summarize, identify, check) the agent is done in one call; otherwise it has a clear next step, and the context window stays protected. Crucially this holds even when no other content-processing tool is enabled in the app.
 
@@ -111,7 +113,7 @@ Consequences:
 
 **Trigger:** Agent calls `internal_web_fetch` on a URL whose content type is non-textual (image, zip, PDF, …).
 
-**Behavior:** Without `save_path` → parameter error: binary content cannot be loaded into context; re-call with a `save_path`. With `save_path` → the bytes are saved and the tool returns the path + content type + size (no inline body, no extraction in phase-1).
+**Behavior:** Without `save_path` → the body fails to decode as UTF-8, so it is treated as binary and the tool returns a **tool error** (forwarded to the model via the fallback config): binary content cannot be loaded into context; re-call with a `save_path`. With `save_path` → the bytes are saved and the tool returns the path + content type + size (no inline body, no extraction in phase-1).
 
 **Outcome:** The model never receives garbled bytes in context; binary is reachable only as a saved file it can forward to a capable deployment/tool. (When the url is a conversation attachment and `internal_attachments_get_content` is registered, that tool may deliver the binary to the orchestrator as multimodal input instead — see [Relationship to `internal_attachments_get_content`](#relationship-to-internal_attachments_get_content).)
 
@@ -119,7 +121,7 @@ Consequences:
 
 **Trigger:** An app sets `features.web_fetch.enabled=true` while external fetching is disabled — `EXTERNAL_URL_FETCH_ENABLED=false` (admin cap) or `features.external_url_fetch.enabled=false` (per-app opt-out).
 
-**Behavior:** This is a contradictory configuration — the tool cannot function without egress — so it is caught at **initialization**, not per call. `WebToolingModule` gates tool provisioning on the egress policy (`ExternalUrlFetchPolicyResolver.is_enabled()`): the tool is **not exposed**, and a hard `ToolInitializationException` is surfaced in the "Initialization issues" stage explaining that `web_fetch` needs external fetch enabled. (A host-allowlist denial — egress on, but the *specific host* not allowed — is per-URL and cannot be known at init; it remains a runtime parameter error via `ExternalUrlFetcher.fetch`, see Component 3.)
+**Behavior:** This is a contradictory configuration — the tool cannot function without egress — so it is caught at **initialization**, not per call. `WebToolingModule` gates tool provisioning on the egress policy (`ExternalUrlFetchPolicyResolver.is_enabled()`): the tool is **not exposed**, and a hard `ToolInitializationException` is surfaced in the "Initialization issues" stage explaining that `web_fetch` needs external fetch enabled. (A host-allowlist denial — egress on, but the *specific host* not allowed — is per-URL and cannot be known at init; it remains a runtime tool error via `ExternalUrlFetcher.fetch`, see Component 3.)
 
 **Outcome:** The builder learns their config is contradictory up front; the model is never offered a tool that would fail on every call. No silent misconfiguration.
 
@@ -147,18 +149,18 @@ Consequences:
 flowchart TD
     WF["internal_web_fetch(url, save_path)"] --> B{"classify_url"}
 
-    subgraph shared["shared fetch helper (Component 3)"]
+    subgraph shared["shared fetch helper (Component 3) — raises domain errors; tool maps them"]
       direction TB
       B -->|DIAL| E1["parameter error:<br/>already in DIAL storage (tool-neutral)"]
-      B -->|unsupported| E2["unsupported-scheme error"]
+      B -->|unsupported| E2["parameter error:<br/>unsupported scheme"]
       B -->|EXTERNAL| C["ExternalUrlFetcher.fetch(url)<br/>egress + SSRF + size/redirect/timeout"]
-      C -->|"ExternalFetchDisabledError / ExternalFetchError"| E3["parameter error<br/>(existing messages)"]
+      C -->|"ExternalFetchDisabledError / ExternalFetchError"| E3["tool error (forwarded):<br/>existing messages"]
     end
 
     C -->|"FetchedBytes"| M{"save_path given?"}
 
-    M -->|no| L{"textual?"}
-    L -->|no| E4["parameter error:<br/>binary &rarr; re-call with a save_path"]
+    M -->|no| L{"decodes as UTF-8?"}
+    L -->|no| E4["tool error (forwarded):<br/>binary &rarr; re-call with a save_path"]
     L -->|yes| LT{"within inline cap?"}
     LT -->|yes| LR["ToolCallResult: full inline text<br/>(no file written)"]
     LT -->|no| LN["ToolCallResult: head + truncation notice<br/>(under the cap, no file written)"]
@@ -174,7 +176,7 @@ flowchart TD
   - `url: str` (required) — the http(s) URL to fetch.
   - `save_path: str` (optional) — the workspace-relative destination for the fetched file (e.g. `data.py`, `docs/readme.md`). **Its presence is the switch:** omit it to read the content inline; provide it to persist the resource there and get back the saved path. Subdirectories are allowed; DIAL-style (`files/…`) paths are rejected (Component 4).
 - **Semantics:** run the shared helper to classify + fetch, then branch on whether `save_path` was given:
-  - **omitted** → require textual content (Component 3); binary → parameter error telling the agent to re-call with a `save_path` (UC-4). Textual content at or above the inline cap is truncated with a notice (Component 2, UC-3); otherwise the full decoded text is returned inline (code-block wrapped, consistent with the file-tool stage formatting).
+  - **omitted** → require the body to decode as UTF-8 text (Component 3); a non-decodable (binary) body → a **tool error** (`WebFetchToolErrorException`, forwarded) telling the agent to re-call with a `save_path` (UC-4). Textual content at or above the inline cap is truncated with a notice (Component 2, UC-3); otherwise the full decoded text is returned inline (code-block wrapped, consistent with the file-tool stage formatting).
   - **given** → persist any content type at `save_path` under the agent home (Component 4) and return the saved relative path (+ a short preview when textual). No size guard.
 - **Return shape:** without `save_path` → inline text in `ToolCallResult.content`. With `save_path` → the saved relative path (+ optional preview) in `ToolCallResult.content`. Never sets `result.attachments` (see Component 4, "No user-choice propagation").
 
@@ -182,18 +184,18 @@ flowchart TD
 
 - **What:** a byte cap applied only on the inline (no-`save_path`) branch, **configurable** via `features.web_fetch.max_inline_size` (Component 5). Text at or above the cap is **truncated with an explicit notice**, never rejected.
 - **Why truncate, not reject (third-revision reversal):** the original reject-and-save contract assumed the `internal_file_*` read-back tools exist to consume the saved file. They are an independently gated feature (`features.dial_files`, with per-tool `enabled_tools`), so `web_fetch` can legitimately be the *only* content tool in an app — and the reject flow then dead-ends. It was also wasteful even with file tools present (field-tested: a "summarize this URL" request cost two extra fetches and two dead-end searches): the rejection threw away the downloaded bytes and forced a save + ranged reads for questions the head alone answers. Truncation makes the first call always useful; the offload processor's own precedent (`_REQUIRED_READ_BACK_TOOLS` auto-disable in `dial_files_tooling_module.py`) confirms this dependency class must not be assumed.
-- **Truncation shape:** a **leading notice** stating the total byte size, content type, and that re-calling with a `save_path` persists the full content — worded **tool-neutrally** ("use your available tools on it"), never naming `internal_file_*` — followed by a blank line and the UTF-8 head of the decoded text, cut at the last line boundary within budget (falling back to a hard cut when a single line dominates the budget). The notice comes *first* so the truncation is obvious no matter how large the head is, and it deliberately embeds only values known *before* the cut: the head's own byte count is omitted (the model can see how much text it got; the total is what drives the save-or-not decision), which keeps the budget math circularity-free. The format lives in `web_tooling/_truncation.py`, shared with the stage wrapper, which splits the notice back off and renders it **outside** the verbatim content block — the user sees the tool's instruction separated from the fetched text, and fetched text can never pose as a notice (only a notice at position zero, before any fetched byte, is split).
+- **Truncation shape:** a **leading notice** stating the total byte size, content type, and that re-calling with a `save_path` persists the full content — worded **tool-neutrally** ("use your available tools on it"), never naming `internal_file_*` — followed by a blank line and the UTF-8 head of the content, cut to the head budget (a plain byte cut; `errors="ignore"` drops only a multibyte sequence split by the boundary). The notice comes *first* so the truncation is obvious no matter how large the head is, and it deliberately embeds only values known *before* the cut: the head's own byte count is omitted (the model can see how much text it got; the total is what drives the save-or-not decision), which keeps the budget math circularity-free. The format lives in `web_tooling/_truncation.py`, shared with the stage wrapper, which splits the notice back off and renders it **outside** the verbatim content block — the user sees the tool's instruction separated from the fetched text, and fetched text can never pose as a notice (only a notice at position zero, before any fetched byte, is split).
 - **Default:** drawn from the **same env setting that governs the offload threshold's default** (`ToolCallResultOffloadSettings`, 40 KB; `config/dial_files.py`), so out of the box the two are equal and anything the tool returns inline is below the offloader's trigger — the "Read in one call" and "Bounded inline output" goals hold without the global processor silently rewriting the result (see Component 4a for the cases where an operator decouples the two).
 - **The invariant survives truncation (notice budgeting).** Because the notice embeds only up-front values, it is rendered once and the head budget is simply `max_inline_size` minus the notice's exact byte length, minus the separator, minus one — so notice + head together are always **strictly** below the cap. The global offloader offloads when `size >= size_threshold` (`_offload_processor.py`: it skips only when `size < size_threshold`), so at the default (cap == threshold) a returned result — full or truncated — never reaches the offloader's trigger. The invariant is thus provable, not merely asserted. (A pathological cap smaller than the notice itself yields the notice alone; `max_inline_size` is validated `gt=0` and realistic values are KBs.)
 - **Comparison is `>=` (at-or-above truncates),** so exactly-at-cap content is truncated too and a returned result is always strictly below the cap.
 
 ### Component 3: Shared fetch helper (`WebContentFetcher`)
 
-- **What:** a small helper (`shared/external_fetch/web_content_fetcher.py`, already present on the branch) covering the common front half both branches share. Its entry point is `fetch_external(url, parameter_name="url")`, plus the static `is_textual(content_type)` and `decode(data, content_type)` helpers.
-- **Classification:** `classify_url` (`common/url_classification.py`) → `UrlScheme.{DIAL,EXTERNAL,UNSUPPORTED}`. `DIAL` → parameter error (UC-6); unsupported scheme → unsupported-scheme error.
-- **Fetch:** wraps `ExternalUrlFetcher.fetch(url)` → `FetchedBytes{data, content_type, filename}`. This is where the **entire egress policy is enforced** (admin switch, per-app opt-out, host allowlist, SSRF guard, size/redirect/timeout caps). `fetch_external` already catches `ExternalFetchDisabledError` / `ExternalFetchError` and re-raises them as `InvalidToolCallParameterException` on the given `parameter_name`, matching `FileLoaderService` / `DialFilePromoter`.
+- **What:** a small helper (`shared/external_fetch/web_content_fetcher.py`) covering the common front half both branches share: classify the URL, then fetch it. Its only entry point is `fetch_external(url)`. It is **tool-agnostic** — it raises only domain errors and never imports a tool exception.
+- **Classification:** `classify_url` (`common/url_classification.py`) → `UrlScheme.{DIAL,DIAL_APPDIR_RELATIVE,EXTERNAL,UNSUPPORTED}`. A DIAL / agent-home-relative URL or an unsupported scheme raises **`WebContentFetchError`** (a plain domain exception defined in this module) carrying a ready, tool-neutral message. The tool maps it to an `InvalidToolCallParameterException` on `url` (UC-6) — a wrong *kind* of URL is a parameter the model should correct.
+- **Fetch:** wraps `ExternalUrlFetcher.fetch(url)` → `FetchedBytes{data, content_type, filename}`. This is where the **entire egress policy is enforced** (admin switch, per-app opt-out, host allowlist, SSRF guard, size/redirect/timeout caps). `ExternalFetchDisabledError` / `ExternalFetchError` **propagate unchanged**; the tool catches them and raises `WebFetchToolErrorException` (forwarded to the model via the fallback config) — the URL was valid, so the failure is a tool error, not a bad parameter.
 - **Request-scoped fetch cache (third revision):** successful fetches are cached by URL for the lifetime of the (request-scoped) instance, so the natural follow-up to a truncated inline read — re-calling the same URL with a `save_path` — does not re-download. Errors are not cached (they may be transient).
-- **Textual predicate (`is_textual`):** derived from `content_type` — `text/*`, `application/json`, `application/xml`, and common source/markup types are textual (decoded with the response charset, falling back to UTF-8 with replacement). Everything else is non-textual. Used by the inline branch to gate returning text and by the save branch to decide whether to attach a preview.
+- **Text detection lives in the tool, as a UTF-8 decode attempt.** There is no content-type allowlist or charset parsing: the tool calls `data.decode("utf-8")` and treats a success as text and a `UnicodeDecodeError` as binary. The inline branch uses this to gate returning text (binary → tool error, UC-4); the save branch uses it to decide whether to attach a preview. Trade-off: non-UTF-8 text (e.g. a latin-1 page) is read as binary and must be saved — accepted for phase-1 simplicity over the previous content-type heuristic.
 - **No content-sniffing libraries** in phase-1. `FetchedBytes.filename` is still produced by `ExternalUrlFetcher` but is unused by this tool (saving always uses the caller's `save_path`).
 
 ### Component 4: Workspace placement (when `save_path` is given)
@@ -223,6 +225,7 @@ The tool is **feature-gated** (enabled through `features.web_fetch`, not through
 - **Name:** `INTERNAL_WEB_FETCH_TOOL_NAME = "internal_web_fetch"` in `common/tool_names.py`.
 - **Feature config `WebFetchConfig`** (`config/web_fetch.py`): `enabled: bool = false`, `max_inline_size: int` (validated `gt=0`) defaulting (via `default_factory`) to the offload threshold. Exposed on the `Features` model (`config/application.py`) as a `PreviewField` — so configuring it requires `ENABLE_PREVIEW_FEATURES`.
 - **Provider:** `WebToolingModule` (`web_tooling/web_tooling_module.py`, `@preview_module`) via a `@multiprovider` that builds the tool when `features.web_fetch.enabled` is true (passing `max_inline_size` from the same config). Registered in `app_factory.py`.
+- **Error forwarding:** `WEB_FETCH_TOOL_CONFIG.fallback_configuration` uses `ContinueStrategyModel(forward_tool_error_message=True)`, so `WebFetchToolErrorException` messages (egress denied, non-text body, …) are forwarded to the model, which can then react (e.g. re-call with a `save_path`). The other class of failure — `InvalidToolCallParameterException` (wrong *kind* of URL, bad `save_path`) — is handled by the base tool's separate, guaranteed retry-instruction path (`staged_base_tool.py`), independent of `fallback_configuration`.
 - **Egress init-gate (fail fast on contradictory config):** the tool is useless without external egress, so `WebToolingModule` injects `ExternalUrlFetchPolicyResolver` and, when `web_fetch.enabled` is set but `is_enabled()` is false (admin cap or per-app opt-out), **does not build the tool** and emits a hard `ToolInitializationException` via a second `@multiprovider -> list[InitializationException]` (aggregated by `_InitializationErrorHandler` into the "Initialization issues" stage). This replaces per-call egress-disabled errors for the on/off case (UC-5); host-allowlist denials stay runtime (Component 3).
 - **Shared home resolver:** move `_HomePathResolver` (`dial_files_tooling/_home_path_resolver.py`) into a **new `shared/home_path/` package** as public `HomePathResolver`, bound request-scoped by a `HomePathModule` spliced into `shared_module` (`shared/__init__.py`, mirroring the existing `ExternalFetchModule` there, per the CLAUDE.md `shared/` convention). `dial_files_tooling` drops its own binding (`dial_files_tooling_module.py`) and injects the shared type; `_DialFileTool` and the `_AppdataHomePathTransformer` keep working against the same public API. Its constructor deps (`DialFileService`, `DialFilesConfig`) are already globally bound.
 - **Preview gating:** `WebToolingModule` is `@preview_module` **and** `WebFetchConfig` is exposed via `PreviewField` — so `internal_web_fetch` is preview-gated at both the module and config level. (This mirrors how the dial-files tooling is preview-gated at the *module* level via `@preview_module`; note the `Features.dial_files` config field itself is a plain `Field`, so the two are not identical — `web_fetch` additionally nullifies its config outside preview.)
@@ -285,7 +288,7 @@ features:
 `internal_web_fetch(url="https://…/huge.log")` where the log is 425 KB
 → returns
 `[Truncated: fetched content is 424767 bytes (text/plain), larger than the inline cap; only the beginning follows. To process the full content, re-call with a save_path to persist it to the workspace, then use your available tools on it.]`
-followed by a blank line and the head of the log (cut at a line boundary; notice + head under the 40 KB cap). The stage shows the notice above the verbatim content block. A follow-up `internal_web_fetch(url=…, save_path="huge.log")` is served from the request-scoped fetch cache — no second download.
+followed by a blank line and the head of the log (a plain byte cut; notice + head under the 40 KB cap). The stage shows the notice above the verbatim content block. A follow-up `internal_web_fetch(url=…, save_path="huge.log")` is served from the request-scoped fetch cache — no second download.
 
 ### Walkthrough — save to the workspace (UC-2)
 
@@ -318,11 +321,12 @@ None. The tool is purely additive and opt-in via app config.
 - `shared/home_path/home_path_resolver.py` + `home_path_module.py` — public `HomePathResolver` (moved from `dial_files_tooling/_home_path_resolver.py`) and `HomePathModule`, spliced into `shared_module`.
 - `web_tooling/web_tooling_module.py` — `WebToolingModule` (`@preview_module`; `configure` + `@multiprovider`).
 - `web_tooling/_web_fetch_tool.py` — the `internal_web_fetch` tool (plain `StagedBaseTool`; injects the shared fetch helper + shared home resolver; branches on `save_path`).
-- `web_tooling/_tool_configs.py` — the tool's `InternalTool` config (`WEB_FETCH_TOOL_CONFIG`), with `url` and optional `save_path` parameters.
+- `web_tooling/_tool_configs.py` — the tool's `InternalTool` config (`WEB_FETCH_TOOL_CONFIG`), with `url` and optional `save_path` parameters and a `fallback_configuration` that forwards tool-error messages.
 - `web_tooling/_web_fetch_stage_wrapper.py` — the tool's stage wrapper.
+- `web_tooling/_web_fetch_tool_error_exception.py` — `WebFetchToolErrorException` (a `ToolErrorException`) for fetch failures on a valid URL (egress denied, non-text body, …).
 - `web_tooling/_truncation.py` — the truncation-notice format, shared by the tool (composes notice + head) and the stage wrapper (splits the notice back off for display outside the verbatim block).
 - `config/web_fetch.py` — `WebFetchConfig` (`enabled`, `max_inline_size` with `gt=0`).
-- `shared/external_fetch/web_content_fetcher.py` — the shared fetch helper (Component 3), exposing `fetch_external` / `is_textual` / `decode`.
+- `shared/external_fetch/web_content_fetcher.py` — the shared fetch helper (Component 3): `fetch_external` + the domain error `WebContentFetchError` (fetch + scheme-classify only; tool-agnostic).
 - Unit tests for the tool (both branches) and the fetch helper.
 
 ### Modified files (vs. `development`)
@@ -351,18 +355,18 @@ The current branch already carries a superseded two-tool implementation. Bringin
 
 ### Tests
 
-- **inline:** textual within the cap → full inline content, no file written.
-- **inline:** textual at/over the cap → leading truncation notice + head (line-boundary cut, accurate total byte count, `save_path` guidance, no `internal_file_*` name-drops), whole result strictly below the cap, no file written.
+- **inline:** UTF-8 content within the cap → full inline content, no file written; a missing/any content type that still decodes → returned inline.
+- **inline:** UTF-8 content at/over the cap → leading truncation notice + head (accurate total byte count, `save_path` guidance, no `internal_file_*` name-drops), whole result strictly below the cap, no file written.
 - **stage rendering:** truncation notice split off and rendered outside the verbatim content block; non-truncated content untouched; fetched text merely resembling a notice (no composed separator) is not split.
-- **inline:** binary → parameter error telling the agent to pass a `save_path`.
-- **fetch helper:** repeat fetch of the same URL within a request → served from the cache (one download); fetch errors are not cached.
+- **inline:** non-UTF-8 / binary body → tool error (forwarded) telling the agent to pass a `save_path`.
+- **fetch helper:** repeat fetch of the same URL within a request → served from the cache; scheme rejections raise `WebContentFetchError`; egress errors propagate unchanged (not cached).
 - **save:** textual → persisted at `save_path` under agent home, relative path + preview returned.
 - **save:** binary → persisted at `save_path`, relative path + content type + size returned, no inline body.
 - **save:** `save_path` with a subdirectory → persisted at that workspace-relative path.
 - **save:** invalid `save_path` (absolute / traversal / empty / `files/`-prefixed) → parameter error on `save_path`.
 - **save:** `save_path` collision → numeric-suffix uniquification.
 - **save** then `internal_file_list`/`read_lines` on the returned relative path (workspace-placement guarantee).
-- **both branches:** host not allowed / SSRF → parameter error with the policy message (runtime).
-- **both branches:** DIAL URL → parameter error pointing to the file tools.
+- **both branches:** host not allowed / SSRF → tool error (forwarded) with the policy message (runtime).
+- **both branches:** DIAL URL → tool-neutral parameter error on `url`.
 - **config:** `features.web_fetch.enabled=false` (or omitted) → tool not exposed (UC-7).
 - **egress init-gate:** `web_fetch.enabled=true` but egress disabled → tool not exposed **and** a hard `ToolInitializationException` emitted (UC-5); `enabled=false` + egress disabled → no error.

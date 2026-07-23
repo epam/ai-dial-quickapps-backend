@@ -17,13 +17,10 @@ class _WebFetchStageWrapper(TimedStageWrapper):
         return f"### Exception:\n\r{exception}\n\r"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
-        # A truncated read is composed as notice + blank line + fetched head; show
-        # the notice outside the verbatim block so it stays visible however large
-        # the head is and is never mistaken for fetched text.
+        # Render any truncation notice outside the verbatim block so it stays
+        # visible; render the fetched text (often Markdown/HTML) fenced so the UI
+        # shows it verbatim instead of formatting it.
         notice, body = split_truncation_notice(result.content)
-        # Fetched content is often itself Markdown/HTML (e.g. a README). Render it
-        # inside a fenced code block so the stage shows the fetched text verbatim
-        # instead of the UI rendering it as formatted Markdown.
         content_block = f"**Content:**\n{fenced_code_block(body)}\n"
         if notice is None:
             return content_block

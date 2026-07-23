@@ -12,8 +12,15 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.shared.external_fetch.external_url_fetcher import FetchedBytes
-from quickapp.shared.external_fetch.web_content_fetcher import WebContentFetcher
+from quickapp.shared.external_fetch.external_url_fetcher import (
+    ExternalFetchDisabledError,
+    ExternalFetchError,
+    FetchedBytes,
+)
+from quickapp.shared.external_fetch.web_content_fetcher import (
+    WebContentFetcher,
+    WebContentFetchError,
+)
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 from quickapp.web_tooling._truncation import (
     TRUNCATION_NOTICE_TEMPLATE,
@@ -21,9 +28,9 @@ from quickapp.web_tooling._truncation import (
     separator_byte_length,
 )
 from quickapp.web_tooling._web_fetch_stage_wrapper import _WebFetchStageWrapper
+from quickapp.web_tooling._web_fetch_tool_error_exception import WebFetchToolErrorException
 
-# Preview shown for textual saves so the agent can decide whether to read the
-# full file. Kept short to stay well below any offload threshold.
+# Preview of a textual save, short enough to stay below the offload threshold.
 _PREVIEW_CHARS = 1000
 
 # Bound on collision-avoidance retries when the target filename already exists.
@@ -32,25 +39,14 @@ _MAX_UNIQUE_ATTEMPTS = 100
 
 @inject
 class _WebFetchTool(StagedBaseTool):
-    """``internal_web_fetch`` — fetch an external resource; read it or save it.
+    """``internal_web_fetch`` — fetch an external URL, then read it or save it.
 
-    A single optional ``save_path`` selects the behaviour:
-
-    * **omitted** — the payload must be textual; the decoded text is returned
-      inline. Content at or above ``max_inline_size`` is truncated: a leading
-      notice (total size + how to get the rest) followed by the content head,
-      sized so the whole result stays strictly below the cap — and, at the
-      default where the cap equals the global offload threshold, below the
-      offloader's trigger (see docs/designs/web_fetch_tool.md, Component 4a).
-      Binary content is rejected with guidance to re-call with a ``save_path``.
-      Guidance never names other tools — which tools can process a saved file
-      varies per app.
-    * **given** — the fetched bytes (any content type) are persisted at
-      ``save_path`` under the agent home via the shared home-path resolver and a
-      bytes write, and the saved workspace-relative path (+ a short preview for
-      textual content) is returned so the ``internal_file_*`` tools can operate on
-      it. The file is never surfaced to the user choice (``result.attachments`` is
-      left empty), unlike ``_WriteFileTool``.
+    ``save_path`` omitted: the body must decode as UTF-8 text and is returned
+    inline (truncated to its head with a leading notice once it reaches
+    ``max_inline_size``); a binary body is rejected. ``save_path`` given: the
+    fetched bytes are persisted under the agent home and the saved path (+ a
+    short preview for text) is returned, without surfacing the file to the user
+    choice (``result.attachments`` stays empty).
     """
 
     def __init__(
@@ -88,7 +84,7 @@ class _WebFetchTool(StagedBaseTool):
         url: str = kwargs["url"]
         save_path: str | None = kwargs.get("save_path")
 
-        fetched = await self.__web_content_fetcher.fetch_external(url, parameter_name="url")
+        fetched = await self.__fetch(url)
 
         if save_path is None:
             result = self.__load_into_context(url, fetched)
@@ -99,57 +95,50 @@ class _WebFetchTool(StagedBaseTool):
             stage_wrapper.add_result(result)
         return result
 
+    async def __fetch(self, url: str) -> FetchedBytes:
+        try:
+            return await self.__web_content_fetcher.fetch_external(url)
+        except WebContentFetchError as e:
+            # Wrong kind of URL (DIAL path / unsupported scheme): a parameter the
+            # model should correct and retry.
+            raise InvalidToolCallParameterException("url", str(e)) from e
+        except (ExternalFetchError, ExternalFetchDisabledError) as e:
+            # The URL is valid; the fetch itself failed (egress policy, size,
+            # timeout, ...). A tool error, not a bad parameter.
+            raise WebFetchToolErrorException(self._resolve_tool_name(), str(e)) from e
+
     def __load_into_context(self, url: str, fetched: FetchedBytes) -> ToolCallResult:
-        if not WebContentFetcher.is_textual(fetched.content_type):
-            raise InvalidToolCallParameterException(
-                "url",
-                f"URL {url} returned non-text content "
-                f"(content-type: {fetched.content_type or 'unknown'}), which cannot be "
-                "loaded into context. Re-call with a save_path to persist it to the "
-                "workspace, then use your available tools on it.",
+        text = _try_decode_utf8(fetched.data)
+        if text is None:
+            raise WebFetchToolErrorException(
+                self._resolve_tool_name(),
+                f"URL {url} returned non-text content (content-type: "
+                f"{fetched.content_type or 'unknown'}); it cannot be loaded into context. "
+                "Re-call with a save_path to persist it to the workspace, then use your "
+                "available tools on it.",
             )
 
-        text = WebContentFetcher.decode(fetched.data, fetched.content_type)
         content_type = fetched.content_type or "text/plain"
-
-        # Guard against dumping unbounded content into the LLM context: at or above
-        # the cap the head is returned with an explicit truncation notice, never an
-        # error — a truncated read must stay useful even when no other tool that
-        # could process a saved copy is enabled.
-        encoded = text.encode("utf-8")
-        if len(encoded) >= self.__max_inline_size:
-            text = self.__truncate_with_notice(encoded, content_type)
-
+        # Keep unbounded content out of the LLM context: at or above the cap the
+        # head is returned with a leading truncation notice, never an error.
+        if len(fetched.data) >= self.__max_inline_size:
+            text = self.__truncate_with_notice(fetched.data, content_type)
         return ToolCallResult(content=text, content_type=content_type)
 
-    def __truncate_with_notice(self, encoded: bytes, content_type: str) -> str:
-        """Return the truncation notice followed by the head of ``encoded``.
-
-        The notice comes *first* so it stays visible however large the head is,
-        both to the model and — split back off by the stage wrapper — to the
-        user. It embeds only values known up front, so the head budget is simply
-        the cap minus the notice's exact length (plus separator), keeping notice
-        + content strictly below ``max_inline_size`` — an inline result never
-        reaches the global offload trigger (cap == threshold by default). The
-        cut prefers the last newline within budget (unless that drops more than
-        half of it) so the head ends on a whole line. A cap smaller than the
-        notice itself yields the notice alone.
-        """
-        notice = TRUNCATION_NOTICE_TEMPLATE.format(total=len(encoded), content_type=content_type)
+    def __truncate_with_notice(self, data: bytes, content_type: str) -> str:
+        # Notice first so it stays visible; reserve its byte length (+ separator
+        # + 1) from the head budget so notice + head stays strictly below the cap
+        # and never reaches the offload trigger (cap == threshold by default).
+        notice = TRUNCATION_NOTICE_TEMPLATE.format(total=len(data), content_type=content_type)
         reserved = len(notice.encode("utf-8")) + separator_byte_length() + 1
         budget = max(self.__max_inline_size - reserved, 0)
-        head = encoded[:budget]
-        newline_cut = head.rfind(b"\n")
-        if newline_cut >= budget // 2:
-            head = head[:newline_cut]
-        # "ignore" drops only a UTF-8 sequence split by the byte cut; the rest of
-        # the head is valid by construction.
-        return compose_truncated_content(notice, head.decode("utf-8", errors="ignore"))
+        # "ignore" drops only a UTF-8 sequence split by the byte cut.
+        head = data[:budget].decode("utf-8", errors="ignore")
+        return compose_truncated_content(notice, head)
 
     async def __save_to_workspace(self, save_path: str, fetched: FetchedBytes) -> ToolCallResult:
         # A ``files/``-prefixed path would be returned verbatim by
-        # ``resolve_appdata_url`` (bypassing home-prefixing and traversal validation),
-        # escaping the agent home. Require a home-relative destination.
+        # ``resolve_appdata_url``, escaping the agent home. Require a home-relative one.
         if save_path.startswith("files/"):
             raise InvalidToolCallParameterException(
                 "save_path",
@@ -160,11 +149,10 @@ class _WebFetchTool(StagedBaseTool):
         content_type = fetched.content_type or "application/octet-stream"
         display_path = await self.__write_unique(save_path, fetched.data, content_type)
 
-        size = len(fetched.data)
-        content = f"Saved {display_path} ({content_type}, {size} bytes)."
-        if WebContentFetcher.is_textual(fetched.content_type):
-            preview = WebContentFetcher.decode(fetched.data, fetched.content_type)[:_PREVIEW_CHARS]
-            content = f"{content}\n\nPreview:\n{preview}"
+        content = f"Saved {display_path} ({content_type}, {len(fetched.data)} bytes)."
+        preview = _try_decode_utf8(fetched.data)
+        if preview is not None:
+            content = f"{content}\n\nPreview:\n{preview[:_PREVIEW_CHARS]}"
 
         return ToolCallResult(content=content, content_type="text/plain")
 
@@ -172,9 +160,8 @@ class _WebFetchTool(StagedBaseTool):
         """Write ``data`` at ``save_path`` under the agent home, uniquifying on collision.
 
         Uses ``overwrite=False`` so an existing file is never clobbered: on an
-        ``If-None-Match`` failure the name is uniquified (``name-1.ext``,
-        ``name-2.ext``, …) and retried. Returns the workspace-relative display path
-        actually written.
+        ``If-None-Match`` failure the name is uniquified (``name-1.ext``, …) and
+        retried. Returns the workspace-relative display path actually written.
         """
         for attempt in range(_MAX_UNIQUE_ATTEMPTS):
             candidate = save_path if attempt == 0 else _with_suffix(save_path, attempt)
@@ -201,6 +188,14 @@ class _WebFetchTool(StagedBaseTool):
             f"Could not find a free filename for '{save_path}' after "
             f"{_MAX_UNIQUE_ATTEMPTS} attempts; too many saves share this name.",
         )
+
+
+def _try_decode_utf8(data: bytes) -> str | None:
+    """Return ``data`` decoded as UTF-8, or ``None`` if it is not valid UTF-8."""
+    try:
+        return data.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
 
 
 def _with_suffix(path: str, n: int) -> str:
