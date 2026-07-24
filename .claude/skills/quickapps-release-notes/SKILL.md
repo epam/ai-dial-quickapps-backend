@@ -161,7 +161,7 @@ Add this section **only** when the range introduces at least one env-var, behavi
 ## Deployment Changes
 
 ### New environment variables
-<table: Variable | Default | Description>
+<table: Variable | Default | Description | Required>
 
 ### Deprecated environment variables
 > [!CAUTION]
@@ -205,7 +205,7 @@ If a change requires the operator to touch a config file outside this repo (DIAL
 
 **Crucial — what does *not* belong here**: app-config-only fields (per-app `features.*` overrides, new manifest fields). Those changes belong in the **Features** bullet body where they're introduced. `Deployment Changes` is for operator-facing concerns: env vars, behavioral shifts, external-config migrations, schema-level deprecations. The user explicitly dropped an "App config additions" subsection during the `0.7.0-rc.0` pass with the message *"app config - not deployment changes. drop it"* — respect that boundary.
 
-For the env-var tables, the description column comes from `CONFIGURATION.md` when it exists there; otherwise from the settings class docstring. Cite bounds (`> 0`, `0 < x ≤ 3600`) verbatim from the validator.
+For the env-var tables, the description column comes from `CONFIGURATION.md` when it exists there; otherwise from the settings class docstring. Cite bounds (`> 0`, `0 < x ≤ 3600`) verbatim from the validator. The `Required` column is determined from **source, not the PR body**: a variable is `Yes` when its settings-class field has no default (the app fails to start without it), and `No` when the field declares a default — in which case put the default in the `Default` column and leave `Required` as `No`. Verify by reading the field via LSP (`goToDefinition`) rather than inferring from `CONFIGURATION.md`.
 
 ### 7. Pre-release / delta handling
 
