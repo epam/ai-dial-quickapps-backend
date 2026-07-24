@@ -70,6 +70,47 @@ class BaseDeploymentTool(StagedBaseTool):
             )
         self.__messages_mixin: MessagesMixin = messages_mixin
 
+    @staticmethod
+    def _is_resumable(tool_config: DialDeploymentTool) -> bool:
+        return tool_config.conversation_mode is not None and tool_config.conversation_mode.resumable
+
+    def _setup_session(
+        self,
+        kwargs: dict,
+        tool_config: DialDeploymentTool,
+        tool_call_id: str | None,
+    ) -> tuple[str | None, bool]:
+        """Pop session_id from kwargs and resolve the resumable session state.
+
+        Returns (session_id, is_first_call): the session identifier to use for this
+        call (the tool_call_id on a resumable first call, otherwise whatever the LLM
+        passed back or None), and whether this is the first call of a resumable thread.
+        """
+        session_id: str | None = kwargs.pop("session_id", None)
+        if not self._is_resumable(tool_config):
+            return session_id, False
+        is_first_call = session_id is None
+        if is_first_call:
+            session_id = tool_call_id
+            logger.info("Resumable tool first call — assigned session_id=%s", session_id)
+        else:
+            logger.info("Resumable tool follow-up — session_id=%s", session_id)
+        return session_id, is_first_call
+
+    async def _resolve_history(
+        self,
+        tool_config: DialDeploymentTool,
+        session_id: str | None,
+    ) -> list[UserMessageParam | AssistantMessageParam] | None:
+        propagate_history = bool(
+            self.__content_propagation and self.__content_propagation.propagate_history
+        )
+        if not (propagate_history or self._is_resumable(tool_config)):
+            return None
+        return await self._extract_tool_history(
+            tool_config.open_ai_tool.function.name, session_id=session_id
+        )
+
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
@@ -78,24 +119,8 @@ class BaseDeploymentTool(StagedBaseTool):
         **kwargs,
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
-        session_id: str | None = kwargs.pop("session_id", None)
-        is_resumable = (
-            tool_config.conversation_mode is not None and tool_config.conversation_mode.resumable
-        )
-        is_first_call = is_resumable and session_id is None
-        if is_first_call:
-            session_id = tool_call_id
-            logger.info("Resumable tool first call — assigned session_id=%s", session_id)
-        elif is_resumable and session_id:
-            logger.info("Resumable tool follow-up — session_id=%s", session_id)
-        history = None
-        propagate_history = bool(
-            self.__content_propagation and self.__content_propagation.propagate_history
-        )
-        if propagate_history or is_resumable:
-            history = await self._extract_tool_history(
-                tool_config.open_ai_tool.function.name, session_id=session_id
-            )
+        session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
+        history = await self._resolve_history(tool_config, session_id)
         result = await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
@@ -120,7 +145,7 @@ class BaseDeploymentTool(StagedBaseTool):
 
     def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
         tool_config = cast(DialDeploymentTool, self.tool_config)
-        if not (tool_config.conversation_mode and tool_config.conversation_mode.resumable):
+        if not self._is_resumable(tool_config):
             return open_ai_tool
         if "session_id" not in open_ai_tool.function.parameters.properties:
             open_ai_tool.function.parameters.properties["session_id"] = self._SESSION_ID_PARAM
