@@ -44,6 +44,7 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.config.tools.const import ALL_MIME_TYPES
+from quickapp.config.web_fetch import WebFetchConfig
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -80,6 +81,7 @@ def build_dump_application_config() -> ApplicationConfig:
         features=Features(
             timestamp=ToolCallTimestampConfig(),
             dial_files=DialFilesConfig(),
+            web_fetch=WebFetchConfig(enabled=True),
             representation_tooling=RepresentationToolingConfig(),
         ),
     )
@@ -136,6 +138,9 @@ async def _gather_internal_tools_manifest() -> list[dict[str, Any]]:
     # load_env can inject empty auth vars; set deterministic non-empty fallbacks.
     _set_env_if_empty("OPENAI_API_KEY", "dump-internal-tools")
     _set_env_if_empty("OPENAI_ADMIN_KEY", "dump-internal-tools")
+    # internal_web_fetch is gated on external egress being enabled (WebToolingModule);
+    # enable the admin cap so the tool materializes in the reference manifest.
+    _set_env_if_empty("EXTERNAL_URL_FETCH_ENABLED", "true")
 
     modules = AppFactory.build_di_modules()
     injector = Injector(modules)
