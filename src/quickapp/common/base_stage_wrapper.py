@@ -136,6 +136,36 @@ class BaseStageWrapper(ABC):
 
         return str(result_value)
 
+    def _order_parameters(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        # Sort by the configured `order` (default 0). sorted() is stable, so params
+        # sharing an order keep their original position.
+        def _order(param_name: str) -> int:
+            display_config = self._parameters_config_map.get(param_name)
+            return display_config.order if display_config else 0
+
+        return dict(sorted(parameters.items(), key=lambda item: _order(item[0])))
+
+    def _render_config_map_parameters(self, parameters: dict[str, Any]) -> str:
+        """Render parameters using the per-parameter display config map.
+
+        Shared building block for wrappers whose tool advertises `display.stage`
+        config on its OpenAI parameters. Parameters are ordered by their configured
+        `order`, then each is formatted via the `_get_parameter_*` helpers (or a
+        plain `***name:*** value` fallback when it has no display config).
+        """
+        stage_params = "> #### Request:\n\r"
+        for param_name, param_value in self._order_parameters(parameters).items():
+            if display_config := self._parameters_config_map.get(param_name):
+                if not display_config.ignore:
+                    stage_params += self._get_parameter_name(param_name, display_config)
+                    stage_params += self._get_value_prefix(display_config)
+                    stage_params += self._get_parameter_value(param_value, display_config)
+                    stage_params += self._get_value_sufix(display_config)
+                    stage_params += "\n\r"
+            else:
+                stage_params += f"***{param_name}:*** {param_value}\n\r"
+        return stage_params
+
     def add_result(self, result: ToolCallResult) -> None:
         debug_info = self._build_debug_info_from_result(result)
         self.append_stage_content(debug_info)
