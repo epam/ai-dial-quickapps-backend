@@ -35,8 +35,8 @@ class BaseHandleStrategyModel(BaseToolFallbackStrategyModel):
     instructions: str | None = Field(
         default=None,
         description=(
-            "Instructions appended to the forwarded error when trigger_on is set. "
-            "Ignored on catch-all strategies (no trigger_on)."
+            "Optional instructions appended to the forwarded error message. "
+            "Applied regardless of whether trigger_on is set."
         ),
     )
     forward_tool_error_message: bool = Field(
@@ -75,7 +75,7 @@ class RetryStrategyModel(BaseHandleStrategyModel):
         description="Deprecated: use type 'continue' instead.",
     )
     instructions: str = Field(
-        ...,
+        default="An error occurred, try to analyze what went wrong and retry the operation.",
         description="Instructions to LLM what to do next.",
     )
 

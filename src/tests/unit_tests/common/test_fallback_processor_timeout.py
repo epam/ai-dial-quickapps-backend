@@ -1,5 +1,4 @@
 import pytest
-from pydantic import ValidationError
 
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
@@ -111,10 +110,10 @@ def test_tool_error_always_forwarded_without_explicit_flag():
     err = ToolErrorException("rag_search", "public error")
     strategies = [ContinueStrategyModel()]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error"
+    assert result.content == "The tool call failed with an error: public error"
 
 
-def test_continue_catchall_instructions_ignored_error_forwarded():
+def test_continue_catchall_with_instructions_included():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         ContinueStrategyModel(
@@ -123,11 +122,11 @@ def test_continue_catchall_instructions_ignored_error_forwarded():
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    # catch-all with instructions — instructions ignored, error forwarded
-    assert result.content == "public error"
+    assert "public error" in result.content
+    assert "Try another applicable tool." in result.content
 
 
-def test_retry_catchall_forwards_error_without_instructions():
+def test_retry_catchall_includes_instructions():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         RetryStrategyModel(
@@ -136,8 +135,8 @@ def test_retry_catchall_forwards_error_without_instructions():
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    # catch-all retry: error forwarded, instructions ignored
-    assert result.content == "public error"
+    assert "public error" in result.content
+    assert "Analyze the error and retry." in result.content
 
 
 def test_non_timeout_no_matching_strategy_reraises():
@@ -183,11 +182,6 @@ def test_continue_strategy_trigger_with_forward_tool_error_message_ok():
 def test_continue_strategy_no_trigger_no_instructions_ok():
     # Implicit catch-all with no instructions — still valid.
     ContinueStrategyModel()
-
-
-def test_retry_strategy_requires_instructions_unchanged():
-    with pytest.raises(ValidationError):
-        RetryStrategyModel()  # type: ignore[call-arg]
 
 
 # -- Message formatter -----------------------------------------------------

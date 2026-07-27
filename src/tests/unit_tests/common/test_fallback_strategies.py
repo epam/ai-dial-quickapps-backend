@@ -1,7 +1,6 @@
 import logging
 
 import pytest
-from pydantic import ValidationError
 
 from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
 from quickapp.common.exceptions.fallback_agent_stop import FallbackAgentStopException
@@ -63,9 +62,11 @@ def test_retry_strategy_still_parses(caplog):
     )
 
 
-def test_retry_strategy_still_requires_instructions():
-    with pytest.raises(ValidationError):
-        RetryStrategyModel()  # type: ignore[call-arg]
+def test_retry_strategy_has_default_instructions(caplog):
+    with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.tool_fallback"):
+        rs = RetryStrategyModel()
+    assert rs.instructions
+    assert "retry" in rs.instructions.lower()
 
 
 # -- continue always forwards error ------------------------------------------
@@ -74,13 +75,13 @@ def test_retry_strategy_still_requires_instructions():
 def test_continue_catchall_forwards_tool_error_message():
     err = ToolErrorException("my_tool", "public error detail")
     result = FallbackProcessor.process_fallback([ContinueStrategyModel()], "c", err)
-    assert result.content == "public error detail"
+    assert result.content == "The tool call failed with an error: public error detail"
 
 
 def test_continue_catchall_forwards_plain_error_str():
     err = ValueError("connection refused")
     result = FallbackProcessor.process_fallback([ContinueStrategyModel()], "c", err)
-    assert result.content == "connection refused"
+    assert result.content == "The tool call failed with an error: connection refused"
 
 
 def test_continue_with_trigger_appends_instructions_after_error():
@@ -93,7 +94,9 @@ def test_continue_with_trigger_appends_instructions_after_error():
         ContinueStrategyModel(),
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "rate limit hit\n\nWait and retry with a smaller request."
+    assert result.content == (
+        "The tool call failed with an error: rate limit hit\n\nWait and retry with a smaller request."
+    )
 
 
 def test_continue_with_trigger_no_instructions_forwards_error_only():
@@ -105,35 +108,39 @@ def test_continue_with_trigger_no_instructions_forwards_error_only():
         ContinueStrategyModel(),
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "quota exceeded"
+    assert result.content == "The tool call failed with an error: quota exceeded"
 
 
-def test_continue_catchall_ignores_instructions(caplog):
-    # instructions on catch-all (no trigger_on) are deprecated and ignored
+def test_continue_catchall_with_instructions_appends_them():
     err = ToolErrorException("my_tool", "auth failed")
     strategies = [
-        ContinueStrategyModel(instructions="These instructions should be ignored."),
+        ContinueStrategyModel(instructions="Check credentials and retry."),
     ]
-    with caplog.at_level(logging.WARNING, logger="quickapp.common.tool_fallback.continue_strategy"):
-        result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "auth failed"
-    assert any(
-        r.name == "quickapp.common.tool_fallback.continue_strategy"
-        and "instructions" in r.message.lower()
-        for r in caplog.records
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert result.content == (
+        "The tool call failed with an error: auth failed\n\nCheck credentials and retry."
     )
 
 
-# -- retry new semantics (mirrors continue) ----------------------------------
+# -- retry semantics ---------------------------------------------------------
 
 
-def test_retry_catchall_forwards_error_ignores_instructions():
-    # retry with no trigger_on: error forwarded, instructions ignored (new semantics)
+def test_retry_catchall_includes_instructions():
     err = ToolErrorException("my_tool", "db connection failed")
     result = FallbackProcessor.process_fallback(
         [RetryStrategyModel(instructions="Analyze and retry.")], "c", err
     )
-    assert result.content == "db connection failed"
+    assert result.content == (
+        "The tool call failed with an error: db connection failed\n\nAnalyze and retry."
+    )
+
+
+def test_retry_catchall_uses_default_instructions(caplog):
+    err = ToolErrorException("my_tool", "db connection failed")
+    with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.tool_fallback"):
+        result = FallbackProcessor.process_fallback([RetryStrategyModel()], "c", err)
+    assert "db connection failed" in result.content
+    assert "retry" in result.content.lower()
 
 
 def test_retry_with_trigger_appends_instructions():
@@ -146,7 +153,9 @@ def test_retry_with_trigger_appends_instructions():
         ContinueStrategyModel(),
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "rate limit hit\n\nWait 30 seconds and retry."
+    assert result.content == (
+        "The tool call failed with an error: rate limit hit\n\nWait 30 seconds and retry."
+    )
 
 
 # -- stop raises FallbackAgentStopException ----------------------------------
@@ -175,7 +184,7 @@ def test_stop_with_non_matching_trigger_falls_through_to_continue():
         ContinueStrategyModel(),
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "transient network error"
+    assert result.content == "The tool call failed with an error: transient network error"
 
 
 def test_stop_with_timeout_raises_when_trigger_matches():

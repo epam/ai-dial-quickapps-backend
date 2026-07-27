@@ -501,7 +501,7 @@
             }
           ],
           "default": null,
-          "description": "Instructions appended to the forwarded error when trigger_on is set. Ignored on catch-all strategies (no trigger_on).",
+          "description": "Optional instructions appended to the forwarded error message. Applied regardless of whether trigger_on is set.",
           "title": "Instructions"
         },
         "forward_tool_error_message": {
@@ -2929,6 +2929,7 @@
           "description": "The trigger on condition. If set as `null`, it will be applied to all tool errors."
         },
         "instructions": {
+          "default": "An error occurred, try to analyze what went wrong and retry the operation.",
           "description": "Instructions to LLM what to do next.",
           "title": "Instructions",
           "type": "string"
@@ -2949,9 +2950,6 @@
           "type": "string"
         }
       },
-      "required": [
-        "instructions"
-      ],
       "title": "RetryStrategyModel",
       "type": "object"
     },

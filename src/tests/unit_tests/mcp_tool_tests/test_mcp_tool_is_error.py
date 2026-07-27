@@ -126,10 +126,7 @@ async def test_is_error_false_returns_result_normally():
 
 @pytest.mark.asyncio
 async def test_is_error_applies_continue_fallback_strategy():
-    """isError=True → MCPToolErrorException → catch-all ContinueStrategy forwards the error message.
-
-    Instructions on catch-all (no trigger_on) are deprecated and ignored.
-    """
+    """isError=True → MCPToolErrorException → catch-all ContinueStrategy forwards error + instructions."""
     fallback_config = ToolFallbackConfig(
         strategies=[ContinueStrategyModel(instructions="Use your own knowledge instead.")]
     )
@@ -143,8 +140,8 @@ async def test_is_error_applies_continue_fallback_strategy():
 
     assert isinstance(result, ToolCallResult)
     assert result.tool_call_id == "call-id"
-    # catch-all instructions deprecated and ignored; error message forwarded
-    assert result.content == "Internal server error"
+    assert "Internal server error" in result.content
+    assert "Use your own knowledge instead." in result.content
 
 
 @pytest.mark.asyncio
@@ -161,7 +158,7 @@ async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
 
     result = await tool.arun("call-id")
 
-    assert result.content == "Internal server error"
+    assert result.content == "The tool call failed with an error: Internal server error"
 
 
 @pytest.mark.asyncio
@@ -204,7 +201,10 @@ async def test_is_error_applies_strategy_matching_error_text():
 
     result = await tool.arun("call-id")
 
-    assert result.content == "Rate limit exceeded\n\nRate limited — try again later."
+    assert (
+        result.content
+        == "The tool call failed with an error: Rate limit exceeded\n\nRate limited — try again later."
+    )
 
 
 @pytest.mark.asyncio

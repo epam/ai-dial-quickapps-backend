@@ -6,3 +6,13 @@ def extract_error_content(error: Exception) -> str:
     if isinstance(error, ToolErrorException):
         return error.error_message
     return str(error)
+
+
+def compose_fallback_content(error: Exception, instructions: str | None = None) -> str:
+    content = extract_error_content(error)
+    if not content:
+        return content
+    base = f"The tool call failed with an error: {content}"
+    if instructions:
+        return f"{base}\n\n{instructions}"
+    return base
