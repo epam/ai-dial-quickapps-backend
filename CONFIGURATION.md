@@ -13,6 +13,11 @@ Schema reference:
 - Generated locally via: make dump_app_schema
 - Hosted reference: https://mydial.epam.com/custom_application_schemas/quickapps2
 
+The `$id` written into the generated schema defaults to that hosted URL. Override it with
+`APP_SCHEMA_ID` when your DIAL installation uses a different hostname or schema name
+(see [README.md](./README.md#environment-variables)). When unset, the current default is kept
+for backward compatibility.
+
 ## Agent Configuration:
 
 <details>

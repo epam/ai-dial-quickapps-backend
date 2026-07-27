@@ -1,6 +1,6 @@
 import pytest
 
-from quickapp.common.url_classification import UrlScheme, classify_url
+from quickapp.common.url_classification import UrlScheme, classify_url, is_appdir_relative
 
 DIAL_URL = "https://dial.example.com"
 
@@ -65,14 +65,87 @@ def test_external_http_urls_classify_as_external(url: str):
         "ftp://files.example.com/x",
         "data:text/plain,hello",
         "javascript:alert(1)",
-        "not a url",
         "",
         "://broken",
         "https://",
+        "//example.com/protocol-relative.pdf",
+        "reports/colon:in:path.txt",
     ],
 )
 def test_unsupported_or_malformed_classify_as_unsupported(url: str):
     assert classify_url(url, DIAL_URL) == UrlScheme.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # files, extension optional
+        "butterfly.jpg",
+        "reports/img.png",
+        "a/b/c.txt",
+        "dir1/file.md",
+        "README",
+        "my report.pdf",
+        "not a url",
+        # dirs end with '/'
+        "some_dir/",
+        "dir_1/dir2/",
+    ],
+)
+def test_schemeless_paths_classify_as_relative(url: str):
+    assert classify_url(url, DIAL_URL) == UrlScheme.DIAL_APPDIR_RELATIVE
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        # traversal / segment shape
+        "../escape.png",
+        "./x.md",
+        "a//b.txt",
+        "trailing./x.txt",
+        "name..",
+        "/leading/slash.txt",
+        "//",
+        # DIAL UI forbidden characters
+        "name;v.txt",
+        "data{1}.txt",
+        "closing}brace.txt",
+        "100%.txt",
+        "q&a.txt",
+        "back\\slash.txt",
+        'quote".txt',
+        "name=x.txt",
+        "colon:name.txt",
+        "comma,name.txt",
+        # control characters
+        "tab\tname.txt",
+        "line\nbreak.txt",
+        # DIAL UI length limits (255 bytes/segment, 1024 bytes total; UTF-8 bytes)
+        "a" * 252 + ".txt",
+        "dir/" + "b" * 256,
+        "я" * 130 + ".txt",
+        "/".join(["seg" * 60] * 6) + "/f.txt",
+    ],
+)
+def test_invalid_relative_references_are_rejected(path: str):
+    assert not is_appdir_relative(path)
+    assert classify_url(path, DIAL_URL) == UrlScheme.UNSUPPORTED
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "file.md",
+        "some_dir/",
+        "dir_1/dir2/",
+        "dir1/file.md",
+        "a" * 251 + ".txt",
+        "я" * 125 + ".txt",
+    ],
+)
+def test_valid_relative_references_are_accepted(path: str):
+    assert is_appdir_relative(path)
 
 
 def test_dial_base_url_without_host_treats_http_url_as_external():

@@ -6,6 +6,7 @@ from injector import inject
 from pydantic import BaseModel
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.exceptions.tool_error import ToolErrorException
 from quickapp.common.response_formatter import ResponseFormatter
 from quickapp.common.utils import fenced_code_block
 
@@ -37,6 +38,10 @@ class _MCPStageWrapper(TimedStageWrapper):
         return stage_result
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
+        # The stage is a user channel: render the tool error body (user_facing_message),
+        # not the structural str(e) mandated for logs by the content rule (#436).
+        if isinstance(exception, ToolErrorException):
+            return f"> ##### Error:\n{exception.user_facing_message}\n"
         return f"> ##### Exception:\n{type(exception).__name__}: {exception}\n"
 
     @staticmethod

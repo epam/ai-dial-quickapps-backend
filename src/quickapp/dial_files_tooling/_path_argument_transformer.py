@@ -5,7 +5,7 @@ from injector import inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.url_sanitization import sanitize_url_for_log
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ class _AppdataHomePathTransformer(ToolArgumentTransformer):
     resolved to a ``files/...`` URL is relativized too.
     """
 
-    def __init__(self, home_resolver: _HomePathResolver) -> None:
+    def __init__(self, home_resolver: HomePathResolver) -> None:
         self._home_resolver = home_resolver
 
     async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:

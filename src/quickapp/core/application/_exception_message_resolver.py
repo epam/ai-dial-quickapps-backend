@@ -289,17 +289,17 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 
     - If it wraps an httpx cause, delegate to the cause's resolution so the caller gets
       the appropriate HTTP-specific message (e.g. permission-denied, timeout).
-    - If there is no cause, expose the tool error text directly. Built from
-      ``error_message`` rather than ``str(e)``: the exception's string form is structural
-      by the content rule (issue #436), while this user-facing message keeps the real text.
+    - If there is no cause, expose the tool error text directly via
+      ``user_facing_message`` rather than ``str(e)``: the exception's string form is
+      structural by the content rule (issue #436), while the user channel keeps the real
+      text.
     - If the cause is something other than an httpx error, return None to fall through
       to the generic fallback.
     """
     if isinstance(e.__cause__, httpx.HTTPError):
         return resolve_exception(e.__cause__)
     if e.__cause__ is None:
-        message = f"{e.tool_kind} '{e.tool_name}' returned an error: {e.error_message}"
-        return _compose(message, False, ErrorDetails())
+        return _compose(e.user_facing_message, False, ErrorDetails())
     return None
 
 

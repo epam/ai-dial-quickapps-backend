@@ -14,9 +14,9 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_core_services.dial_file_service import DialFileService, FolderEntry
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
 from quickapp.dial_files_tooling._utils import is_root_reference
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class _DialFileTool(StagedBaseTool, ABC):
         perf_timer: PerformanceTimer,
         dial_file_service: DialFileService,
         dial_files_config: DialFilesConfig,
-        home_resolver: _HomePathResolver,
+        home_resolver: HomePathResolver,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,

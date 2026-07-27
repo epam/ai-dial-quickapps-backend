@@ -5,7 +5,8 @@ class ToolErrorException(Exception):
     structure — the content rule (issue #436) keeps the tool response body out of the log
     pipeline. The body stays available on the :attr:`error_message` attribute, which the
     fallback machinery may forward to the LLM (``forward_tool_error_message``, #408) and
-    the error resolver may surface to the user; neither is a log channel.
+    the user channels (stage UI, error resolver) render via
+    :attr:`user_facing_message`; none of these is a log channel.
 
     The structural string form is owned here so no subclass can accidentally embed the
     body: subclasses set :attr:`tool_kind` (the human label) and the base builds the
@@ -22,3 +23,8 @@ class ToolErrorException(Exception):
         )
         self.tool_name = tool_name
         self.error_message = error_message
+
+    @property
+    def user_facing_message(self) -> str:
+        """User-facing rendering, body included; see the class docstring."""
+        return f"{self.tool_kind} '{self.tool_name}' returned an error: {self.error_message}"
