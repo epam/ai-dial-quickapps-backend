@@ -3,6 +3,7 @@ from typing import Any
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.exceptions import ToolErrorException
 from quickapp.common.utils import fenced_code_block
 from quickapp.web_tooling._truncation import split_truncation_notice
 
@@ -14,6 +15,8 @@ class _WebFetchStageWrapper(TimedStageWrapper):
         return self._render_config_map_parameters(parameters)
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
+        if isinstance(exception, ToolErrorException):
+            return f"> ##### Error:\n{exception.user_facing_message}\n"
         return f"### Exception:\n\r{exception}\n\r"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
