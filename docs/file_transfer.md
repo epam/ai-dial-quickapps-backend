@@ -8,14 +8,14 @@ the built-in skill that teaches the agent how to use the convention.
 
 When a user uploads a file or an admin attaches a context file, the agent receives its DIAL-relative URL (e.g.
 `files/bucket/report.pdf`). However, downstream tools have different expectations for how file content is delivered —
-some need base64-encoded bytes, others need plain text, and some just need the URL passed through.
+some need an RFC 2397 `data:` URI, others plain base64 or text, and some just need the URL passed through.
 
 Quick Apps solves this with a two-part mechanism:
 
 1. **A built-in skill** that teaches the agent the `file:{prefix}::{path_or_url}` convention, so it formats
-   parameters correctly based on what the tool expects.
+   parameters correctly based on what the tool expects (defaulting to `data` for inline content).
 2. **A preprocessing pipeline** that intercepts `file:` patterns in tool call arguments and resolves them to the
-   actual content (base64 bytes, decoded text, or a bare URL) before the tool receives the parameters.
+   actual content (data URI, base64 bytes, decoded text, or a bare URL) before the tool receives the parameters.
 
 This applies to **all tool types** — MCP, REST API, DIAL deployment, and internal tools.
 
@@ -30,26 +30,28 @@ file:{prefix}::{path_or_url}
 | Component       | Description                                                                                                                |
 |-----------------|----------------------------------------------------------------------------------------------------------------------------|
 | `file:`         | Literal prefix that triggers preprocessing                                                                                 |
-| `{prefix}`      | One of `base64`, `text`, or `url` (case-insensitive)                                                                       |
+| `{prefix}`      | One of `data`, `base64`, `text`, or `url` (case-insensitive)                                                               |
 | `::`            | Separator between the prefix and the path                                                                                  |
 | `{path_or_url}` | DIAL-relative file path (e.g. `files/bucket/foo.pdf`) or an external `http(s)://` URL (e.g. `https://example.com/foo.pdf`) |
 
 ### Prefixes
 
-| Prefix   | When to use                                                                | What the tool receives                             |
-|----------|----------------------------------------------------------------------------|----------------------------------------------------|
-| `base64` | Tool expects raw/encoded file content (images, PDFs, binary data)          | Base64-encoded string of the downloaded file bytes |
-| `text`   | Tool expects plain text content (source code, logs, markdown, CSV)         | UTF-8 decoded text content of the file             |
-| `url`    | Tool expects a URL or path reference (navigation targets, file references) | The bare URL string, with `file:url::` stripped    |
+| Prefix   | When to use                                                                                         | What the tool receives                                      |
+|----------|-----------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
+| `data`   | Default for inline file content / `data:` URI params (images, PDFs, MarkItDown-style URI tools)     | RFC 2397 `data:<mime>;base64,<payload>` string              |
+| `base64` | Fallback when a `data` attempt fails (e.g. MCP rejection); tools that need raw base64 only          | Base64-encoded string of the downloaded file bytes          |
+| `text`   | Tool expects plain text content (source code, logs, markdown, CSV)                                  | UTF-8 decoded text content of the file                      |
+| `url`    | Tool expects a URL or path reference only (navigation targets, file references; no inline content)  | The bare URL string, with `file:url::` stripped             |
 
 ### Examples
 
-| Scenario       | Tool parameter                       | Agent writes                          | Tool receives                    |
-|----------------|--------------------------------------|---------------------------------------|----------------------------------|
-| Image analysis | `image_data: "base64 encoded image"` | `file:base64::files/images/chart.png` | `iVBORw0KGgo...` (base64 string) |
-| Code review    | `source: "text content of file"`     | `file:text::files/code/main.py`       | `def main():\n    ...`           |
-| Web navigation | `target_url: "URL to navigate to"`   | `file:url::https://example.com/page`  | `https://example.com/page`       |
-| PDF processing | `document: "the file to process"`    | `file:base64::files/docs/report.pdf`  | `JVBERi0xLj...` (base64 string)  |
+| Scenario            | Tool parameter                              | Agent writes                         | Tool receives                              |
+|---------------------|---------------------------------------------|--------------------------------------|--------------------------------------------|
+| Image analysis      | `image_data: "base64 encoded image"`        | `file:data::files/images/chart.png`  | `data:image/png;base64,iVBORw0KGgo...`     |
+| MarkItDown-style URI| `uri: "http:, https:, file: or data: URI"`  | `file:data::files/docs/report.docx`  | `data:application/...;base64,UEsDB...`     |
+| Code review         | `source: "text content of file"`            | `file:text::files/code/main.py`      | `def main():\n    ...`                     |
+| Web navigation      | `target_url: "URL to navigate to"`          | `file:url::https://example.com/page` | `https://example.com/page`                 |
+| MCP failure fallback| same as image/PDF content after `data` fail | `file:base64::files/docs/report.pdf` | `JVBERi0xLj...` (plain base64 string)      |
 
 ## How the Agent Learns the Convention
 
@@ -75,10 +77,14 @@ flowchart TD
     A[Tool call argument value] --> B{Matches file: pattern?}
     B -->|No| C[Pass through unchanged]
     B -->|Yes| D{Prefix?}
-    D -->|base64| E[Download file from DIAL Core]
+    D -->|data| N[Download file via FileLoaderService]
+    N --> O[Resolve MIME type]
+    O --> P[Wrap as data:mime;base64,payload]
+    P --> G[Replace argument with resolved string]
+    D -->|base64| E[Download file via FileLoaderService]
     E --> F[Base64-encode bytes]
-    F --> G[Replace argument with encoded string]
-    D -->|text| H[Download file from DIAL Core]
+    F --> G
+    D -->|text| H[Download file via FileLoaderService]
     H --> I{Binary file?}
     I -->|Yes| J[Reject with error]
     I -->|No| K[Decode as UTF-8]
@@ -88,17 +94,25 @@ flowchart TD
     D -->|Missing| M[Reject: prefix required]
 ```
 
-### `base64` processing
+### `data` processing
 
 1. Loads the file via `FileLoaderService` (DIAL files via `DialDownloader`, external URLs via `ExternalUrlFetcher`).
+2. Resolves MIME type from DIAL/`Content-Type` metadata when available, else filename guess, else
+   `application/octet-stream`.
+3. Base64-encodes the bytes and wraps them as `data:<mimeType>;base64,<payload>`.
+4. Replaces the parameter value with the data URI string.
+
+### `base64` processing
+
+1. Loads the file via `FileLoaderService` (same dispatch as `data`).
 2. Base64-encodes the bytes.
-3. Replaces the parameter value with the encoded string.
+3. Replaces the parameter value with the encoded string (no `data:` envelope).
 
 ### `text` processing
 
-1. Loads the file via `FileLoaderService` (same dispatch as `base64`).
+1. Loads the file via `FileLoaderService` (same dispatch as `data`).
 2. Checks for binary file signatures (PNG, JPEG, GIF, PDF, ZIP). If the file is binary, the tool call fails with an
-   error instructing the agent to use `base64` or `url` instead.
+   error instructing the agent to use `data`, `base64`, or `url` instead.
 3. Decodes the bytes as UTF-8 (with BOM handling via `utf-8-sig`).
 4. Replaces the parameter value with the decoded text.
 
@@ -109,8 +123,9 @@ flowchart TD
 
 ### Missing prefix
 
-If the agent writes `file:path/to/file` without a prefix (no `base64::`, `text::`, or `url::`), the tool call is
-rejected with an error message. The agent receives retry instructions and can re-attempt with a corrected prefix.
+If the agent writes `file:path/to/file` without a prefix (no `data::`, `base64::`, `text::`, or `url::`), the tool
+call is rejected with an error message. The agent receives retry instructions and can re-attempt with a corrected
+prefix.
 
 ## File Loading and Caching
 
@@ -198,7 +213,7 @@ MCP tools have an additional capability: when a tool parameter's JSON schema inc
 preprocessor grants DIAL Core file permissions to the MCP server's toolset, allowing the server to access the file
 directly. The preprocessor classifies each value before granting; if the value is an external URL or any
 non-`http(s)` scheme, the tool call is rejected with a clear retry message instructing the agent to fall back to
-`file:base64::` / `file:text::`.
+`file:data::` / `file:base64::` / `file:text::`.
 
 This only applies to MCP tools connected to DIAL (`DialMCPToolSet` with a configured `dial_id`). For non-DIAL MCP
 tools and all other tool types, the `url` prefix simply passes the URL through without any permission management.
@@ -211,8 +226,8 @@ response includes the error details so the agent can self-correct:
 
 | Error condition                                | Agent receives                                                                |
 |------------------------------------------------|-------------------------------------------------------------------------------|
-| Missing prefix (`file:path`)                   | "Missing required file prefix (base64::, url::, text::)"                      |
-| Binary file with `text` prefix                 | "File appears to be binary (PNG image). Use base64:: or url:: instead"        |
+| Missing prefix (`file:path`)                   | "Missing required file prefix (data::, base64::, url::, text::)"              |
+| Binary file with `text` prefix                 | "File appears to be binary … Use `file:data::...`, `file:base64::...` or `file:url::...`" |
 | File exceeds size limit                        | "External URL … exceeds the configured file-size limit." / DIAL download error |
 | External URL with SSRF block                   | "External URL … resolves to a blocked address …"                              |
 | External URL with redirect cap                 | "External URL … exceeded the configured redirect limit."                      |
