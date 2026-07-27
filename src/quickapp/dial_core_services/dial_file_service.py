@@ -120,6 +120,29 @@ class DialFileService:
         self.invalidate_cache(url)
         return uploaded_url
 
+    async def write_bytes(
+        self,
+        url: str,
+        content: bytes,
+        *,
+        content_type: str = "application/octet-stream",
+        overwrite: bool = False,
+    ) -> str:
+        """Create or overwrite a file from raw bytes (binary-safe).
+
+        The bytes counterpart of :meth:`write_file` — used for content that is
+        not UTF-8 text (downloaded binaries). Shares the same ETag semantics:
+        ``overwrite=False`` uploads with ``If-None-Match: *`` (create only,
+        raising ``EtagMismatchError`` if the file exists); ``overwrite=True``
+        uploads unconditionally. Cache is invalidated on success.
+        """
+        if overwrite:
+            uploaded_url = await self._upload_bytes(url, content, content_type)
+        else:
+            uploaded_url = await self._upload_bytes(url, content, content_type, if_none_match="*")
+        self.invalidate_cache(url)
+        return uploaded_url
+
     async def _upload_text(
         self,
         url: str,
@@ -129,11 +152,27 @@ class DialFileService:
         if_none_match: Literal["*"] | None = None,
         if_match: str | None = None,
     ) -> str:
-        encoded = content.encode("utf-8")
+        return await self._upload_bytes(
+            url,
+            content.encode("utf-8"),
+            content_type,
+            if_none_match=if_none_match,
+            if_match=if_match,
+        )
+
+    async def _upload_bytes(
+        self,
+        url: str,
+        content: bytes,
+        content_type: str,
+        *,
+        if_none_match: Literal["*"] | None = None,
+        if_match: str | None = None,
+    ) -> str:
         filename = url.split("/")[-1]
         metadata = await self.__dial_client.files.upload(
             url=url,
-            file=(filename, encoded, content_type),
+            file=(filename, content, content_type),
             etag_if_none_match=if_none_match,
             etag_if_match=if_match,
         )
