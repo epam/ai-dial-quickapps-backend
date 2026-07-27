@@ -453,7 +453,8 @@
       "properties": {
         "propagate_history": {
           "default": false,
-          "description": "Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
+          "deprecated": true,
+          "description": "**Deprecated, use `conversation_mode.resumable: true`**. Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
           "title": "Propagate History",
           "type": "boolean"
         },
@@ -520,6 +521,18 @@
         }
       },
       "title": "ContinueStrategyModel",
+      "type": "object"
+    },
+    "ConversationMode": {
+      "properties": {
+        "resumable": {
+          "default": false,
+          "description": "Whether the deployment tool maintains a resumable conversation. When true, the tool issues a session_id on the first call, accepts it back on follow-up calls, and the backend threads prior [user, assistant] history — including the subagent's internal tool-execution state — for that session. When false (default), each call is independent.",
+          "title": "Resumable",
+          "type": "boolean"
+        }
+      },
+      "title": "ConversationMode",
       "type": "object"
     },
     "ConversationStarter": {
@@ -760,6 +773,18 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool. Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP."
         }
       },
       "required": [
@@ -945,6 +970,18 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1038,6 +1075,18 @@
           ],
           "default": null,
           "description": "The configuration with propagations to DIAL deployment."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
         },
         "supports_url_attachments": {
           "default": false,
