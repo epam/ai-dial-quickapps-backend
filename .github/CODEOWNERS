@@ -1,4 +1,4 @@
-* @andrii-novikov @ypldan
+* @andrii-novikov
 
 # Infra / CI configuration ownership.
 /.github/ @dspashynskyi @nepalevov
@@ -7,24 +7,24 @@ src/quickapp/agent_hooks/ @korotaav48
 src/quickapp/orchestrator_attachment_strategies/ @VinShurik
 src/quickapp/usage_statistics/ @VinShurik
 src/quickapp/configuration_support/ @VinShurik
-src/quickapp/starters/ @korotaav48 @ypldan
+src/quickapp/starters/ @korotaav48
 
 # --- Tooling: tool-integration layer (MCP/REST/DIAL/internal/etc) ---
 src/quickapp/predefined_tooling/ @VinShurik
 src/quickapp/mcp_tooling/ @korotaav48
 src/quickapp/internal_tooling/ @VinShurik
-src/quickapp/timestamp_tooling/ @andrii-novikov @ypldan
-src/quickapp/dial_deployment_tooling/ @VinShurik @ypldan
-src/quickapp/dial_app_tooling/ @VinShurik @ypldan
-src/quickapp/rest_api_tooling/ @korotaav48 @ypldan
+src/quickapp/timestamp_tooling/ @andrii-novikov
+src/quickapp/dial_deployment_tooling/ @VinShurik
+src/quickapp/dial_app_tooling/ @VinShurik
+src/quickapp/rest_api_tooling/ @korotaav48
 src/quickapp/dial_files_tooling/ @andrii-novikov
 
 # --- File services & DIAL infra ---
 src/quickapp/dial_core_services/ @VinShurik @korotaav48
 src/quickapp/attachment_processing/ @VinShurik
 src/quickapp/file_transfer/ @korotaav48
-src/quickapp/shared/external_fetch/ @andrii-novikov @ypldan
+src/quickapp/shared/external_fetch/ @andrii-novikov
 
 # --- Skills: skill loading/runtime + DIAL prompt-skill resolution ---
 src/quickapp/skills/ @korotaav48
-src/quickapp/dial_prompt_skills/ @korotaav48 @VinShurik @ypldan
+src/quickapp/dial_prompt_skills/ @korotaav48 @VinShurik

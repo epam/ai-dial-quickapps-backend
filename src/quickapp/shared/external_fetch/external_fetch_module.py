@@ -6,6 +6,7 @@ from quickapp.shared.external_fetch.external_url_fetch_policy_resolver import (
     ExternalUrlFetchPolicyResolver,
 )
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher
+from quickapp.shared.external_fetch.web_content_fetcher import WebContentFetcher
 
 
 class ExternalFetchModule(Module):
@@ -24,3 +25,4 @@ class ExternalFetchModule(Module):
             scope=request_scope,
         )
         binder.bind(ExternalUrlFetcher, to=ExternalUrlFetcher, scope=request_scope)
+        binder.bind(WebContentFetcher, to=WebContentFetcher, scope=request_scope)
