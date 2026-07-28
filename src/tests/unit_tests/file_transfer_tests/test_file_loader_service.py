@@ -130,6 +130,63 @@ async def test_external_load_leaves_state_holder_metadata_unset():
 
     assert holder.get_file_data(url="https://example.com/x.txt") == b"ext"
     assert holder.get_file_metadata("https://example.com/x.txt") is None
+    assert holder.get_content_type("https://example.com/x.txt") == "text/plain"
+
+
+@pytest.mark.asyncio
+async def test_load_with_content_type_uses_dial_metadata():
+    metadata = _metadata()
+    metadata.content_type = "application/pdf"
+    dial_dl = MagicMock(spec=DialDownloader)
+    dial_dl.fetch = AsyncMock(return_value=(b"%PDF-", metadata))
+    holder = StateHolder()
+    loader = _make_loader(dial_downloader=dial_dl, state_holder=holder)
+
+    data, content_type = await loader.load_with_content_type("files/doc.pdf")
+
+    assert data == b"%PDF-"
+    assert content_type == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_load_with_content_type_strips_mime_parameters():
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock(
+        return_value=FetchedBytes(
+            data=b"img", content_type="image/png; charset=binary", filename="x.png"
+        )
+    )
+    loader = _make_loader(fetcher=fetcher)
+
+    _, content_type = await loader.load_with_content_type("https://example.com/x.png")
+
+    assert content_type == "image/png"
+
+
+@pytest.mark.asyncio
+async def test_load_with_content_type_guesses_from_filename_when_missing():
+    fetcher = MagicMock(spec=ExternalUrlFetcher)
+    fetcher.fetch = AsyncMock(
+        return_value=FetchedBytes(data=b"pdf", content_type=None, filename="report.pdf")
+    )
+    loader = _make_loader(fetcher=fetcher)
+
+    _, content_type = await loader.load_with_content_type("https://example.com/report.pdf")
+
+    assert content_type == "application/pdf"
+
+
+@pytest.mark.asyncio
+async def test_load_with_content_type_falls_back_to_octet_stream():
+    dial_dl = MagicMock(spec=DialDownloader)
+    metadata = _metadata()
+    metadata.content_type = None
+    dial_dl.fetch = AsyncMock(return_value=(b"bin", metadata))
+    loader = _make_loader(dial_downloader=dial_dl)
+
+    _, content_type = await loader.load_with_content_type("files/bucket/noext")
+
+    assert content_type == "application/octet-stream"
 
 
 @pytest.mark.asyncio

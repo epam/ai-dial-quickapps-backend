@@ -180,7 +180,7 @@ class TestPreProcessParams:
             await tool._pre_process_params(doc_url="file:url::https://example.com/external.pdf")
         message = str(excinfo.value)
         assert "external URL" in message
-        assert "file:base64::" in message or "file:text::" in message
+        assert "file:data::" in message or "file:base64::" in message or "file:text::" in message
         file_service.grant_permissions_to_files.assert_not_awaited()
 
     @pytest.mark.asyncio

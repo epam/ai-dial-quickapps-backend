@@ -65,6 +65,15 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             return await FilePrefixHandlers.handle_base64(
                 file_url_part, self.__file_service, parameter_name=key
             )
+        elif detected_prefix == "data":
+            logger.debug(
+                "Detected 'data' prefix for key %s (url: %s) - placeholder handling",
+                key,
+                file_url_part,
+            )
+            return await FilePrefixHandlers.handle_data(
+                file_url_part, self.__file_service, parameter_name=key
+            )
         elif detected_prefix == "url":
             logger.debug(
                 "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
@@ -87,5 +96,5 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             )
             raise InvalidToolCallParameterException(
                 parameter_name=key,
-                message="Missing required file prefix (base64::, url::, text::)",
+                message="Missing required file prefix (data::, base64::, url::, text::)",
             )

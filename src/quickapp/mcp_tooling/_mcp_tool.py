@@ -115,7 +115,8 @@ class _MCPTool(StagedBaseTool):
                         parameter_name=key,
                         message=(
                             f"Parameter `{key}` requires a DIAL file but received an "
-                            "external URL. Use `file:base64::` or `file:text::` to "
+                            "external URL. Use `file:data::` or `file:base64::` / "
+                            "`file:text::` to "
                             "inline the content, or upload the file to DIAL first."
                         ),
                     )
