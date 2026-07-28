@@ -36,22 +36,22 @@ file:{prefix}::{path_or_url}
 
 ### Prefixes
 
-| Prefix   | When to use                                                                                         | What the tool receives                                      |
-|----------|-----------------------------------------------------------------------------------------------------|-------------------------------------------------------------|
-| `data`   | Default for inline file content / `data:` URI params (images, PDFs, MarkItDown-style URI tools)     | RFC 2397 `data:<mime>;base64,<payload>` string              |
-| `base64` | Fallback when a `data` attempt fails (e.g. MCP rejection); tools that need raw base64 only          | Base64-encoded string of the downloaded file bytes          |
-| `text`   | Tool expects plain text content (source code, logs, markdown, CSV)                                  | UTF-8 decoded text content of the file                      |
-| `url`    | Tool expects a URL or path reference only (navigation targets, file references; no inline content)  | The bare URL string, with `file:url::` stripped             |
+| Prefix   | When to use                                                                                        | What the tool receives                             |
+|----------|----------------------------------------------------------------------------------------------------|----------------------------------------------------|
+| `data`   | Default for inline file content / `data:` URI params (images, PDFs, any file formats)              | RFC 2397 `data:<mime>;base64,<payload>` string     |
+| `base64` | Fallback when a `data` attempt fails (e.g. MCP rejection); tools that need raw base64 only         | Base64-encoded string of the downloaded file bytes |
+| `text`   | Tool expects plain text content (source code, logs, markdown, CSV)                                 | UTF-8 decoded text content of the file             |
+| `url`    | Tool expects a URL or path reference only (navigation targets, file references; no inline content) | The bare URL string, with `file:url::` stripped    |
 
 ### Examples
 
-| Scenario            | Tool parameter                              | Agent writes                         | Tool receives                              |
-|---------------------|---------------------------------------------|--------------------------------------|--------------------------------------------|
-| Image analysis      | `image_data: "base64 encoded image"`        | `file:data::files/images/chart.png`  | `data:image/png;base64,iVBORw0KGgo...`     |
-| MarkItDown-style URI| `uri: "http:, https:, file: or data: URI"`  | `file:data::files/docs/report.docx`  | `data:application/...;base64,UEsDB...`     |
-| Code review         | `source: "text content of file"`            | `file:text::files/code/main.py`      | `def main():\n    ...`                     |
-| Web navigation      | `target_url: "URL to navigate to"`          | `file:url::https://example.com/page` | `https://example.com/page`                 |
-| MCP failure fallback| same as image/PDF content after `data` fail | `file:base64::files/docs/report.pdf` | `JVBERi0xLj...` (plain base64 string)      |
+| Scenario                     | Tool parameter                              | Agent writes                         | Tool receives                          |
+|------------------------------|---------------------------------------------|--------------------------------------|----------------------------------------|
+| Image analysis               | `image_data: "base64 encoded image"`        | `file:data::files/images/chart.png`  | `data:image/png;base64,iVBORw0KGgo...` |
+| Other files in base64 format | `uri: "http:, https:, file: or data: URI"`  | `file:data::files/docs/report.docx`  | `data:application/...;base64,UEsDB...` |
+| Code review                  | `source: "text content of file"`            | `file:text::files/code/main.py`      | `def main():\n    ...`                 |
+| Web navigation               | `target_url: "URL to navigate to"`          | `file:url::https://example.com/page` | `https://example.com/page`             |
+| MCP failure fallback         | same as image/PDF content after `data` fail | `file:base64::files/docs/report.pdf` | `JVBERi0xLj...` (plain base64 string)  |
 
 ## How the Agent Learns the Convention
 
@@ -145,13 +145,13 @@ File loading is handled by `FileLoaderService`, a request-scoped service that:
 `ExternalUrlFetcher` is the single egress point for *file loading* of external URLs. It enforces the following
 uniformly across every consumer:
 
-| Concern                | Behaviour                                                                                                                          |
-|------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| Credential isolation   | The HTTP client is constructed with no DIAL API key, no bearer, and no DIAL-internal headers.                                      |
+| Concern                | Behaviour                                                                                                                                                                                                                                             |
+|------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Credential isolation   | The HTTP client is constructed with no DIAL API key, no bearer, and no DIAL-internal headers.                                                                                                                                                         |
 | SSRF guard             | Each hop is DNS-resolved before TCP connect and rejected if any resolved address falls in `127/8`, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `::1`, `fe80::/10`. DNS-rebinding defence: rejection if **any** address in the answer is blocked. |
-| Redirect cap           | Default 5, hard ceiling 10 (set via `EXTERNAL_URL_FETCH_MAX_REDIRECTS`). Each hop is SSRF-checked.                                 |
-| Size limit             | Same `FileLoadingSizeLimitResolver` as DIAL downloads. Streamed in chunks; aborts mid-download if the running total exceeds limit. |
-| Connect / read timeout | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` (default 5s); read uses the resolved tool timeout.                                    |
+| Redirect cap           | Default 5, hard ceiling 10 (set via `EXTERNAL_URL_FETCH_MAX_REDIRECTS`). Each hop is SSRF-checked.                                                                                                                                                    |
+| Size limit             | Same `FileLoadingSizeLimitResolver` as DIAL downloads. Streamed in chunks; aborts mid-download if the running total exceeds limit.                                                                                                                    |
+| Connect / read timeout | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` (default 5s); read uses the resolved tool timeout.                                                                                                                                                       |
 
 ### Two-tier egress policy
 
@@ -159,12 +159,12 @@ External fetching is gated along two orthogonal axes — **on/off** (does egress
 **host allowlist** (which destinations are reachable). Each axis has an admin (env) tier and a
 builder (per-app) tier. Defaults are off / unset.
 
-| Axis      | Tier    | Setting                                                  | Default | Effect                                                                                                                                           |
-|-----------|---------|----------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| On/off    | Admin   | env `EXTERNAL_URL_FETCH_ENABLED`                           | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                                                    |
-| On/off    | Builder | manifest `features.external_url_fetch.enabled`           | `null`  | `null` defers to admin; `true` is a no-op when admin allows; `false` opts this app out from below.                                               |
-| Allowlist | Admin   | env `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (comma-separated) | `null` | When unset, no admin-level host restriction. When set, only hosts matching the patterns are reachable; per-app builder lists can narrow further. |
-| Allowlist | Builder | manifest `features.external_url_fetch.host_allowlist`    | `null`  | `null` defers to admin; a non-empty list narrows the admin list (intersection); an explicit empty list locks this app out of all hosts.          |
+| Axis      | Tier    | Setting                                                   | Default | Effect                                                                                                                                           |
+|-----------|---------|-----------------------------------------------------------|---------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| On/off    | Admin   | env `EXTERNAL_URL_FETCH_ENABLED`                          | `false` | Hard cap. When false, no app may fetch externally regardless of its manifest.                                                                    |
+| On/off    | Builder | manifest `features.external_url_fetch.enabled`            | `null`  | `null` defers to admin; `true` is a no-op when admin allows; `false` opts this app out from below.                                               |
+| Allowlist | Admin   | env `EXTERNAL_URL_FETCH_HOST_ALLOWLIST` (comma-separated) | `null`  | When unset, no admin-level host restriction. When set, only hosts matching the patterns are reachable; per-app builder lists can narrow further. |
+| Allowlist | Builder | manifest `features.external_url_fetch.host_allowlist`     | `null`  | `null` defers to admin; a non-empty list narrows the admin list (intersection); an explicit empty list locks this app out of all hosts.          |
 
 **Host pattern grammar.** `example.com` matches that host exactly (case-insensitive).
 `*.example.com` matches any subdomain of `example.com` with at least one label
@@ -185,7 +185,8 @@ applies.
 > of this envelope. When an allowed attachment (user attachment or admin context) is an external `http(s)` URL,
 > `_AttachmentMaterializer` promotes it to a durable DIAL file via `DialFilePromoter` so the orchestrator
 > deployment can read it through the `internal_attachments_get_content` channel — the same two-tier policy, SSRF
-> guard, and size limit apply. See [`pass_attachments_to_orchestrator.md`](designs/pass_attachments_to_orchestrator.md), Concern 2.
+> guard, and size limit apply. See [`pass_attachments_to_orchestrator.md`](designs/pass_attachments_to_orchestrator.md),
+> Concern 2.
 
 ## Deployment-attachment dispatch
 
@@ -224,20 +225,20 @@ When file preprocessing encounters an error, it raises `InvalidToolCallParameter
 tool call permanently, `StagedBaseTool` catches this exception and returns a **retry response** to the agent. The
 response includes the error details so the agent can self-correct:
 
-| Error condition                                | Agent receives                                                                |
-|------------------------------------------------|-------------------------------------------------------------------------------|
-| Missing prefix (`file:path`)                   | "Missing required file prefix (data::, base64::, url::, text::)"              |
-| Binary file with `text` prefix                 | "File appears to be binary … Use `file:data::...`, `file:base64::...` or `file:url::...`" |
-| File exceeds size limit                        | "External URL … exceeds the configured file-size limit." / DIAL download error |
-| External URL with SSRF block                   | "External URL … resolves to a blocked address …"                              |
-| External URL with redirect cap                 | "External URL … exceeded the configured redirect limit."                      |
-| External URL with timeout                      | "External URL … timed out."                                                   |
-| External fetching disabled (admin)             | "External URL fetching is disabled by operator policy (EXTERNAL_URL_FETCH_ENABLED)." |
-| External fetching disabled (per-app)           | "External URL fetching is disabled by this app (features.external_url_fetch.enabled=false)." |
-| Host not in admin allowlist                    | "External URL host is not in the operator allowlist (EXTERNAL_URL_FETCH_HOST_ALLOWLIST)." |
-| Host not in per-app allowlist                  | "External URL host is not in this app's allowlist (features.external_url_fetch.host_allowlist)." |
-| `dial_url: true` parameter received external   | "Parameter `…` requires a DIAL file but received an external URL …"           |
-| `dial_url` without configured toolset ID       | "Files cannot be shared because dial_toolset_id is not configured"            |
+| Error condition                              | Agent receives                                                                                   |
+|----------------------------------------------|--------------------------------------------------------------------------------------------------|
+| Missing prefix (`file:path`)                 | "Missing required file prefix (data::, base64::, url::, text::)"                                 |
+| Binary file with `text` prefix               | "File appears to be binary … Use `file:data::...`, `file:base64::...` or `file:url::...`"        |
+| File exceeds size limit                      | "External URL … exceeds the configured file-size limit." / DIAL download error                   |
+| External URL with SSRF block                 | "External URL … resolves to a blocked address …"                                                 |
+| External URL with redirect cap               | "External URL … exceeded the configured redirect limit."                                         |
+| External URL with timeout                    | "External URL … timed out."                                                                      |
+| External fetching disabled (admin)           | "External URL fetching is disabled by operator policy (EXTERNAL_URL_FETCH_ENABLED)."             |
+| External fetching disabled (per-app)         | "External URL fetching is disabled by this app (features.external_url_fetch.enabled=false)."     |
+| Host not in admin allowlist                  | "External URL host is not in the operator allowlist (EXTERNAL_URL_FETCH_HOST_ALLOWLIST)."        |
+| Host not in per-app allowlist                | "External URL host is not in this app's allowlist (features.external_url_fetch.host_allowlist)." |
+| `dial_url: true` parameter received external | "Parameter `…` requires a DIAL file but received an external URL …"                              |
+| `dial_url` without configured toolset ID     | "Files cannot be shared because dial_toolset_id is not configured"                               |
 
 ## Limitations
 
