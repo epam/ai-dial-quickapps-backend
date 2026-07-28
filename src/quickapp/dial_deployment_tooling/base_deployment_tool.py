@@ -20,6 +20,7 @@ from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters
+from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
@@ -62,7 +63,53 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__dial_completion_service: DialCompletionService = dial_completion_service
         self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
+        if content_propagation and content_propagation.propagate_history:
+            logger.warning(
+                "The 'propagate_history' parameter is deprecated and will be removed in a future release. "
+                "Use 'conversation_mode.resumable: true' instead."
+            )
         self.__messages_mixin: MessagesMixin = messages_mixin
+
+    @staticmethod
+    def _is_resumable(tool_config: DialDeploymentTool) -> bool:
+        return tool_config.conversation_mode is not None and tool_config.conversation_mode.resumable
+
+    def _setup_session(
+        self,
+        kwargs: dict,
+        tool_config: DialDeploymentTool,
+        tool_call_id: str | None,
+    ) -> tuple[str | None, bool]:
+        """Pop session_id from kwargs and resolve the resumable session state.
+
+        Returns (session_id, is_first_call): the session identifier to use for this
+        call (the tool_call_id on a resumable first call, otherwise whatever the LLM
+        passed back or None), and whether this is the first call of a resumable thread.
+        """
+        session_id: str | None = kwargs.pop("session_id", None)
+        if not self._is_resumable(tool_config):
+            return session_id, False
+        is_first_call = session_id is None
+        if is_first_call:
+            session_id = tool_call_id
+            logger.info("Resumable tool first call — assigned session_id=%s", session_id)
+        else:
+            logger.info("Resumable tool follow-up — session_id=%s", session_id)
+        return session_id, is_first_call
+
+    async def _resolve_history(
+        self,
+        tool_config: DialDeploymentTool,
+        session_id: str | None,
+    ) -> list[UserMessageParam | AssistantMessageParam] | None:
+        propagate_history = bool(
+            self.__content_propagation and self.__content_propagation.propagate_history
+        )
+        if not (propagate_history or self._is_resumable(tool_config)):
+            return None
+        return await self._extract_tool_history(
+            tool_config.open_ai_tool.function.name, session_id=session_id
+        )
 
     async def _run_in_stage_async(
         self,
@@ -72,10 +119,9 @@ class BaseDeploymentTool(StagedBaseTool):
         **kwargs,
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
-        history = None
-        if self.__content_propagation and self.__content_propagation.propagate_history:
-            history = await self._extract_tool_history(tool_config.open_ai_tool.function.name)
-        return await self.__dial_completion_service.complete_request_async(
+        session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
+        history = await self._resolve_history(tool_config, session_id)
+        result = await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
             self.__application_name,
@@ -84,6 +130,26 @@ class BaseDeploymentTool(StagedBaseTool):
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
         )
+        if is_first_call and session_id:
+            result.content = result.content + f"\n\n[session_id: {session_id}]"
+        return result
+
+    _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(
+        type=JsonTypeEnum.string,
+        description=(
+            "The session identifier returned at the end of a previous response from this tool. "
+            "Pass it back unchanged to continue that conversation thread. "
+            "Omit to start a new independent thread."
+        ),
+    )
+
+    def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
+        tool_config = cast(DialDeploymentTool, self.tool_config)
+        if not self._is_resumable(tool_config):
+            return open_ai_tool
+        if "session_id" not in open_ai_tool.function.parameters.properties:
+            open_ai_tool.function.parameters.properties["session_id"] = self._SESSION_ID_PARAM
+        return open_ai_tool
 
     @staticmethod
     def _sdk_attachment_to_param(attachment: SdkAttachment) -> AttachmentParam:
@@ -97,6 +163,7 @@ class BaseDeploymentTool(StagedBaseTool):
     async def _extract_tool_history(
         self,
         tool_name: str,
+        session_id: str | None = None,
     ) -> list[UserMessageParam | AssistantMessageParam]:
         if not tool_name:
             return []
@@ -106,8 +173,9 @@ class BaseDeploymentTool(StagedBaseTool):
         # Build map: tool_call_id -> (content, custom_content)
         tool_result_by_id: dict[str, tuple[str, CustomContent | None]] = {}
         for msg in messages:
-            if msg.role == Role.TOOL and msg.tool_call_id and msg.content:
-                content = str(msg.content) if not isinstance(msg.content, str) else msg.content
+            if msg.role == Role.TOOL and msg.tool_call_id:
+                raw = msg.content
+                content = "" if raw is None else (str(raw) if not isinstance(raw, str) else raw)
                 tool_result_by_id[msg.tool_call_id] = (content, msg.custom_content)
 
         # Walk ASSISTANT messages, find completed tool_calls matching tool_name
@@ -120,6 +188,21 @@ class BaseDeploymentTool(StagedBaseTool):
                 if tc.function.name != tool_name:
                     continue
 
+                # When session_id is provided, match calls that are either:
+                # - the thread anchor (tc.id == session_id): the first call, identified by
+                #   the tool_call_id the backend returned to the LLM as the session identifier
+                # - a follow-up (args["session_id"] == session_id): the LLM echoed it back
+                if session_id is not None:
+                    try:
+                        call_args = json.loads(tc.function.arguments)
+                        is_anchor = tc.id == session_id
+                        is_followup = call_args.get("session_id") == session_id
+                        if not (is_anchor or is_followup):
+                            continue
+                    except (json.JSONDecodeError, AttributeError):
+                        if tc.id != session_id:
+                            continue
+
                 result_entry = tool_result_by_id.get(tc.id)
                 if result_entry is None:
                     # Current call — its TOOL result hasn't been appended yet
@@ -131,8 +214,10 @@ class BaseDeploymentTool(StagedBaseTool):
                 if user_msg is not None:
                     history.append(user_msg)
 
-                if tool_content:
-                    assistant_msg = self._build_assistant_message(tool_content, tool_custom_content)
+                if tool_content or tool_custom_content:
+                    assistant_msg = self._build_assistant_message(
+                        tool_content or "", tool_custom_content
+                    )
                     history.append(assistant_msg)
 
         return history

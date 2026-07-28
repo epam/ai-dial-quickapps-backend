@@ -3,6 +3,7 @@ import logging
 import pytest
 
 from quickapp.config.tools.base import AttachmentConfig
+from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import StopStrategyModel, ToolFallbackConfig
 from quickapp.config.toolsets.dial_app import DialAppToolSet
 
@@ -68,6 +69,40 @@ async def test_fallback_model_copy_overrides_attachment_and_fallback_configurati
     customised = context.resolved_deployment_tools[0]
     assert customised.attachment == custom_attachment
     assert customised.fallback_configuration == custom_fallback
+
+
+@pytest.mark.asyncio
+async def test_fallback_threads_conversation_mode_onto_synthetic_tool():
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        conversation_mode=ConversationMode(resumable=True),
+    )
+    resolver, context, _, _ = make_resolver(
+        toolsets=[toolset],
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+    )
+
+    await resolver.resolve()
+
+    customised = context.resolved_deployment_tools[0]
+    assert customised.conversation_mode is not None
+    assert customised.conversation_mode.resumable is True
+
+
+@pytest.mark.asyncio
+async def test_fallback_conversation_mode_none_leaves_synthetic_default():
+    toolset = DialAppToolSet(name="app", deployment_id="dep")
+    resolver, context, _, _ = make_resolver(
+        toolsets=[toolset],
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+    )
+
+    await resolver.resolve()
+
+    assert context.resolved_deployment_tools[0].conversation_mode is None
 
 
 @pytest.mark.asyncio
