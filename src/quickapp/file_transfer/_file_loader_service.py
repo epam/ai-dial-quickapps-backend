@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import mimetypes
 
 from aidial_client.types.metadata import FileMetadata
 from injector import inject
@@ -17,6 +18,15 @@ from quickapp.shared.external_fetch.external_url_fetcher import (
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_CONTENT_TYPE = "application/octet-stream"
+
+
+def _normalize_content_type(content_type: str | None) -> str | None:
+    if not content_type:
+        return None
+    base = content_type.split(";", 1)[0].strip()
+    return base or None
+
 
 @inject
 class FileLoaderService:
@@ -24,8 +34,8 @@ class FileLoaderService:
 
     Dispatches on :func:`classify_url` and applies the per-request bytes cache
     via :class:`StateHolder`. The single entry point used by callers that need
-    the *bytes* of a URL (today: ``FilePrefixHandlers.handle_base64`` and
-    ``handle_text`` via ``_FileArgumentTransformer``).
+    the *bytes* of a URL (today: ``FilePrefixHandlers.handle_base64``,
+    ``handle_text``, and ``handle_data`` via ``_FileArgumentTransformer``).
     """
 
     def __init__(
@@ -57,9 +67,29 @@ class FileLoaderService:
         finally:
             self.__inflight.pop(url, None)
 
+    async def load_with_content_type(
+        self, url: str, parameter_name: str = "<unknown>"
+    ) -> tuple[bytes, str]:
+        """Load file bytes and resolve a MIME type for data-URI envelopes."""
+        data = await self.load(url, parameter_name=parameter_name)
+        return data, self.__resolve_content_type(url)
+
+    def __resolve_content_type(self, url: str) -> str:
+        stored = _normalize_content_type(self.__state_holder.get_content_type(url))
+        if stored:
+            return stored
+
+        filename = url.rsplit("/", 1)[-1]
+        guessed = _normalize_content_type(mimetypes.guess_type(filename)[0])
+        if guessed:
+            return guessed
+
+        return _DEFAULT_CONTENT_TYPE
+
     async def __do_load(self, url: str, parameter_name: str) -> bytes:
         scheme = classify_url(url, self.__dial_url)
         metadata: FileMetadata | None = None
+        content_type: str | None = None
         if scheme == UrlScheme.DIAL:
             data, metadata = await self.__dial_downloader.fetch(url)
         elif scheme == UrlScheme.EXTERNAL:
@@ -70,11 +100,13 @@ class FileLoaderService:
                     parameter_name=parameter_name, message=str(exc)
                 ) from exc
             data = fetched.data
+            content_type = fetched.content_type
         else:
             raise unsupported_scheme_error(url, parameter_name)
 
         # Store metadata alongside the bytes on the DIAL branch so a later
         # DialFileService.download_file cache-hit returns a real FileMetadata
         # (callers like _edit_file_tool need metadata.etag for If-Match).
-        self.__state_holder.store_file_data(url, data, metadata)
+        # External Content-Type is stored separately for data: URI envelopes.
+        self.__state_holder.store_file_data(url, data, metadata, content_type=content_type)
         return data
