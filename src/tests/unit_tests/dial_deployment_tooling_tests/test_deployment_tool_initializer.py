@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -9,7 +9,8 @@ from quickapp.config.tools.base import (
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
 )
-from quickapp.config.tools.deployment import DialDeploymentTool
+from quickapp.config.tools.deployment import ConversationMode, DialDeploymentTool
+from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
 from tests.unit_tests.common.common import make_provider
@@ -73,3 +74,50 @@ async def test_tool_names_hyphenated_toolset_name_preserved():
 
     assert builder.build.call_args.kwargs["application_name"] == "search_web"
     assert builder.build.call_args.kwargs["tool_config"].open_ai_tool.function.name == "search_web"
+
+
+def _make_simple_initializer(
+    simple_tool: DialDeploymentSimpleTool,
+    builder: MagicMock,
+    cached_config: DialDeploymentTool,
+) -> _DeploymentToolInitializer:
+    deployment_cache = MagicMock()
+    deployment_cache.fetch_basic_tool_config = AsyncMock(return_value=cached_config)
+    return _DeploymentToolInitializer(
+        context=MagicMock(),
+        tool_config_service=MagicMock(),
+        builder=builder,
+        deployment_cache=deployment_cache,
+        dial_tools_provider=make_provider([]),
+        simple_tools_provider=make_provider([simple_tool]),
+    )
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_threads_conversation_mode_onto_synthetic_config():
+    simple_tool = DialDeploymentSimpleTool(
+        deployment_id="my-app",
+        conversation_mode=ConversationMode(resumable=True),
+    )
+    builder = MagicMock()
+    # Synthetic config from the cache has no conversation_mode.
+    cached_config = _make_deployment_tool("my_app_tool")
+
+    await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
+
+    built_config = builder.build.call_args.kwargs["tool_config"]
+    assert built_config.conversation_mode is not None
+    assert built_config.conversation_mode.resumable is True
+    # The cached config must not be mutated in place (model_copy produces a fresh instance).
+    assert cached_config.conversation_mode is None
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_without_conversation_mode_leaves_synthetic_default():
+    simple_tool = DialDeploymentSimpleTool(deployment_id="my-app")
+    builder = MagicMock()
+    cached_config = _make_deployment_tool("my_app_tool")
+
+    await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
+
+    assert builder.build.call_args.kwargs["tool_config"].conversation_mode is None

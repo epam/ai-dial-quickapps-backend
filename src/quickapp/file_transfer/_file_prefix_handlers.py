@@ -39,6 +39,30 @@ class FilePrefixHandlers:
         return base64.b64encode(content).decode()
 
     @staticmethod
+    async def handle_data(
+        file_url: str, file_service: FileLoaderService, parameter_name: str = "<unknown>"
+    ) -> str:
+        content, mime_type = await file_service.load_with_content_type(
+            file_url, parameter_name=parameter_name
+        )
+        if not isinstance(content, (bytes, bytearray)):
+            try:
+                content = bytes(content)
+            except Exception:
+                logger.exception(
+                    "Failed to coerce downloaded content to bytes for %s",
+                    sanitize_url_for_log(file_url),
+                )
+                raise InvalidToolCallParameterException(
+                    parameter_name=parameter_name,
+                    message=(
+                        "Downloaded content is not bytes and cannot be converted " "to a data URI."
+                    ),
+                )
+        encoded = base64.b64encode(content).decode()
+        return f"data:{mime_type};base64,{encoded}"
+
+    @staticmethod
     async def handle_text(
         file_url: str, file_service: FileLoaderService, parameter_name: str = "<unknown>"
     ) -> str:
@@ -69,7 +93,8 @@ class FilePrefixHandlers:
                     parameter_name=parameter_name,
                     message=(
                         f"File at {safe_url} appears to be binary ({desc}). "
-                        "Use `file:base64::...` or `file:URL::...` instead of `file:text::...`."
+                        "Use `file:data::...`, `file:base64::...` or `file:url::...` "
+                        "instead of `file:text::...`."
                     ),
                 )
 
