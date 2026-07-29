@@ -1,7 +1,7 @@
 import re
 
 FILE_PATTERN = re.compile(
-    r"^/*file:(?:(?P<prefix>base64|url|text)::)?(?P<file_url>.+)$", re.IGNORECASE
+    r"^/*file:(?:(?P<prefix>base64|url|text|data)::)?(?P<file_url>.+)$", re.IGNORECASE
 )
 
 

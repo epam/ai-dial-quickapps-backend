@@ -112,6 +112,12 @@ class _DialAppResolver(CompletionInitializer):
         return bool(metadata.features and metadata.features.mcp)
 
     def _handle_mcp_branch(self, toolset: DialAppToolSet) -> None:
+        if toolset.conversation_mode and toolset.conversation_mode.resumable:
+            logger.warning(
+                "conversation_mode.resumable set on DialAppToolSet '%s' is ignored on the MCP "
+                "branch (resumable sessions apply only to the chat-completion deployment tool).",
+                toolset.name,
+            )
         url = f"{self.__dial_settings.url}/v1/deployments/{toolset.deployment_id}/mcp"
         api_key = self.__api_key_provider.get()
         mcp_toolset = MCPToolSet(
@@ -147,6 +153,7 @@ class _DialAppResolver(CompletionInitializer):
             update={
                 "attachment": toolset.attachment,
                 "fallback_configuration": toolset.fallback_configuration,
+                "conversation_mode": toolset.conversation_mode,
             }
         )
         self.__context.append_deployment_tool(customised)

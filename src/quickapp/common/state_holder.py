@@ -17,6 +17,7 @@ class StateHolder(BaseModel):
     _state: dict[str, Any] = PrivateAttr(default_factory=dict)
     _file_data_dict: dict[str, bytes] = PrivateAttr(default_factory=dict)
     _file_metadata_dict: dict[str, FileMetadata] = PrivateAttr(default_factory=dict)
+    _file_content_type_dict: dict[str, str] = PrivateAttr(default_factory=dict)
 
     def add_state(self, key: str, value: Any) -> None:
         logger.debug("Added state [%s] (type=%s)", key, type(value).__name__)
@@ -40,21 +41,35 @@ class StateHolder(BaseModel):
         return None
 
     def store_file_data(
-        self, url: str, file_data: bytes, metadata: FileMetadata | None = None
+        self,
+        url: str,
+        file_data: bytes,
+        metadata: FileMetadata | None = None,
+        content_type: str | None = None,
     ) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict[key] = file_data
         if metadata is not None:
             self._file_metadata_dict[key] = metadata
+        resolved_type = content_type
+        if resolved_type is None and metadata is not None:
+            resolved_type = getattr(metadata, "content_type", None)
+        if resolved_type:
+            self._file_content_type_dict[key] = resolved_type
 
     def get_file_metadata(self, url: str) -> FileMetadata | None:
         key = self._get_file_key_by_url(url)
         return self._file_metadata_dict.get(key)
 
+    def get_content_type(self, url: str) -> str | None:
+        key = self._get_file_key_by_url(url)
+        return self._file_content_type_dict.get(key)
+
     def invalidate_file_data(self, url: str) -> None:
         key = self._get_file_key_by_url(url)
         self._file_data_dict.pop(key, None)
         self._file_metadata_dict.pop(key, None)
+        self._file_content_type_dict.pop(key, None)
 
     @staticmethod
     def _get_file_key_by_url(url: str) -> str:
