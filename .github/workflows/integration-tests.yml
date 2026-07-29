@@ -1,21 +1,9 @@
 name: "Run integration tests"
 
 on:
-  workflow_dispatch: 
-    inputs:
-      branch:
-        description: Branch to run the tests on
-        required: true
-        default: 'development'
-        type: string
-      python-version:
-        type: string
-        description: Python version to use
-        default: "3.13"
-      poetry-version:
-        type: string
-        description: Poetry version to use
-        default: "2.3.2"
+  pull_request:
+    branches:
+      - development
 
 permissions:
   checks: write       # Required by dorny/test-reporter to post results
@@ -31,12 +19,12 @@ jobs:
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          ref: ${{ inputs.branch }}
+          ref: debug-integration-test
           lfs: true
       - uses: epam/ai-dial-ci/actions/python_prepare@4.7.2
         with:
-          python-version: ${{ inputs.python-version }}
-          poetry-version: ${{ inputs.poetry-version }}
+          python-version: "3.13"
+          poetry-version: "2.3.2"
       - name: integration_test
         env:
           PY_INTERPRETER_LOCAL_RUN: true
@@ -62,4 +50,4 @@ jobs:
           name: integration-test-reports
           path: reports/tests-integration-*.xml
           retention-days: 30
-          if-no-files-found: error    
+          if-no-files-found: error
