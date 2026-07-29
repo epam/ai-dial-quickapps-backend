@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from quickapp.common.exceptions import (
@@ -8,6 +10,7 @@ from quickapp.common.exceptions import (
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
+    HardStopStrategyModel,
     RetryStrategyModel,
     StopStrategyModel,
     ToolFallbackConfig,
@@ -78,15 +81,27 @@ def test_customised_catch_all_is_skipped_for_timeout():
     assert "customised-catch-all" not in result.content
 
 
-def test_stop_strategy_with_trigger_preempts_by_raising():
+def test_hard_stop_strategy_with_trigger_preempts_by_raising():
     err = ToolTimeoutError("rag_search", 300)
     strategies = [
-        StopStrategyModel(
+        HardStopStrategyModel(
             trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
         ),
     ]
     with pytest.raises(FallbackAgentStopException):
         FallbackProcessor.process_fallback(strategies, "c", err)
+
+
+def test_stop_strategy_deprecated_with_trigger_returns_content(caplog):
+    err = ToolTimeoutError("rag_search", 300)
+    with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.tool_fallback"):
+        strategies = [
+            StopStrategyModel(
+                trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+            ),
+        ]
+    result = FallbackProcessor.process_fallback(strategies, "c", err)
+    assert "STOP" in result.content
 
 
 # -- Non-timeout path unchanged --------------------------------------------

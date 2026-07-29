@@ -27,10 +27,6 @@ class BaseToolFallbackStrategyModel(BaseModel):
     )
 
 
-class StopStrategyModel(BaseToolFallbackStrategyModel):
-    type: Literal["stop"] = Field(default="stop", description="The type of the strategy.")
-
-
 class BaseHandleStrategyModel(BaseToolFallbackStrategyModel):
     instructions: str | None = Field(
         default=None,
@@ -88,8 +84,28 @@ class RetryStrategyModel(BaseHandleStrategyModel):
         return self
 
 
+class StopStrategyModel(BaseToolFallbackStrategyModel):
+    type: Literal["stop"] = Field(
+        default="stop",
+        deprecated="Strategy type 'stop' is deprecated. Use type 'hard_stop' instead.",
+        description="Deprecated: use type 'hard_stop' instead.",
+    )
+
+    @model_validator(mode="after")
+    def _warn_deprecated_stop(self) -> "StopStrategyModel":
+        logger.warning(
+            "Strategy type 'stop' is deprecated and will be removed in the next major release. "
+            "Use type 'hard_stop' instead."
+        )
+        return self
+
+
+class HardStopStrategyModel(BaseToolFallbackStrategyModel):
+    type: Literal["hard_stop"] = Field(default="hard_stop", description="The type of the strategy.")
+
+
 ToolFallbackStrategyModel = Annotated[
-    StopStrategyModel | ContinueStrategyModel | RetryStrategyModel,
+    StopStrategyModel | ContinueStrategyModel | RetryStrategyModel | HardStopStrategyModel,
     Field(discriminator="type"),
 ]
 
