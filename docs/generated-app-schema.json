@@ -1644,6 +1644,31 @@
       "title": "ForwardAuthTokenAuthorization",
       "type": "object"
     },
+    "HardStopStrategyModel": {
+      "properties": {
+        "trigger_on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TriggerOn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The trigger on condition. If set as `null`, it will be applied to all tool errors."
+        },
+        "type": {
+          "const": "hard_stop",
+          "default": "hard_stop",
+          "description": "The type of the strategy.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "HardStopStrategyModel",
+      "type": "object"
+    },
     "HookEvent": {
       "enum": [
         "on_request_start"
@@ -3039,7 +3064,8 @@
         "type": {
           "const": "stop",
           "default": "stop",
-          "description": "The type of the strategy.",
+          "deprecated": true,
+          "description": "Deprecated: use type 'hard_stop' instead.",
           "title": "Type",
           "type": "string"
         }
@@ -3219,6 +3245,7 @@
             "discriminator": {
               "mapping": {
                 "continue": "#/$defs/ContinueStrategyModel",
+                "hard_stop": "#/$defs/HardStopStrategyModel",
                 "retry": "#/$defs/RetryStrategyModel",
                 "stop": "#/$defs/StopStrategyModel"
               },
@@ -3233,6 +3260,9 @@
               },
               {
                 "$ref": "#/$defs/RetryStrategyModel"
+              },
+              {
+                "$ref": "#/$defs/HardStopStrategyModel"
               }
             ]
           },
