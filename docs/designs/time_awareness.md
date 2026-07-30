@@ -119,16 +119,16 @@ user asks about a specific timezone.
 
 ### 2. Auto-Injection via MessagesTransformer
 
-- **What:** `_TimestampInjectionTransformer`, a `MessagesTransformer` that appends a single
-  synthetic tool-call + tool-result pair at the end of the message list.
+- **What:** `_TimestampInjectionTransformer`, a `MessagesTransformer` that inserts a single
+  synthetic tool-call + tool-result pair immediately before the last USER message.
 - **Owner:** `timestamp_tooling` module.
-- **Semantics:** Runs once at request setup (in `_MessagesSetup`). Appends a synthetic
+- **Semantics:** Runs once at request setup (in `_MessagesSetup`). Inserts a synthetic
   assistant message with a tool call to `current_timestamp` and a corresponding tool result
-  containing the current UTC time at the end of the message list. Uses a deterministic
+  containing the current UTC time immediately before the last USER message. Uses a deterministic
   synthetic ID with a known prefix (e.g. `call_synthetic_timestamp_`). Other transformers
-  (e.g. `_AttachmentNotificationInjector`) may also append messages — ordering between them
-  does not matter. From the agent's perspective: "I saw the user's message, I checked the
-  time, now I respond."
+  (e.g. `_AttachmentNotificationInjector`) may also inject pairs before the last USER — later
+  transformers land closer to that USER. From the agent's perspective the latest user turn
+  remains the final message.
 - **Change:** New transformer registered via `@multiprovider` as `list[MessagesTransformer]`.
 
 **History persistence:** The synthetic timestamp messages are appended at the end of the
@@ -420,50 +420,48 @@ registration is conditional on the presence of a `timestamp` section in
 
 ### What the LLM sees (auto-injected)
 
-First turn — synthetic timestamp appended at the end of the message list. Other transformers
-(e.g. `_AttachmentNotificationInjector`) may also append messages; the timestamp appears after
-them:
+First turn — synthetic timestamp inserted immediately before the last USER message. Other
+transformers (e.g. `_AttachmentNotificationInjector`) may also inject pairs before that USER;
+later transformers land closer to the USER:
 
 ```
 [system] You are a helpful assistant...
 
-[user]     What day is it?
-
 [assistant] (tool_call: current_timestamp → {})
 [tool]     2026-03-24T14:30:00+00:00 (UTC, source=default)
+
+[user]     What day is it?
 
 [assistant] Today is Monday, March 24, 2026.
 ```
 
-When the app has contexts configured, context notifications appear between the user message
-and the timestamp:
+When the app has contexts configured, context notifications appear before the timestamp
+(closer to the USER when timestamp runs later):
 
 ```
-[user]     What day is it?
-
 [assistant] (tool_call: available_context → {})
 [tool]     {"entries": [...]}
 
 [assistant] (tool_call: current_timestamp → {})
 [tool]     2026-03-24T14:30:00+00:00 (UTC, source=default)
+
+[user]     What day is it?
 ```
 
-Second turn — previous timestamp restored from history, new one appended at the end:
+Second turn — previous timestamp is not re-persisted after the last USER (synthetic ALWAYS
+pairs land before it); a fresh timestamp is injected before the new last USER:
 
 ```
 [system] You are a helpful assistant...
 
 [user]     What day is it?
 
-[assistant] (tool_call: current_timestamp → {})
-[tool]     2026-03-24T14:30:00+00:00 (UTC, source=default)
-
 [assistant] Today is Monday, March 24, 2026.
-
-[user]     And what time is it now?
 
 [assistant] (tool_call: current_timestamp → {})
 [tool]     2026-03-24T14:35:12+00:00 (UTC, source=default)
+
+[user]     And what time is it now?
 ```
 
 ### Tool response annotation example

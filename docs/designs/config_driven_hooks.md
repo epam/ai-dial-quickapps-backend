@@ -36,7 +36,7 @@ case.
 always`.
 **Behavior:** On every request, the hook resolves the final function name
 (`sanitize_toolname("memory_server_get_memories")`), calls `tool.arun()`, and injects the resulting
-`(ASSISTANT/tool_calls, TOOL)` pair at the end of the message list.
+`(ASSISTANT/tool_calls, TOOL)` pair immediately before the last USER message.
 **Outcome:** The LLM receives the agent's memory context before each orchestrator iteration without any
 bespoke injector code.
 
