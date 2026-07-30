@@ -166,3 +166,29 @@ class InteractiveLoginService:
         """Request interactive sign-in for a single toolset. Convenience wrapper."""
         results = await self.request_signin_batch([toolset_dial_id])
         return results[toolset_dial_id]
+
+    async def request_external_service_signin(self, url: str) -> LoginResult:
+        """Request interactive sign-in for an external service via its signin url."""
+        logger.info(format_event("Interactive login requested", external_service_url=url))
+        if self.__client_channel_id is None:
+            return LoginResult.NO_CHANNEL
+
+        rpc_batch = [
+            {
+                "jsonrpc": "2.0",
+                "method": "external-service/signin",
+                "params": {"url": url},
+                "id": "1",
+            }
+        ]
+        try:
+            results = await asyncio.wait_for(
+                self._do_interact(rpc_batch, {"1": url}, [url]),
+                timeout=self.__settings.interactive_login_timeout_seconds,
+            )
+        except TimeoutError:
+            results = {url: LoginResult.TIMEOUT}
+        except Exception:
+            logger.warning("Interactive login failed for external service %s", url, exc_info=True)
+            results = {url: LoginResult.ERROR}
+        return results[url]

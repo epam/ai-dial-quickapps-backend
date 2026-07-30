@@ -214,3 +214,89 @@ async def test_single_result_not_list():
         result = await service.request_signin_batch(["toolset/a"])
 
     assert result == {"toolset/a": LoginResult.SUCCESS}
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_no_channel_returns_no_channel():
+    service = _make_service(client_channel_id=None)
+    result = await service.request_external_service_signin(
+        "applications/my-app/external_services/x"
+    )
+    assert result == LoginResult.NO_CHANNEL
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_success():
+    url = "applications/my-app/external_services/salesforce"
+    data = json.dumps([{"jsonrpc": "2.0", "result": "success", "id": "1"}])
+    event_source = _FakeEventSource([_FakeSSEEvent(data)])
+    service = _make_service()
+
+    sse_patch, client_patch = _patch_sse(event_source)
+    with sse_patch, client_patch:
+        result = await service.request_external_service_signin(url)
+
+    assert result == LoginResult.SUCCESS
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_sends_expected_rpc_body():
+    url = "applications/my-app/external_services/salesforce"
+    data = json.dumps([{"jsonrpc": "2.0", "result": "success", "id": "1"}])
+    event_source = _FakeEventSource([_FakeSSEEvent(data)])
+    service = _make_service()
+
+    sse_patch, client_patch = _patch_sse(event_source)
+    with sse_patch as mock_sse, client_patch:
+        await service.request_external_service_signin(url)
+
+    _, kwargs = mock_sse.call_args
+    assert kwargs["json"] == [
+        {
+            "jsonrpc": "2.0",
+            "method": "external-service/signin",
+            "params": {"url": url},
+            "id": "1",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_denied():
+    url = "applications/my-app/external_services/salesforce"
+    data = json.dumps([{"jsonrpc": "2.0", "result": "denied", "id": "1"}])
+    event_source = _FakeEventSource([_FakeSSEEvent(data)])
+    service = _make_service()
+
+    sse_patch, client_patch = _patch_sse(event_source)
+    with sse_patch, client_patch:
+        result = await service.request_external_service_signin(url)
+
+    assert result == LoginResult.DENIED
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_timeout():
+    service = _make_service(timeout=0.01)
+
+    async def slow_interact(*args, **kwargs):
+        import asyncio
+
+        await asyncio.sleep(10)
+
+    with patch.object(service, "_do_interact", side_effect=slow_interact):
+        result = await service.request_external_service_signin("applications/my-app/x")
+
+    assert result == LoginResult.TIMEOUT
+
+
+@pytest.mark.asyncio
+async def test_external_service_signin_http_error_returns_error():
+    event_source = _FakeEventSource([], status_code=404)
+    service = _make_service()
+
+    sse_patch, client_patch = _patch_sse(event_source)
+    with sse_patch, client_patch:
+        result = await service.request_external_service_signin("applications/my-app/x")
+
+    assert result == LoginResult.ERROR

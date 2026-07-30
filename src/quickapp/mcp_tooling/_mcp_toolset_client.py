@@ -22,6 +22,8 @@ from quickapp.config.toolsets.authorization import (
     MCPApiKeyAuthorization,
 )
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
+from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
@@ -30,6 +32,9 @@ MAX_ITERATIONS = 1000
 
 # HTTP connect/write timeout for streamable HTTP; the SSE read timeout is resolved separately.
 _MCP_HTTP_TIMEOUT_SECONDS = 30.0
+
+_AUTH_CHALLENGE_META_KEY = "dial.epam.com/auth-challenge"
+_EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
 
 
 def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
@@ -41,6 +46,24 @@ def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
             nested = _extract_http_401(exc)
             if nested is not None:
                 return nested
+    return None
+
+
+def _extract_external_service_signin_url(result: CallToolResult) -> str | None:
+    """Extract the signin url from an errored result's dial.epam.com/auth-challenge _meta entry."""
+    if not result.isError or not result.meta:
+        return None
+    challenges = result.meta.get(_AUTH_CHALLENGE_META_KEY)
+    if not isinstance(challenges, list):
+        return None
+    for challenge in challenges:
+        if (
+            isinstance(challenge, dict)
+            and challenge.get("method") == _EXTERNAL_SERVICE_SIGNIN_METHOD
+        ):
+            scope = challenge.get("scope")
+            if isinstance(scope, str):
+                return scope
     return None
 
 
@@ -61,6 +84,7 @@ class _MCPToolsetClient:
         dial_settings: DialSettings,
         timeout_resolver: ToolTimeoutResolver,
         session_manager: _MCPSessionManager,
+        login_service: InteractiveLoginService,
         bearer: DIAL_BEARER = None,
         forwarded_headers: ForwardedHeaders = None,
     ):
@@ -72,6 +96,7 @@ class _MCPToolsetClient:
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__session_manager: _MCPSessionManager = session_manager
+        self.__login_service: InteractiveLoginService = login_service
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
         headers = (
@@ -191,6 +216,21 @@ class _MCPToolsetClient:
             return all_tools
 
     async def call_mcp_tool(self, tool_name: str, **kwargs) -> CallToolResult:
+        """Call a tool, transparently retrying once if the result carries an
+        external-service signin challenge (dial.epam.com/auth-challenge) and sign-in succeeds.
+        On denied/timeout/error/no-channel, the original errored result is returned unchanged."""
+        result = await self.__call_tool_once(tool_name, **kwargs)
+
+        signin_url = _extract_external_service_signin_url(result)
+        if signin_url is None:
+            return result
+
+        login_result = await self.__login_service.request_external_service_signin(signin_url)
+        if login_result != LoginResult.SUCCESS:
+            return result
+        return await self.__call_tool_once(tool_name, **kwargs)
+
+    async def __call_tool_once(self, tool_name: str, **kwargs) -> CallToolResult:
         timeout = self.__timeout_resolver.resolve()
         read_timeout_seconds = timedelta(seconds=timeout)
 

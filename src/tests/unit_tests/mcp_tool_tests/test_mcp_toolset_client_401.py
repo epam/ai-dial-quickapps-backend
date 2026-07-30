@@ -1,6 +1,6 @@
 """Tests for 401 detection in _MCPToolsetClient, including ExceptionGroup wrapping."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
 import pytest
@@ -75,6 +75,7 @@ def _make_toolset_client(
         dial_settings=MagicMock(url="https://dial-core"),
         timeout_resolver=noop_timeout_resolver(),
         session_manager=_MCPSessionManager(RequestAsyncCloseRegistry()),
+        login_service=AsyncMock(),
     )
 
 
