@@ -10,7 +10,11 @@ def extract_error_content(error: Exception) -> str:
 
 def compose_fallback_content(error: Exception, instructions: str | None = None) -> str:
     content = extract_error_content(error)
-    base = f"The tool call failed with an error: {content}" if content else "The tool call failed with an error."
+    base = (
+        f"The tool call failed with an error: {content}"
+        if content
+        else "The tool call failed with an error."
+    )
     if instructions:
         return f"{base}\n\n{instructions}"
     return base

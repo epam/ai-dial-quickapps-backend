@@ -162,9 +162,8 @@ async def test_is_error_can_forward_tool_error_message_via_continue_fallback():
 
 
 @pytest.mark.asyncio
-async def test_is_error_empty_payload_propagates_when_error_message_is_empty():
-    """Empty MCP error payload → MCPToolErrorException with empty message → empty content string
-    is considered "no message" by the processor, so the exception propagates."""
+async def test_is_error_empty_payload_returns_generic_message():
+    """Empty MCP error payload → MCPToolErrorException with empty message → generic fallback message."""
     fallback_config = ToolFallbackConfig(
         strategies=[ContinueStrategyModel(forward_tool_error_message=True)]
     )
@@ -174,8 +173,10 @@ async def test_is_error_empty_payload_propagates_when_error_message_is_empty():
         isError=True,
     )
 
-    with pytest.raises(MCPToolErrorException):
-        await tool.arun("call-id")
+    result = await tool.arun("call-id")
+
+    assert isinstance(result, ToolCallResult)
+    assert result.content == "The tool call failed with an error."
 
 
 @pytest.mark.asyncio
