@@ -180,7 +180,7 @@ class TestPreProcessParams:
             await tool._pre_process_params(doc_url="file:url::https://example.com/external.pdf")
         message = str(excinfo.value)
         assert "external URL" in message
-        assert "file:base64::" in message or "file:text::" in message
+        assert "file:data::" in message or "file:base64::" in message or "file:text::" in message
         file_service.grant_permissions_to_files.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -191,6 +191,19 @@ class TestPreProcessParams:
         )
         with pytest.raises(InvalidToolCallParameterException) as excinfo:
             await tool._pre_process_params(doc_url="ftp://example.com/x")
+        assert "unsupported URL" in str(excinfo.value)
+        file_service.grant_permissions_to_files.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_dial_url_home_relative_path_rejected(self):
+        # A schemeless workspace-relative path is not resolvable to a shareable
+        # DIAL file here; it must keep failing like any unsupported reference.
+        tool, file_service, _ = _make_tool(
+            input_schema={"properties": {"doc_url": {"type": "string", "dial_url": True}}},
+            dial_toolset_id="my-toolset",
+        )
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._pre_process_params(doc_url="reports/img.png")
         assert "unsupported URL" in str(excinfo.value)
         file_service.grant_permissions_to_files.assert_not_awaited()
 

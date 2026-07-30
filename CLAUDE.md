@@ -44,7 +44,8 @@ Cross-cutting shared code lives in `common/` (a flat utility bag). Two packages 
 `<pkg>_module: list[Module]` array that `app_factory` splices into the module list instead of
 registering each entry separately: `core/` exposes `core_module` (the app's central modules —
 `AppModule` + `AgentModule`), and `shared/` exposes `shared_module` (cross-cutting utility modules with
-their own DI wiring; today `ExternalFetchModule` in `shared/external_fetch/`).
+their own DI wiring; e.g. `ExternalFetchModule` in `shared/external_fetch/` and `HomePathModule`
+(the shared agent-home path resolver) in `shared/home_path/`).
 
 → Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md) | [`docs/error_handling.md`](docs/error_handling.md)
 

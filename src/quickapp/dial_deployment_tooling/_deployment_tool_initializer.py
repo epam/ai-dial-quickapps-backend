@@ -58,6 +58,10 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 self.__tool_config_service.get_basic_tool_config,
                 tool_info.deployment_id,
             )
+            if tool_info.conversation_mode is not None:
+                tool_config = tool_config.model_copy(
+                    update={"conversation_mode": tool_info.conversation_mode}
+                )
             self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:

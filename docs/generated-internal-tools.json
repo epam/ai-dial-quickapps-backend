@@ -10,7 +10,7 @@
     "properties": {
       "attachment_url": {
         "type": "string",
-        "description": "File reference using ONLY the file:url:: form, e.g. file:url::https://example.com/readme.md or file:url::files/bucket/doc.pdf. Other forms are not valid here and will be rejected. Accepted MIME types: */*."
+        "description": "File reference using ONLY the file:url:: form, e.g. file:url::https://example.com/readme.md, file:url::files/bucket/doc.pdf, or file:url::reports/img.png (a path relative to the agent's home dir). Other forms are not valid here and will be rejected. Accepted MIME types: */*."
       }
     },
     "required": [
@@ -372,5 +372,22 @@
         "description": "IANA timezone name (e.g. 'Asia/Tokyo'). Defaults to UTC."
       }
     }
+  },
+  {
+    "name": "internal_web_fetch",
+    "description": "Fetch a resource from an external http(s) URL (e.g. a README, a source file, a documentation page). Without save_path it returns the text inline in a single call — text only: binary content (images, PDFs, archives) is rejected, re-call with a save_path instead. Text larger than the inline cap is returned truncated to its head with a notice stating the total size; the head is often enough, otherwise re-call with a save_path. With save_path it persists the resource (any content type) at that workspace-relative path under the agent home and returns the saved path (+ a short preview for text), so other available tools can process the full content. DIAL file paths (files/...) are not fetched here.",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "The external http(s) URL to fetch."
+      },
+      "save_path": {
+        "type": "string",
+        "description": "Optional workspace-relative destination (e.g. 'data.py' or 'docs/readme.md'). Omit to read the content inline; provide it to save the resource under the agent home and get back the saved path. Must not be an absolute 'files/...' URL."
+      }
+    },
+    "required": [
+      "url"
+    ]
   }
 ]

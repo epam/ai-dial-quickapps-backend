@@ -453,7 +453,8 @@
       "properties": {
         "propagate_history": {
           "default": false,
-          "description": "Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
+          "deprecated": true,
+          "description": "**Deprecated, use `conversation_mode.resumable: true`**. Flag to propagate messages to deployment. If True, the messages will be propagated in such way: [assistant, tool] -> [user, assistant].",
           "title": "Propagate History",
           "type": "boolean"
         },
@@ -519,6 +520,18 @@
         }
       },
       "title": "ContinueStrategyModel",
+      "type": "object"
+    },
+    "ConversationMode": {
+      "properties": {
+        "resumable": {
+          "default": false,
+          "description": "Whether the deployment tool maintains a resumable conversation. When true, the tool issues a session_id on the first call, accepts it back on follow-up calls, and the backend threads prior [user, assistant] history — including the subagent's internal tool-execution state — for that session. When false (default), each call is independent.",
+          "title": "Resumable",
+          "type": "boolean"
+        }
+      },
+      "title": "ConversationMode",
       "type": "object"
     },
     "ConversationStarter": {
@@ -759,6 +772,18 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool. Applies only on the chat-completion branch; ignored (with a warning) when the toolset resolves to MCP."
         }
       },
       "required": [
@@ -944,6 +969,18 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1037,6 +1074,18 @@
           ],
           "default": null,
           "description": "The configuration with propagations to DIAL deployment."
+        },
+        "conversation_mode": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ConversationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Conversation session behavior for the DIAL deployment tool."
         },
         "supports_url_attachments": {
           "default": false,
@@ -1350,6 +1399,19 @@
           ],
           "default": null,
           "description": "Built-in DIAL files tools (list / read / search / write / edit / delete / copy / move)."
+        },
+        "web_fetch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WebFetchConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in internal_web_fetch tool: fetch an external resource and return it inline, or persist it to the workspace when a save_path is given (binary / oversized content must be saved rather than read inline).",
+          "x-preview": true
         },
         "representation_tooling": {
           "anyOf": [
@@ -3282,6 +3344,25 @@
         "content"
       ],
       "title": "UserDefinedContextConfig",
+      "type": "object"
+    },
+    "WebFetchConfig": {
+      "description": "Per-app config for the built-in ``internal_web_fetch`` tool.\n\nToggled by the explicit ``enabled`` flag. ``max_inline_size`` caps how much\ndecoded text the tool returns inline; larger textual content is truncated to\nfit under the cap (head + notice). The cap's default is drawn from the same\nenv setting that governs the offload threshold's default\n(``TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD``), so out of the box the inline\ncap and the global offload threshold are equal — anything returned inline is\nbelow the offloader's trigger. See docs/designs/web_fetch_tool.md (Component\n4a) for the cases where an operator intentionally decouples the two.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether to expose the internal_web_fetch tool to the LLM.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "max_inline_size": {
+          "description": "Byte cap on the decoded text internal_web_fetch returns inline. Larger textual resources are truncated to fit under the cap, with a notice stating the total size and pointing at save_path; binary resources are rejected with guidance to re-call with a save_path. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var so the inline cap matches the global offload threshold by default.",
+          "exclusiveMinimum": 0,
+          "title": "Max Inline Size",
+          "type": "integer"
+        }
+      },
+      "title": "WebFetchConfig",
       "type": "object"
     }
   },

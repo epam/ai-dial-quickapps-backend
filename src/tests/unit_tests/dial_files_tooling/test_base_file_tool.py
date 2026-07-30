@@ -7,8 +7,9 @@ from quickapp.common.exceptions import InvalidToolCallParameterException
 from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 # Home-resolution / display-path / path-validation logic lives in
-# `_HomePathResolver` and `_utils` and is covered by test_home_path_resolver.py.
-# This module covers tool-level behaviour built on top of them.
+# `HomePathResolver` (shared/home_path) and `_utils`, and is covered by
+# tests/unit_tests/shared/test_home_path_resolver.py. This module covers
+# tool-level behaviour built on top of them.
 
 
 class TestPermissionDeniedWrapper:

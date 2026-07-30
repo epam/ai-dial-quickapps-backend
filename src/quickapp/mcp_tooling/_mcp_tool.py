@@ -117,11 +117,14 @@ class _MCPTool(StagedBaseTool):
                         parameter_name=key,
                         message=(
                             f"Parameter `{key}` requires a DIAL file but received an "
-                            "external URL. Use `file:base64::` or `file:text::` to "
+                            "external URL. Use `file:data::` or `file:base64::` / "
+                            "`file:text::` to "
                             "inline the content, or upload the file to DIAL first."
                         ),
                     )
-                if scheme == UrlScheme.UNSUPPORTED:
+                # TODO(#445): resolve appdir-relative paths via HomePathResolver
+                #  instead of rejecting them.
+                if scheme in (UrlScheme.UNSUPPORTED, UrlScheme.DIAL_APPDIR_RELATIVE):
                     raise InvalidToolCallParameterException(
                         parameter_name=key,
                         message=(

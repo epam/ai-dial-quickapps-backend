@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.dial_core_services.dial_file_service import DialFileService
-from quickapp.dial_files_tooling._home_path_resolver import _HomePathResolver
+from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 
 def make_dial_client(appdata: str | None = "appbucket") -> MagicMock:
@@ -54,5 +54,5 @@ def make_tool[ToolT](
         perf_timer=MagicMock(),
         dial_file_service=service,
         dial_files_config=config,
-        home_resolver=_HomePathResolver(service, config),
+        home_resolver=HomePathResolver(service, config),
     )
