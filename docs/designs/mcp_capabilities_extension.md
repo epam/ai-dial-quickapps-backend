@@ -22,6 +22,71 @@
 
 ---
 
+## Business Use Cases for MCP Resources
+
+MCP distinguishes between two primitives: **tools** (operations with side effects) and
+**resources** (read-only data the server wants the LLM to be aware of). The scenarios
+below are drawn from real deployments where this distinction addresses concrete business
+problems that tools alone cannot solve.
+
+### Grounding SQL agents in live database schema
+
+A SQL agent without schema access guesses column names and produces broken queries.
+Each failed query costs an LLM turn, user trust, and in some deployments a real
+database round-trip. Exposing the actual table definitions as a resource (`schema://tables`)
+lets the agent read the live schema before generating any SQL. The agent produces
+correct queries on the first attempt, and the schema tokens are consumed only when
+actually needed — a simple aggregation query never fetches the schema at all.
+
+### Eliminating configuration drift in deployed agents
+
+Agents hard-coded with environment assumptions (region, tier, feature flags, rate limits)
+silently give wrong answers after any deployment change. Exposing live runtime
+configuration as a resource (`config://environment`) and marking it `eager` means every
+request begins with the agent knowing the actual deployment state. No manifest update is
+required when configuration changes — the agent reads truth from the server on every
+request.
+
+### Safe observe-then-act workflows for infrastructure agents
+
+An agent that manages infrastructure (scaling deployments, restarting pods, triggering
+rollbacks) is only safe when observation is structurally separated from action. Resources
+provide this separation at the protocol level: reading deployment health (`state://deployment/{name}`)
+and pod logs (`logs://pod/{name}`) carries no side effects, while scaling and restarts
+are tools. The agent is architecturally prevented from taking a destructive action without
+first reading evidence — the read/write boundary is enforced by the protocol, not by
+prompt instructions.
+
+### Replacing startup hooks with eager resources in MCP services
+
+Integrating DIAL Memory into a QuickApp currently requires two `on_request_start` hooks:
+one (`prime_memories`) that fetches relevant memories for the conversation, and one
+(`get_skill`) that injects static instructions explaining how the LLM should use the
+memory tools. The `get_skill` hook returns a fixed read-only document — exactly what
+an MCP resource is designed to provide.
+
+With resource support, the memory MCP server can expose those skill instructions as a
+resource (e.g., `memory://skill`). Marking it `eager: true` in the toolset config causes
+QuickApps to pre-fetch it at init time and inject it as a synthetic tool call pair, with
+the same effect as the hook but without requiring a separate hook configuration. The
+integration drops from two hooks to one: only `prime_memories` remains as a hook,
+while the static skill instructions move into the toolset config.
+
+The pattern generalises to any MCP service that currently relies on a startup hook to
+inject static guidance or metadata. If the content is read-only and server-owned, it
+belongs in a resource — not in a hook that the QuickApp author must wire manually.
+
+### Context-efficient RAG over internal documentation
+
+Embedding all internal API documentation in the system prompt bloats every request with
+content irrelevant to most queries and exhausts context for the actual task. Exposing
+documentation as resources (`docs://api/{service}`) enables a RAG pattern where the agent
+retrieves only what it needs, when it needs it. A query about one service reads one
+document; a multi-service task reads several; simple questions read none. Context usage
+scales with query complexity rather than knowledge base size.
+
+---
+
 ## Problem Statement
 
 QuickApps uses MCP servers exclusively for tool invocation (`tools/list` + `tools/call`).
