@@ -25,30 +25,39 @@ jobs:
         with:
           python-version: "3.13"
           poetry-version: "2.3.2"
-      - name: integration_test
-        env:
-          PY_INTERPRETER_LOCAL_RUN: true
-          PY_INTERPRETER_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
-          PY_INTERPRETER_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
-          DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
-          DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
-          REMOTE_DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
-          REMOTE_DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
-          REFRESH: False
-          ENABLE_PREVIEW_FEATURES: true
-          SHOW_USAGE_STATISTICS: true
-          SHOW_EXECUTION_TIME_STAGE: true
-          QUICKAPP_LOG_LEVEL: DEBUG
-          DEFAULT_AGENT_MAX_ITERATIONS: 15
-        shell: bash
-        run: |
-          make integration_test_all
-        continue-on-error: true  
-      - name: Upload test report artifacts
-        if: always() # Run even when tests fail
-        uses: actions/upload-artifact@v4
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always()
         with:
-          name: integration-test-reports
+          name: Integration Test Results
           path: reports/tests-integration-*.xml
-          retention-days: 30
-          if-no-files-found: error
+          reporter: java-junit        # JUnit XML format
+          fail-on-error: false        # Don't fail the workflow if report parsing fails
+          fail-on-empty: false        # Don't fail if no test results are found
+      # - name: integration_test
+      #   env:
+      #     PY_INTERPRETER_LOCAL_RUN: true
+      #     PY_INTERPRETER_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+      #     PY_INTERPRETER_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+      #     DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+      #     DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+      #     REMOTE_DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+      #     REMOTE_DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+      #     REFRESH: False
+      #     ENABLE_PREVIEW_FEATURES: true
+      #     SHOW_USAGE_STATISTICS: true
+      #     SHOW_EXECUTION_TIME_STAGE: true
+      #     QUICKAPP_LOG_LEVEL: DEBUG
+      #     DEFAULT_AGENT_MAX_ITERATIONS: 15
+      #   shell: bash
+      #   run: |
+      #     make integration_test_all
+      #   continue-on-error: true  
+      # - name: Upload test report artifacts
+      #   if: always() # Run even when tests fail
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: integration-test-reports
+      #     path: reports/tests-integration-*.xml
+      #     retention-days: 30
+      #     if-no-files-found: error

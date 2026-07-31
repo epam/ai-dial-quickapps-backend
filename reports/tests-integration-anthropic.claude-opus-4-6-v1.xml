@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="0" failures="1" skipped="2" tests="23" time="218.571" timestamp="2026-07-30T10:00:54.672763+00:00" hostname="runnervmvrwv9"><testcase classname="src.tests.integration_tests.test_multi_tool" name="test_image_recognition_and_web_search" time="51.990" /><testcase classname="src.tests.integration_tests.test_multi_tool" name="test_web_search_and_text_to_image" time="61.841" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_web_search" time="27.638" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_text_to_image" time="42.466" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_web_search2" time="25.840" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_text_to_image2" time="35.877" /><testcase classname="src.tests.integration_tests.test_orchestrator_contexts" name="test_lazy_admin_context_list_then_get_content" time="0.002"><skipped type="pytest.skip" message="Model 'anthropic.claude-opus-4-6-v1' is not applicable for this test">/home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/src/tests/integration_tests/test_runner/e2e_runner.py:464: Model 'anthropic.claude-opus-4-6-v1' is not applicable for this test</skipped></testcase><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_rag_search2" time="30.991" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_web_search3" time="72.272" /><testcase classname="src.tests.integration_tests.test_multi_tool" name="test_rag_interpreter" time="48.727" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_rag_search" time="29.844" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_image_recognition" time="19.111" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_pyinterpreter_close_session" time="8.689" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_pyinterpreter2" time="27.988" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_rest_api_toolcall" time="48.918" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_pyinterpreter_reuse_same_session" time="54.327" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_pyinterpreter" time="34.096" /><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_response_format_json_schema" time="0.001"><skipped type="pytest.skip" message="Model 'anthropic.claude-opus-4-6-v1' is not applicable for this test">/home/runner/work/ai-dial-quickapps-backend/ai-dial-quickapps-backend/src/tests/integration_tests/test_runner/e2e_runner.py:464: Model 'anthropic.claude-opus-4-6-v1' is not applicable for this test</skipped></testcase><testcase classname="src.tests.integration_tests.test_tool_choice" name="test_tool_choice_specific_function" time="26.097" /><testcase classname="src.tests.integration_tests.test_tool_choice" name="test_tool_choice_required" time="43.384" /><testcase classname="src.tests.integration_tests.test_tool_choice" name="test_tool_choice_none" time="17.472"><failure message="Failed: Test failed with the following errors:&#10;User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][1]: &#10;&#13;'&#10;User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][2]: &#10;&#13;'&#10;User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][3]: &#10;&#13;'">request = &lt;FixtureRequest for &lt;Coroutine test_tool_choice_none&gt;&gt;
+recwarn = WarningsRecorder(record=True), unique_port = 8084, args = ()
+kwargs = {}
+all_runs_failures = [Failure(actual='test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][1]: \n\r', expected='4', comment='Use...ropic.claude-opus-4-6-v1][3]: \n\r', expected='4', comment='User message answer content similarity ', similarity=None)]
+test_result = None, test_name = 'test_tool_choice/tool_choice_none'
+model_to_use = 'anthropic.claude-opus-4-6-v1'
+cli_model = 'anthropic.claude-opus-4-6-v1'
+ts = TestStats(name='test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1]', passed=0, failed=3, price=0, failure_reasons={&lt;FailureReason.ANSWER: 'Answer content similarity failures'&gt;: 3})
+run_index = 2
+failures = [Failure(actual='test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][3]: \n\r', expected='4', comment='User message answer content similarity ', similarity=None)]
+
+    @pytest.mark.asyncio
+    async def wrapper(request, recwarn, unique_port, *args, **kwargs):
+        # Collect all failures across all runs
+        all_runs_failures = []
+        test_result = None
+        test_name = (
+            f"{Path(request.node.parent.name).with_suffix('').name}/"
+            f"{test_case.name if test_case else request.node.name}"
+        )
+    
+        model_to_use: str
+        if model:
+            model_to_use = model
+            logger.debug(f"Using model from parameter defined in test: {model_to_use}")
+        elif request.config.getoption("--model"):
+            cli_model = request.config.getoption("--model")
+            if (
+                models_applicable_for_test is None
+                or len(models_applicable_for_test) == 0
+                or cli_model in models_applicable_for_test
+            ):
+                model_to_use = cli_model
+                logger.debug(f"Using model from CLI option: {model_to_use}")
+            else:
+                logger.debug(
+                    f"Model '{cli_model}' is not in the applicable models list: {models_applicable_for_test}"
+                )
+                pytest.skip(f"Model '{cli_model}' is not applicable for this test")
+        else:
+            logger.debug("No model specified")
+            pytest.fail("No model specified for test")
+    
+        # Run the test multiple times according to the runs parameter
+        ts = TestStats(name=f"{test_name}[{model_to_use}]", passed=0, failed=0)
+        for run_index in range(runs):
+            logger.info(f"Running test iteration {run_index + 1}/{runs}")
+            failures = await prepare_and_execute_test(
+                args,
+                kwargs,
+                recwarn,
+                request,
+                unique_port,
+                execution_model=model_to_use,
+                test_name=test_name,
+                test_stats=ts,
+                run_index=run_index,
+            )
+            all_runs_failures.extend(failures)
+        logger.info(ts)
+        report_test_stats(request.config, ts)
+    
+        # After all runs/models are complete, check if any failures occurred
+&gt;       TestRunner.check_test_outcome(all_runs_failures)
+
+src/tests/integration_tests/test_runner/e2e_runner.py:489: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+failures = [Failure(actual='test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][1]: \n\r', expected='4', comment='Use...ropic.claude-opus-4-6-v1][3]: \n\r', expected='4', comment='User message answer content similarity ', similarity=None)]
+
+    @staticmethod
+    def check_test_outcome(failures: list[Failure]):
+        if failures:
+            error_message = "\n".join(map(str, failures))
+&gt;           pytest.fail(f"Test failed with the following errors:\n{error_message}")
+E           Failed: Test failed with the following errors:
+E           User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][1]: 
+E           
+'
+E           User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][2]: 
+E           
+'
+E           User message answer content similarity  Expected ''4'', got 'test_tool_choice/tool_choice_none[anthropic.claude-opus-4-6-v1][3]: 
+E           
+'
+
+src/tests/integration_tests/test_runner/e2e_runner.py:384: Failed</failure></testcase><testcase classname="src.tests.integration_tests.test_simple_tool" name="test_mcp_toolcall" time="39.016" /><testcase classname="src.tests.integration_tests.test_tools" name="test_external_tool_surfaced" time="27.549" /></testsuite></testsuites>
