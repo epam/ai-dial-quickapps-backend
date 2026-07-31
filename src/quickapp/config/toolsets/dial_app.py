@@ -4,6 +4,7 @@ from pydantic import Field
 
 from quickapp.common.base_config import DialResourceConfigField
 from quickapp.config.tools.base import AttachmentConfig
+from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
 
@@ -36,4 +37,12 @@ class DialAppToolSet(BaseToolSet):
     )
     fallback_configuration: ToolFallbackConfig = Field(
         default_factory=ToolFallbackConfig, description="Tool fallback configuration."
+    )
+    conversation_mode: ConversationMode | None = Field(
+        default=None,
+        description=(
+            "Conversation session behavior for the DIAL deployment tool. Applies only on "
+            "the chat-completion branch; ignored (with a warning) when the toolset resolves "
+            "to MCP."
+        ),
     )
