@@ -12,6 +12,7 @@ from quickapp.file_transfer._file_loader_service import FileLoaderService
 def mock_file_service() -> MagicMock:
     service = MagicMock(spec=FileLoaderService)
     service.load = AsyncMock()
+    service.load_with_content_type = AsyncMock()
     return service
 
 
@@ -29,6 +30,20 @@ class TestFileArgumentTransformer:
         assert result["data"] == base64.b64encode(raw).decode()
         mock_file_service.load.assert_awaited_once()
         assert mock_file_service.load.await_args.args[0] == "files/test.bin"
+
+    @pytest.mark.asyncio
+    async def test_data_prefix(self, transformer, mock_file_service):
+        raw = b"hello world"
+        mock_file_service.load_with_content_type = AsyncMock(
+            return_value=(raw, "application/octet-stream")
+        )
+        result = await transformer.transform({"uri": "file:data::files/test.bin"})
+        assert (
+            result["uri"]
+            == f"data:application/octet-stream;base64,{base64.b64encode(raw).decode()}"
+        )
+        mock_file_service.load_with_content_type.assert_awaited_once()
+        assert mock_file_service.load_with_content_type.await_args.args[0] == "files/test.bin"
 
     @pytest.mark.asyncio
     async def test_text_prefix(self, transformer, mock_file_service):
