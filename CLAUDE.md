@@ -27,7 +27,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Unit tests | `make test` | |
 | Unit tests (filtered) | `make test ARGS="-k test_name -x"` | |
 | Unit tests + coverage | `make test_cov` | |
-| Integration tests | `make integration_test MODEL=<model>` | Automatically starts/stops the local MCP + REST test server |
+| Integration tests (single model) | `make integration_test MODEL=<model>` | Automatically starts/stops the local MCP + REST test server |
+| Integration tests (all models, local) | `make integration_test_all` | Sequential run over `INTEGRATION_TEST_MODELS` in Makefile |
+| Integration tests (CI) | `make integration_test_ci MODEL=<model>` | Used by the manual **Integration Tests** GitHub Actions workflow |
 | E2E tests | `make e2e_test` | |
 | Dump app schema | `make dump_app_schema` | |
 
