@@ -20,6 +20,49 @@ _CHALLENGE_META = {
 }
 
 
+# --- extract_external_service_signin_scope unit tests ---
+
+
+def test_extract_external_service_signin_scope_found():
+    result = SimpleNamespace(isError=True, meta=_CHALLENGE_META)
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) == _CHALLENGE_SCOPE
+
+
+def test_extract_external_service_signin_scope_not_error_ignored():
+    """A challenge present but isError=False must be ignored (defensive; shouldn't happen)."""
+    result = SimpleNamespace(isError=False, meta=_CHALLENGE_META)
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_no_meta():
+    result = SimpleNamespace(isError=True, meta=None)
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_no_auth_challenge_key():
+    result = SimpleNamespace(
+        isError=True,
+        meta={"dial.epam.com/error": {"status_code": 404, "external_service": "salesforce"}},
+    )
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_wrong_method():
+    result = SimpleNamespace(
+        isError=True,
+        meta={"dial.epam.com/auth-challenge": [{"method": "toolset/signin", "scope": "x"}]},
+    )
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_not_a_list():
+    result = SimpleNamespace(isError=True, meta={"dial.epam.com/auth-challenge": "not-a-list"})
+    assert _MCPTool._MCPTool__extract_external_service_signin_scope(result) is None
+
+
+# --- _MCPTool retry integration tests ---
+
+
 def _make_mcp_tool(
     *,
     login_result: LoginResult = LoginResult.SUCCESS,

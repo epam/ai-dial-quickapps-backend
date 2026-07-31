@@ -31,9 +31,6 @@ MAX_ITERATIONS = 1000
 # HTTP connect/write timeout for streamable HTTP; the SSE read timeout is resolved separately.
 _MCP_HTTP_TIMEOUT_SECONDS = 30.0
 
-_AUTH_CHALLENGE_META_KEY = "dial.epam.com/auth-challenge"
-_EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
-
 
 def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
     """Extract an httpx.HTTPStatusError with status 401 from an ExceptionGroup, if present."""
@@ -44,27 +41,6 @@ def _extract_http_401(eg: BaseExceptionGroup) -> httpx.HTTPStatusError | None:
             nested = _extract_http_401(exc)
             if nested is not None:
                 return nested
-    return None
-
-
-def extract_external_service_signin_scope(result: CallToolResult) -> str | None:
-    """Extract the scope from an errored result's dial.epam.com/auth-challenge _meta entry."""
-    if not getattr(result, "isError", False):
-        return None
-    meta = getattr(result, "meta", None)
-    if not meta:
-        return None
-    challenges = meta.get(_AUTH_CHALLENGE_META_KEY)
-    if not isinstance(challenges, list):
-        return None
-    for challenge in challenges:
-        if (
-            isinstance(challenge, dict)
-            and challenge.get("method") == _EXTERNAL_SERVICE_SIGNIN_METHOD
-        ):
-            scope = challenge.get("scope")
-            if isinstance(scope, str):
-                return scope
     return None
 
 

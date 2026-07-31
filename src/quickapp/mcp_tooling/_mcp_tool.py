@@ -25,14 +25,14 @@ from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
-from quickapp.mcp_tooling._mcp_toolset_client import (
-    _MCPToolsetClient,
-    extract_external_service_signin_scope,
-)
+from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
+
+_AUTH_CHALLENGE_META_KEY = "dial.epam.com/auth-challenge"
+_EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
 
 
 @inject
@@ -177,6 +177,27 @@ class _MCPTool(StagedBaseTool):
     def _should_upload(self, mime_type: str | None) -> bool:
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
+    @staticmethod
+    def __extract_external_service_signin_scope(result: CallToolResult) -> str | None:
+        """Extract the scope from an errored result's dial.epam.com/auth-challenge _meta entry."""
+        if not getattr(result, "isError", False):
+            return None
+        meta = getattr(result, "meta", None)
+        if not meta:
+            return None
+        challenges = meta.get(_AUTH_CHALLENGE_META_KEY)
+        if not isinstance(challenges, list):
+            return None
+        for challenge in challenges:
+            if (
+                isinstance(challenge, dict)
+                and challenge.get("method") == _EXTERNAL_SERVICE_SIGNIN_METHOD
+            ):
+                scope = challenge.get("scope")
+                if isinstance(scope, str):
+                    return scope
+        return None
+
     async def __call_tool_with_signin(self, **kwargs: Any) -> CallToolResult:
         """Call the tool, recovering from either signin mechanism once, then return the result.
 
@@ -197,7 +218,7 @@ class _MCPTool(StagedBaseTool):
                 raise
             return await self.__toolset_client.call_mcp_tool(self.__tool.name, **kwargs)
 
-        scope = extract_external_service_signin_scope(result)
+        scope = self.__extract_external_service_signin_scope(result)
         if scope is None:
             return result
 
