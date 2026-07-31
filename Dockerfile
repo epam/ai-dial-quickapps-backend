@@ -2,7 +2,8 @@ FROM python:3.13-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 zlib musl musl-utils
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
-RUN pip install poetry==2.3.2
+RUN pip install --no-cache-dir poetry==2.3.2 \
+ && pip install --no-cache-dir --upgrade "msgpack>=1.2.1" "setuptools>=78.1.1"
 
 WORKDIR /app
 
@@ -17,7 +18,8 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 FROM python:3.13-alpine AS runtime
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib musl musl-utils && \
-    apk add --no-cache ca-certificates
+    apk add --no-cache ca-certificates && \
+    pip install --no-cache-dir --upgrade "setuptools>=78.1.1"
 
 WORKDIR /app
 
