@@ -39,7 +39,17 @@ Notes:
 
 ## 3. Execute tests
 - Run end-to-end tests: `make e2e_test`
-- Run integration tests: `make integration_test`
+- Run integration tests (single model): `make integration_test MODEL=<model>`
+- Run integration tests (all configured models, local): `make integration_test_all`
+
+### CI (optional, manual)
+
+Integration tests are not run on every PR. To run the full model matrix on GitHub Actions:
+
+- **Actions** → **Integration Tests** → **Run workflow**
+- Or: `gh workflow run integration-tests.yml --ref <branch>`
+
+Models are configured in `INTEGRATION_TEST_MODELS` in the root `Makefile`. CI runs one parallel job per model via `make integration_test_ci MODEL=<model>`.
 
 ## Test types (brief)
 - `e2e`:

@@ -1,0 +1,74 @@
+name: "Integration tests"
+
+on:
+  workflow_dispatch: 
+    inputs:
+      branch:
+        description: Branch to run the tests on
+        required: true
+        default: 'development'
+        type: string
+      python-version:
+        type: string
+        description: Python version to use
+        default: "3.13"
+      poetry-version:
+        type: string
+        description: Poetry version to use
+        default: "2.3.2"
+
+permissions:
+  checks: write       # Required by dorny/test-reporter to post results
+  contents: read      # Required by actions/checkout
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 df4cb1c069e1874edd31b4311f1884172cec0e10
+        with:
+          ref: ${{ inputs.branch }}
+          lfs: true
+      - uses: epam/ai-dial-ci/actions/python_prepare@4.7.2
+        with:
+          python-version: ${{ inputs.python-version }}
+          poetry-version: ${{ inputs.poetry-version }}
+      - name: integration_test
+        with:
+          PY_INTERPRETER_LOCAL_RUN: true
+          PY_INTERPRETER_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          PY_INTERPRETER_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          REMOTE_DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          REMOTE_DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          REFRESH: False
+          ENABLE_PREVIEW_FEATURES: true
+          SHOW_USAGE_STATISTICS: true
+          SHOW_EXECUTION_TIME_STAGE: true
+          QUICKAPP_LOG_LEVEL: DEBUG
+          DEFAULT_AGENT_MAX_ITERATIONS: 15
+        shell: bash
+        run: |
+          make integration_test_all
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always() # Run even when tests fail
+        with:
+          name: Integration Test Results
+          path: reports/tests-integration-*.xml
+          reporter: java-junit   # JUnit XML format
+          fail-on-error: 'false' # Set action as failed if test report contains any failed test
+          fail-on-empty: 'true'  # Set this action as failed if no test results were found
+      - name: Upload test report artifacts
+        if: always() # Run even when tests fail
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-reports
+          path: reports/tests-integration-*.xml
+          retention-days: 30
+          if-no-files-found: error    
