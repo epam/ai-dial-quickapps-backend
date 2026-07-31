@@ -359,7 +359,6 @@ async def test_forwarded_x_headers_passed_to_mcp_request():
         dial_settings=dial_settings,
         timeout_resolver=noop_timeout_resolver(),
         session_manager=MagicMock(),
-        login_service=MagicMock(),
         bearer=None,
         forwarded_headers=forwarded,
     )

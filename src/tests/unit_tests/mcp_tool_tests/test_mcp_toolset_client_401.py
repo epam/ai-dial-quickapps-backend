@@ -1,6 +1,7 @@
 """Tests for 401 detection in _MCPToolsetClient, including ExceptionGroup wrapping."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -8,7 +9,11 @@ import pytest
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_session_manager import _MCPSessionManager
-from quickapp.mcp_tooling._mcp_toolset_client import _extract_http_401, _MCPToolsetClient
+from quickapp.mcp_tooling._mcp_toolset_client import (
+    _extract_http_401,
+    _MCPToolsetClient,
+    extract_external_service_signin_scope,
+)
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from tests.unit_tests.common.common import noop_timeout_resolver
 
@@ -53,6 +58,54 @@ def test_extract_http_401_mixed():
     assert _extract_http_401(eg) is err_401
 
 
+# --- extract_external_service_signin_scope unit tests ---
+
+_CHALLENGE_SCOPE = "applications/my-app/external_services/salesforce"
+_CHALLENGE_META = {
+    "dial.epam.com/error": {"status_code": 401, "external_service": "salesforce"},
+    "dial.epam.com/auth-challenge": [
+        {"method": "external-service/signin", "scope": _CHALLENGE_SCOPE}
+    ],
+}
+
+
+def test_extract_external_service_signin_scope_found():
+    result = SimpleNamespace(isError=True, meta=_CHALLENGE_META)
+    assert extract_external_service_signin_scope(result) == _CHALLENGE_SCOPE
+
+
+def test_extract_external_service_signin_scope_not_error_ignored():
+    """A challenge present but isError=False must be ignored (defensive; shouldn't happen)."""
+    result = SimpleNamespace(isError=False, meta=_CHALLENGE_META)
+    assert extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_no_meta():
+    result = SimpleNamespace(isError=True, meta=None)
+    assert extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_no_auth_challenge_key():
+    result = SimpleNamespace(
+        isError=True,
+        meta={"dial.epam.com/error": {"status_code": 404, "external_service": "salesforce"}},
+    )
+    assert extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_wrong_method():
+    result = SimpleNamespace(
+        isError=True,
+        meta={"dial.epam.com/auth-challenge": [{"method": "toolset/signin", "scope": "x"}]},
+    )
+    assert extract_external_service_signin_scope(result) is None
+
+
+def test_extract_external_service_signin_scope_not_a_list():
+    result = SimpleNamespace(isError=True, meta={"dial.epam.com/auth-challenge": "not-a-list"})
+    assert extract_external_service_signin_scope(result) is None
+
+
 # --- _MCPToolsetClient integration tests ---
 
 _STREAMABLE_HTTP_PATCH = "quickapp.mcp_tooling._mcp_toolset_client.streamable_http_client"
@@ -75,7 +128,6 @@ def _make_toolset_client(
         dial_settings=MagicMock(url="https://dial-core"),
         timeout_resolver=noop_timeout_resolver(),
         session_manager=_MCPSessionManager(RequestAsyncCloseRegistry()),
-        login_service=AsyncMock(),
     )
 
 
