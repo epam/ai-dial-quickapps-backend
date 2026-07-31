@@ -1,63 +1,74 @@
-name: Integration Tests
+name: "Integration tests"
 
 on:
-  workflow_dispatch:
+  workflow_dispatch: 
     inputs:
-      ref:
-        description: Git branch, tag, or SHA to test
-        required: false
-        default: ""
-
-concurrency:
-  group: integration-tests-${{ github.ref }}
-  cancel-in-progress: true
+      branch:
+        description: Branch to run the tests on
+        required: true
+        default: 'development'
+        type: string
+      python-version:
+        type: string
+        description: Python version to use
+        default: "3.13"
+      poetry-version:
+        type: string
+        description: Poetry version to use
+        default: "2.3.2"
 
 permissions:
-  contents: read
+  checks: write       # Required by dorny/test-reporter to post results
+  contents: read      # Required by actions/checkout
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  prepare:
+  integration-tests:
     runs-on: ubuntu-24.04
-    outputs:
-      models: ${{ steps.matrix.outputs.models }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3 df4cb1c069e1874edd31b4311f1884172cec0e10
         with:
-          ref: ${{ inputs.ref || github.ref }}
+          ref: ${{ inputs.branch }}
           lfs: true
-      - id: matrix
+      - uses: epam/ai-dial-ci/actions/python_prepare@4.7.2
+        with:
+          python-version: ${{ inputs.python-version }}
+          poetry-version: ${{ inputs.poetry-version }}
+      - name: integration_test
+        with:
+          PY_INTERPRETER_LOCAL_RUN: true
+          PY_INTERPRETER_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          PY_INTERPRETER_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          REMOTE_DIAL_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
+          REMOTE_DIAL_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
+          REFRESH: False
+          ENABLE_PREVIEW_FEATURES: true
+          SHOW_USAGE_STATISTICS: true
+          SHOW_EXECUTION_TIME_STAGE: true
+          QUICKAPP_LOG_LEVEL: DEBUG
+          DEFAULT_AGENT_MAX_ITERATIONS: 15
+        shell: bash
         run: |
-          models=$(make -s print-integration-test-models | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "models=$models" >> "$GITHUB_OUTPUT"
-
-  integration_test:
-    name: integration (${{ matrix.model }})
-    needs: prepare
-    runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        model: ${{ fromJson(needs.prepare.outputs.models) }}
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+          make integration_test_all
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always() # Run even when tests fail
         with:
-          ref: ${{ inputs.ref || github.ref }}
-          lfs: true
-      - uses: epam/ai-dial-ci/actions/python_prepare@4.7.0
+          name: Integration Test Results
+          path: reports/tests-integration-*.xml
+          reporter: java-junit   # JUnit XML format
+          fail-on-error: 'false' # Set action as failed if test report contains any failed test
+          fail-on-empty: 'true'  # Set this action as failed if no test results were found
+      - name: Upload test report artifacts
+        if: always() # Run even when tests fail
+        uses: actions/upload-artifact@v4
         with:
-          python-version: "3.13"
-          poetry-version: "2.3.2"
-      - name: Integration tests
-        env:
-          DIAL_URL: ${{ secrets.DIAL_URL }}
-          DIAL_API_KEY: ${{ secrets.DIAL_API_KEY }}
-          PY_INTERPRETER_URL: ${{ secrets.PY_INTERPRETER_URL }}
-          PY_INTERPRETER_API_KEY: ${{ secrets.PY_INTERPRETER_API_KEY }}
-          PY_INTERPRETER_LOCAL_RUN: "true"
-        run: make integration_test_ci MODEL=${{ matrix.model }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: ${{ !cancelled() }}
-        with:
-          name: integration-junit-${{ matrix.model }}
+          name: integration-test-reports
           path: reports/tests-integration-*.xml
           retention-days: 30
+          if-no-files-found: error    
