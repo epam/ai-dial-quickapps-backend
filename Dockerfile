@@ -2,8 +2,7 @@ FROM python:3.13-alpine AS builder
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 zlib musl musl-utils
 RUN apk add --no-cache gcc alpine-sdk linux-headers musl-dev git
-RUN pip install --no-cache-dir poetry==2.3.2 \
- && pip install --no-cache-dir --upgrade "msgpack>=1.2.1" "setuptools>=78.1.1"
+RUN pip install --no-cache-dir poetry==2.3.2
 
 WORKDIR /app
 
@@ -18,8 +17,7 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 FROM python:3.13-alpine AS runtime
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib musl musl-utils && \
-    apk add --no-cache ca-certificates && \
-    pip install --no-cache-dir --upgrade "setuptools>=78.1.1"
+    apk add --no-cache ca-certificates
 
 WORKDIR /app
 
@@ -30,6 +28,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Copy the sources and virtual env. No poetry.
 RUN adduser -u 1001 --disabled-password --gecos "" appuser
 COPY --chown=appuser --from=builder /app .
+
+# pip vendors vulnerable msgpack/setuptools; not needed at runtime
+RUN rm -rf \
+      /usr/local/lib/python*/site-packages/pip \
+      /usr/local/lib/python*/site-packages/pip-*.dist-info \
+      /usr/local/lib/python*/ensurepip \
+      /usr/local/bin/pip \
+      /usr/local/bin/pip3 \
+      /usr/local/bin/pip3.* \
+      .venv/lib/python*/site-packages/pip \
+      .venv/lib/python*/site-packages/pip-*.dist-info \
+      .venv/bin/pip \
+      .venv/bin/pip3 \
+      .venv/bin/pip3.*
 
 COPY docker_cacert_entrypoint.sh /docker_cacert_entrypoint.sh
 RUN echo '#!/bin/sh' > /docker_entrypoint.sh && \
