@@ -38,7 +38,7 @@ jobs:
           python-version: ${{ inputs.python-version }}
           poetry-version: ${{ inputs.poetry-version }}
       - name: integration_test
-        with:
+        env:
           PY_INTERPRETER_LOCAL_RUN: true
           PY_INTERPRETER_URL: ${{ secrets.DEV_DIAL_CORE_URL }}
           PY_INTERPRETER_API_KEY: ${{ secrets.DEV_DIAL_CORE_KEY }}
