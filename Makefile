@@ -3,6 +3,7 @@ MYPY_DIRS = src/quickapp src/scripts
 FILES ?= $(SRC_DIRS)
 POETRY ?= poetry
 PYTHON ?= python3
+WORKERS ?= 4
 
 # Any non-empty CI value (even 'false' or '0') means that CI is enabled
 CI ?=
@@ -16,7 +17,8 @@ export PYDANTIC_V2=True
 .PHONY: init_venv install install_dev install_integration install_all clean \
 	lint mypy format install_pre_commit_hooks run_chat run_error_injection_app test test_cov \
 	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config start_test_server stop_test_server \
-	integration_test integration_test_run e2e_test run_python \
+	integration_test integration_test_run integration_test_ci integration_test_all print-integration-test-models \
+	e2e_test run_python \
 	black black_check isort isort_check autoflake autoflake_check flake8
 
 init_venv:
@@ -132,35 +134,63 @@ generate_dial_config: install_dev
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag
 
-start_test_server:
+start_test_server: stop_test_server
 	echo "Starting MCP + REST servers..."
 	$(POETRY) run python src/tests/integration_tests/data_server_for_tests.py & echo $$! > .mcp_rest_server.pid
 	sleep 1
 	echo "Servers started with PID `cat .mcp_rest_server.pid`"
 
 stop_test_server:
-	@if [ -f .mcp_rest_server.pid ]; then \
-		pid=$$(cat .mcp_rest_server.pid); \
-		if kill -0 $$pid >/dev/null 2>&1; then \
-			echo "Stopping MCP + REST servers..."; \
-			kill $$pid; \
-			rm -f .mcp_rest_server.pid; \
-			echo "Servers stopped"; \
-		else \
-			echo "No running process found with PID $$pid"; \
-			rm -f .mcp_rest_server.pid; \
-		fi \
-	else \
-		echo "PID file not found. Are servers running?"; \
-	fi
+	@$(POETRY) run python src/tests/integration_tests/stop_data_server_for_tests.py stop || true
+
+# Canonical integration-test matrix (one per provider family). Update when DIAL deployments change.
+INTEGRATION_TEST_MODELS ?= \
+	gemini-3.5-flash \
+	gpt-5.5-2026-04-24 \
+	anthropic.claude-opus-4-6-v1
+
+# Filesystem-safe JUnit report suffix (Claude deployment IDs may contain ':').
+MODEL_REPORT_SUFFIX = $(subst /,-,$(subst :,-,$(MODEL)))
+
+INTEGRATION_PYTEST = ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) \
+	src/tests/integration_tests --model=$(MODEL) \
+	--junitxml=reports/tests-integration-$(MODEL_REPORT_SUFFIX).xml \
+	-m "integration" $(ARGS)
+
+print-integration-test-models:
+	@printf '%s\n' $(INTEGRATION_TEST_MODELS)
 
 integration_test: install_integration
 	$(MAKE) start_test_server
-	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) src/tests/integration_tests --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
-	$(MAKE) stop_test_server
+	@status=0; \
+	$(INTEGRATION_PYTEST) || status=$$?; \
+	$(MAKE) stop_test_server; \
+	exit $$status
 
 integration_test_run:
-	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest --model=${MODEL} --junitxml=reports/tests-integration-${MODEL_SHORT_NAME}.xml -m "integration" $(ARGS)
+	$(INTEGRATION_PYTEST)
+
+integration_test_ci:
+ifndef MODEL
+	$(error MODEL is required, e.g. make integration_test_ci MODEL=gemini-2.5-pro)
+endif
+	$(MAKE) integration_test MODEL=$(MODEL)
+
+integration_test_all: install_integration
+	$(MAKE) start_test_server
+	@failed=""; \
+	for model in $(INTEGRATION_TEST_MODELS); do \
+		echo "=== Integration tests: $$model ==="; \
+		if ! $(MAKE) integration_test_run MODEL="$$model"; then \
+			echo "=== FAILED: $$model ==="; \
+			failed="$$failed $$model"; \
+		fi; \
+	done; \
+	$(MAKE) stop_test_server; \
+	if [ -n "$$failed" ]; then \
+		echo "Integration tests failed for:$$failed"; \
+		exit 1; \
+	fi
 
 e2e_test: install_integration
 	ENABLE_PREVIEW_FEATURES=true $(POETRY) run pytest -n $(or ${WORKERS},logical) --no-cache --junitxml=reports/tests-e2e.xml -m "e2e" $(ARGS)

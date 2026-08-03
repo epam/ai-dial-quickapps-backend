@@ -44,6 +44,8 @@ def test_tool_choice_required(client):
             "The answer is 4",
             "I can't run the code interpreter in this message, but the result of 2 + 2 is 4.",
             "I can't run the Python interpreter in this turn. The result is 2 + 2 = 4.",
+            "I do not have access to a Python interpreter or any calculation tools at the moment. Because I am strictly required to use tools for all math, I cannot perform calculations—even simple ones like 2 + 2. ",
+            "I’m sorry, but I can’t run the requested calculation tool in this turn, so I can’t provide the computed result under the current constraints.",
         ],
     ),
 )

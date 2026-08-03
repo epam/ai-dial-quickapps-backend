@@ -12,10 +12,26 @@ paths:
 ## Running
 
 ```bash
-make integration_test MODEL=<model>                  # from cache
-REFRESH=TRUE make integration_test MODEL=<model>     # build cache against live DIAL Core(only if it is absence)
+make integration_test MODEL=<model>                  # from cache (single model)
+make integration_test_all                            # all models in INTEGRATION_TEST_MODELS (sequential, local)
+make integration_test_ci MODEL=<model>               # CI entry point (single model, fails if MODEL unset)
+REFRESH=TRUE make integration_test MODEL=<model>     # build cache against live DIAL Core (only if absent)
+REFRESH=TRUE make integration_test_all               # refresh cache for all configured models
 make e2e_test                                         # happy-path e2e (always live)
 ```
+
+### CI (optional, manual)
+
+Integration tests are **not** part of the PR gate. To run the full model matrix on CI:
+
+1. GitHub → **Actions** → **Integration Tests** → **Run workflow**
+2. Or: `gh workflow run integration-tests.yml --ref <branch>`
+
+The workflow runs **3 parallel jobs** (one per model in `INTEGRATION_TEST_MODELS` in the `Makefile`).
+
+### Model matrix configuration
+
+Edit `INTEGRATION_TEST_MODELS` at the top of the `Makefile` integration-test section (defaults: gemini, gpt, claude). When deployments change, update that list and refresh cache as needed.
 
 Prerequisites in `.env`:
 ```
