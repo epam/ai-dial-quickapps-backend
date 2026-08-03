@@ -1,12 +1,14 @@
+import time
 from typing import Any
 from unittest.mock import Mock
 
 import pytest
-from aidial_sdk.chat_completion import Attachment
+from aidial_sdk.chat_completion import Attachment, Status
 from injector import AssistedBuilder
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import StageDisplayLevel
@@ -68,6 +70,7 @@ def mock_stage_wrapper_factory():
     mock_stage_wrapper = Mock(spec=BaseStageWrapper)
     mock_stage_wrapper.name = "test_stage"
     mock_stage_wrapper.add_parameters = Mock()
+    mock_stage_wrapper.append_title_from_params = Mock()
     mock_stage_wrapper.add_result = Mock()
     mock_stage_wrapper.add_exception = Mock()
     mock_stage_wrapper.__enter__ = Mock(return_value=mock_stage_wrapper)
@@ -312,3 +315,57 @@ async def test_suppression_truth_table(
         mock_stage_wrapper_factory.build.assert_not_called()
     else:
         mock_stage_wrapper_factory.build.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_arun_with_adopted_stage_skips_add_parameters_and_reuses_stage(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    mock_stage_wrapper = mock_stage_wrapper_factory.build()
+    adopted_stage_obj = Mock()
+    start = time.perf_counter() - 5.0
+    adopted = AdoptedToolStage(stage=adopted_stage_obj, start_time=start)
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    result = await tool.arun(
+        "call-1",
+        adopted_stage=adopted,
+        title="demo",
+        code="print(1)",
+    )
+
+    assert result is not None
+    mock_stage_wrapper_factory.build.assert_called_with(
+        tool_config=mock_tool_config,
+        stage_name=None,
+        stage=adopted_stage_obj,
+        already_open=True,
+        start_time=start,
+    )
+    mock_stage_wrapper.add_parameters.assert_not_called()
+    mock_stage_wrapper.append_title_from_params.assert_called_once()
+    mock_stage_wrapper.__enter__.assert_called_once()
+    mock_stage_wrapper.__exit__.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_suppressed_arun_discards_adopted_stage(mock_stage_wrapper_factory, mock_tool_config):
+    adopted_stage_obj = Mock()
+    adopted = AdoptedToolStage(stage=adopted_stage_obj, start_time=time.perf_counter())
+
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(show=False),
+        perf_timer=Mock(),
+        stage_display_level=StageDisplayLevel.INFO,
+    )
+
+    await tool.arun("call-1", adopted_stage=adopted, stage_level=StageDisplayLevel.INFO)
+
+    mock_stage_wrapper_factory.build.assert_not_called()
+    adopted_stage_obj.close.assert_called_once_with(status=Status.COMPLETED)

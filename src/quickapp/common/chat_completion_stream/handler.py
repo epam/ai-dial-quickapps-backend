@@ -1,9 +1,11 @@
 import logging
 from collections.abc import AsyncIterable
+from time import perf_counter
 
 from aidial_sdk.chat_completion import Choice, Stage, Status
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
+from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common._stage_delta_types import (
@@ -14,6 +16,7 @@ from quickapp.common._stage_delta_types import (
     stage_display_name,
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
@@ -34,6 +37,20 @@ from quickapp.common.chat_completion_stream.stream_result import (
 from quickapp.common.payload_logging import log_payload
 
 logger = logging.getLogger(__name__)
+
+_TOOL_STAGE_REQUEST_HEADER = "> #### Request:\n"
+
+
+class _StreamingToolStageState:
+    """Mutable UI state for a tool-call stage opened while arguments are still streaming."""
+
+    __slots__ = ("stage", "start_time", "header_written", "name_set")
+
+    def __init__(self, stage: Stage, start_time: float, *, name_set: bool) -> None:
+        self.stage = stage
+        self.start_time = start_time
+        self.header_written = False
+        self.name_set = name_set
 
 
 class ChatStreamConfig(BaseModel):
@@ -71,31 +88,41 @@ class ChatCompletionStreamHandler:
         config: ChatStreamConfig,
     ) -> None:
         stages_by_index: dict[int, Stage] = {}
+        tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
+        succeeded = False
 
         try:
             async for event in iter_chat_completion_events(
                 chat_completion,
                 parse_chat_completion_chunk,
             ):
-                self._apply_stream_event(accumulator, config, stages_by_index, event)
+                self._apply_stream_event(
+                    accumulator, config, stages_by_index, tool_stages_by_index, event
+                )
+            succeeded = True
+            self._publish_adopted_tool_stages(accumulator, tool_stages_by_index)
         except (BadRequestError, APIError, ChatStreamHandlerError):
             raise
         except Exception as exc:
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
         finally:
-            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
+            leftover_status = Status.COMPLETED if succeeded else Status.FAILED
+            self._close_all_streaming_stages(stages_by_index, leftover_status)
+            if not succeeded:
+                self._close_all_tool_stages(tool_stages_by_index, Status.FAILED)
 
     def _apply_stream_event(
         self,
         accumulator: ChatStreamAccumulator,
         config: ChatStreamConfig,
         stages_by_index: dict[int, Stage],
+        tool_stages_by_index: dict[int, _StreamingToolStageState],
         event: ChatStreamEvent,
     ) -> None:
         if isinstance(event, ChunkUsageFootprint):
             accumulator.apply_usage_footprint(event)
         elif isinstance(event, NormalizedChoiceDelta):
-            self._handle_delta(accumulator, config, stages_by_index, event)
+            self._handle_delta(accumulator, config, stages_by_index, tool_stages_by_index, event)
         else:
             logger.warning("Unexpected event of type %s", type(event))
 
@@ -104,8 +131,18 @@ class ChatCompletionStreamHandler:
         accumulator: ChatStreamAccumulator,
         config: ChatStreamConfig,
         stages_by_index: dict[int, Stage],
+        tool_stages_by_index: dict[int, _StreamingToolStageState],
         delta: NormalizedChoiceDelta,
     ) -> None:
+        # Apply reasoning/model stages first so a chunk can finish stage content
+        # before a phase transition closes them.
+        if delta.custom is not None:
+            self._apply_custom(accumulator, config, stages_by_index, delta.custom)
+
+        leaving_reasoning = bool(delta.tool_calls) or bool(delta.content and config.stream_content)
+        if leaving_reasoning and stages_by_index:
+            self._close_all_streaming_stages(stages_by_index, Status.COMPLETED)
+
         if delta.content and config.stream_content:
             dest = config.destination
             wrap = config.stage_wrapper
@@ -118,11 +155,99 @@ class ChatCompletionStreamHandler:
                 raise ChatStreamWriteError("Failed to stream content to destination") from exc
             accumulator.append_content(delta.content)
 
-        if delta.custom is not None:
-            self._apply_custom(accumulator, config, stages_by_index, delta.custom)
-
         for tool_call in delta.tool_calls:
             accumulator.append_tool_call_delta(tool_call)
+            if config.destination is not None:
+                self._stream_tool_call_delta(
+                    config.destination, accumulator, tool_stages_by_index, tool_call
+                )
+
+    def _stream_tool_call_delta(
+        self,
+        destination: Choice,
+        accumulator: ChatStreamAccumulator,
+        tool_stages_by_index: dict[int, _StreamingToolStageState],
+        tool_call: ChoiceDeltaToolCall,
+    ) -> None:
+        index = tool_call.index
+        state = tool_stages_by_index.get(index)
+        if state is None:
+            function_name = None
+            if tool_call.function and tool_call.function.name:
+                function_name = tool_call.function.name
+            # Open immediately (even before the function name arrives) so the UI
+            # shows progress while large argument payloads stream in.
+            stage_name = f"Calling {function_name}" if function_name else None
+            try:
+                stage = destination.create_stage(stage_name)
+                stage.open()
+            except Exception as exc:
+                logger.warning(
+                    "Failed to create/open streaming tool stage (index %s): %s",
+                    index,
+                    exc,
+                    exc_info=True,
+                )
+                return
+            state = _StreamingToolStageState(
+                stage=stage,
+                start_time=perf_counter(),
+                name_set=function_name is not None,
+            )
+            tool_stages_by_index[index] = state
+
+        if not state.name_set and tool_call.function and tool_call.function.name:
+            try:
+                state.stage.append_name(f"Calling {tool_call.function.name}")
+                state.name_set = True
+            except Exception as exc:
+                logger.warning(
+                    "Failed to append name to streaming tool stage (index %s): %s",
+                    index,
+                    exc,
+                )
+
+        arguments_chunk = tool_call.function.arguments if tool_call.function else None
+        if not arguments_chunk:
+            return
+
+        try:
+            if not state.header_written:
+                state.stage.append_content(_TOOL_STAGE_REQUEST_HEADER)
+                state.header_written = True
+            state.stage.append_content(arguments_chunk)
+        except Exception as exc:
+            raise ChatStreamWriteError(
+                f"Failed to append tool-call arguments to streaming stage (index {index})."
+            ) from exc
+
+    @staticmethod
+    def _publish_adopted_tool_stages(
+        accumulator: ChatStreamAccumulator,
+        tool_stages_by_index: dict[int, _StreamingToolStageState],
+    ) -> None:
+        for index, state in list(tool_stages_by_index.items()):
+            tool_call = accumulator.get_tool_call_at_index(index)
+            tool_call_id = tool_call.id_or_none if tool_call is not None else None
+            if tool_call_id is None:
+                logger.warning(
+                    "Closing streaming tool stage without tool_call id (index=%s)", index
+                )
+                try:
+                    state.stage.close(status=Status.COMPLETED)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to close streaming tool stage without id (index %s): %s",
+                        index,
+                        exc,
+                        exc_info=True,
+                    )
+                tool_stages_by_index.pop(index, None)
+                continue
+            accumulator.set_adopted_tool_stage(
+                tool_call_id, AdoptedToolStage(stage=state.stage, start_time=state.start_time)
+            )
+            tool_stages_by_index.pop(index, None)
 
     def _process_attachments_to_destination(self, attachments: list, destination) -> None:
         """Process attachments: extend accumulator, ensure URL/data, and add to destination."""
@@ -257,6 +382,24 @@ class ChatCompletionStreamHandler:
     ) -> None:
         for idx in list(stages_by_index.keys()):
             self._close_streaming_stage_at_index(stages_by_index, idx, status)
+
+    @staticmethod
+    def _close_all_tool_stages(
+        tool_stages_by_index: dict[int, _StreamingToolStageState], status: Status
+    ) -> None:
+        for idx in list(tool_stages_by_index.keys()):
+            state = tool_stages_by_index.pop(idx, None)
+            if state is None:
+                continue
+            try:
+                state.stage.close(status=status)
+            except Exception as exc:
+                logger.warning(
+                    "Error closing streaming tool stage (index %s): %s",
+                    idx,
+                    exc,
+                    exc_info=True,
+                )
 
     @staticmethod
     def _log_stream_accumulator(result: ChatStreamAccumulator) -> None:
