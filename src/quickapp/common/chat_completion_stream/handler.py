@@ -23,6 +23,9 @@ from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamParseError,
     ChatStreamWriteError,
 )
+from quickapp.common.chat_completion_stream.json_string_field_streamer import (
+    JsonStringFieldStreamer,
+)
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamEvent,
     ChunkUsageFootprint,
@@ -38,19 +41,33 @@ from quickapp.common.payload_logging import log_payload
 
 logger = logging.getLogger(__name__)
 
-_TOOL_STAGE_REQUEST_HEADER = "> #### Request:\n"
+# Matches py_interpreter display.stage for the ``code`` parameter (see predefined tool JSON).
+_CODE_PARAM = "code"
+_CODE_REQUEST_PREFIX = "> #### Request:\n\r**Code to execute:**\n\n````python\n"
+_CODE_REQUEST_SUFFIX = "\n````\n\r"
 
 
 class _StreamingToolStageState:
     """Mutable UI state for a tool-call stage opened while arguments are still streaming."""
 
-    __slots__ = ("stage", "start_time", "header_written", "name_set")
+    __slots__ = (
+        "stage",
+        "start_time",
+        "name_set",
+        "code_streamer",
+        "code_header_written",
+        "code_fence_closed",
+        "streamed_parameter_names",
+    )
 
     def __init__(self, stage: Stage, start_time: float, *, name_set: bool) -> None:
         self.stage = stage
         self.start_time = start_time
-        self.header_written = False
         self.name_set = name_set
+        self.code_streamer = JsonStringFieldStreamer(_CODE_PARAM)
+        self.code_header_written = False
+        self.code_fence_closed = False
+        self.streamed_parameter_names: set[str] = set()
 
 
 class ChatStreamConfig(BaseModel):
@@ -211,11 +228,27 @@ class ChatCompletionStreamHandler:
         if not arguments_chunk:
             return
 
+        self._stream_code_parameter(state, index, arguments_chunk)
+
+    def _stream_code_parameter(
+        self, state: _StreamingToolStageState, index: int, arguments_chunk: str
+    ) -> None:
+        """Stream only the decoded ``code`` string field, fenced like add_parameters."""
+        decoded = state.code_streamer.feed(arguments_chunk)
         try:
-            if not state.header_written:
-                state.stage.append_content(_TOOL_STAGE_REQUEST_HEADER)
-                state.header_written = True
-            state.stage.append_content(arguments_chunk)
+            if decoded:
+                if not state.code_header_written:
+                    state.stage.append_content(_CODE_REQUEST_PREFIX)
+                    state.code_header_written = True
+                    state.streamed_parameter_names.add(_CODE_PARAM)
+                state.stage.append_content(decoded)
+            if (
+                state.code_streamer.done
+                and state.code_header_written
+                and not state.code_fence_closed
+            ):
+                state.stage.append_content(_CODE_REQUEST_SUFFIX)
+                state.code_fence_closed = True
         except Exception as exc:
             raise ChatStreamWriteError(
                 f"Failed to append tool-call arguments to streaming stage (index {index})."
@@ -244,8 +277,24 @@ class ChatCompletionStreamHandler:
                     )
                 tool_stages_by_index.pop(index, None)
                 continue
+            # Close an open python fence if the stream ended mid-value.
+            if state.code_header_written and not state.code_fence_closed:
+                try:
+                    state.stage.append_content(_CODE_REQUEST_SUFFIX)
+                    state.code_fence_closed = True
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to close code fence on streaming tool stage (index %s): %s",
+                        index,
+                        exc,
+                    )
             accumulator.set_adopted_tool_stage(
-                tool_call_id, AdoptedToolStage(stage=state.stage, start_time=state.start_time)
+                tool_call_id,
+                AdoptedToolStage(
+                    stage=state.stage,
+                    start_time=state.start_time,
+                    streamed_parameter_names=frozenset(state.streamed_parameter_names),
+                ),
             )
             tool_stages_by_index.pop(index, None)
 

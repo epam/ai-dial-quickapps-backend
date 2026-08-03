@@ -11,8 +11,14 @@ class AdoptedToolStage:
     (and total duration includes argument streaming).
     """
 
-    __slots__ = ("stage", "start_time")
+    __slots__ = ("stage", "start_time", "streamed_parameter_names")
 
-    def __init__(self, stage: Stage, start_time: float) -> None:
+    def __init__(
+        self,
+        stage: Stage,
+        start_time: float,
+        streamed_parameter_names: frozenset[str] | None = None,
+    ) -> None:
         self.stage = stage
         self.start_time = start_time
+        self.streamed_parameter_names = streamed_parameter_names or frozenset()

@@ -147,19 +147,19 @@ async def test_reasoning_stage_closes_completed_when_tool_calls_start():
 
 
 @pytest.mark.asyncio
-async def test_tool_call_argument_chunks_stream_into_stage_content():
+async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
     choice = SpyChoice()
     chunks = [
         _chunk(
             tool_calls=[
                 _tool_call_delta(
                     tool_id="call_1",
-                    name="my_tool",
-                    arguments='{"code": "',
+                    name="internal_code_execution_python_interpreter",
+                    arguments='{"title": "Draw", "code": "',
                 )
             ]
         ),
-        _chunk(tool_calls=[_tool_call_delta(arguments='print(1)"}')]),
+        _chunk(tool_calls=[_tool_call_delta(arguments='print(1)\\npass"}')]),
     ]
 
     handler = ChatCompletionStreamHandler()
@@ -170,12 +170,17 @@ async def test_tool_call_argument_chunks_stream_into_stage_content():
 
     queue_chunks = choice.drain_queue()
     contents = [c.content for c in queue_chunks if isinstance(c, ContentStageChunk)]
-    assert contents[0] == "> #### Request:\n"
-    assert contents[1] == '{"code": "'
-    assert contents[2] == 'print(1)"}'
+    joined = "".join(contents)
+    assert "> #### Request:" in joined
+    assert "**Code to execute:**" in joined
+    assert "````python\n" in joined
+    assert "print(1)\npass" in joined
+    assert '{"title"' not in joined
+    assert "\\n" not in joined
     assert not any(isinstance(c, FinishStageChunk) for c in queue_chunks)
     adopted = acc.adopted_tool_stages["call_1"]
     assert adopted.stage is choice.created_stages[0]
+    assert adopted.streamed_parameter_names == frozenset({"code"})
 
 
 @pytest.mark.asyncio

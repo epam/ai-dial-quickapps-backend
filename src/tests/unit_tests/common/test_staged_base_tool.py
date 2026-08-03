@@ -318,13 +318,17 @@ async def test_suppression_truth_table(
 
 
 @pytest.mark.asyncio
-async def test_arun_with_adopted_stage_skips_add_parameters_and_reuses_stage(
+async def test_arun_with_adopted_stage_skips_add_parameters_when_code_was_streamed(
     mock_stage_wrapper_factory, mock_tool_config
 ):
     mock_stage_wrapper = mock_stage_wrapper_factory.build()
     adopted_stage_obj = Mock()
     start = time.perf_counter() - 5.0
-    adopted = AdoptedToolStage(stage=adopted_stage_obj, start_time=start)
+    adopted = AdoptedToolStage(
+        stage=adopted_stage_obj,
+        start_time=start,
+        streamed_parameter_names=frozenset({"code"}),
+    )
 
     tool = CustomTestStagedBaseTool(
         stage_wrapper_builder=mock_stage_wrapper_factory,
@@ -351,6 +355,26 @@ async def test_arun_with_adopted_stage_skips_add_parameters_and_reuses_stage(
     mock_stage_wrapper.append_title_from_params.assert_called_once()
     mock_stage_wrapper.__enter__.assert_called_once()
     mock_stage_wrapper.__exit__.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_arun_with_adopted_stage_adds_parameters_when_nothing_streamed(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    mock_stage_wrapper = mock_stage_wrapper_factory.build()
+    adopted = AdoptedToolStage(
+        stage=Mock(), start_time=time.perf_counter(), streamed_parameter_names=frozenset()
+    )
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    await tool.arun("call-1", adopted_stage=adopted, foo="bar")
+
+    mock_stage_wrapper.add_parameters.assert_called_once()
+    mock_stage_wrapper.append_title_from_params.assert_not_called()
 
 
 @pytest.mark.asyncio

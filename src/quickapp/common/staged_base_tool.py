@@ -125,7 +125,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             )
         display = self._tool_config.display
         defer_close = bool(display and display.stage and display.stage.defer_close)
-        skip_parameters = adopted_stage is not None
+        # If the stream already rendered display params (e.g. ``code``), skip the
+        # full add_parameters dump to avoid duplicating raw/formatted content.
+        skip_parameters = bool(adopted_stage is not None and adopted_stage.streamed_parameter_names)
 
         if defer_close:
             stage_wrapper.__enter__()
