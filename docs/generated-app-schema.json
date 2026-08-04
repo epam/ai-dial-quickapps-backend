@@ -3006,7 +3006,7 @@
         "level": {
           "$ref": "#/$defs/StageDisplayLevel",
           "default": "info",
-          "description": "Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all."
+          "description": "Threshold for stage visibility. none=no stages at all; errors=failures only; info=user-facing (default); debug=all."
         }
       },
       "title": "StageDisplayConfig",
@@ -3014,6 +3014,7 @@
     },
     "StageDisplayLevel": {
       "enum": [
+        "none",
         "error",
         "info",
         "debug"

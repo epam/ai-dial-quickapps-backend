@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 
 class StageDisplayLevel(str, Enum):
+    NONE = "none"
     ERROR = "error"
     INFO = "info"
     DEBUG = "debug"
@@ -39,7 +40,7 @@ class StageDisplayConfig(BaseModel):
 
     level: StageDisplayLevel = Field(
         default=StageDisplayLevel.INFO,
-        description="Threshold for stage visibility. errors=failures only; info=user-facing (default); debug=all.",
+        description="Threshold for stage visibility. none=no stages at all; errors=failures only; info=user-facing (default); debug=all.",
     )
 
 

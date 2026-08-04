@@ -50,6 +50,39 @@ class CustomTestStagedBaseTool(StagedBaseTool):
         return ToolCallResult(content="response content", content_type="application/json")
 
 
+class FailingTestTool(StagedBaseTool):
+    """A tool that always raises in _run_in_stage_async — used to verify that
+    exceptions are caught and converted to fallback results even when the stage
+    is suppressed (stage_display_level=error)."""
+
+    def __init__(
+        self,
+        stage_wrapper_builder: AssistedBuilder[BaseStageWrapper],
+        tool_config: AnyTool,
+        perf_timer: PerformanceTimer,
+        error: Exception,
+        deferred_stage_close_registry: DeferredStageCloseRegistry | None = None,
+        stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
+    ):
+        super().__init__(
+            stage_wrapper_builder=stage_wrapper_builder,
+            tool_config=tool_config,
+            name="Failing Tool",
+            description="A tool that always fails",
+            perf_timer=perf_timer,
+            deferred_stage_close_registry=(
+                deferred_stage_close_registry or DeferredStageCloseRegistry()
+            ),
+            stage_display_level=stage_display_level,
+        )
+        self._error = error
+
+    async def _run_in_stage_async(
+        self, stage_wrapper, tool_call_id: str | None, *args: Any, **kwargs: Any
+    ) -> ToolCallResult:
+        raise self._error
+
+
 def _make_tool_config(show: bool | None = None) -> Mock:
     """Create a tool config mock. show=None means display=None (unset)."""
     mock_config = Mock(spec=AnyTool)
@@ -287,6 +320,9 @@ async def test_defer_stage_close_defers_exit_until_registry_flush(mock_stage_wra
 @pytest.mark.parametrize(
     "display_level,call_level,show,expect_suppressed",
     [
+        (StageDisplayLevel.NONE, StageDisplayLevel.ERROR, None, True),
+        (StageDisplayLevel.NONE, StageDisplayLevel.INFO, None, True),
+        (StageDisplayLevel.NONE, StageDisplayLevel.DEBUG, None, True),
         (StageDisplayLevel.ERROR, StageDisplayLevel.ERROR, None, False),
         (StageDisplayLevel.ERROR, StageDisplayLevel.INFO, None, True),
         (StageDisplayLevel.ERROR, StageDisplayLevel.DEBUG, None, True),
@@ -393,3 +429,63 @@ async def test_suppressed_arun_discards_adopted_stage(mock_stage_wrapper_factory
 
     mock_stage_wrapper_factory.build.assert_not_called()
     adopted_stage_obj.close.assert_called_once_with(status=Status.COMPLETED)
+
+
+@pytest.mark.asyncio
+async def test_error_during_suppressed_stage_opens_stage_and_returns_fallback(
+    mock_stage_wrapper_factory,
+):
+    """When stage_display_level=error suppresses an INFO-level call and the tool
+    raises, a stage must be opened on-the-fly to show the error, and the exception
+    must be caught and converted to a fallback result — not propagated to the
+    caller (which would crash the chat)."""
+    error = RuntimeError("MCP tool failed")
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+        error=error,
+        stage_display_level=StageDisplayLevel.ERROR,
+    )
+
+    # Should NOT raise — the fallback processor should handle it
+    result = await tool.arun("call-id", stage_level=StageDisplayLevel.INFO)
+
+    # Stage wrapper was built on-the-fly for the error (even though the call was
+    # initially suppressed)
+    mock_stage_wrapper_factory.build.assert_called_once()
+
+    on_the_fly_stage = mock_stage_wrapper_factory.build.return_value
+    # The error was written into the on-the-fly stage
+    on_the_fly_stage.add_exception.assert_called_once_with(error)
+    # The stage was opened and closed
+    on_the_fly_stage.__enter__.assert_called_once()
+    on_the_fly_stage.__exit__.assert_called_once()
+    # A result was returned (fallback), not an exception
+    assert result is not None
+    assert result.tool_call_id == "call-id"
+
+
+@pytest.mark.asyncio
+async def test_error_at_none_level_no_stage_and_returns_fallback(
+    mock_stage_wrapper_factory,
+):
+    """When stage_display_level=none, no stage is created — not even for errors.
+    The exception is still caught and converted to a fallback result."""
+    error = RuntimeError("MCP tool failed")
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=_make_tool_config(),
+        perf_timer=Mock(),
+        error=error,
+        stage_display_level=StageDisplayLevel.NONE,
+    )
+
+    # Should NOT raise — the fallback processor should handle it
+    result = await tool.arun("call-id", stage_level=StageDisplayLevel.INFO)
+
+    # No stage wrapper was built — not even on-the-fly for the error
+    mock_stage_wrapper_factory.build.assert_not_called()
+    # A result was returned (fallback), not an exception
+    assert result is not None
+    assert result.tool_call_id == "call-id"

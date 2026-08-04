@@ -110,6 +110,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
 | Value | Behavior |
 |---|---|
+| `none` | No stages shown at all, not even for errors |
 | `error` | Show stages only for failed tool calls |
 | `info` | Show stages for regular tool calls and errors (default) |
 | `debug` | Show stages for all tool calls, including internal/system ones |
@@ -155,7 +156,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
 | `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
 | **Stage Display**                          |                            |          |                                                                                                              |
-| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
+| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
 | **DIAL Files — Tool-Response Offload**     |                            |          |                                                                                                              |
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                 | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                    | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |

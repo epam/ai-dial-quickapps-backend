@@ -76,6 +76,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     def __should_suppress(self, stage_level: StageDisplayLevel) -> bool:
         level = self.__stage_display_level
 
+        if level == StageDisplayLevel.NONE:
+            return True
+
         if level == StageDisplayLevel.DEBUG:
             return False
 
@@ -106,9 +109,10 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     ) -> ToolCallResult:
         if self.__should_suppress(stage_level):
             self._discard_adopted_stage(adopted_stage)
-            return await self._run_in_stage_report_success(
-                tool_call_id, None, *args, skip_parameters=False, **kwargs
-            )
+            # Stage is suppressed, but we still route through __run_tool_body so that
+            # tool exceptions are caught and converted to fallback results instead of
+            # propagating unhandled and crashing the chat.
+            return await self.__run_tool_body(tool_call_id, None, *args, **kwargs)
 
         if adopted_stage is not None:
             stage_wrapper = self.__stage_wrapper_builder.build(
@@ -166,7 +170,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     async def __run_tool_body(
         self,
         tool_call_id: str,
-        stage_wrapper: BaseStageWrapper,
+        stage_wrapper: BaseStageWrapper | None,
         *args: Any,
         skip_parameters: bool = False,
         **kwargs: Any,
@@ -182,7 +186,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 **kwargs,
             )
         except InvalidToolCallParameterException as e:
-            stage_wrapper.add_exception(e)
+            self._report_error_to_stage(stage_wrapper, e)
             return FallbackProcessor.process_fallback(
                 [
                     RetryStrategyModel(
@@ -195,12 +199,42 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         except Exception as e:
             fallback = self._tool_config.fallback_configuration
             if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
-                stage_wrapper.add_exception(e)
+                error_to_show = e
             else:
-                stage_wrapper.add_exception(
-                    Exception("An error occurred while executing the tool.")
-                )
+                error_to_show = Exception("An error occurred while executing the tool.")
+            self._report_error_to_stage(stage_wrapper, error_to_show)
             return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
+
+    def _report_error_to_stage(
+        self,
+        stage_wrapper: BaseStageWrapper | None,
+        error: Exception,
+    ) -> None:
+        """Write an error into the stage.
+
+        If ``stage_wrapper`` is not None (stage was already opened), the error is
+        appended to it. If ``stage_wrapper`` is None (stage was suppressed because
+        ``stage_display_level=error`` hid the INFO-level call), a stage is created
+        on-the-fly so the failure is still visible to the user.
+
+        When ``stage_display_level=none``, stages are never created — not even for
+        errors — so this method is a no-op.
+        """
+        if self.__stage_display_level == StageDisplayLevel.NONE:
+            return
+
+        if stage_wrapper is not None:
+            stage_wrapper.add_exception(error)
+            return
+
+        # Stage was suppressed, but an error occurred — open a stage on-the-fly,
+        # write the error, and close it.
+        on_the_fly_stage = self.__stage_wrapper_builder.build(
+            tool_config=self._tool_config,
+            stage_name=self.stage_name_component,
+        )
+        with on_the_fly_stage:
+            on_the_fly_stage.add_exception(error)
 
     def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
         return open_ai_tool
