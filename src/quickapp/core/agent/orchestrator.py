@@ -233,14 +233,12 @@ class Orchestrator:
             external = []
             internal = tool_calls
 
-        adopted_stages = getattr(stream_result, "adopted_tool_stages", None) or {}
+        adopted_stages = stream_result.adopted_tool_stages
         if internal:
             await self._execute_internal_tool_calls(internal, adopted_stages)
 
         # Close stages for external/unknown tools that were not adopted by arun.
-        close_remaining = getattr(stream_result, "close_remaining_adopted_tool_stages", None)
-        if close_remaining is not None:
-            close_remaining()
+        stream_result.close_remaining_adopted_tool_stages()
 
         if external:
             self._surface_external_tool_calls(external, period)

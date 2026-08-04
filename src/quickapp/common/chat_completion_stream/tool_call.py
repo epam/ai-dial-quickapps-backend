@@ -28,10 +28,6 @@ class AccumulatedToolCall:
         return self._name
 
     @property
-    def name_or_none(self) -> str | None:
-        return self._name
-
-    @property
     def arguments(self) -> str:
         if self._arguments is None:
             return "{}"

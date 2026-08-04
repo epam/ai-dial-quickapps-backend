@@ -8,11 +8,6 @@ from quickapp.common import ToolCallResult
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.parameter_stage_format import (
     extract_parameters_config_map,
-    format_parameter_value,
-    order_parameters,
-    parameter_name_markdown,
-    parameter_value_prefix,
-    parameter_value_suffix,
     render_config_map_parameters,
 )
 from quickapp.config.tools.base import BaseTool
@@ -123,23 +118,6 @@ class BaseStageWrapper(ABC):
                     break
 
         return title
-
-    def _get_parameter_name(self, param_name: str, display_config: FormattedParameterConfig) -> str:
-        return parameter_name_markdown(param_name, display_config)
-
-    def _get_value_prefix(self, display_config: FormattedParameterConfig) -> str:
-        return parameter_value_prefix(display_config)
-
-    def _get_value_sufix(self, display_config: FormattedParameterConfig) -> str:
-        return parameter_value_suffix(display_config)
-
-    def _get_parameter_value(
-        self, param_value: Any, display_config: FormattedParameterConfig
-    ) -> str:
-        return format_parameter_value(param_value, display_config)
-
-    def _order_parameters(self, parameters: dict[str, Any]) -> dict[str, Any]:
-        return order_parameters(parameters, self._parameters_config_map)
 
     def _render_config_map_parameters(self, parameters: dict[str, Any]) -> str:
         """Render parameters using the per-parameter display config map.

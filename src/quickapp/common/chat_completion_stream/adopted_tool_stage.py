@@ -15,11 +15,9 @@ class AdoptedToolStage:
         self,
         stage: Stage,
         start_time: float,
-        streamed_parameter_names: frozenset[str] | None = None,
         *,
         request_body_streamed: bool = False,
     ) -> None:
         self.stage = stage
         self.start_time = start_time
-        self.streamed_parameter_names = streamed_parameter_names or frozenset()
         self.request_body_streamed = request_body_streamed

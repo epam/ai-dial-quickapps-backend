@@ -205,7 +205,6 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
     assert not any(isinstance(c, FinishStageChunk) for c in queue_chunks)
     adopted = acc.adopted_tool_stages["call_1"]
     assert adopted.stage is choice.created_stages[0]
-    assert adopted.streamed_parameter_names == frozenset({"code"})
     assert adopted.request_body_streamed
 
 

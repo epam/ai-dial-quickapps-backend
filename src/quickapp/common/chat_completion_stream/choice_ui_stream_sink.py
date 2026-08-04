@@ -236,11 +236,6 @@ class ChoiceUiSink(ChatStreamSink):
                         index,
                         exc,
                     )
-            streamed_names = (
-                state.presenter.streamed_parameter_names
-                if state.presenter is not None
-                else frozenset()
-            )
             request_body_streamed = bool(
                 state.presenter is not None and state.presenter.request_body_streamed
             )
@@ -249,7 +244,6 @@ class ChoiceUiSink(ChatStreamSink):
                 AdoptedToolStage(
                     stage=state.stage,
                     start_time=state.start_time,
-                    streamed_parameter_names=streamed_names,
                     request_body_streamed=request_body_streamed,
                 ),
             )

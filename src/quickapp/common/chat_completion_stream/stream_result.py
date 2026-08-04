@@ -118,9 +118,6 @@ class ChatStreamAccumulator:
     def set_adopted_tool_stage(self, tool_call_id: str, adopted: AdoptedToolStage) -> None:
         self.__adopted_tool_stages[tool_call_id] = adopted
 
-    def pop_adopted_tool_stage(self, tool_call_id: str) -> AdoptedToolStage | None:
-        return self.__adopted_tool_stages.pop(tool_call_id, None)
-
     def close_remaining_adopted_tool_stages(self, status: Status = Status.COMPLETED) -> None:
         """Close any adopted stages not consumed by tool execution (e.g. external tools)."""
         for tool_call_id, adopted in list(self.__adopted_tool_stages.items()):

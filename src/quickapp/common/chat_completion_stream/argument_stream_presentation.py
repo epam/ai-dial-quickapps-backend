@@ -4,11 +4,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-from aidial_sdk.chat_completion import Stage
+from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.common.chat_completion_stream.json_object_argument_streamer import (
     ArgumentStreamEvent,
@@ -36,10 +35,11 @@ class ArgumentStreamMode(str, Enum):
     JSON_OBJECT = "json_object"
 
 
-@dataclass(frozen=True)
-class ArgumentStreamPresentation:
+class ArgumentStreamPresentation(BaseModel):
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
     mode: ArgumentStreamMode
-    parameters_config_map: dict[str, FormattedParameterConfig] = field(default_factory=dict)
+    parameters_config_map: dict[str, FormattedParameterConfig] = Field(default_factory=dict)
 
     @staticmethod
     def from_tool_config(
@@ -56,7 +56,10 @@ AppendContent = Callable[[str], None]
 
 
 class StreamingArgumentPresenter:
-    """Feed argument JSON chunks into a stage using a fixed presentation mode."""
+    """Feed argument JSON chunks into a stage using a fixed presentation mode.
+
+    CONFIG_MAP streams parameters in JSON arrival order (not static display.order).
+    """
 
     def __init__(
         self,
@@ -67,19 +70,13 @@ class StreamingArgumentPresenter:
         self._presentation = presentation
         self._streamer = JsonObjectArgumentStreamer()
         self._header_written = False
-        self._active_key: str | None = None
         self._skip_key = False
         self._string_open = False
         self._fence_open = False
         self._json_first_key = True
         self._json_string_open = False
-        self._streamed_parameter_names: set[str] = set()
         self.request_body_streamed = False
         self.finished = False
-
-    @property
-    def streamed_parameter_names(self) -> frozenset[str]:
-        return frozenset(self._streamed_parameter_names)
 
     def feed(self, chunk: str) -> None:
         if self.finished or not chunk:
@@ -117,7 +114,6 @@ class StreamingArgumentPresenter:
             self._on_object_done()
 
     def _on_key(self, key: str) -> None:
-        self._active_key = key
         self._string_open = False
         self._fence_open = False
         if self._presentation.mode == ArgumentStreamMode.CONFIG_MAP:
@@ -139,7 +135,6 @@ class StreamingArgumentPresenter:
             self._config_map_value_complete(key, value)
         else:
             self._json_object_value_complete(key, value)
-        self._active_key = None
         self._skip_key = False
         self._string_open = False
 
@@ -180,7 +175,6 @@ class StreamingArgumentPresenter:
             else:
                 self._append(f"***{key}:*** ")
             self._string_open = True
-            self._streamed_parameter_names.add(key)
         self._append(text)
 
     def _config_map_value_complete(self, key: str, value: Any) -> None:
@@ -213,7 +207,6 @@ class StreamingArgumentPresenter:
             self._append("\n\r")
         else:
             self._append(f"***{key}:*** {value}\n\r")
-        self._streamed_parameter_names.add(key)
 
     # --- json_object --------------------------------------------------------
 
@@ -231,7 +224,6 @@ class StreamingArgumentPresenter:
             self._json_first_key = False
             self._append(f'    {json.dumps(key)}: "')
             self._json_string_open = True
-            self._streamed_parameter_names.add(key)
         self._append(_json_escape_fragment(text))
 
     def _json_object_value_complete(self, key: str, value: Any) -> None:
@@ -251,17 +243,9 @@ class StreamingArgumentPresenter:
             self._append(f"    {json.dumps(key)}: {indented}")
         else:
             self._append(f"    {json.dumps(key)}: {dumped}")
-        self._streamed_parameter_names.add(key)
 
 
 def _json_escape_fragment(text: str) -> str:
     """Escape text for inclusion inside an already-open JSON string literal."""
     # json.dumps adds surrounding quotes; strip them.
     return json.dumps(text)[1:-1]
-
-
-def build_presenter(
-    stage: Stage,
-    presentation: ArgumentStreamPresentation,
-) -> StreamingArgumentPresenter:
-    return StreamingArgumentPresenter(stage.append_content, presentation)

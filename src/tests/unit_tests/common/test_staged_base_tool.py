@@ -363,7 +363,6 @@ async def test_arun_with_adopted_stage_skips_add_parameters_when_code_was_stream
     adopted = AdoptedToolStage(
         stage=adopted_stage_obj,
         start_time=start,
-        streamed_parameter_names=frozenset({"code"}),
         request_body_streamed=True,
     )
 
@@ -399,9 +398,7 @@ async def test_arun_with_adopted_stage_adds_parameters_when_nothing_streamed(
     mock_stage_wrapper_factory, mock_tool_config
 ):
     mock_stage_wrapper = mock_stage_wrapper_factory.build()
-    adopted = AdoptedToolStage(
-        stage=Mock(), start_time=time.perf_counter(), streamed_parameter_names=frozenset()
-    )
+    adopted = AdoptedToolStage(stage=Mock(), start_time=time.perf_counter())
     tool = CustomTestStagedBaseTool(
         stage_wrapper_builder=mock_stage_wrapper_factory,
         tool_config=mock_tool_config,
