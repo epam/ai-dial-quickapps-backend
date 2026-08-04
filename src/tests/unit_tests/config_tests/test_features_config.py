@@ -38,6 +38,10 @@ class TestStageDisplayConfig:
         cfg = StageDisplayConfig(level=StageDisplayLevel.DEBUG)
         assert cfg.level == StageDisplayLevel.DEBUG
 
+    def test_explicit_none_level(self):
+        cfg = StageDisplayConfig(level=StageDisplayLevel.NONE)
+        assert cfg.level == StageDisplayLevel.NONE
+
 
 class TestFeaturesStageDisplay:
     def test_default_stage_display_level_is_info(self):
@@ -51,6 +55,10 @@ class TestFeaturesStageDisplay:
     def test_stage_display_from_manifest_debug(self):
         features = Features.model_validate({"stage_display": {"level": "debug"}})
         assert features.stage_display.level == StageDisplayLevel.DEBUG
+
+    def test_stage_display_from_manifest_none(self):
+        features = Features.model_validate({"stage_display": {"level": "none"}})
+        assert features.stage_display.level == StageDisplayLevel.NONE
 
 
 class TestToolStageDeprecationWarning:
