@@ -46,15 +46,6 @@ logger = logging.getLogger(__name__)
 class _StreamingToolStageState:
     """Mutable UI state for a tool-call stage opened while arguments are still streaming."""
 
-    __slots__ = (
-        "stage",
-        "start_time",
-        "name_set",
-        "function_name",
-        "presenter",
-        "pending_argument_chunks",
-    )
-
     def __init__(self, stage: Stage, start_time: float, *, name_set: bool) -> None:
         self.stage = stage
         self.start_time = start_time

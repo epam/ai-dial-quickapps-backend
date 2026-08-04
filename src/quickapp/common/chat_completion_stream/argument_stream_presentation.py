@@ -58,22 +58,6 @@ AppendContent = Callable[[str], None]
 class StreamingArgumentPresenter:
     """Feed argument JSON chunks into a stage using a fixed presentation mode."""
 
-    __slots__ = (
-        "_append",
-        "_presentation",
-        "_streamer",
-        "_header_written",
-        "_active_key",
-        "_skip_key",
-        "_string_open",
-        "_fence_open",
-        "_json_first_key",
-        "_json_string_open",
-        "_streamed_parameter_names",
-        "request_body_streamed",
-        "finished",
-    )
-
     def __init__(
         self,
         append_content: AppendContent,

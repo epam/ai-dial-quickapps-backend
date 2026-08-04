@@ -11,13 +11,6 @@ class AdoptedToolStage:
     (and total duration includes argument streaming).
     """
 
-    __slots__ = (
-        "stage",
-        "start_time",
-        "streamed_parameter_names",
-        "request_body_streamed",
-    )
-
     def __init__(
         self,
         stage: Stage,

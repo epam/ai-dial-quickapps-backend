@@ -46,22 +46,6 @@ class JsonObjectArgumentStreamer:
     emit only ``ValueComplete`` once the value is fully buffered and parsed.
     """
 
-    __slots__ = (
-        "_phase",
-        "_key_buf",
-        "_escape",
-        "_hex_left",
-        "_hex_buf",
-        "_current_key",
-        "_string_parts",
-        "_raw_buf",
-        "_nest_depth",
-        "_nest_stack",
-        "_in_nest_string",
-        "_nest_escape",
-        "done",
-    )
-
     def __init__(self) -> None:
         # seek_object → between_keys → in_key → after_key → seek_value
         # → in_string → in_raw → done

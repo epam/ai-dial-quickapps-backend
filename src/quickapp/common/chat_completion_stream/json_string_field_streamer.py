@@ -9,17 +9,6 @@ class JsonStringFieldStreamer:
     further input is ignored (``done`` is True).
     """
 
-    __slots__ = (
-        "_key",
-        "_key_i",
-        "_phase",
-        "_escape",
-        "_hex_left",
-        "_hex_buf",
-        "done",
-        "started",
-    )
-
     def __init__(self, field_name: str) -> None:
         self._key = f'"{field_name}"'
         self._key_i = 0
