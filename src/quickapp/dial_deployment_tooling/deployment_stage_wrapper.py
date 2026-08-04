@@ -1,13 +1,15 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_client import DialException
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 
 
 @inject
 class DeploymentStageWrapper(TimedStageWrapper):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return self._render_config_map_parameters(parameters)

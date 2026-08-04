@@ -17,14 +17,15 @@ from quickapp.common._stage_delta_types import (
 )
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.chat_completion_stream.argument_stream_presentation import (
+    ArgumentStreamPresentation,
+    StreamingArgumentPresenter,
+)
 from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
     ChatStreamParseError,
     ChatStreamWriteError,
-)
-from quickapp.common.chat_completion_stream.json_string_field_streamer import (
-    JsonStringFieldStreamer,
 )
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamEvent,
@@ -41,11 +42,6 @@ from quickapp.common.payload_logging import log_payload
 
 logger = logging.getLogger(__name__)
 
-# Matches py_interpreter display.stage for the ``code`` parameter (see predefined tool JSON).
-_CODE_PARAM = "code"
-_CODE_REQUEST_PREFIX = "> #### Request:\n\r**Code to execute:**\n\n````python\n"
-_CODE_REQUEST_SUFFIX = "\n````\n\r"
-
 
 class _StreamingToolStageState:
     """Mutable UI state for a tool-call stage opened while arguments are still streaming."""
@@ -54,20 +50,18 @@ class _StreamingToolStageState:
         "stage",
         "start_time",
         "name_set",
-        "code_streamer",
-        "code_header_written",
-        "code_fence_closed",
-        "streamed_parameter_names",
+        "function_name",
+        "presenter",
+        "pending_argument_chunks",
     )
 
     def __init__(self, stage: Stage, start_time: float, *, name_set: bool) -> None:
         self.stage = stage
         self.start_time = start_time
         self.name_set = name_set
-        self.code_streamer = JsonStringFieldStreamer(_CODE_PARAM)
-        self.code_header_written = False
-        self.code_fence_closed = False
-        self.streamed_parameter_names: set[str] = set()
+        self.function_name: str | None = None
+        self.presenter: StreamingArgumentPresenter | None = None
+        self.pending_argument_chunks: list[str] = []
 
 
 class ChatStreamConfig(BaseModel):
@@ -79,6 +73,7 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
+    argument_stream_presentations: dict[str, ArgumentStreamPresentation] = {}
 
 
 class ChatCompletionStreamHandler:
@@ -175,17 +170,19 @@ class ChatCompletionStreamHandler:
         for tool_call in delta.tool_calls:
             accumulator.append_tool_call_delta(tool_call)
             if config.destination is not None:
-                self._stream_tool_call_delta(
-                    config.destination, accumulator, tool_stages_by_index, tool_call
-                )
+                self._stream_tool_call_delta(config, accumulator, tool_stages_by_index, tool_call)
 
     def _stream_tool_call_delta(
         self,
-        destination: Choice,
+        config: ChatStreamConfig,
         accumulator: ChatStreamAccumulator,
         tool_stages_by_index: dict[int, _StreamingToolStageState],
         tool_call: ChoiceDeltaToolCall,
     ) -> None:
+        destination = config.destination
+        if destination is None:
+            return
+
         index = tool_call.index
         state = tool_stages_by_index.get(index)
         if state is None:
@@ -211,6 +208,9 @@ class ChatCompletionStreamHandler:
                 start_time=perf_counter(),
                 name_set=function_name is not None,
             )
+            if function_name:
+                state.function_name = function_name
+                self._ensure_presenter(state, config)
             tool_stages_by_index[index] = state
 
         if not state.name_set and tool_call.function and tool_call.function.name:
@@ -223,32 +223,39 @@ class ChatCompletionStreamHandler:
                     index,
                     exc,
                 )
+            state.function_name = tool_call.function.name
+            self._ensure_presenter(state, config)
 
         arguments_chunk = tool_call.function.arguments if tool_call.function else None
         if not arguments_chunk:
             return
 
-        self._stream_code_parameter(state, index, arguments_chunk)
+        self._feed_argument_chunk(state, index, arguments_chunk)
 
-    def _stream_code_parameter(
+    @staticmethod
+    def _ensure_presenter(state: _StreamingToolStageState, config: ChatStreamConfig) -> None:
+        if state.presenter is not None or not state.function_name:
+            return
+        presentation = config.argument_stream_presentations.get(state.function_name)
+        if presentation is None:
+            # Tool opted out / unknown — drop any buffered chunks (static add_parameters later).
+            state.pending_argument_chunks.clear()
+            return
+        state.presenter = StreamingArgumentPresenter(state.stage.append_content, presentation)
+        for buffered in state.pending_argument_chunks:
+            state.presenter.feed(buffered)
+        state.pending_argument_chunks.clear()
+
+    def _feed_argument_chunk(
         self, state: _StreamingToolStageState, index: int, arguments_chunk: str
     ) -> None:
-        """Stream only the decoded ``code`` string field, fenced like add_parameters."""
-        decoded = state.code_streamer.feed(arguments_chunk)
+        if state.presenter is None:
+            if state.function_name is None:
+                # Name not known yet — buffer until presentation can be selected.
+                state.pending_argument_chunks.append(arguments_chunk)
+            return
         try:
-            if decoded:
-                if not state.code_header_written:
-                    state.stage.append_content(_CODE_REQUEST_PREFIX)
-                    state.code_header_written = True
-                    state.streamed_parameter_names.add(_CODE_PARAM)
-                state.stage.append_content(decoded)
-            if (
-                state.code_streamer.done
-                and state.code_header_written
-                and not state.code_fence_closed
-            ):
-                state.stage.append_content(_CODE_REQUEST_SUFFIX)
-                state.code_fence_closed = True
+            state.presenter.feed(arguments_chunk)
         except Exception as exc:
             raise ChatStreamWriteError(
                 f"Failed to append tool-call arguments to streaming stage (index {index})."
@@ -277,23 +284,30 @@ class ChatCompletionStreamHandler:
                     )
                 tool_stages_by_index.pop(index, None)
                 continue
-            # Close an open python fence if the stream ended mid-value.
-            if state.code_header_written and not state.code_fence_closed:
+            if state.presenter is not None:
                 try:
-                    state.stage.append_content(_CODE_REQUEST_SUFFIX)
-                    state.code_fence_closed = True
+                    state.presenter.finish()
                 except Exception as exc:
                     logger.warning(
-                        "Failed to close code fence on streaming tool stage (index %s): %s",
+                        "Failed to finish streaming argument presenter (index %s): %s",
                         index,
                         exc,
                     )
+            streamed_names = (
+                state.presenter.streamed_parameter_names
+                if state.presenter is not None
+                else frozenset()
+            )
+            request_body_streamed = bool(
+                state.presenter is not None and state.presenter.request_body_streamed
+            )
             accumulator.set_adopted_tool_stage(
                 tool_call_id,
                 AdoptedToolStage(
                     stage=state.stage,
                     start_time=state.start_time,
-                    streamed_parameter_names=frozenset(state.streamed_parameter_names),
+                    streamed_parameter_names=streamed_names,
+                    request_body_streamed=request_body_streamed,
                 ),
             )
             tool_stages_by_index.pop(index, None)

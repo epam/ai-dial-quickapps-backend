@@ -8,12 +8,31 @@ from aidial_sdk.chat_completion.chunks import ContentStageChunk, FinishStageChun
 from aidial_sdk.chat_completion.enums import Status
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 
+from quickapp.common.chat_completion_stream.argument_stream_presentation import (
+    ArgumentStreamMode,
+    ArgumentStreamPresentation,
+)
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamParseError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
     ChatStreamConfig,
 )
+from quickapp.config.tools.display.paramenter import FormattedParameterConfig
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper, SpyChoice
+
+_PY_INTERPRETER = "internal_code_execution_python_interpreter"
+
+
+def _py_interpreter_presentation() -> dict[str, ArgumentStreamPresentation]:
+    return {
+        _PY_INTERPRETER: ArgumentStreamPresentation(
+            mode=ArgumentStreamMode.CONFIG_MAP,
+            parameters_config_map={
+                "title": FormattedParameterConfig(show_value_in_stage_title=True, ignore=True),
+                "code": FormattedParameterConfig(format="python", name="**Code to execute:**"),
+            },
+        )
+    }
 
 
 async def _stream_from_chunks(*raw_chunks):
@@ -131,7 +150,11 @@ async def test_reasoning_stage_closes_completed_when_tool_calls_start():
     handler = ChatCompletionStreamHandler()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(reasoning, tool),
-        config=ChatStreamConfig(destination=choice, propagate_stages=True),
+        config=ChatStreamConfig(
+            destination=choice,
+            propagate_stages=True,
+            argument_stream_presentations=_py_interpreter_presentation(),
+        ),
     )
 
     chunks = choice.drain_queue()
@@ -154,7 +177,7 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
             tool_calls=[
                 _tool_call_delta(
                     tool_id="call_1",
-                    name="internal_code_execution_python_interpreter",
+                    name=_PY_INTERPRETER,
                     arguments='{"title": "Draw", "code": "',
                 )
             ]
@@ -165,7 +188,11 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
     handler = ChatCompletionStreamHandler()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(*chunks),
-        config=ChatStreamConfig(destination=choice, propagate_stages=True),
+        config=ChatStreamConfig(
+            destination=choice,
+            propagate_stages=True,
+            argument_stream_presentations=_py_interpreter_presentation(),
+        ),
     )
 
     queue_chunks = choice.drain_queue()
@@ -181,6 +208,7 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
     adopted = acc.adopted_tool_stages["call_1"]
     assert adopted.stage is choice.created_stages[0]
     assert adopted.streamed_parameter_names == frozenset({"code"})
+    assert adopted.request_body_streamed
 
 
 @pytest.mark.asyncio

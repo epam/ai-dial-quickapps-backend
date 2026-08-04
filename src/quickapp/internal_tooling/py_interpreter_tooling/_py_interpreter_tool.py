@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any
+from typing import Any, ClassVar
 from urllib.parse import unquote
 
 from aidial_sdk.chat_completion import Attachment, Message
@@ -9,6 +9,7 @@ from injector import AssistedBuilder, inject
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
@@ -49,6 +50,9 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _PyInterpreterTool(StagedBaseTool):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
+        _PyInterpreterStageWrapper.argument_stream_mode
+    )
 
     # args_schema: Type[BaseModel] = InterpreterParameters
 

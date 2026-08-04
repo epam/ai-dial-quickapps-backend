@@ -1,5 +1,5 @@
 from pathlib import PurePosixPath
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_client._exception import DialException, EtagMismatchError
 from injector import AssistedBuilder, inject
@@ -7,6 +7,7 @@ from injector import AssistedBuilder, inject
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
@@ -48,6 +49,10 @@ class _WebFetchTool(StagedBaseTool):
     short preview for text) is returned, without surfacing the file to the user
     choice (``result.attachments`` stays empty).
     """
+
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
+        _WebFetchStageWrapper.argument_stream_mode
+    )
 
     def __init__(
         self,

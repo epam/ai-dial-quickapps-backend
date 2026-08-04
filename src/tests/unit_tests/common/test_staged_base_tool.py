@@ -364,6 +364,7 @@ async def test_arun_with_adopted_stage_skips_add_parameters_when_code_was_stream
         stage=adopted_stage_obj,
         start_time=start,
         streamed_parameter_names=frozenset({"code"}),
+        request_body_streamed=True,
     )
 
     tool = CustomTestStagedBaseTool(

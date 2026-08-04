@@ -315,6 +315,9 @@ class Orchestrator:
                     destination=self.__choice,
                     stream_content=True,
                     propagate_stages=self.__propagate_orchestrator_stages,
+                    argument_stream_presentations=(
+                        self.__tool_executor.argument_stream_presentations
+                    ),
                 ),
             )
         except ChatStreamHandlerError:

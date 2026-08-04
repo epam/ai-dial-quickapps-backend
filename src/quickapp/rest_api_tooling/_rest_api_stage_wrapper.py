@@ -1,7 +1,7 @@
 import json
 import logging
 from io import StringIO
-from typing import Any
+from typing import Any, ClassVar
 
 import pandas as pd
 from bs4 import BeautifulSoup
@@ -9,6 +9,7 @@ from httpx import HTTPStatusError, RequestError
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.utils import fenced_code_block
 from quickapp.rest_api_tooling._rest_api_tool_error_exception import RestApiToolErrorException
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _RestApiStageWrapper(TimedStageWrapper):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return f"> ##### Request:\n```json\n{json.dumps(parameters, indent=4, default=self.__serialize)}\n```\n\n"

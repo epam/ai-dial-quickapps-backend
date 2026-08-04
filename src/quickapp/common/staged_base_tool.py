@@ -2,7 +2,7 @@ import logging
 import sys
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_sdk.chat_completion import Status
 from injector import AssistedBuilder
@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.chat_completion_stream.argument_stream_presentation import (
+    ArgumentStreamMode,
+    ArgumentStreamPresentation,
+)
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.stage_close_registry import (
@@ -34,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
+    # Opt-in: when set, orchestrator streams argument bodies into the tool stage.
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
 
     def __init__(
         self,
@@ -60,6 +66,22 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     @property
     def tool_config(self):
         return self._tool_config
+
+    def build_argument_stream_presentation(self) -> ArgumentStreamPresentation | None:
+        mode = type(self).argument_stream_mode
+        if mode is None:
+            return None
+        return ArgumentStreamPresentation.from_tool_config(self._tool_config, mode)
+
+    def openai_function_name(self) -> str | None:
+        tool_config = self._tool_config
+        open_ai_tool = getattr(tool_config, "open_ai_tool", None)
+        if open_ai_tool is None:
+            return None
+        function = getattr(open_ai_tool, "function", None)
+        if function is None:
+            return None
+        return getattr(function, "name", None)
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
@@ -129,9 +151,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             )
         display = self._tool_config.display
         defer_close = bool(display and display.stage and display.stage.defer_close)
-        # If the stream already rendered display params (e.g. ``code``), skip the
-        # full add_parameters dump to avoid duplicating raw/formatted content.
-        skip_parameters = bool(adopted_stage is not None and adopted_stage.streamed_parameter_names)
+        # If the stream already rendered the Request body, skip the full
+        # add_parameters dump to avoid duplicating formatted content.
+        skip_parameters = bool(adopted_stage is not None and adopted_stage.request_body_streamed)
 
         if defer_close:
             stage_wrapper.__enter__()

@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
@@ -8,6 +8,7 @@ from mcp.types import BlobResourceContents, CallToolResult, TextResourceContents
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.payload_logging import log_payload
@@ -37,6 +38,9 @@ _EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
 
 @inject
 class _MCPTool(StagedBaseTool):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
+        _MCPStageWrapper.argument_stream_mode
+    )
 
     def __init__(
         self,

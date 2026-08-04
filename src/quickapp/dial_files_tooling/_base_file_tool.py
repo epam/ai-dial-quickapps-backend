@@ -1,12 +1,13 @@
 import logging
 from abc import ABC
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_client._exception import DialException, ResourceNotFoundError
 from aidial_client.types.metadata import FileMetadata
 from injector import AssistedBuilder, inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.staged_base_tool import StagedBaseTool
@@ -28,6 +29,9 @@ _MAX_DEPTH = 10
 
 @inject
 class _DialFileTool(StagedBaseTool, ABC):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
+        _FileStageWrapper.argument_stream_mode
+    )
 
     def __init__(
         self,

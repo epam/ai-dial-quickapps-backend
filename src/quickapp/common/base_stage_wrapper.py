@@ -1,19 +1,28 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
-from typing import Any, cast
+from typing import Any, ClassVar
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
 from quickapp.common import ToolCallResult
-from quickapp.common.utils import fenced_code_block
-from quickapp.config.tools.base import BaseOpenAITool, BaseTool
-from quickapp.config.tools.display.paramenter import (
-    FormattedParameterConfig,
-    ParameterDisplayConfig,
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.parameter_stage_format import (
+    extract_parameters_config_map,
+    format_parameter_value,
+    order_parameters,
+    parameter_name_markdown,
+    parameter_value_prefix,
+    parameter_value_suffix,
+    render_config_map_parameters,
 )
+from quickapp.config.tools.base import BaseTool
+from quickapp.config.tools.display.paramenter import FormattedParameterConfig
 
 
 class BaseStageWrapper(ABC):
+    # Opt-in: tools whose wrappers set this stream argument bodies into the stage.
+    # None = open stage early but keep static add_parameters at execute.
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
 
     def __init__(
         self,
@@ -27,16 +36,9 @@ class BaseStageWrapper(ABC):
         self.__tool_config: BaseTool | None = tool_config
         self.name: str = stage_name if stage_name else ""
         self.__already_open = already_open
-        self._parameters_config_map: dict[str, FormattedParameterConfig] = {}
-        if tool_config and issubclass(type(tool_config), BaseOpenAITool):
-            openai_tool_config = cast(type[BaseOpenAITool], tool_config)
-            for (
-                prop_name,
-                config,
-            ) in openai_tool_config.open_ai_tool.function.parameters.properties.items():
-                display_conf: ParameterDisplayConfig = config.display
-                if display_conf and display_conf.stage:
-                    self._parameters_config_map[prop_name] = display_conf.stage
+        self._parameters_config_map: dict[str, FormattedParameterConfig] = (
+            extract_parameters_config_map(tool_config)
+        )
 
     def __enter__(self) -> "BaseStageWrapper":
         if self.__already_open:
@@ -123,62 +125,31 @@ class BaseStageWrapper(ABC):
         return title
 
     def _get_parameter_name(self, param_name: str, display_config: FormattedParameterConfig) -> str:
-        if display_config.name:
-            return display_config.name
-        elif display_config.ignore_parameter_name:
-            return ""
-        return f"***{param_name}:*** "
+        return parameter_name_markdown(param_name, display_config)
 
     def _get_value_prefix(self, display_config: FormattedParameterConfig) -> str:
-        return display_config.prefix if display_config.prefix else ""
+        return parameter_value_prefix(display_config)
 
     def _get_value_sufix(self, display_config: FormattedParameterConfig) -> str:
-        return display_config.suffix if display_config.suffix else ""
+        return parameter_value_suffix(display_config)
 
     def _get_parameter_value(
         self, param_value: Any, display_config: FormattedParameterConfig
     ) -> str:
-        result_value = (
-            display_config.replaced_value_info
-            if display_config.replaced_value_info
-            else param_value
-        )
-
-        if display_config.format is not None:
-            block = fenced_code_block(str(result_value), display_config.format)
-            result_value = f"\n{block}\n"
-
-        return str(result_value)
+        return format_parameter_value(param_value, display_config)
 
     def _order_parameters(self, parameters: dict[str, Any]) -> dict[str, Any]:
-        # Sort by the configured `order` (default 0). sorted() is stable, so params
-        # sharing an order keep their original position.
-        def _order(param_name: str) -> int:
-            display_config = self._parameters_config_map.get(param_name)
-            return display_config.order if display_config else 0
-
-        return dict(sorted(parameters.items(), key=lambda item: _order(item[0])))
+        return order_parameters(parameters, self._parameters_config_map)
 
     def _render_config_map_parameters(self, parameters: dict[str, Any]) -> str:
         """Render parameters using the per-parameter display config map.
 
         Shared building block for wrappers whose tool advertises `display.stage`
         config on its OpenAI parameters. Parameters are ordered by their configured
-        `order`, then each is formatted via the `_get_parameter_*` helpers (or a
+        `order`, then each is formatted via the shared helpers (or a
         plain `***name:*** value` fallback when it has no display config).
         """
-        stage_params = "> #### Request:\n\r"
-        for param_name, param_value in self._order_parameters(parameters).items():
-            if display_config := self._parameters_config_map.get(param_name):
-                if not display_config.ignore:
-                    stage_params += self._get_parameter_name(param_name, display_config)
-                    stage_params += self._get_value_prefix(display_config)
-                    stage_params += self._get_parameter_value(param_value, display_config)
-                    stage_params += self._get_value_sufix(display_config)
-                    stage_params += "\n\r"
-            else:
-                stage_params += f"***{param_name}:*** {param_value}\n\r"
-        return stage_params
+        return render_config_map_parameters(parameters, self._parameters_config_map)
 
     def add_result(self, result: ToolCallResult) -> None:
         debug_info = self._build_debug_info_from_result(result)
