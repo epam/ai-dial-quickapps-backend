@@ -3,10 +3,11 @@
 import logging
 from typing import Any
 
-from aidial_sdk.chat_completion import Attachment
+from aidial_sdk.chat_completion import Attachment, Status
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from quickapp.common._stage_delta_types import StageDeltaItem, get_stage_index
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 
@@ -76,6 +77,7 @@ class ChatStreamAccumulator:
         self.__usage: Usage | None = None
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
+        self.__adopted_tool_stages: dict[str, AdoptedToolStage] = {}
 
     @property
     def content(self) -> str:
@@ -105,6 +107,34 @@ class ChatStreamAccumulator:
         if index not in self.__accumulated_tool_calls:
             self.__accumulated_tool_calls[index] = AccumulatedToolCall()
         self.__accumulated_tool_calls[index].append_delta(tool_call_delta)
+
+    def get_tool_call_at_index(self, index: int) -> AccumulatedToolCall | None:
+        return self.__accumulated_tool_calls.get(index)
+
+    @property
+    def adopted_tool_stages(self) -> dict[str, AdoptedToolStage]:
+        return self.__adopted_tool_stages
+
+    def set_adopted_tool_stage(self, tool_call_id: str, adopted: AdoptedToolStage) -> None:
+        self.__adopted_tool_stages[tool_call_id] = adopted
+
+    def pop_adopted_tool_stage(self, tool_call_id: str) -> AdoptedToolStage | None:
+        return self.__adopted_tool_stages.pop(tool_call_id, None)
+
+    def close_remaining_adopted_tool_stages(self, status: Status = Status.COMPLETED) -> None:
+        """Close any adopted stages not consumed by tool execution (e.g. external tools)."""
+        for tool_call_id, adopted in list(self.__adopted_tool_stages.items()):
+            try:
+                adopted.stage.close(status=status)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to close unused adopted tool stage for tool_call_id=%s: %s",
+                    tool_call_id,
+                    exc,
+                    exc_info=True,
+                )
+            finally:
+                self.__adopted_tool_stages.pop(tool_call_id, None)
 
     @property
     def usage(self) -> Usage | None:

@@ -16,11 +16,17 @@ from quickapp.config.tools.display.paramenter import (
 class BaseStageWrapper(ABC):
 
     def __init__(
-        self, stage: Stage, tool_config: BaseTool | None = None, stage_name: str | None = None
+        self,
+        stage: Stage,
+        tool_config: BaseTool | None = None,
+        stage_name: str | None = None,
+        *,
+        already_open: bool = False,
     ) -> None:
         self.__stage: Stage = stage
         self.__tool_config: BaseTool | None = tool_config
         self.name: str = stage_name if stage_name else ""
+        self.__already_open = already_open
         self._parameters_config_map: dict[str, FormattedParameterConfig] = {}
         if tool_config and issubclass(type(tool_config), BaseOpenAITool):
             openai_tool_config = cast(type[BaseOpenAITool], tool_config)
@@ -33,6 +39,10 @@ class BaseStageWrapper(ABC):
                     self._parameters_config_map[prop_name] = display_conf.stage
 
     def __enter__(self) -> "BaseStageWrapper":
+        if self.__already_open:
+            # Stage was opened while tool-call arguments streamed; keep the
+            # provisional streaming name and skip Stage.__enter__ / re-open.
+            return self
         self.__stage.__enter__()
         self.__stage.append_name(self._get_display_name())
         return self
@@ -78,6 +88,10 @@ class BaseStageWrapper(ABC):
     def add_parameters(self, params: dict[str, Any]) -> None:
         self.append_stage_name(self._get_stage_title_from_params(params))
         self.append_stage_content(self._get_formatted_parameters(params))
+
+    def append_title_from_params(self, params: dict[str, Any]) -> None:
+        """Append only the stage-title fragment from params (used when args were pre-streamed)."""
+        self.append_stage_name(self._get_stage_title_from_params(params))
 
     @abstractmethod
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str: ...

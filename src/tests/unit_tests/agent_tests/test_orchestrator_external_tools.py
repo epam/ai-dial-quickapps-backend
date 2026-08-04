@@ -74,6 +74,8 @@ def _stream_result(tool_calls=None, content="response"):
         tool_calls=tool_calls or [],
         usage=None,
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
 

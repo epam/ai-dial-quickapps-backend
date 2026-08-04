@@ -11,13 +11,27 @@ from quickapp.config.tools.base import BaseTool
 class TimedStageWrapper(BaseStageWrapper, ABC):
 
     def __init__(
-        self, stage: Stage, tool_config: BaseTool | None = None, stage_name: str | None = None
+        self,
+        stage: Stage,
+        tool_config: BaseTool | None = None,
+        stage_name: str | None = None,
+        *,
+        already_open: bool = False,
+        start_time: float | None = None,
     ):
-        super().__init__(stage=stage, tool_config=tool_config, stage_name=stage_name)
+        super().__init__(
+            stage=stage,
+            tool_config=tool_config,
+            stage_name=stage_name,
+            already_open=already_open,
+        )
         self.__start_time: float = 0
+        self.__adopted_start_time = start_time
 
     def __enter__(self) -> BaseStageWrapper:
-        self.__start_time = perf_counter()
+        self.__start_time = (
+            self.__adopted_start_time if self.__adopted_start_time is not None else perf_counter()
+        )
         return super().__enter__()
 
     def __exit__(
