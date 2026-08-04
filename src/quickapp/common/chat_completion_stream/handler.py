@@ -1,11 +1,11 @@
 import logging
 from collections.abc import AsyncIterable
+from dataclasses import dataclass, field
 
 from aidial_sdk.chat_completion import Choice
 from injector import inject
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import (
@@ -30,16 +30,17 @@ from quickapp.common.payload_logging import log_payload
 logger = logging.getLogger(__name__)
 
 
-class ChatStreamConfig(BaseModel):
+@dataclass
+class ChatStreamConfig:
     """Orchestrator: set ``destination`` (+ ``propagate_stages``). Deployment: set ``stage_wrapper``."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     destination: Choice | None = None
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
-    argument_stream_presentations: dict[str, ArgumentStreamPresentation] = {}
+    argument_stream_presentations: dict[str, ArgumentStreamPresentation] = field(
+        default_factory=dict
+    )
 
 
 class ChatCompletionStreamHandler:

@@ -27,6 +27,8 @@ def _make_tool(name: str, result: ToolCallResult) -> MagicMock:
     open_ai_tool.function = function
     tool_config.open_ai_tool = open_ai_tool
     tool._tool_config = tool_config
+    tool.openai_function_name = MagicMock(return_value=name)
+    tool.build_argument_stream_presentation = MagicMock(return_value=None)
     tool.arun = AsyncMock(return_value=result)
     return tool
 

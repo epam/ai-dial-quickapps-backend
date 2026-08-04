@@ -1,4 +1,4 @@
-"""Real SDK / wrapper types for tests that construct ``ChatStreamConfig`` (Pydantic ``isinstance`` checks)."""
+"""Real SDK / wrapper types for tests that construct ``ChatStreamConfig``."""
 
 from __future__ import annotations
 
