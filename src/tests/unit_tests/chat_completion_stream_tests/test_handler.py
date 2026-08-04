@@ -1,7 +1,6 @@
 """Tests for ``quickapp.common.chat_completion_stream.handler``."""
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock
 
 import pytest
 from aidial_sdk.chat_completion.chunks import ContentStageChunk, FinishStageChunk, StartStageChunk
@@ -63,7 +62,7 @@ def _tool_call_delta(
 async def test_process_deployment_stream_accumulates_text():
     chunk = _chunk(content="abc")
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     wrap = DummyStageWrapper()
 
     acc = await handler.process_stream(
@@ -81,7 +80,7 @@ async def test_process_orchestrator_stream_prepends_newline_and_streams_to_choic
     choice_obj = SpyChoice()
     chunk = _chunk(content="x")
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(chunk),
         config=ChatStreamConfig(destination=choice_obj),
@@ -98,11 +97,10 @@ async def test_run_wraps_generic_exception_as_chat_stream_parse_error():
         yield SimpleNamespace()
         raise ValueError("boom")
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     with pytest.raises(Exception) as excinfo:
-        await handler._run(
-            chat_completion=bad_stream(),
-            accumulator=MagicMock(),
+        await handler.process_stream(
+            chunks=bad_stream(),
             config=ChatStreamConfig(stage_wrapper=DummyStageWrapper()),
         )
 
@@ -118,7 +116,7 @@ async def test_reasoning_stage_closes_completed_when_content_starts():
     )
     answer = _chunk(content="final answer")
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     await handler.process_stream(
         chunks=_stream_from_chunks(reasoning, answer),
         config=ChatStreamConfig(destination=choice, propagate_stages=True),
@@ -147,7 +145,7 @@ async def test_reasoning_stage_closes_completed_when_tool_calls_start():
         ]
     )
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(reasoning, tool),
         config=ChatStreamConfig(
@@ -185,7 +183,7 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
         _chunk(tool_calls=[_tool_call_delta(arguments='print(1)\\npass"}')]),
     ]
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(*chunks),
         config=ChatStreamConfig(
@@ -218,7 +216,7 @@ async def test_unclosed_reasoning_stage_closed_completed_on_successful_stream_en
         custom_content={"stages": [{"index": 0, "name": "Thinking", "content": "only"}]}
     )
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     await handler.process_stream(
         chunks=_stream_from_chunks(reasoning),
         config=ChatStreamConfig(destination=choice, propagate_stages=True),
@@ -237,7 +235,7 @@ async def test_open_reasoning_stage_closed_failed_on_stream_error():
         yield _chunk(custom_content={"stages": [{"index": 0, "name": "Thinking", "content": "x"}]})
         raise ValueError("boom")
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     with pytest.raises(ChatStreamParseError):
         await handler.process_stream(
             chunks=failing_stream(),
@@ -254,7 +252,7 @@ async def test_deployment_path_does_not_open_tool_stages_on_choice():
     wrap = DummyStageWrapper()
     chunk = _chunk(tool_calls=[_tool_call_delta(tool_id="call_1", name="my_tool", arguments="{}")])
 
-    handler = ChatCompletionStreamHandler()
+    handler = ChatCompletionStreamHandler.with_default_sinks()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(chunk),
         config=ChatStreamConfig(stage_wrapper=wrap),
