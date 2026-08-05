@@ -40,12 +40,19 @@ class ToolExecutor:
         adopted_tool_stages: dict[str, AdoptedToolStage] | None = None,
     ) -> list[ToolCallResult]:
         adopted = adopted_tool_stages if adopted_tool_stages is not None else {}
+        unknown_names = sorted({tc.name for tc in tool_call_list if tc.name not in self.__tools})
+        if unknown_names:
+            logger.error(
+                "Model requested unknown tool(s) %s; registered=%s",
+                unknown_names,
+                sorted(self.__tools),
+            )
+            raise RuntimeError(f"Unknown tool(s) requested by the model: {unknown_names}")
+
         valid_calls: list[AccumulatedToolCall] = []
         tasks = []
         for tc in tool_call_list:
-            tool = self.__tools.get(tc.name)
-            if tool is None:
-                continue
+            tool = self.__tools[tc.name]
             args = json.loads(tc.arguments)
             logger.debug("Making tool call: %s", tc.name)
             log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)

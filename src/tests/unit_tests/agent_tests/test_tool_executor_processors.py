@@ -131,3 +131,23 @@ class TestToolExecutorProcessors:
 
         assert captured[0].tool_name == "specific_tool"
         assert captured[0].tool_call_id == "call_abc"
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_raises_runtime_error(self):
+        known = _make_tool("known_tool", ToolCallResult(content="ok", content_type="text/plain"))
+        executor = ToolExecutor(
+            tools=[known],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+        )
+
+        with pytest.raises(RuntimeError, match="Unknown tool\\(s\\).*missing_tool"):
+            await executor.execute(
+                [
+                    _make_tool_call("missing_tool", tc_id="u1"),
+                    _make_tool_call("known_tool", tc_id="k1"),
+                ]
+            )
+
+        known.arun.assert_not_awaited()
