@@ -27,9 +27,7 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _RestApiTool(StagedBaseTool):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        _RestApiStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
     def __init__(
         self,

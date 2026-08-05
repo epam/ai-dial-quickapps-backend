@@ -47,8 +47,7 @@ def _make_orchestrator(
         choice=choice,
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=tool_executor
-        or Mock(execute=AsyncMock(return_value=[]), argument_stream_presentations={}),
+        tool_executor=tool_executor or Mock(execute=AsyncMock(return_value=[])),
         assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
         app_config=SimpleNamespace(
@@ -130,7 +129,7 @@ async def test_all_external_tool_calls_surfaced_with_correct_id_name_args():
         choice=choice,
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=Mock(execute=AsyncMock(return_value=[]), argument_stream_presentations={}),
+        tool_executor=Mock(execute=AsyncMock(return_value=[])),
         assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
         app_config=SimpleNamespace(
@@ -189,7 +188,6 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
 
     tool_executor = Mock(
         execute=AsyncMock(return_value=[tool_result]),
-        argument_stream_presentations={},
     )
 
     orch = Orchestrator(
@@ -249,7 +247,6 @@ async def test_all_internal_tools_loop_continues():
     tool_result.usage = None
     tool_executor = Mock(
         execute=AsyncMock(return_value=[tool_result]),
-        argument_stream_presentations={},
     )
 
     messages_context = Mock()
@@ -311,7 +308,6 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
     tool_result.usage = None
     tool_executor = Mock(
         execute=AsyncMock(return_value=[tool_result]),
-        argument_stream_presentations={},
     )
 
     messages_context = Mock()
@@ -371,7 +367,6 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
     tool_result.usage = None
     tool_executor = Mock(
         execute=AsyncMock(return_value=[tool_result]),
-        argument_stream_presentations={},
     )
 
     messages_context = Mock()

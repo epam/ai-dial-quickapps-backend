@@ -50,9 +50,7 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _PyInterpreterTool(StagedBaseTool):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        _PyInterpreterStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     # args_schema: Type[BaseModel] = InterpreterParameters
 

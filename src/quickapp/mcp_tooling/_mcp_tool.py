@@ -38,9 +38,7 @@ _EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
 
 @inject
 class _MCPTool(StagedBaseTool):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        _MCPStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
     def __init__(
         self,

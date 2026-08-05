@@ -29,9 +29,7 @@ _MAX_DEPTH = 10
 
 @inject
 class _DialFileTool(StagedBaseTool, ABC):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        _FileStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     def __init__(
         self,

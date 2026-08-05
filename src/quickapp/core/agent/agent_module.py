@@ -7,10 +7,13 @@ from injector import Binder, Module, NoScope, ProviderOf, multiprovider, provide
 from openai.lib.azure import AsyncAzureOpenAI
 
 from quickapp.common import (
+    ARGUMENT_STREAM_PRESENTATIONS,
     DIAL_API_KEY,
     DIAL_BEARER,
     EXTERNAL_TOOL_NAMES,
     ORCHESTRATOR_AZURE_CLIENT,
+    SUPPRESSED_TOOL_STAGE_NAMES,
+    TOOL_STAGE_DISPLAY_NAMES,
     ForwardedHeaders,
     StagedBaseTool,
 )
@@ -138,6 +141,47 @@ class AgentModule(Module):
         self, initializer: _OrchestratorDeploymentInitializer
     ) -> OrchestratorCapabilities:
         return initializer.capabilities
+
+    @multiprovider
+    @request_scope
+    def provide_argument_stream_presentations(
+        self, tools: list[StagedBaseTool]
+    ) -> ARGUMENT_STREAM_PRESENTATIONS:
+        presentations: ARGUMENT_STREAM_PRESENTATIONS = {}
+        for tool in tools:
+            name = tool.openai_function_name()
+            if not name:
+                continue
+            presentation = tool.build_argument_stream_presentation()
+            if presentation is not None:
+                presentations[name] = presentation
+        return presentations
+
+    @provider
+    @request_scope
+    def provide_suppressed_tool_stage_names(
+        self, tools: list[StagedBaseTool]
+    ) -> SUPPRESSED_TOOL_STAGE_NAMES:
+        return frozenset(
+            name
+            for tool in tools
+            if (name := tool.openai_function_name()) and tool.should_suppress_info_stage()
+        )
+
+    @multiprovider
+    @request_scope
+    def provide_tool_stage_display_names(
+        self, tools: list[StagedBaseTool]
+    ) -> TOOL_STAGE_DISPLAY_NAMES:
+        names: TOOL_STAGE_DISPLAY_NAMES = {}
+        for tool in tools:
+            name = tool.openai_function_name()
+            if not name:
+                continue
+            display = tool.stage_display_name()
+            if display:
+                names[name] = display
+        return names
 
     @provider
     def provide_openai_client(

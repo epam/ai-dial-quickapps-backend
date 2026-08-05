@@ -5,12 +5,9 @@ from aidial_sdk.chat_completion import Choice
 from injector import inject
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
-from quickapp.common.chat_completion_stream.argument_stream_presentation import (
-    ArgumentStreamPresentation,
-)
 from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.exceptions import (
@@ -39,9 +36,6 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
-    argument_stream_presentations: dict[str, ArgumentStreamPresentation] = Field(
-        default_factory=dict
-    )
 
 
 class ChatCompletionStreamHandler:
@@ -52,7 +46,7 @@ class ChatCompletionStreamHandler:
     @classmethod
     def with_default_sinks(cls) -> "ChatCompletionStreamHandler":
         """Construct with the standard sink factory (unit tests / non-DI callers)."""
-        return cls(ChatStreamSinkFactory())
+        return cls(ChatStreamSinkFactory.with_defaults())
 
     async def process_stream(
         self,
@@ -61,9 +55,8 @@ class ChatCompletionStreamHandler:
         config: ChatStreamConfig,
     ) -> ChatStreamAccumulator:
         pipeline = self._sink_factory.create(config)
-        for sink in pipeline.sinks:
-            sink.on_stream_start()
-        await self._run(chat_completion=chunks, sinks=pipeline.sinks)
+        pipeline.on_stream_start()
+        await self._run(chat_completion=chunks, sink=pipeline)
         self._log_stream_accumulator(pipeline.accumulator)
         return pipeline.accumulator
 
@@ -71,7 +64,7 @@ class ChatCompletionStreamHandler:
         self,
         *,
         chat_completion: AsyncIterable[ChatCompletionChunk],
-        sinks: list[ChatStreamSink],
+        sink: ChatStreamSink,
     ) -> None:
         succeeded = False
         try:
@@ -79,26 +72,23 @@ class ChatCompletionStreamHandler:
                 chat_completion,
                 parse_chat_completion_chunk,
             ):
-                self._apply_stream_event(event, sinks)
+                self._apply_stream_event(event, sink)
             succeeded = True
-            for sink in sinks:
-                sink.on_stream_success()
+            sink.on_stream_success()
         except (BadRequestError, APIError, ChatStreamHandlerError):
             raise
         except Exception as exc:
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
         finally:
             if not succeeded:
-                for sink in sinks:
-                    sink.on_stream_failure()
+                sink.on_stream_failure()
 
-    def _apply_stream_event(self, event: ChatStreamEvent, sinks: list[ChatStreamSink]) -> None:
+    @staticmethod
+    def _apply_stream_event(event: ChatStreamEvent, sink: ChatStreamSink) -> None:
         if isinstance(event, ChunkUsageFootprint):
-            for sink in sinks:
-                sink.on_usage(event)
+            sink.on_usage(event)
         elif isinstance(event, NormalizedChoiceDelta):
-            for sink in sinks:
-                sink.on_delta(event)
+            sink.on_delta(event)
         else:
             logger.warning("Unexpected event of type %s", type(event))
 

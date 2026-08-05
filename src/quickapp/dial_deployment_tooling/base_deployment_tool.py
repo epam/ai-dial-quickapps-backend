@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDeploymentTool(StagedBaseTool):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        DeploymentStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     def __init__(
         self,

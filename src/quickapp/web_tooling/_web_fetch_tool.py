@@ -50,9 +50,7 @@ class _WebFetchTool(StagedBaseTool):
     choice (``result.attachments`` stays empty).
     """
 
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = (
-        _WebFetchStageWrapper.argument_stream_mode
-    )
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     def __init__(
         self,

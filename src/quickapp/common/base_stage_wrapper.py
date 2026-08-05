@@ -1,24 +1,20 @@
 from abc import ABC, abstractmethod
 from types import TracebackType
-from typing import Any, ClassVar
+from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
 from quickapp.common import ToolCallResult
-from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.parameter_stage_format import (
     extract_parameters_config_map,
     render_config_map_parameters,
+    resolve_tool_stage_display_name,
 )
 from quickapp.config.tools.base import BaseTool
 from quickapp.config.tools.display.paramenter import FormattedParameterConfig
 
 
 class BaseStageWrapper(ABC):
-    # Opt-in: tools whose wrappers set this stream argument bodies into the stage.
-    # None = open stage early but keep static add_parameters at execute.
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
-
     def __init__(
         self,
         stage: Stage,
@@ -37,36 +33,16 @@ class BaseStageWrapper(ABC):
 
     def __enter__(self) -> "BaseStageWrapper":
         if self.__already_open:
-            # Stage was opened while tool-call arguments streamed; keep the
-            # provisional streaming name and skip Stage.__enter__ / re-open.
+            # Stage was opened while tool-call arguments streamed; skip re-open.
+            # Display name is resolved at create time (ChoiceUiSink).
             return self
         self.__stage.__enter__()
         self.__stage.append_name(self._get_display_name())
         return self
 
     def _get_display_name(self) -> str:
-        display_name = ""
-        if self.__tool_config:
-            if self.__tool_config.display:
-                display_config = self.__tool_config.display
-                if (
-                    display_config
-                    and display_config.stage
-                    and display_config.stage.show
-                    and display_config.stage.name
-                ):
-                    display_name = display_config.stage.name
-                elif self.name:
-                    display_name = self.name
-            elif hasattr(self.__tool_config, "open_ai_tool"):
-                display_name = (
-                    f"Calling {self.__tool_config.open_ai_tool.function.name} application"
-                )
-
-        if not display_name and self.name:
-            display_name = self.name
-
-        return display_name
+        resolved = resolve_tool_stage_display_name(self.__tool_config, self.name or None)
+        return resolved or ""
 
     def __exit__(
         self,

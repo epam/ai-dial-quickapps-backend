@@ -1,12 +1,11 @@
 import json
 import logging
-from typing import Any, ClassVar
+from typing import Any
 
 from injector import inject
 from pydantic import BaseModel
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
-from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.exceptions.tool_error import ToolErrorException
 from quickapp.common.response_formatter import ResponseFormatter
 from quickapp.common.utils import fenced_code_block
@@ -16,8 +15,6 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _MCPStageWrapper(TimedStageWrapper):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
-
     def _get_display_name(self) -> str:
         return self.name
 

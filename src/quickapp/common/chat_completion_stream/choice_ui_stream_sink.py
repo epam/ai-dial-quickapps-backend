@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from time import perf_counter
 
-from aidial_sdk.chat_completion import Choice, Stage, Status
+from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 
 from quickapp.common._stage_delta_types import (
@@ -59,14 +59,19 @@ class ChoiceUiSink(ChatStreamSink):
         stream_content: bool = True,
         propagate_stages: bool = False,
         argument_stream_presentations: dict[str, ArgumentStreamPresentation] | None = None,
+        suppressed_tool_stage_names: frozenset[str] | None = None,
+        tool_stage_display_names: dict[str, str] | None = None,
     ) -> None:
         self._accumulator = accumulator
         self._destination = destination
         self._stream_content = stream_content
         self._propagate_stages = propagate_stages
         self._argument_stream_presentations = argument_stream_presentations or {}
+        self._suppressed_tool_stage_names = suppressed_tool_stage_names or frozenset()
+        self._tool_stage_display_names = tool_stage_display_names or {}
         self._stages_by_index: dict[int, Stage] = {}
         self._tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
+        self._suppressed_tool_indexes: set[int] = set()
 
     def on_stream_start(self) -> None:
         destination = self._destination
@@ -121,7 +126,7 @@ class ChoiceUiSink(ChatStreamSink):
                 self._stream_stage_delta(stage_delta, position)
 
     @staticmethod
-    def _add_attachments(destination, attachments: list) -> None:
+    def _add_attachments(destination: Choice, attachments: list[Attachment]) -> None:
         if not attachments:
             return
         for attachment in attachments:
@@ -136,12 +141,22 @@ class ChoiceUiSink(ChatStreamSink):
         assert destination is not None
 
         index = tool_call.index
+        if index in self._suppressed_tool_indexes:
+            return
+
         state = self._tool_stages_by_index.get(index)
         if state is None:
             function_name = None
             if tool_call.function and tool_call.function.name:
                 function_name = tool_call.function.name
-            stage_name = f"Calling {function_name}" if function_name else None
+            if function_name is not None and function_name in self._suppressed_tool_stage_names:
+                self._suppressed_tool_indexes.add(index)
+                return
+            stage_name = None
+            if function_name is not None:
+                stage_name = self._tool_stage_display_names.get(
+                    function_name, f"Calling {function_name}"
+                )
             try:
                 stage = destination.create_stage(stage_name)
                 stage.open()
@@ -164,8 +179,25 @@ class ChoiceUiSink(ChatStreamSink):
             self._tool_stages_by_index[index] = state
 
         if not state.name_set and tool_call.function and tool_call.function.name:
+            function_name = tool_call.function.name
+            if function_name in self._suppressed_tool_stage_names:
+                self._suppressed_tool_indexes.add(index)
+                try:
+                    state.stage.close(status=Status.COMPLETED)
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to close suppressed streaming tool stage (index %s): %s",
+                        index,
+                        exc,
+                        exc_info=True,
+                    )
+                self._tool_stages_by_index.pop(index, None)
+                return
+            display_name = self._tool_stage_display_names.get(
+                function_name, f"Calling {function_name}"
+            )
             try:
-                state.stage.append_name(f"Calling {tool_call.function.name}")
+                state.stage.append_name(display_name)
                 state.name_set = True
             except Exception as exc:
                 logger.warning(
@@ -173,7 +205,7 @@ class ChoiceUiSink(ChatStreamSink):
                     index,
                     exc,
                 )
-            state.function_name = tool_call.function.name
+            state.function_name = function_name
             self._ensure_presenter(state)
 
         arguments_chunk = tool_call.function.arguments if tool_call.function else None

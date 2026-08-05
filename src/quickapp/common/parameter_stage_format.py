@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from quickapp.common.utils import fenced_code_block
 from quickapp.config.tools.base import BaseOpenAITool, BaseTool
@@ -17,14 +17,30 @@ def extract_parameters_config_map(
 ) -> dict[str, FormattedParameterConfig]:
     """Build param-name → stage display config from an OpenAI tool schema."""
     result: dict[str, FormattedParameterConfig] = {}
-    if tool_config is None or not issubclass(type(tool_config), BaseOpenAITool):
+    if not isinstance(tool_config, BaseOpenAITool):
         return result
-    openai_tool_config = cast(BaseOpenAITool, tool_config)
-    for prop_name, config in openai_tool_config.open_ai_tool.function.parameters.properties.items():
+    for prop_name, config in tool_config.open_ai_tool.function.parameters.properties.items():
         display_conf: ParameterDisplayConfig = config.display
         if display_conf and display_conf.stage:
             result[prop_name] = display_conf.stage
     return result
+
+
+def resolve_tool_stage_display_name(
+    tool_config: BaseTool | None,
+    stage_name_component: str | None = None,
+) -> str | None:
+    """Resolve the stage title used for a tool (config display name / fallbacks)."""
+    if tool_config is None:
+        return stage_name_component
+    display = tool_config.display
+    if display and display.stage and display.stage.show and display.stage.name:
+        return display.stage.name
+    if stage_name_component:
+        return stage_name_component
+    if isinstance(tool_config, BaseOpenAITool):
+        return f"Calling {tool_config.open_ai_tool.function.name} application"
+    return None
 
 
 def parameter_name_markdown(param_name: str, display_config: FormattedParameterConfig) -> str:

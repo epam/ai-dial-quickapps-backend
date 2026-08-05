@@ -1,9 +1,8 @@
-from typing import Any, ClassVar
+from typing import Any
 
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
-from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.exceptions import ToolErrorException
 from quickapp.common.utils import fenced_code_block
 from quickapp.web_tooling._truncation import split_truncation_notice
@@ -11,8 +10,6 @@ from quickapp.web_tooling._truncation import split_truncation_notice
 
 @inject
 class _WebFetchStageWrapper(TimedStageWrapper):
-    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
-
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return self._render_config_map_parameters(parameters)
 

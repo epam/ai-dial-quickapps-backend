@@ -3,31 +3,31 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict
 
-@dataclass(frozen=True)
-class KeyReady:
+
+class KeyReady(BaseModel):
+    model_config = ConfigDict(frozen=True)
     key: str
 
 
-@dataclass(frozen=True)
-class StringChars:
+class StringChars(BaseModel):
+    model_config = ConfigDict(frozen=True)
     key: str
     text: str
 
 
-@dataclass(frozen=True)
-class ValueComplete:
+class ValueComplete(BaseModel):
+    model_config = ConfigDict(frozen=True)
     key: str
     value: Any
 
 
-@dataclass(frozen=True)
-class ObjectDone:
-    pass
+class ObjectDone(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
 
 ArgumentStreamEvent = KeyReady | StringChars | ValueComplete | ObjectDone
@@ -107,7 +107,7 @@ class JsonObjectArgumentStreamer:
             if decoded is _StringDecode.DONE:
                 self._current_key = self._key_buf
                 self._phase = "after_key"
-                return [KeyReady(self._current_key)]
+                return [KeyReady(key=self._current_key)]
             if decoded is not _StringDecode.PENDING:
                 self._key_buf += decoded
             return []
@@ -162,10 +162,10 @@ class JsonObjectArgumentStreamer:
             key = self._current_key
             self._phase = "between_keys"
             self._string_parts = []
-            return [ValueComplete(key, value)]
+            return [ValueComplete(key=key, value=value)]
         if decoded is not _StringDecode.PENDING:
             self._string_parts.append(decoded)
-            return [StringChars(self._current_key, decoded)]
+            return [StringChars(key=self._current_key, text=decoded)]
         return []
 
     def _consume_raw_char(self, ch: str) -> list[ArgumentStreamEvent]:
@@ -214,7 +214,7 @@ class JsonObjectArgumentStreamer:
             value: Any = json.loads(raw)
         except json.JSONDecodeError:
             value = raw
-        return [ValueComplete(key, value)]
+        return [ValueComplete(key=key, value=value)]
 
     def _consume_string_char(self, ch: str) -> str | _StringDecode:
         """Decode one char inside a JSON string."""

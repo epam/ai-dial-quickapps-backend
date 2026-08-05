@@ -537,7 +537,6 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
 
 def _mock_tool_executor(*, execute=None):
     m = Mock()
-    m.argument_stream_presentations = {}
     if execute is not None:
         m.execute = execute
     return m

@@ -16,6 +16,7 @@ from quickapp.common.chat_completion_stream.argument_stream_presentation import 
     ArgumentStreamPresentation,
 )
 from quickapp.common.lifecycle_logging import format_duration, format_event
+from quickapp.common.parameter_stage_format import resolve_tool_stage_display_name
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
@@ -74,14 +75,16 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         return ArgumentStreamPresentation.from_tool_config(self._tool_config, mode)
 
     def openai_function_name(self) -> str | None:
-        tool_config = self._tool_config
-        open_ai_tool = getattr(tool_config, "open_ai_tool", None)
-        if open_ai_tool is None:
+        if not isinstance(self._tool_config, BaseOpenAITool):
             return None
-        function = getattr(open_ai_tool, "function", None)
-        if function is None:
-            return None
-        return getattr(function, "name", None)
+        return self._tool_config.open_ai_tool.function.name
+
+    def should_suppress_info_stage(self) -> bool:
+        """Whether INFO-level tool stages (incl. early stream stages) must be hidden."""
+        return self.__should_suppress(StageDisplayLevel.INFO)
+
+    def stage_display_name(self) -> str | None:
+        return resolve_tool_stage_display_name(self._tool_config, self.stage_name_component)
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(

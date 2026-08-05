@@ -11,9 +11,6 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ToolCallResultProcessor,
 )
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
-from quickapp.common.chat_completion_stream.argument_stream_presentation import (
-    ArgumentStreamPresentation,
-)
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -36,13 +33,6 @@ class ToolExecutor:
         self.__processors = sorted(processors, key=lambda p: p.order)
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
-        self.__argument_stream_presentations = self.__build_argument_stream_presentations(
-            self.__tools
-        )
-
-    @property
-    def argument_stream_presentations(self) -> dict[str, ArgumentStreamPresentation]:
-        return self.__argument_stream_presentations
 
     async def execute(
         self,
@@ -88,14 +78,3 @@ class ToolExecutor:
             if name:
                 tool_dict[name] = tool
         return tool_dict
-
-    @staticmethod
-    def __build_argument_stream_presentations(
-        tools: dict[str, StagedBaseTool],
-    ) -> dict[str, ArgumentStreamPresentation]:
-        presentations: dict[str, ArgumentStreamPresentation] = {}
-        for name, tool in tools.items():
-            presentation = tool.build_argument_stream_presentation()
-            if presentation is not None:
-                presentations[name] = presentation
-        return presentations

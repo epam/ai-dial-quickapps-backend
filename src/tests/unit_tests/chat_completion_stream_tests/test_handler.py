@@ -11,6 +11,7 @@ from quickapp.common.chat_completion_stream.argument_stream_presentation import 
     ArgumentStreamMode,
     ArgumentStreamPresentation,
 )
+from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamParseError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
@@ -32,6 +33,14 @@ def _py_interpreter_presentation() -> dict[str, ArgumentStreamPresentation]:
             },
         )
     }
+
+
+def _handler_with_py_interpreter_streaming() -> ChatCompletionStreamHandler:
+    return ChatCompletionStreamHandler(
+        ChatStreamSinkFactory.with_defaults(
+            argument_stream_presentations=_py_interpreter_presentation()
+        )
+    )
 
 
 async def _stream_from_chunks(*raw_chunks):
@@ -145,13 +154,12 @@ async def test_reasoning_stage_closes_completed_when_tool_calls_start():
         ]
     )
 
-    handler = ChatCompletionStreamHandler.with_default_sinks()
+    handler = _handler_with_py_interpreter_streaming()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(reasoning, tool),
         config=ChatStreamConfig(
             destination=choice,
             propagate_stages=True,
-            argument_stream_presentations=_py_interpreter_presentation(),
         ),
     )
 
@@ -183,13 +191,12 @@ async def test_tool_call_streams_decoded_code_parameter_not_raw_json():
         _chunk(tool_calls=[_tool_call_delta(arguments='print(1)\\npass"}')]),
     ]
 
-    handler = ChatCompletionStreamHandler.with_default_sinks()
+    handler = _handler_with_py_interpreter_streaming()
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(*chunks),
         config=ChatStreamConfig(
             destination=choice,
             propagate_stages=True,
-            argument_stream_presentations=_py_interpreter_presentation(),
         ),
     )
 
@@ -259,3 +266,23 @@ async def test_deployment_path_does_not_open_tool_stages_on_choice():
 
     assert acc.tool_calls is not None
     assert acc.adopted_tool_stages == {}
+
+
+@pytest.mark.asyncio
+async def test_suppressed_tool_does_not_create_or_adopt_stage():
+    choice = SpyChoice()
+    chunk = _chunk(
+        tool_calls=[_tool_call_delta(tool_id="call_1", name="hidden_tool", arguments='{"x":1}')]
+    )
+
+    handler = ChatCompletionStreamHandler(
+        ChatStreamSinkFactory.with_defaults(suppressed_tool_stage_names=frozenset({"hidden_tool"}))
+    )
+    acc = await handler.process_stream(
+        chunks=_stream_from_chunks(chunk),
+        config=ChatStreamConfig(destination=choice, propagate_stages=True),
+    )
+
+    assert choice.created_stages == []
+    assert acc.adopted_tool_stages == {}
+    assert not any(isinstance(c, StartStageChunk) for c in choice.drain_queue())
