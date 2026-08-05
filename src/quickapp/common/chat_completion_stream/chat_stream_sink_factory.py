@@ -2,27 +2,30 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
-from injector import inject
+from injector import ProviderOf, inject
 
-from quickapp.common._di_types import (
-    ARGUMENT_STREAM_PRESENTATIONS,
-    SUPPRESSED_TOOL_STAGE_NAMES,
-    TOOL_STAGE_DISPLAY_NAMES,
-)
 from quickapp.common.chat_completion_stream.accumulation_stream_sink import AccumulationSink
-from quickapp.common.chat_completion_stream.argument_stream_presentation import (
-    ArgumentStreamPresentation,
-)
 from quickapp.common.chat_completion_stream.choice_ui_stream_sink import ChoiceUiSink
 from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint, NormalizedChoiceDelta
 from quickapp.common.chat_completion_stream.stage_wrapper_ui_stream_sink import StageWrapperUiSink
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.chat_completion_stream.stream_sink import ChatStreamSink
+from quickapp.common.staged_base_tool import StagedBaseTool
 
 if TYPE_CHECKING:
     from quickapp.common.chat_completion_stream.handler import ChatStreamConfig
+
+
+def _tools_by_name(tools: list[StagedBaseTool]) -> dict[str, StagedBaseTool]:
+    by_name: dict[str, StagedBaseTool] = {}
+    for tool in tools:
+        name = tool.openai_function_name()
+        if name:
+            by_name[name] = tool
+    return by_name
 
 
 class ChatStreamPipeline(ChatStreamSink):
@@ -54,33 +57,24 @@ class ChatStreamPipeline(ChatStreamSink):
 
 
 class ChatStreamSinkFactory:
-    """Creates accumulator and sinks for one ``process_stream`` call."""
+    """Creates accumulator and sinks for one ``process_stream`` call.
+
+    Tools are resolved lazily so constructing the factory (e.g. while
+    AssistedBuilder builds a deployment tool) does not require
+    ``list[StagedBaseTool]`` yet — that would cycle through this factory.
+    """
 
     @inject
-    def __init__(
-        self,
-        argument_stream_presentations: ARGUMENT_STREAM_PRESENTATIONS,
-        suppressed_tool_stage_names: SUPPRESSED_TOOL_STAGE_NAMES,
-        tool_stage_display_names: TOOL_STAGE_DISPLAY_NAMES,
-    ) -> None:
-        self._argument_stream_presentations = argument_stream_presentations
-        self._suppressed_tool_stage_names = suppressed_tool_stage_names
-        self._tool_stage_display_names = tool_stage_display_names
+    def __init__(self, tools: ProviderOf[list[StagedBaseTool]]) -> None:
+        self._tools: Callable[[], list[StagedBaseTool]] = tools.get
 
     @classmethod
-    def with_defaults(
-        cls,
-        *,
-        argument_stream_presentations: dict[str, ArgumentStreamPresentation] | None = None,
-        suppressed_tool_stage_names: frozenset[str] | None = None,
-        tool_stage_display_names: dict[str, str] | None = None,
-    ) -> "ChatStreamSinkFactory":
+    def with_defaults(cls, tools: list[StagedBaseTool] | None = None) -> "ChatStreamSinkFactory":
         """Non-DI constructor for unit tests."""
-        return cls(
-            argument_stream_presentations or {},
-            suppressed_tool_stage_names or frozenset(),
-            tool_stage_display_names or {},
-        )
+        tool_list = tools or []
+        factory = cls.__new__(cls)
+        factory._tools = lambda: tool_list
+        return factory
 
     def create(self, config: ChatStreamConfig) -> ChatStreamPipeline:
         accumulator = ChatStreamAccumulator()
@@ -93,9 +87,7 @@ class ChatStreamSinkFactory:
                     destination=config.destination,
                     stream_content=config.stream_content,
                     propagate_stages=config.propagate_stages,
-                    argument_stream_presentations=self._argument_stream_presentations,
-                    suppressed_tool_stage_names=self._suppressed_tool_stage_names,
-                    tool_stage_display_names=self._tool_stage_display_names,
+                    tools_by_name=_tools_by_name(self._tools()),
                 ),
                 StageWrapperUiSink(
                     stage_wrapper=config.stage_wrapper,

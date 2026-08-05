@@ -17,7 +17,6 @@ from quickapp.common._stage_delta_types import (
 )
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.argument_stream_presentation import (
-    ArgumentStreamPresentation,
     StreamingArgumentPresenter,
 )
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamWriteError
@@ -32,6 +31,7 @@ from quickapp.common.chat_completion_stream.stream_result import (
 )
 from quickapp.common.chat_completion_stream.stream_sink import ChatStreamSink
 from quickapp.common.payload_logging import log_payload
+from quickapp.common.staged_base_tool import StagedBaseTool
 
 logger = logging.getLogger(__name__)
 
@@ -58,17 +58,13 @@ class ChoiceUiSink(ChatStreamSink):
         *,
         stream_content: bool = True,
         propagate_stages: bool = False,
-        argument_stream_presentations: dict[str, ArgumentStreamPresentation] | None = None,
-        suppressed_tool_stage_names: frozenset[str] | None = None,
-        tool_stage_display_names: dict[str, str] | None = None,
+        tools_by_name: dict[str, StagedBaseTool] | None = None,
     ) -> None:
         self._accumulator = accumulator
         self._destination = destination
         self._stream_content = stream_content
         self._propagate_stages = propagate_stages
-        self._argument_stream_presentations = argument_stream_presentations or {}
-        self._suppressed_tool_stage_names = suppressed_tool_stage_names or frozenset()
-        self._tool_stage_display_names = tool_stage_display_names or {}
+        self._tools_by_name = tools_by_name or {}
         self._stages_by_index: dict[int, Stage] = {}
         self._tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
         self._suppressed_tool_indexes: set[int] = set()
@@ -149,14 +145,12 @@ class ChoiceUiSink(ChatStreamSink):
             function_name = None
             if tool_call.function and tool_call.function.name:
                 function_name = tool_call.function.name
-            if function_name is not None and function_name in self._suppressed_tool_stage_names:
+            if function_name is not None and self._is_suppressed(function_name):
                 self._suppressed_tool_indexes.add(index)
                 return
             stage_name = None
             if function_name is not None:
-                stage_name = self._tool_stage_display_names.get(
-                    function_name, f"Calling {function_name}"
-                )
+                stage_name = self._display_name(function_name)
             try:
                 stage = destination.create_stage(stage_name)
                 stage.open()
@@ -180,7 +174,7 @@ class ChoiceUiSink(ChatStreamSink):
 
         if not state.name_set and tool_call.function and tool_call.function.name:
             function_name = tool_call.function.name
-            if function_name in self._suppressed_tool_stage_names:
+            if self._is_suppressed(function_name):
                 self._suppressed_tool_indexes.add(index)
                 try:
                     state.stage.close(status=Status.COMPLETED)
@@ -193,11 +187,8 @@ class ChoiceUiSink(ChatStreamSink):
                     )
                 self._tool_stages_by_index.pop(index, None)
                 return
-            display_name = self._tool_stage_display_names.get(
-                function_name, f"Calling {function_name}"
-            )
             try:
-                state.stage.append_name(display_name)
+                state.stage.append_name(self._display_name(function_name))
                 state.name_set = True
             except Exception as exc:
                 logger.warning(
@@ -213,10 +204,23 @@ class ChoiceUiSink(ChatStreamSink):
             return
         self._feed_argument_chunk(state, index, arguments_chunk)
 
+    def _is_suppressed(self, function_name: str) -> bool:
+        tool = self._tools_by_name.get(function_name)
+        return tool is not None and tool.should_suppress_info_stage()
+
+    def _display_name(self, function_name: str) -> str:
+        tool = self._tools_by_name.get(function_name)
+        if tool is not None:
+            resolved = tool.stage_display_name()
+            if resolved:
+                return resolved
+        return f"Calling {function_name}"
+
     def _ensure_presenter(self, state: _StreamingToolStageState) -> None:
         if state.presenter is not None or not state.function_name:
             return
-        presentation = self._argument_stream_presentations.get(state.function_name)
+        tool = self._tools_by_name.get(state.function_name)
+        presentation = tool.build_argument_stream_presentation() if tool is not None else None
         if presentation is None:
             state.pending_argument_chunks.clear()
             return

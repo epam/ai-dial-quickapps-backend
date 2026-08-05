@@ -23,22 +23,32 @@ from tests.unit_tests.stream_test_doubles import DummyStageWrapper, SpyChoice
 _PY_INTERPRETER = "internal_code_execution_python_interpreter"
 
 
-def _py_interpreter_presentation() -> dict[str, ArgumentStreamPresentation]:
-    return {
-        _PY_INTERPRETER: ArgumentStreamPresentation(
-            mode=ArgumentStreamMode.CONFIG_MAP,
-            parameters_config_map={
-                "title": FormattedParameterConfig(show_value_in_stage_title=True, ignore=True),
-                "code": FormattedParameterConfig(format="python", name="**Code to execute:**"),
-            },
-        )
-    }
+def _stub_tool(
+    *,
+    name: str,
+    presentation: ArgumentStreamPresentation | None = None,
+    suppress: bool = False,
+    display_name: str | None = None,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        openai_function_name=lambda: name,
+        build_argument_stream_presentation=lambda: presentation,
+        should_suppress_info_stage=lambda: suppress,
+        stage_display_name=lambda: display_name,
+    )
 
 
 def _handler_with_py_interpreter_streaming() -> ChatCompletionStreamHandler:
+    presentation = ArgumentStreamPresentation(
+        mode=ArgumentStreamMode.CONFIG_MAP,
+        parameters_config_map={
+            "title": FormattedParameterConfig(show_value_in_stage_title=True, ignore=True),
+            "code": FormattedParameterConfig(format="python", name="**Code to execute:**"),
+        },
+    )
     return ChatCompletionStreamHandler(
         ChatStreamSinkFactory.with_defaults(
-            argument_stream_presentations=_py_interpreter_presentation()
+            [_stub_tool(name=_PY_INTERPRETER, presentation=presentation)]  # type: ignore[list-item]
         )
     )
 
@@ -276,7 +286,9 @@ async def test_suppressed_tool_does_not_create_or_adopt_stage():
     )
 
     handler = ChatCompletionStreamHandler(
-        ChatStreamSinkFactory.with_defaults(suppressed_tool_stage_names=frozenset({"hidden_tool"}))
+        ChatStreamSinkFactory.with_defaults(
+            [_stub_tool(name="hidden_tool", suppress=True)]  # type: ignore[list-item]
+        )
     )
     acc = await handler.process_stream(
         chunks=_stream_from_chunks(chunk),
