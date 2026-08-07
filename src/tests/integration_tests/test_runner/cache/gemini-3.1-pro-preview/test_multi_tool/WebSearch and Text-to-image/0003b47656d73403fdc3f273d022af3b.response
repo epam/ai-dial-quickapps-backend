@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A high-quality, natural style image of Kyiv cityscape during a beautiful sunny summer day. The sky is partly sunny and bright, reflecting a warm 27\u00b0C (81\u00b0F) weather. The scene features recognizable Kyiv landmarks, lush green trees, and a realistic, natural atmosphere."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Tue, 21 Jul 2026 07:53:20 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-339c7a53-9013-4e2c-b146-15ab842f9b3b\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1784620457,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-339c7a53-9013-4e2c-b146-15ab842f9b3b\",\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":null,\"index\":0}],\"created\":1784620457,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-339c7a53-9013-4e2c-b146-15ab842f9b3b\",\"choices\":[{\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/684f6Lz7ubje66aoCRsa5c/appdata/gpt-image-1/images/2f3003d234fedc9246cd482d279e71a6a21e046008f36bbafc5bc448ff05c03b.png\"}]}},\"finish_reason\":null,\"index\":0}],\"created\":1784620457,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-339c7a53-9013-4e2c-b146-15ab842f9b3b\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1784620457,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

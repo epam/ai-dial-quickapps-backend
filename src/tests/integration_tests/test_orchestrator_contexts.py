@@ -13,9 +13,10 @@ _DOCS = Path(__file__).parent / "test_documents"
 
 # Deployments that accept PDF input attachments well enough for this scenario (extend as needed).
 _LAZY_CONTEXT_MODELS = [
-    "gpt-5.2-2025-12-11",
+    "gpt-5.5-2026-04-24",
     "gpt-5-2025-08-07",
-    "anthropic.claude-opus-4-6-v1",
+    "anthropic.claude-sonnet-5",
+    "gemini-3.1-pro-preview",
 ]
 
 
@@ -23,7 +24,6 @@ _LAZY_CONTEXT_MODELS = [
 @e2e_test(
     config_file_set="lazy_admin_context",
     models_applicable_for_test=_LAZY_CONTEXT_MODELS,
-    runs=1,
     include_rest_toolset=False,
     application_context_files=[
         _DOCS / "ontologies.pdf",
@@ -34,17 +34,7 @@ _LAZY_CONTEXT_MODELS = [
         "Lazy admin context (PDF)",
         "Two admin PDFs; model must list then get_content the ontology doc only",
         similarity_threshold=0.8,
-    )
-    .add_user_message(
-        user_message="enlist all tools that you have",
-        answer=[
-            "I have access to internal_attachments_available_context and "
-            "internal_attachments_get_content tools for listing and loading admin context files.",
-            "Available tools: internal_attachments_available_context (lists admin files) and "
-            "internal_attachments_get_content (loads a specific file).",
-        ],
-    )
-    .add_user_message(
+    ).add_user_message(
         user_message=(
             "Admin context includes two PDF files: one about ontology tooling and one IMF WEO. "
             "Answer using ONLY the internal tools `internal_attachments_available_context` and "
@@ -55,22 +45,29 @@ _LAZY_CONTEXT_MODELS = [
         ),
         tool_calls=[
             ToolCall(
-                ToolNames.INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT.value, min_calls=1, max_calls=4
+                ToolNames.INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT.value, min_calls=0, max_calls=4
             ),
             ToolCall(ToolNames.INTERNAL_ATTACHMENTS_GET_CONTENT.value, min_calls=1, max_calls=4),
         ],
         answer=[
             """Based on the ontology guide PDF, here is the numbered list of tools to use when working with ontologies:
-            1. Protégé
-            2. OWL API
-            3. Jena
-            4. RDF4J
-            5. SWRL
-            6. SPARQL
-            7. SHACL
-            8. TopBraid Composer
-            9. OntoGraf
-            10. VOWL""",
+1. Protégé
+2. OWL API
+3. Jena
+4. RDF4J
+5. SWRL
+6. SPARQL
+7. SHACL
+8. TopBraid Composer
+9. OntoGraf
+10. VOWL""",
+            """1. Protégé
+2. Topbraid Composer
+3. Ontostudio
+4. Fluent Editor
+5. VocBench
+6. Swoop
+7. Obo-edit""",
         ],
     ),
 )

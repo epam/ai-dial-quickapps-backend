@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A beautiful winter evening scene in Vilnius, Lithuania: snow-covered baroque architecture in the old town, colorful historic building facades with traditional Lithuanian architectural details peeking through snow, warm golden light glowing from windows, fresh pristine white snow blanketing narrow streets. Gediminas Tower is visible on a snowy hill in the background. Cathedral Square and its bell tower are partially visible, covered in snow. Street lamps cast a warm amber glow through the crisp winter air. Atmospheric, picturesque, detailed, elegant composition, no text, no watermark."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Tue, 21 Jul 2026 08:41:52 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-da739c0c-2cc4-4acf-9732-b58166a8a154\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1784623354,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-da739c0c-2cc4-4acf-9732-b58166a8a154\",\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":null,\"index\":0}],\"created\":1784623354,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-da739c0c-2cc4-4acf-9732-b58166a8a154\",\"choices\":[{\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/684f6Lz7ubje66aoCRsa5c/appdata/gpt-image-1/images/388e2e3aeff7bcb7e25191f0306b283df3ced73af623109977a91339b2f2b0a7.png\"}]}},\"finish_reason\":null,\"index\":0}],\"created\":1784623354,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-da739c0c-2cc4-4acf-9732-b58166a8a154\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1784623354,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}
