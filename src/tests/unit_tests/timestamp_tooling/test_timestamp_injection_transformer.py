@@ -40,24 +40,24 @@ def _make_transformer(
 
 class TestTimestampInjectionTransformer:
     @pytest.mark.asyncio
-    async def test_appends_two_synthetic_messages(self):
+    async def test_injects_two_synthetic_messages_before_user(self):
         transformer = _make_transformer()
         messages = [Message(role=Role.USER, content="hello")]
 
         result = await transformer.transform(messages)
 
         assert len(result) == 3
-        assert result[0] is messages[0]
-        assert result[1].role == Role.ASSISTANT
-        assert result[2].role == Role.TOOL
+        assert result[0].role == Role.ASSISTANT
+        assert result[1].role == Role.TOOL
+        assert result[2] is messages[0]
 
     @pytest.mark.asyncio
     async def test_synthetic_call_id_has_correct_prefix(self):
         transformer = _make_transformer()
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
-        assistant_msg = result[1]
-        tool_msg = result[2]
+        assistant_msg = result[0]
+        tool_msg = result[1]
 
         call_id = assistant_msg.tool_calls[0].id
         assert call_id.startswith(SYNTHETIC_TIMESTAMP_CALL_PREFIX)
@@ -68,7 +68,7 @@ class TestTimestampInjectionTransformer:
         transformer = _make_transformer()
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
-        assistant_msg = result[1]
+        assistant_msg = result[0]
         assert assistant_msg.tool_calls[0].function.name == CURRENT_TIMESTAMP_TOOL_NAME
 
     @pytest.mark.asyncio
@@ -76,7 +76,7 @@ class TestTimestampInjectionTransformer:
         transformer = _make_transformer()
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
-        tool_msg = result[2]
+        tool_msg = result[1]
         content = str(tool_msg.content)
         assert "UTC" in content
         assert "source=default" in content
@@ -114,7 +114,7 @@ class TestTimestampInjectionTransformer:
         )
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
-        tool_msg = result[2]
+        tool_msg = result[1]
         assert tool_msg.custom_content is not None
         metadata = get_metadata_from_state(tool_msg.custom_content.state)
         assert metadata is not None
@@ -127,5 +127,5 @@ class TestTimestampInjectionTransformer:
         transformer = _make_transformer()
         result = await transformer.transform([Message(role=Role.USER, content="hi")])
 
-        tool_msg = result[2]
+        tool_msg = result[1]
         assert tool_msg.custom_content is None
