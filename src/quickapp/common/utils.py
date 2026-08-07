@@ -89,10 +89,41 @@ def sanitize_filename(filename: str, replacement: str = "-") -> str:
     return sanitized
 
 
+# Office MIME types that ``mimetypes.guess_extension`` misses when the OS has no
+# ``/etc/mime.types`` (python:*-alpine / python:*-slim). Covered by the Alpine
+# ``mailcap`` package in Docker; this map keeps behaviour correct without it.
+_MIME_TYPE_TO_EXTENSION_FALLBACK: dict[str, str] = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+    "application/msword": ".doc",
+    "application/vnd.ms-excel": ".xls",
+    "application/vnd.ms-powerpoint": ".ppt",
+}
+
+
+def guess_attachment_extension(mime_type: str | None) -> str:
+    """Return a filename extension for ``mime_type``, or ``""`` if unknown.
+
+    Strips Content-Type parameters (e.g. ``; charset=utf-8``) before lookup.
+    Falls back to a small Office MIME map when the stdlib mime DB has no entry
+    (common on Alpine/slim images without ``/etc/mime.types``).
+    """
+    if mime_type is None:
+        return ""
+    base_type = mime_type.split(";", 1)[0].strip()
+    if not base_type:
+        return ""
+    extension = mimetypes.guess_extension(base_type)
+    if not extension:
+        extension = _MIME_TYPE_TO_EXTENSION_FALLBACK.get(base_type, "")
+    return extension or ""
+
+
 def generate_attachment_filename(mime_type: str | None, base_filename: str = "quick-app"):
-    extension = mimetypes.guess_extension(mime_type) if mime_type is not None else ""
+    extension = guess_attachment_extension(mime_type)
     timestamp = datetime.now().isoformat(timespec='microseconds')
-    filename = f"{base_filename}-{timestamp}{extension if extension is not None else ''}"
+    filename = f"{base_filename}-{timestamp}{extension}"
     return sanitize_filename(filename)
 
 
