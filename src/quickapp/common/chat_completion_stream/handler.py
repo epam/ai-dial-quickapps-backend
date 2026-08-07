@@ -1,36 +1,27 @@
 import logging
 from collections.abc import AsyncIterable
 
-from aidial_sdk.chat_completion import Choice, Stage, Status
+from aidial_sdk.chat_completion import Choice
+from injector import inject
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common._stage_delta_types import (
-    StageDeltaItem,
-    as_stage_delta,
-    attachment_kwargs,
-    get_stage_index,
-    stage_display_name,
-)
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.driver import iter_chat_completion_events
 from quickapp.common.chat_completion_stream.exceptions import (
     ChatStreamHandlerError,
     ChatStreamParseError,
-    ChatStreamWriteError,
 )
 from quickapp.common.chat_completion_stream.models import (
     ChatStreamEvent,
     ChunkUsageFootprint,
     NormalizedChoiceDelta,
-    NormalizedCustomContent,
 )
 from quickapp.common.chat_completion_stream.parse import parse_chat_completion_chunk
-from quickapp.common.chat_completion_stream.stream_result import (
-    ChatStreamAccumulator,
-    ensure_attachment_url_or_data,
-)
+from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
+from quickapp.common.chat_completion_stream.stream_sink import ChatStreamSink
 from quickapp.common.payload_logging import log_payload
 
 logger = logging.getLogger(__name__)
@@ -48,215 +39,58 @@ class ChatStreamConfig(BaseModel):
 
 
 class ChatCompletionStreamHandler:
+    @inject
+    def __init__(self, sink_factory: ChatStreamSinkFactory) -> None:
+        self._sink_factory = sink_factory
+
+    @classmethod
+    def with_default_sinks(cls) -> "ChatCompletionStreamHandler":
+        """Construct with the standard sink factory (unit tests / non-DI callers)."""
+        return cls(ChatStreamSinkFactory.with_defaults())
+
     async def process_stream(
         self,
         *,
         chunks: AsyncIterable[ChatCompletionChunk],
         config: ChatStreamConfig,
     ) -> ChatStreamAccumulator:
-        accumulator = ChatStreamAccumulator()
-        if config.stage_wrapper:
-            config.stage_wrapper.append_stage_content("> #### Response:\n")
-        elif config.destination is not None:
-            config.destination.append_content("\n\r")
-        await self._run(chat_completion=chunks, accumulator=accumulator, config=config)
-        self._log_stream_accumulator(accumulator)
-        return accumulator
+        pipeline = self._sink_factory.create(config)
+        pipeline.on_stream_start()
+        await self._run(chat_completion=chunks, sink=pipeline)
+        self._log_stream_accumulator(pipeline.accumulator)
+        return pipeline.accumulator
 
     async def _run(
         self,
         *,
         chat_completion: AsyncIterable[ChatCompletionChunk],
-        accumulator: ChatStreamAccumulator,
-        config: ChatStreamConfig,
+        sink: ChatStreamSink,
     ) -> None:
-        stages_by_index: dict[int, Stage] = {}
-
+        succeeded = False
         try:
             async for event in iter_chat_completion_events(
                 chat_completion,
                 parse_chat_completion_chunk,
             ):
-                self._apply_stream_event(accumulator, config, stages_by_index, event)
+                self._apply_stream_event(event, sink)
+            succeeded = True
+            sink.on_stream_success()
         except (BadRequestError, APIError, ChatStreamHandlerError):
             raise
         except Exception as exc:
             raise ChatStreamParseError("Failed to consume/parse chat completion stream.") from exc
         finally:
-            self._close_all_streaming_stages(stages_by_index, Status.FAILED)
-
-    def _apply_stream_event(
-        self,
-        accumulator: ChatStreamAccumulator,
-        config: ChatStreamConfig,
-        stages_by_index: dict[int, Stage],
-        event: ChatStreamEvent,
-    ) -> None:
-        if isinstance(event, ChunkUsageFootprint):
-            accumulator.apply_usage_footprint(event)
-        elif isinstance(event, NormalizedChoiceDelta):
-            self._handle_delta(accumulator, config, stages_by_index, event)
-        else:
-            logger.warning("Unexpected event of type %s", type(event))
-
-    def _handle_delta(
-        self,
-        accumulator: ChatStreamAccumulator,
-        config: ChatStreamConfig,
-        stages_by_index: dict[int, Stage],
-        delta: NormalizedChoiceDelta,
-    ) -> None:
-        if delta.content and config.stream_content:
-            dest = config.destination
-            wrap = config.stage_wrapper
-            try:
-                if dest is not None:
-                    dest.append_content(delta.content)
-                elif wrap is not None:
-                    wrap.append_stage_content(delta.content)
-            except Exception as exc:  # pragma: no cover - defensive
-                raise ChatStreamWriteError("Failed to stream content to destination") from exc
-            accumulator.append_content(delta.content)
-
-        if delta.custom is not None:
-            self._apply_custom(accumulator, config, stages_by_index, delta.custom)
-
-        for tool_call in delta.tool_calls:
-            accumulator.append_tool_call_delta(tool_call)
-
-    def _process_attachments_to_destination(self, attachments: list, destination) -> None:
-        """Process attachments: extend accumulator, ensure URL/data, and add to destination."""
-        if not attachments:
-            return
-        for attachment in attachments:
-            ensure_attachment_url_or_data(attachment)
-            try:
-                destination.add_attachment(attachment)
-            except Exception as exc:
-                raise ChatStreamWriteError("Failed to stream attachment.") from exc
-
-    def _apply_custom(
-        self,
-        accumulator: ChatStreamAccumulator,
-        config: ChatStreamConfig,
-        stages_by_index: dict[int, Stage],
-        norm: NormalizedCustomContent,
-    ) -> None:
-        dest = config.destination
-        wrap = config.stage_wrapper
-
-        if dest is not None and norm.attachments:
-            self._process_attachments_to_destination(norm.attachments, dest)
-        elif wrap is not None and norm.attachments:
-            self._process_attachments_to_destination(norm.attachments, wrap)
-        accumulator.extend_attachments(norm.attachments)
-
-        for position, raw in norm.stage_entries:
-            stage_delta = as_stage_delta(raw)
-            accumulator.append_stage_delta(stage_delta, position)
-            if config.propagate_stages and dest is not None:
-                self._stream_stage_delta(config, stages_by_index, stage_delta, position)
-
-        if norm.state is not None:
-            accumulator.merge_state(norm.state)
-
-    def _stream_stage_delta(
-        self,
-        config: ChatStreamConfig,
-        stages_by_index: dict[int, Stage],
-        delta: StageDeltaItem,
-        position: int,
-    ) -> None:
-        dest = config.destination
-        if dest is None:
-            return
-
-        idx = get_stage_index(delta, position)
-        stage_name = stage_display_name(delta)
-
-        stage = stages_by_index.get(idx)
-        just_created = False
-        if stage is None:
-            if not stage_name:
-                logger.warning(
-                    "Skipping stage delta propagation because stage name is missing (index=%s)", idx
-                )
-                log_payload(logger, "Stage delta with missing name: %s", delta)
-                return
-            try:
-                stage = dest.create_stage(stage_name)
-                stage.open()
-                stages_by_index[idx] = stage
-                just_created = True
-            except Exception as exc:
-                logger.warning(
-                    "Failed to create/open orchestrator stage '%s' (index %s): %s",
-                    stage_name,
-                    idx,
-                    exc,
-                    exc_info=True,
-                )
-                return
-
-        if not just_created and "name" in delta and delta["name"] is not None:
-            try:
-                stage.append_name(str(delta["name"]))
-            except Exception as exc:
-                logger.warning(
-                    "Failed to append name to streaming stage (index %s): %s",
-                    idx,
-                    exc,
-                )
-
-        if "content" in delta and delta["content"]:
-            try:
-                stage.append_content(str(delta["content"]))
-            except Exception as exc:  # pragma: no cover - defensive
-                label = stage_name or f"index {idx}"
-                raise ChatStreamWriteError(f"Failed to append content to stage '{label}'.") from exc
-
-        if "attachments" in delta and delta["attachments"]:
-            for att in delta["attachments"]:
-                if isinstance(att, dict):
-                    try:
-                        stage.add_attachment(**attachment_kwargs(att))
-                    except Exception as exc:
-                        logger.warning(
-                            "Failed to add attachment to streaming stage (index %s): %s",
-                            idx,
-                            exc,
-                        )
-
-        if "status" in delta and delta["status"] is not None:
-            status = (
-                Status.COMPLETED
-                if str(delta["status"]).lower() == Status.COMPLETED.value
-                else Status.FAILED
-            )
-            self._close_streaming_stage_at_index(stages_by_index, idx, status)
+            if not succeeded:
+                sink.on_stream_failure()
 
     @staticmethod
-    def _close_streaming_stage_at_index(
-        stages_by_index: dict[int, Stage], idx: int, status: Status
-    ) -> None:
-        stage = stages_by_index.pop(idx, None)
-        if stage is None:
-            return
-        try:
-            stage.close(status=status)
-        except Exception as exc:
-            logger.warning(
-                "Error closing orchestrator streaming stage (index %s): %s",
-                idx,
-                exc,
-                exc_info=True,
-            )
-
-    def _close_all_streaming_stages(
-        self, stages_by_index: dict[int, Stage], status: Status
-    ) -> None:
-        for idx in list(stages_by_index.keys()):
-            self._close_streaming_stage_at_index(stages_by_index, idx, status)
+    def _apply_stream_event(event: ChatStreamEvent, sink: ChatStreamSink) -> None:
+        if isinstance(event, ChunkUsageFootprint):
+            sink.on_usage(event)
+        elif isinstance(event, NormalizedChoiceDelta):
+            sink.on_delta(event)
+        else:
+            logger.warning("Unexpected event of type %s", type(event))
 
     @staticmethod
     def _log_stream_accumulator(result: ChatStreamAccumulator) -> None:

@@ -1,6 +1,6 @@
 import json
 import logging
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
@@ -15,6 +15,7 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -36,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class BaseDeploymentTool(StagedBaseTool):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
 
     def __init__(
         self,

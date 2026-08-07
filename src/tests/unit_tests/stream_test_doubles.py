@@ -1,4 +1,4 @@
-"""Real SDK / wrapper types for tests that construct ``ChatStreamConfig`` (Pydantic ``isinstance`` checks)."""
+"""Real SDK / wrapper types for tests that construct ``ChatStreamConfig``."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import asyncio
 from typing import Any
 from unittest.mock import MagicMock
 
-from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion import Choice, Stage
 
 from quickapp.common import ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
@@ -21,6 +21,7 @@ class SpyChoice(Choice):
         self.append_content_calls: list[str] = []
         self.add_attachment_kwargs: list[dict[str, Any]] = []
         self.set_state_calls: list[Any] = []
+        self.created_stages: list[Stage] = []
 
     def append_content(self, content: str) -> None:
         self.append_content_calls.append(content)
@@ -35,6 +36,17 @@ class SpyChoice(Choice):
     def set_state(self, state: Any) -> None:
         self.set_state_calls.append(state)
         return super().set_state(state)
+
+    def create_stage(self, name: str | None = None) -> Stage:
+        stage = super().create_stage(name)
+        self.created_stages.append(stage)
+        return stage
+
+    def drain_queue(self) -> list[Any]:
+        items: list[Any] = []
+        while not self._queue.empty():  # noqa: SLF001 - test helper
+            items.append(self._queue.get_nowait())
+        return items
 
 
 class DummyStageWrapper(BaseStageWrapper):

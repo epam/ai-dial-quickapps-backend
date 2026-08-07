@@ -1,5 +1,5 @@
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 import httpx
 from aidial_sdk.chat_completion import Attachment
@@ -8,6 +8,7 @@ from injector import AssistedBuilder, inject
 from quickapp.common import ForwardedHeaders, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.utils import generate_attachment_filename, matches_type
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _RestApiTool(StagedBaseTool):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
     def __init__(
         self,
