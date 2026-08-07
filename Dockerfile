@@ -17,7 +17,7 @@ RUN poetry install --no-interaction --no-ansi --no-cache --only main
 FROM python:3.13-alpine AS runtime
 
 RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat zlib musl musl-utils && \
-    apk add --no-cache ca-certificates
+    apk add --no-cache ca-certificates mailcap
 
 WORKDIR /app
 

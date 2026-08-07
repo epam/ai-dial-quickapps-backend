@@ -51,7 +51,8 @@ class TestStagedToolSyntheticInjector:
         result = await injector.transform(messages)
 
         assert len(result) == 3
-        assert result[2].content == "hello from tool"
+        assert result[1].content == "hello from tool"
+        assert result[2].content == "hi"
         tool.arun.assert_awaited_once()
 
     @pytest.mark.asyncio
@@ -98,6 +99,7 @@ class TestStagedToolSyntheticInjector:
         messages = [Message(role=Role.USER, content="hi")]
         result = await injector.transform(messages)
 
-        assert result[2].content == "from b"
+        assert result[1].content == "from b"
+        assert result[2].content == "hi"
         tool_a.arun.assert_not_awaited()
         tool_b.arun.assert_awaited_once()

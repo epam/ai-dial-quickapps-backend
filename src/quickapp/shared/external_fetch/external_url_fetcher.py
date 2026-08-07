@@ -1,7 +1,6 @@
 import asyncio
 import ipaddress
 import logging
-import mimetypes
 import re
 from email.message import Message
 from hashlib import sha256
@@ -13,7 +12,11 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.url_sanitization import sanitize_url_for_log
-from quickapp.common.utils import filename_from_url_path, sanitize_filename
+from quickapp.common.utils import (
+    filename_from_url_path,
+    guess_attachment_extension,
+    sanitize_filename,
+)
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -256,12 +259,8 @@ def _sanitize_external_filename(name: str) -> str:
 
 def _placeholder_filename(url: str, content_type: str | None) -> str:
     digest = sha256(url.encode("utf-8")).hexdigest()[:16]
-    # ``guess_extension`` returns ``None`` for parameterised types
-    # (e.g. ``text/plain; charset=utf-8``); strip parameters first so a
-    # well-known type still produces an extension.
-    base_type = content_type.split(";", 1)[0].strip() if content_type else None
-    extension = mimetypes.guess_extension(base_type) if base_type else None
-    return f"external-{digest}{extension or ''}"
+    extension = guess_attachment_extension(content_type)
+    return f"external-{digest}{extension}"
 
 
 def _derive_filename(response: httpx.Response, original_url: str, content_type: str | None) -> str:

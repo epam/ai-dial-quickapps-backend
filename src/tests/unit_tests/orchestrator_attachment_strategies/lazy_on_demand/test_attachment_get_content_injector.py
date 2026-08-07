@@ -86,10 +86,10 @@ class TestAttachmentGetContentInjector:
 
         assert len(result) == 6
         assert result[0].role == Role.USER
-        assert result[1].role == Role.USER
+        assert result[0].content == "first"
 
         tool_name = GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.name
-        for i, expected_url in [(2, "files/bucket/a.pdf"), (4, "files/bucket/b.csv")]:
+        for i, expected_url in [(1, "files/bucket/a.pdf"), (3, "files/bucket/b.csv")]:
             assistant = result[i]
             tool = result[i + 1]
             assert assistant.role == Role.ASSISTANT
@@ -106,6 +106,8 @@ class TestAttachmentGetContentInjector:
             assert tool.custom_content.attachments is not None
             assert len(tool.custom_content.attachments) == 1
             assert tool.custom_content.attachments[0].url == expected_url
+        assert result[5].role == Role.USER
+        assert result[5].content == "latest"
 
     @pytest.mark.asyncio
     async def test_no_injection_without_user_attachments(self):
@@ -126,7 +128,7 @@ class TestAttachmentGetContentInjector:
         assert len(second) == 3
 
     @pytest.mark.asyncio
-    async def test_inserts_after_last_user_with_attachments(self):
+    async def test_inserts_before_last_user_with_attachments(self):
         injector = _injector(["application/pdf"])
         messages = [
             _user_msg("turn1", [_attachment("old.pdf", "files/bucket/old.pdf", "application/pdf")]),
@@ -138,12 +140,14 @@ class TestAttachmentGetContentInjector:
 
         assert result[0].role == Role.USER
         assert result[1].role == Role.ASSISTANT
-        assert result[2].role == Role.USER
-        assert result[3].role == Role.ASSISTANT
-        assert result[4].role == Role.TOOL
-        assert result[4].custom_content is not None
-        assert result[4].custom_content.attachments is not None
-        assert result[4].custom_content.attachments[0].url == "files/bucket/new.pdf"
+        assert result[1].content == "done"
+        assert result[2].role == Role.ASSISTANT
+        assert result[3].role == Role.TOOL
+        assert result[3].custom_content is not None
+        assert result[3].custom_content.attachments is not None
+        assert result[3].custom_content.attachments[0].url == "files/bucket/new.pdf"
+        assert result[4].role == Role.USER
+        assert result[4].content == "turn2"
 
     @pytest.mark.asyncio
     async def test_skips_attachment_with_unsupported_mime(self):
@@ -160,10 +164,10 @@ class TestAttachmentGetContentInjector:
 
         result = await injector.transform(messages)
 
-        assert len(result) == 3  # USER + ASSIST + TOOL (only for the pdf)
-        assert result[2].custom_content is not None
-        assert result[2].custom_content.attachments is not None
-        assert result[2].custom_content.attachments[0].url == "files/bucket/a.pdf"
+        assert len(result) == 3  # ASSIST + TOOL + USER (only for the pdf)
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.attachments is not None
+        assert result[1].custom_content.attachments[0].url == "files/bucket/a.pdf"
 
     @pytest.mark.asyncio
     async def test_skips_all_attachments_when_none_accepted(self):
@@ -203,9 +207,9 @@ class TestAttachmentGetContentInjector:
         result = await injector.transform(messages)
 
         assert len(result) == 3
-        assert result[2].custom_content is not None
-        assert result[2].custom_content.attachments is not None
-        assert result[2].custom_content.attachments[0].url == "files/bucket/report.pdf"
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.attachments is not None
+        assert result[1].custom_content.attachments[0].url == "files/bucket/report.pdf"
 
     @pytest.mark.asyncio
     async def test_supports_wildcard_input_attachment_types(self):
@@ -224,9 +228,9 @@ class TestAttachmentGetContentInjector:
 
         # Only the PNG gets a synthetic pair.
         assert len(result) == 3
-        assert result[2].custom_content is not None
-        assert result[2].custom_content.attachments is not None
-        assert result[2].custom_content.attachments[0].url == "files/bucket/a.png"
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.attachments is not None
+        assert result[1].custom_content.attachments[0].url == "files/bucket/a.png"
 
 
 class TestExternalUrlPromotion:
@@ -249,7 +253,7 @@ class TestExternalUrlPromotion:
             "https://example.com/report.pdf", parameter_name="attachment_url"
         )
         assert len(result) == 3
-        user, assistant, tool = result
+        assistant, tool, user = result
         # the model keeps seeing the original external url it can reference
         assert user.custom_content is not None
         assert user.custom_content.attachments is not None
@@ -318,9 +322,9 @@ class TestExternalUrlPromotion:
 
         promoter.promote.assert_not_awaited()
         assert len(result) == 3
-        assert result[2].custom_content is not None
-        assert result[2].custom_content.attachments is not None
-        assert result[2].custom_content.attachments[0].url == "files/bucket/a.pdf"
+        assert result[1].custom_content is not None
+        assert result[1].custom_content.attachments is not None
+        assert result[1].custom_content.attachments[0].url == "files/bucket/a.pdf"
 
     @pytest.mark.asyncio
     async def test_unsupported_scheme_attachment_skipped(self):
@@ -358,9 +362,10 @@ class TestExternalUrlPromotion:
         promoter.promote.assert_awaited_once_with(
             "https://example.com/remote.pdf", parameter_name="attachment_url"
         )
-        assert len(result) == 5  # USER + two synthetic pairs
-        local_assistant, local_tool = result[1], result[2]
-        remote_assistant, remote_tool = result[3], result[4]
+        assert len(result) == 5  # two synthetic pairs + USER
+        local_assistant, local_tool = result[0], result[1]
+        remote_assistant, remote_tool = result[2], result[3]
+        assert result[4].role == Role.USER
         assert local_tool.custom_content is not None
         assert local_tool.custom_content.attachments is not None
         assert remote_tool.custom_content is not None
