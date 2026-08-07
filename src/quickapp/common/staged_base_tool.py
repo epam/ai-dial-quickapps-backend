@@ -2,14 +2,21 @@ import logging
 import sys
 import time
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, ClassVar
 
+from aidial_sdk.chat_completion import Status
 from injector import AssistedBuilder
 from pydantic import BaseModel, Field
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.chat_completion_stream.argument_stream_presentation import (
+    ArgumentStreamMode,
+    ArgumentStreamPresentation,
+)
 from quickapp.common.lifecycle_logging import format_duration, format_event
+from quickapp.common.parameter_stage_format import resolve_tool_stage_display_name
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.stage_close_registry import (
     DeferredStageCloseRegistry,
@@ -32,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
+    # Opt-in: when set, orchestrator streams argument bodies into the tool stage.
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
 
     def __init__(
         self,
@@ -58,6 +67,24 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     @property
     def tool_config(self):
         return self._tool_config
+
+    def build_argument_stream_presentation(self) -> ArgumentStreamPresentation | None:
+        mode = type(self).argument_stream_mode
+        if mode is None:
+            return None
+        return ArgumentStreamPresentation.from_tool_config(self._tool_config, mode)
+
+    def openai_function_name(self) -> str | None:
+        if not isinstance(self._tool_config, BaseOpenAITool):
+            return None
+        return self._tool_config.open_ai_tool.function.name
+
+    def should_suppress_info_stage(self) -> bool:
+        """Whether INFO-level tool stages (incl. early stream stages) must be hidden."""
+        return self.__should_suppress(StageDisplayLevel.INFO)
+
+    def stage_display_name(self) -> str | None:
+        return resolve_tool_stage_display_name(self._tool_config, self.stage_name_component)
 
     @abstractmethod  # pragma: no cover
     async def _run_in_stage_async(
@@ -102,25 +129,45 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         tool_call_id: str,
         *args: Any,
         stage_level: StageDisplayLevel = StageDisplayLevel.INFO,
+        adopted_stage: AdoptedToolStage | None = None,
         **kwargs: Any,
     ) -> ToolCallResult:
         if self.__should_suppress(stage_level):
+            self._discard_adopted_stage(adopted_stage)
             # Stage is suppressed, but we still route through __run_tool_body so that
             # tool exceptions are caught and converted to fallback results instead of
             # propagating unhandled and crashing the chat.
             return await self.__run_tool_body(tool_call_id, None, *args, **kwargs)
 
-        stage_wrapper = self.__stage_wrapper_builder.build(
-            tool_config=self._tool_config,
-            stage_name=self.stage_name_component,
-        )
+        if adopted_stage is not None:
+            stage_wrapper = self.__stage_wrapper_builder.build(
+                tool_config=self._tool_config,
+                stage_name=self.stage_name_component,
+                stage=adopted_stage.stage,
+                already_open=True,
+                start_time=adopted_stage.start_time,
+            )
+        else:
+            stage_wrapper = self.__stage_wrapper_builder.build(
+                tool_config=self._tool_config,
+                stage_name=self.stage_name_component,
+            )
         display = self._tool_config.display
         defer_close = bool(display and display.stage and display.stage.defer_close)
+        # If the stream already rendered the Request body, skip the full
+        # add_parameters dump to avoid duplicating formatted content.
+        skip_parameters = bool(adopted_stage is not None and adopted_stage.request_body_streamed)
 
         if defer_close:
             stage_wrapper.__enter__()
             try:
-                result = await self.__run_tool_body(tool_call_id, stage_wrapper, *args, **kwargs)
+                result = await self.__run_tool_body(
+                    tool_call_id,
+                    stage_wrapper,
+                    *args,
+                    skip_parameters=skip_parameters,
+                    **kwargs,
+                )
                 self.__deferred_stage_close_registry.defer_close(stage_wrapper)
                 return result
             except BaseException:
@@ -128,20 +175,40 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 raise
         else:
             with stage_wrapper:
-                return await self.__run_tool_body(tool_call_id, stage_wrapper, *args, **kwargs)
+                return await self.__run_tool_body(
+                    tool_call_id,
+                    stage_wrapper,
+                    *args,
+                    skip_parameters=skip_parameters,
+                    **kwargs,
+                )
+
+    @staticmethod
+    def _discard_adopted_stage(adopted_stage: AdoptedToolStage | None) -> None:
+        if adopted_stage is None:
+            return
+        try:
+            adopted_stage.stage.close(status=Status.COMPLETED)
+        except Exception as exc:
+            logger.warning("Failed to close discarded adopted tool stage: %s", exc, exc_info=True)
 
     async def __run_tool_body(
         self,
         tool_call_id: str,
         stage_wrapper: BaseStageWrapper | None,
         *args: Any,
+        skip_parameters: bool = False,
         **kwargs: Any,
     ) -> ToolCallResult:
         # The failure WARNING is written by _run_in_stage_report_success; here we only
         # translate it into stage UI and a fallback result (hands-onward layer).
         try:
             return await self._run_in_stage_report_success(
-                tool_call_id, stage_wrapper, *args, **kwargs
+                tool_call_id,
+                stage_wrapper,
+                *args,
+                skip_parameters=skip_parameters,
+                **kwargs,
             )
         except InvalidToolCallParameterException as e:
             self._report_error_to_stage(stage_wrapper, e)
@@ -214,6 +281,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         tool_call_id: str,
         stage_wrapper: BaseStageWrapper | None,
         *args: Any,
+        skip_parameters: bool = False,
         **kwargs: Any,
     ) -> ToolCallResult:
         tool_name = self._resolve_tool_name()
@@ -225,8 +293,13 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         try:
             params = await self._pre_process_params(**kwargs)
             if stage_wrapper:
-                # TODO: filter params ro remove attachment_urls if it's empty
-                stage_wrapper.add_parameters(params)
+                if skip_parameters:
+                    # Arguments were already streamed into the adopted stage; only
+                    # refine the title (e.g. py-interpreter ``title`` param).
+                    stage_wrapper.append_title_from_params(params)
+                else:
+                    # TODO: filter params ro remove attachment_urls if it's empty
+                    stage_wrapper.add_parameters(params)
             result: ToolCallResult = await self._run_in_stage_async(
                 stage_wrapper, tool_call_id, *args, **params
             )
