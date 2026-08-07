@@ -142,67 +142,96 @@ class ChoiceUiSink(ChatStreamSink):
 
         state = self._tool_stages_by_index.get(index)
         if state is None:
-            function_name = None
-            if tool_call.function and tool_call.function.name:
-                function_name = tool_call.function.name
-            if function_name is not None and self._is_suppressed(function_name):
-                self._suppressed_tool_indexes.add(index)
+            state = self._open_new_tool_stage(index, tool_call, destination)
+            if state is None:
                 return
-            stage_name = None
-            if function_name is not None:
-                stage_name = self._display_name(function_name)
+        elif not state.name_set:
+            if not self._try_apply_late_function_name(state, index, tool_call):
+                return
+
+        arguments_chunk = tool_call.function.arguments if tool_call.function else None
+        if arguments_chunk:
+            self._feed_argument_chunk(state, index, arguments_chunk)
+
+    def _open_new_tool_stage(
+        self,
+        index: int,
+        tool_call: ChoiceDeltaToolCall,
+        destination: Choice,
+    ) -> _StreamingToolStageState | None:
+        """Create and open a UI stage for a tool call we have not seen before.
+
+        Returns None if the tool is suppressed or the stage cannot be opened.
+        """
+        function_name = None
+        if tool_call.function and tool_call.function.name:
+            function_name = tool_call.function.name
+        if function_name is not None and self._is_suppressed(function_name):
+            self._suppressed_tool_indexes.add(index)
+            return None
+        stage_name = None
+        if function_name is not None:
+            stage_name = self._display_name(function_name)
+        try:
+            stage = destination.create_stage(stage_name)
+            stage.open()
+        except Exception as exc:
+            logger.warning(
+                "Failed to create/open streaming tool stage (index %s): %s",
+                index,
+                exc,
+                exc_info=True,
+            )
+            return None
+        state = _StreamingToolStageState(
+            stage=stage,
+            start_time=perf_counter(),
+            name_set=function_name is not None,
+        )
+        if function_name:
+            state.function_name = function_name
+            self._ensure_presenter(state)
+        self._tool_stages_by_index[index] = state
+        return state
+
+    def _try_apply_late_function_name(
+        self,
+        state: _StreamingToolStageState,
+        index: int,
+        tool_call: ChoiceDeltaToolCall,
+    ) -> bool:
+        """Apply the function name when it arrives in a subsequent chunk.
+
+        Returns False if the tool turned out to be suppressed (stage closed and removed).
+        """
+        if not tool_call.function or not tool_call.function.name:
+            return True
+        function_name = tool_call.function.name
+        if self._is_suppressed(function_name):
+            self._suppressed_tool_indexes.add(index)
             try:
-                stage = destination.create_stage(stage_name)
-                stage.open()
+                state.stage.close(status=Status.COMPLETED)
             except Exception as exc:
                 logger.warning(
-                    "Failed to create/open streaming tool stage (index %s): %s",
+                    "Failed to close suppressed streaming tool stage (index %s): %s",
                     index,
                     exc,
                     exc_info=True,
                 )
-                return
-            state = _StreamingToolStageState(
-                stage=stage,
-                start_time=perf_counter(),
-                name_set=function_name is not None,
+            self._tool_stages_by_index.pop(index, None)
+            return False
+        try:
+            state.stage.append_name(self._display_name(function_name))
+            state.name_set = True
+        except Exception as exc:
+            logger.warning(
+                "Failed to append name to streaming tool stage (index %s): %s",
+                index,
+                exc,
             )
-            if function_name:
-                state.function_name = function_name
-                self._ensure_presenter(state)
-            self._tool_stages_by_index[index] = state
-
-        if not state.name_set and tool_call.function and tool_call.function.name:
-            function_name = tool_call.function.name
-            if self._is_suppressed(function_name):
-                self._suppressed_tool_indexes.add(index)
-                try:
-                    state.stage.close(status=Status.COMPLETED)
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to close suppressed streaming tool stage (index %s): %s",
-                        index,
-                        exc,
-                        exc_info=True,
-                    )
-                self._tool_stages_by_index.pop(index, None)
-                return
-            try:
-                state.stage.append_name(self._display_name(function_name))
-                state.name_set = True
-            except Exception as exc:
-                logger.warning(
-                    "Failed to append name to streaming tool stage (index %s): %s",
-                    index,
-                    exc,
-                )
-            state.function_name = function_name
-            self._ensure_presenter(state)
-
-        arguments_chunk = tool_call.function.arguments if tool_call.function else None
-        if not arguments_chunk:
-            return
-        self._feed_argument_chunk(state, index, arguments_chunk)
+        state.function_name = function_name
+        self._ensure_presenter(state)
+        return True
 
     def _is_suppressed(self, function_name: str) -> bool:
         tool = self._tools_by_name.get(function_name)
