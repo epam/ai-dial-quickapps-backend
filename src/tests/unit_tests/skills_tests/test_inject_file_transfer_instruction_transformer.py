@@ -55,8 +55,8 @@ class TestInjectFileTransferInstructionTransformer:
         _assert_synthetic_pair(result, 0)
 
     @pytest.mark.asyncio
-    async def test_injects_after_first_user_message_with_system(self):
-        """Synthetic pair is inserted after the first USER message, not after SYSTEM."""
+    async def test_injects_before_last_user_message_with_system(self):
+        """Synthetic pair is inserted immediately before the last USER message."""
         messages = [
             Message(role=Role.SYSTEM, content="system prompt"),
             Message(role=Role.USER, content="hello"),
@@ -65,22 +65,22 @@ class TestInjectFileTransferInstructionTransformer:
 
         assert len(result) == 4
         assert result[0].role == Role.SYSTEM
-        assert result[1].role == Role.USER
-        _assert_synthetic_pair(result, 2)
+        _assert_synthetic_pair(result, 1)
+        assert result[3].role == Role.USER
 
     @pytest.mark.asyncio
-    async def test_injects_after_first_user_message_without_system(self):
-        """When there is no system message, inject after the first USER."""
+    async def test_injects_before_last_user_message_without_system(self):
+        """When there is no system message, inject before the last USER."""
         messages = [Message(role=Role.USER, content="hello")]
         result = await _make_transformer().transform(messages)
 
         assert len(result) == 3
-        assert result[0].role == Role.USER
-        _assert_synthetic_pair(result, 1)
+        _assert_synthetic_pair(result, 0)
+        assert result[2].role == Role.USER
 
     @pytest.mark.asyncio
-    async def test_injects_after_first_user_with_multiple_users(self):
-        """Synthetic pair is injected after the FIRST user message only."""
+    async def test_injects_before_last_user_with_multiple_users(self):
+        """Synthetic pair is injected immediately before the last USER message."""
         messages = [
             Message(role=Role.SYSTEM, content="system prompt"),
             Message(role=Role.USER, content="first"),
@@ -93,9 +93,9 @@ class TestInjectFileTransferInstructionTransformer:
         assert result[0].role == Role.SYSTEM
         assert result[1].role == Role.USER
         assert result[1].content == "first"
-        _assert_synthetic_pair(result, 2)
-        assert result[4].role == Role.ASSISTANT
-        assert result[4].content == "reply"
+        assert result[2].role == Role.ASSISTANT
+        assert result[2].content == "reply"
+        _assert_synthetic_pair(result, 3)
         assert result[5].role == Role.USER
         assert result[5].content == "second"
 
