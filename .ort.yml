@@ -120,7 +120,7 @@ resolutions:
     - message: ".*PyPI::cffi:2\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "MIT License: https://github.com/python-cffi/cffi/blob/main/LICENSE"
-    - message: ".*PyPI::cryptography:46\\..*"
+    - message: ".*PyPI::cryptography:50\\..*"
       reason: "CANT_FIX_EXCEPTION"
       comment: "Apache License 2.0 and BSD-3 License: https://github.com/pyca/cryptography/?tab=Apache-2.0-2-ov-file and https://github.com/pyca/cryptography/?tab=BSD-3-Clause-3-ov-file"
     - message: ".*PyPI::jeepney:0\\..*"
