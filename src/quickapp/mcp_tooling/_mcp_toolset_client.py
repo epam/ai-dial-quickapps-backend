@@ -9,7 +9,14 @@ from mcp import ClientSession, Tool
 from mcp.client.sse import sse_client
 from mcp.client.streamable_http import streamable_http_client
 from mcp.shared.exceptions import McpError
-from mcp.types import CallToolResult
+from mcp.types import (
+    BlobResourceContents,
+    CallToolResult,
+    InitializeResult,
+    Resource,
+    TextResourceContents,
+)
+from pydantic import AnyUrl as _AnyUrl
 
 from quickapp.common import DIAL_BEARER, ForwardedHeaders
 from quickapp.common.dial_settings import DialSettings
@@ -49,8 +56,9 @@ class _MCPToolsetClient:
     """Per-toolset MCP client: auth headers + tool operations.
 
     Builds the toolset's authorization headers and runs its tool operations
-    (``get_tools_list`` / ``call_mcp_tool``), borrowing a shared, request-scoped
-    session from :class:`_MCPSessionManager` rather than opening one per call.
+    (``get_tools_list`` / ``call_mcp_tool`` / ``read_mcp_resource``), borrowing a
+    shared, request-scoped session from :class:`_MCPSessionManager` rather than
+    opening one per call.
     """
 
     def __init__(
@@ -103,21 +111,18 @@ class _MCPToolsetClient:
         return headers
 
     @asynccontextmanager
-    async def __open_session(self, sse_read_timeout: float) -> AsyncIterator[ClientSession]:
-        """
-        Async context manager that yields an initialized ClientSession for the given server_info.
-        Builds headers, opens the underlying connection (SSE or streamable HTTP), initializes
-        the session, and ensures clean teardown.
+    async def __open_transport_session(
+        self, sse_read_timeout: float
+    ) -> AsyncIterator[tuple[ClientSession, InitializeResult]]:
+        """Internal transport setup — yields (session, InitializeResult).
 
-        Raises MCPUnauthorizedException if the MCP server returns HTTP 401.
+        Both ``__open_session`` (for the session manager) and ``open_init_session``
+        (for the initializer) delegate here to avoid duplication.
         """
         try:
             headers = await self.__build_headers(self.__toolset_info.mcp_server_info)
 
             if self.__toolset_info.mcp_server_info.protocol == MCPProtocol.streamable_http:
-                # streamable_http_client takes a caller-managed httpx client; mirror the MCP
-                # SDK's recommended client defaults (follow_redirects + the resolved tool
-                # timeout as the SSE read timeout).
                 http_client = httpx.AsyncClient(
                     headers=headers,
                     timeout=httpx.Timeout(_MCP_HTTP_TIMEOUT_SECONDS, read=sse_read_timeout),
@@ -129,8 +134,8 @@ class _MCPToolsetClient:
                         http_client=http_client,
                     ) as (read_stream, write_stream, _):
                         async with ClientSession(read_stream, write_stream) as session:
-                            await session.initialize()
-                            yield session
+                            init_result = await session.initialize()
+                            yield session, init_result
             elif self.__toolset_info.mcp_server_info.protocol == MCPProtocol.sse:
                 async with sse_client(
                     self.__toolset_info.mcp_server_info.url,
@@ -138,8 +143,8 @@ class _MCPToolsetClient:
                     sse_read_timeout=sse_read_timeout,
                 ) as (read_stream, write_stream):
                     async with ClientSession(read_stream, write_stream) as session:
-                        await session.initialize()
-                        yield session
+                        init_result = await session.initialize()
+                        yield session, init_result
             else:
                 raise ValueError(
                     f"Unsupported protocol: {self.__toolset_info.mcp_server_info.protocol}"
@@ -154,41 +159,92 @@ class _MCPToolsetClient:
                 raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from http_401
             raise
 
-    async def get_tools_list(self) -> list[Tool]:
-        """Return the tool list from the MCP server.
+    @asynccontextmanager
+    async def __open_session(self, sse_read_timeout: float) -> AsyncIterator[ClientSession]:
+        """Yields a ClientSession — thin wrapper for use by the session manager."""
+        async with self.__open_transport_session(sse_read_timeout) as (session, _):
+            yield session
 
-        Listing deliberately uses its own short-lived session rather than the
-        registry-held one. Listing runs during initialization, before the orchestrator
-        loop, so it is outside the registry teardown seam (the orchestrator's
-        ``_persisting_state()`` finally) — a registry session opened here would leak if
-        initialization failed before the loop. It is also read-only and runs for every
-        configured toolset, so the long-lived session is opened lazily on the first
-        ``call_mcp_tool`` instead, scoping it to toolsets the agent actually uses.
+    @asynccontextmanager
+    async def open_init_session(self) -> AsyncIterator[tuple[ClientSession, InitializeResult]]:
+        """Yields (session, InitializeResult) for the initializer.
+
+        Used by ``_MCPToolInitializer._process_toolset`` to load tools and resources
+        in one connection, capturing server capabilities from ``InitializeResult``.
         """
-        async with self.__open_session(self.__timeout_resolver.resolve()) as session:
-            current_cursor: str | None = None
-            all_tools: list[Tool] = []
+        async with self.__open_transport_session(self.__timeout_resolver.resolve()) as pair:
+            yield pair
 
-            iterations = 0
+    @staticmethod
+    async def get_tools_list(session: ClientSession) -> list[Tool]:
+        """Return the tool list from the MCP server using the provided session."""
+        current_cursor: str | None = None
+        all_tools: list[Tool] = []
 
-            while True:
-                iterations += 1
-                if iterations > MAX_ITERATIONS:
-                    msg = "Reached max of 1000 iterations while listing tools."
-                    raise RuntimeError(msg)
+        iterations = 0
 
-                list_tools_page_result = await session.list_tools(cursor=current_cursor)
+        while True:
+            iterations += 1
+            if iterations > MAX_ITERATIONS:
+                msg = "Reached max of 1000 iterations while listing tools."
+                raise RuntimeError(msg)
 
-                if list_tools_page_result.tools:
-                    all_tools.extend(list_tools_page_result.tools)
+            list_tools_page_result = await session.list_tools(cursor=current_cursor)
 
-                # Pagination spec: https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination
-                # compatible with None or ""
-                if not list_tools_page_result.nextCursor:
-                    break
+            if list_tools_page_result.tools:
+                all_tools.extend(list_tools_page_result.tools)
 
-                current_cursor = list_tools_page_result.nextCursor
-            return all_tools
+            # Pagination spec: https://modelcontextprotocol.io/specification/2025-06-18/server/utilities/pagination
+            # compatible with None or ""
+            if not list_tools_page_result.nextCursor:
+                break
+
+            current_cursor = list_tools_page_result.nextCursor
+        return all_tools
+
+    @staticmethod
+    async def get_resources_list(session: ClientSession) -> list[Resource]:
+        """Return the full resource list from the server using the provided session."""
+        current_cursor: str | None = None
+        all_resources: list[Resource] = []
+
+        iterations = 0
+
+        while True:
+            iterations += 1
+            if iterations > MAX_ITERATIONS:
+                msg = "Reached max of 1000 iterations while listing resources."
+                raise RuntimeError(msg)
+
+            result = await session.list_resources(cursor=current_cursor)
+
+            if result.resources:
+                all_resources.extend(result.resources)
+
+            if not result.nextCursor:
+                break
+
+            current_cursor = result.nextCursor
+        return all_resources
+
+    @staticmethod
+    async def read_resource_contents(
+            session: ClientSession, uri: str
+    ) -> list[TextResourceContents | BlobResourceContents]:
+        """Read resource content using the provided init session (used at init time)."""
+        result = await session.read_resource(_AnyUrl(uri))
+        return result.contents
+
+    async def read_mcp_resource(
+        self, uri: str
+    ) -> list[TextResourceContents | BlobResourceContents]:
+        """Read resource content on-demand, reusing the long-lived request session."""
+        timeout = self.__timeout_resolver.resolve()
+        session = await self.__session_manager.get_session(
+            self.__toolset_key, functools.partial(self.__open_session, timeout)
+        )
+        result = await session.read_resource(_AnyUrl(uri))
+        return result.contents
 
     async def call_mcp_tool(self, tool_name: str, **kwargs) -> CallToolResult:
         timeout = self.__timeout_resolver.resolve()
