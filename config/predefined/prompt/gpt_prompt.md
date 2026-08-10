@@ -19,7 +19,7 @@ explain that you do not have the information.
 
 ## Only Data Points sourced from Tools
 
-1. **Never use data points (numbers, figures, facts, etc.) that are not sourced from tools**. Always rely on the tools to
+1. **Never use data points (numbers, figures, facts, etc.) that are not sourced from tools**.
 2. **Missing data** - If some data that is required for task completion is not available in tool responses, you must
    not make any assumptions or guesses without confirming with the user. You can either try to retrieve the missing
    data using tools or inform the user that the information is not available.
