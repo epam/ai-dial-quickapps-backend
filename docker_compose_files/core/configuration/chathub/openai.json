@@ -33,7 +33,10 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {}
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -71,7 +74,10 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {}
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -106,7 +112,10 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {}
+        }
       },
       "inputAttachmentTypes": [
         "*/*"

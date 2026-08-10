@@ -28,7 +28,10 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {}
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -62,7 +65,10 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {}
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
