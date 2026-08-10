@@ -12,7 +12,7 @@ the message list at request setup time:
 | Transformer | Position | Idempotency |
 |---|---|---|
 | `_TimestampInjectionTransformer` | append at end | none (always re-injects) |
-| `_InjectFileTransferInstructionTransformer` | after first USER message | hardcoded `SYNTHETIC_TOOL_CALL_ID` constant |
+| `_InjectFileTransferInstructionTransformer` | before last USER message | hardcoded `SYNTHETIC_TOOL_CALL_ID` constant |
 | `_AttachmentNotificationInjector` | append at end | condition check on context URLs |
 
 Each class reimplements position splicing, call-id generation, and the `(ASSISTANT/tool_calls, TOOL)`
@@ -42,7 +42,7 @@ calls.
 ### UC-1: File-transfer skill injection (existing, migrated)
 
 **Trigger:** A chat request arrives for an agent with the skills feature enabled.
-**Behavior:** The skill content is injected after the first USER message using `APPEND_IF_CHANGED`.
+**Behavior:** The skill content is injected immediately before the last USER message using `APPEND_IF_CHANGED`.
 If the content is already present in history with the same hash, injection is skipped. If the skill
 content changes (e.g. after an update), a new pair is appended alongside the old one to preserve
 conversation history consistency.
@@ -52,7 +52,7 @@ on content change instead of silently keeping stale content.
 ### UC-2: Timestamp injection (existing, migrated)
 
 **Trigger:** Every chat request with `features.timestamp` configured.
-**Behavior:** A synthetic timestamp tool-call pair is appended at the end of the message list on
+**Behavior:** A synthetic timestamp tool-call pair is inserted immediately before the last USER message on
 every request.
 **Outcome:** Identical to the current `_TimestampInjectionTransformer` behavior.
 
@@ -78,8 +78,8 @@ holds. The condition is evaluated inside `get_content()`, which returns `None` t
 
 ```python
 class InjectionFrequency(StrEnum):
-    ALWAYS            = "always"             # always append a new pair at END; accumulates across turns
-    APPEND_IF_CHANGED = "append_if_changed"  # inject after first USER on first call; replace in place if content unchanged (re-stamps call_id); append at END if content changed
+    ALWAYS            = "always"             # always inject a new pair immediately before the last USER
+    APPEND_IF_CHANGED = "append_if_changed"  # inject before last USER on first call; replace in place if content unchanged (re-stamps call_id); inject before last USER if content changed
 ```
 
 Injection position is implicit in the frequency mode — there is no separate `InjectionPosition`
@@ -157,8 +157,8 @@ The base `transform` implementation is a two-stage dispatcher:
 
 | Frequency | Private method | Behavior |
 |---|---|---|
-| `ALWAYS` | `_inject_always` | Fetches content; uses a random `call_id`; appends at **END**. |
-| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id` via `make_call_id(tool, args, content)`. If a pair with matching tool+args+content already exists, **replaces it in place** (re-stamps call_id — e.g. updates TTL expiry). If content changed, appends at **END**. On first injection inserts **after the first USER message**. |
+| `ALWAYS` | `_inject_always` | Fetches content; uses a random `call_id`; inserts immediately before the **last USER**. |
+| `APPEND_IF_CHANGED` | `_inject_append_if_changed` | Fetches content; computes `call_id` via `make_call_id(tool, args, content)`. If a pair with matching tool+args+content already exists, **replaces it in place** (re-stamps call_id — e.g. updates TTL expiry). If content changed, inserts before the **last USER**. On first injection inserts before the **last USER**. |
 
 All methods return messages unchanged if `get_content()` returns `None`. All fall back to
 appending at END when no USER message exists.
@@ -292,9 +292,9 @@ custom position, idempotency, and pair-construction logic is deleted.
 
 | Injector | `get_frequency` | Notes |
 |---|---|---|
-| `_TimestampInjectionTransformer` | `ALWAYS` | Config check moved to `get_content` returning `None`; appends at END |
-| `_InjectFileTransferInstructionTransformer` | `APPEND_IF_CHANGED` | Migrated from `ONCE`; first inject after first USER, appends at END on content change |
-| `_AttachmentNotificationInjector` | `ALWAYS` | `should_activate_context_tool` check moved to `should_inject()`; appends at END |
+| `_TimestampInjectionTransformer` | `ALWAYS` | Config check moved to `get_content` returning `None`; inserts before last USER |
+| `_InjectFileTransferInstructionTransformer` | `APPEND_IF_CHANGED` | Migrated from `ONCE`; first inject before last USER, inserts before last USER on content change |
+| `_AttachmentNotificationInjector` | `ALWAYS` | `should_activate_context_tool` check moved to `should_inject()`; inserts before last USER |
 
 ---
 

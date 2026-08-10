@@ -358,11 +358,17 @@ def test_placeholder_filename_extension_falls_back_to_empty():
 
 
 def test_placeholder_filename_strips_content_type_parameters():
-    # ``mimetypes.guess_extension`` returns ``None`` for parameterised types
-    # like ``application/pdf; charset=binary``; strip parameters first so the
+    # Parameterised types are stripped before extension lookup so the
     # placeholder still gets a useful extension.
     out = _placeholder_filename("https://example.com/x", "application/pdf; charset=binary")
     assert out.endswith(".pdf")
+
+
+def test_placeholder_filename_office_fallback_when_guess_extension_missing():
+    mime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    with patch("quickapp.common.utils.mimetypes.guess_extension", return_value=None):
+        out = _placeholder_filename("https://example.com/x", mime)
+    assert out.endswith(".docx")
 
 
 def test_placeholder_filename_handles_whitespace_around_parameters():

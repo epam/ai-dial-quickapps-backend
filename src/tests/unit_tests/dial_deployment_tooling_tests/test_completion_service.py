@@ -48,7 +48,7 @@ def completion_service(azure_client, attachment_resolver):
     return DialCompletionService(
         azure_client,
         forwarded_headers=None,
-        stream_handler=ChatCompletionStreamHandler(),
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
     )
@@ -291,7 +291,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(
     service = DialCompletionService(
         azure_client,
         forwarded_headers=forwarded,
-        stream_handler=ChatCompletionStreamHandler(),
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
     )

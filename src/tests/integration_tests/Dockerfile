@@ -24,7 +24,8 @@ COPY ./integration_tests ./integration_tests
 
 # Stage 2: Test runtime (reuse app runtime base for infra)
 FROM python:3.13-alpine AS test-runtime
-RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat musl musl-utils
+RUN apk update && apk upgrade --no-cache libcrypto3 libssl3 libexpat musl musl-utils && \
+    apk add --no-cache mailcap
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
