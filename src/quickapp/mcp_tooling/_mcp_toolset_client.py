@@ -229,7 +229,7 @@ class _MCPToolsetClient:
 
     @staticmethod
     async def read_resource_contents(
-            session: ClientSession, uri: str
+        session: ClientSession, uri: str
     ) -> list[TextResourceContents | BlobResourceContents]:
         """Read resource content using the provided init session (used at init time)."""
         result = await session.read_resource(_AnyUrl(uri))
