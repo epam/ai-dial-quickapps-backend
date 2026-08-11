@@ -30,7 +30,9 @@
           }
         ],
         "features": {
-          "timestamp": {}
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
         }
       },
       "inputAttachmentTypes": [
@@ -67,7 +69,9 @@
           }
         ],
         "features": {
-          "timestamp": {}
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
         }
       },
       "inputAttachmentTypes": [

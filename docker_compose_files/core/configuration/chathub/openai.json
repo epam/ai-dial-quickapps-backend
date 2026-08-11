@@ -35,7 +35,9 @@
           "What tools do you have?"
         ],
         "features": {
-          "timestamp": {}
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
         }
       },
       "inputAttachmentTypes": [
@@ -76,7 +78,9 @@
           "What tools do you have?"
         ],
         "features": {
-          "timestamp": {}
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
         }
       },
       "inputAttachmentTypes": [
@@ -114,7 +118,9 @@
           "What tools do you have?"
         ],
         "features": {
-          "timestamp": {}
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
         }
       },
       "inputAttachmentTypes": [
