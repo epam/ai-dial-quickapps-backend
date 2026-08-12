@@ -33,7 +33,12 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -71,7 +76,12 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -106,7 +116,12 @@
           "What's the weather in London?",
           "What can you do?",
           "What tools do you have?"
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"

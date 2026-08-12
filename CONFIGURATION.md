@@ -371,9 +371,54 @@ The context loaded by URL:
 Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
 fields fall back to the deployment-wide defaults configured via environment variables.
 
-| Field                | Required | Type   | Description                                                                                                                  | Default Value |
-|----------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `external_url_fetch` | No       | Object | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration). | `{}`          |
+| Field                | Required | Type           | Description                                                                                                                                                                  | Default Value                          |
+|----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `timestamp`          | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
+| `external_url_fetch` | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+
+#### Timestamp configuration
+
+Enables [time awareness](docs/time_awareness.md): the current timestamp is injected at every user
+turn, a `current_timestamp` tool is registered for timezone conversion, and every tool response is
+annotated with the time it was produced.
+
+The feature is **enabled by default** - omitting `features` entirely, or omitting the `timestamp`
+key, yields the default configuration below. Set `"timestamp": null` to turn it off for an app; the
+tool, transformers, and metadata enricher are then not registered at all.
+
+| Field                | Required | Type   | Description                                                                                                | Available Values | Default Value |
+|----------------------|----------|--------|----------------------------------------------------------------------------------------------------------------|------------------|---------------|
+| `injection_strategy` | No       | String | How the current timestamp reaches the model. `tool_call` injects a synthetic `current_timestamp` tool-call and result immediately before the last user message. | `tool_call`      | `tool_call`   |
+
+`tool_call` is the only strategy available today, so you can leave the field out — `{}` behaves
+exactly like `{"injection_strategy": "tool_call"}`. Other strategies may be added in the future.
+
+<details>
+<summary><b>Timestamp configuration JSON sample</b></summary>
+
+Enable with the default strategy, stated explicitly:
+
+```json
+{
+  "features": {
+    "timestamp": {
+      "injection_strategy": "tool_call"
+    }
+  }
+}
+```
+
+Disable time awareness for this app:
+
+```json
+{
+  "features": {
+    "timestamp": null
+  }
+}
+```
+
+</details>
 
 #### External URL fetch configuration
 
