@@ -26,7 +26,7 @@ FAILURE_MESSAGE = (
     "and commit to repository"
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("__name__")
 
 # Specify all models that should be not cached.
 AGENT_MODELS = [

@@ -2,5 +2,5 @@ from enum import StrEnum
 
 
 class InjectionFrequency(StrEnum):
-    ALWAYS = "always"  # always inject a new pair immediately before the last USER
-    APPEND_IF_CHANGED = "append_if_changed"  # inject before last USER on first call; replace in place if unchanged; inject before last USER if content changed
+    ALWAYS = "always"  # always append a new pair; accumulates across turns
+    APPEND_IF_CHANGED = "append_if_changed"  # append new pair only if content changed since last injection for same tool+args
