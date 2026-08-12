@@ -28,18 +28,32 @@ When enabled, the feature provides three capabilities:
 
 ## How to enable
 
-Add a `features` section to the application config:
+The feature is enabled by default — no configuration is required. To state it explicitly, add a `features`
+section to the application config:
 
 ```json
 {
   "orchestrator": { "deployment": { "name": "gpt-4o" } },
   "features": {
-    "timestamp": {}
+    "timestamp": {
+      "injection_strategy": "tool_call"
+    }
   }
 }
 ```
 
-The feature is enabled by default. To explicitly disable it for a specific app, set `"timestamp": null`.
+To disable it for a specific app, set `"timestamp": null`.
+
+### Injection strategy
+
+`injection_strategy` controls how the current timestamp reaches the model. With `tool_call`, the agent
+receives the time as if it had called the `current_timestamp` tool just before the user's message — see
+[What the agent sees](#what-the-agent-sees) below.
+
+`tool_call` is the only strategy available today, so you can leave the field out — `"timestamp": {}` behaves
+exactly like the example above. Other strategies may be added in the future.
+
+See [Timestamp configuration](../CONFIGURATION.md#timestamp-configuration) for the reference table.
 
 ## What the agent sees
 
