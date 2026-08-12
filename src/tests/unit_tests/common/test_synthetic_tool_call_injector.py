@@ -141,21 +141,21 @@ def _assert_synthetic_pair(
 
 
 # ---------------------------------------------------------------------------
-# Tests: ALWAYS → before last USER
+# Tests: ALWAYS → END
 # ---------------------------------------------------------------------------
 
 
 class TestAlways:
     @pytest.mark.asyncio
-    async def test_injects_pair_before_last_user(self):
+    async def test_appends_pair_at_end(self):
         injector = _AlwaysInjector()
         messages = [_user("hello")]
 
         result = await injector.transform(messages)
 
         assert len(result) == 3
-        _assert_synthetic_pair(result, 0, "test_tool", "test content")
-        assert result[2] is messages[0]
+        assert result[0] is messages[0]
+        _assert_synthetic_pair(result, 1, "test_tool", "test content")
 
     @pytest.mark.asyncio
     async def test_accumulates_on_multiple_calls(self):
@@ -165,8 +165,7 @@ class TestAlways:
         result = await injector.transform(messages)
         result = await injector.transform(result)
 
-        assert len(result) == 5  # 2 pairs + 1 user
-        assert result[4].role == Role.USER
+        assert len(result) == 5  # 1 user + 2 pairs
 
     @pytest.mark.asyncio
     async def test_empty_messages_appends_pair(self):
@@ -181,8 +180,8 @@ class TestAlways:
         result1 = await injector.transform([_user("hi")])
         result2 = await injector.transform([_user("hi")])
 
-        id1 = _assert_synthetic_pair(result1, 0, "test_tool", "test content")
-        id2 = _assert_synthetic_pair(result2, 0, "test_tool", "test content")
+        id1 = _assert_synthetic_pair(result1, 1, "test_tool", "test content")
+        id2 = _assert_synthetic_pair(result2, 1, "test_tool", "test content")
         assert id1 != id2
 
 
@@ -193,20 +192,18 @@ class TestAlways:
 
 class TestAppendIfChanged:
     @pytest.mark.asyncio
-    async def test_injects_before_last_user_on_first_call(self):
+    async def test_injects_after_first_user_on_first_call(self):
         injector = _AppendIfChangedInjector()
         messages = [_user("first"), Message(role=Role.ASSISTANT, content="reply"), _user("second")]
 
         result = await injector.transform(messages)
 
+        # Injected after first user message
         assert len(result) == 5
         assert result[0].role == Role.USER
-        assert result[0].content == "first"
-        assert result[1].role == Role.ASSISTANT
-        assert result[1].content == "reply"
-        _assert_synthetic_pair(result, 2, "append_tool", "append content")
+        _assert_synthetic_pair(result, 1, "append_tool", "append content")
+        assert result[3].role == Role.ASSISTANT
         assert result[4].role == Role.USER
-        assert result[4].content == "second"
 
     @pytest.mark.asyncio
     async def test_skips_when_content_unchanged(self):
@@ -218,7 +215,7 @@ class TestAppendIfChanged:
         assert len(result2) == 3  # unchanged
 
     @pytest.mark.asyncio
-    async def test_injects_before_last_user_when_content_changed(self):
+    async def test_appends_at_end_when_content_changed(self):
         injector = _AppendIfChangedInjector(content="v1")
         result = await injector.transform([_user("hello")])
         assert len(result) == 3
@@ -226,20 +223,19 @@ class TestAppendIfChanged:
         injector._content = "v2"
         result = await injector.transform(result)
 
-        # v1 preserved, v2 injected before last USER
+        # v1 preserved, v2 appended at end
         assert len(result) == 5
-        _assert_synthetic_pair(result, 0, "append_tool", "v1")
-        _assert_synthetic_pair(result, 2, "append_tool", "v2")
-        assert result[4].role == Role.USER
+        _assert_synthetic_pair(result, 1, "append_tool", "v1")
+        _assert_synthetic_pair(result, 3, "append_tool", "v2")
 
     @pytest.mark.asyncio
     async def test_uses_deterministic_call_id(self):
         injector = _AppendIfChangedInjector()
         id1 = _assert_synthetic_pair(
-            await injector.transform([_user("hi")]), 0, "append_tool", "append content"
+            await injector.transform([_user("hi")]), 1, "append_tool", "append content"
         )
         id2 = _assert_synthetic_pair(
-            await injector.transform([_user("hi")]), 0, "append_tool", "append content"
+            await injector.transform([_user("hi")]), 1, "append_tool", "append content"
         )
         assert id1 == id2
         assert id1.startswith("synth_t_")
@@ -266,11 +262,10 @@ class TestAppendIfChangedDifferentArgs:
         result = await injector_b.transform(result)
 
         assert len(result) == 5
-        # injector_b runs second and inserts before last USER, after injector_a's pair
-        id_a = _assert_synthetic_pair(result, 0, "param_tool", "content for {'key': 'a'}")
-        id_b = _assert_synthetic_pair(result, 2, "param_tool", "content for {'key': 'b'}")
+        # injector_b runs second and inserts at AFTER_FIRST_USER, pushing injector_a's pair to [3]
+        id_b = _assert_synthetic_pair(result, 1, "param_tool", "content for {'key': 'b'}")
+        id_a = _assert_synthetic_pair(result, 3, "param_tool", "content for {'key': 'a'}")
         assert id_a != id_b
-        assert result[4].role == Role.USER
 
     @pytest.mark.asyncio
     async def test_deduplicated_when_args_and_content_same(self):
@@ -350,7 +345,7 @@ class TestEnrichment:
         injector = _AppendIfChangedInjector(enrichers=[_StampingEnricher("seen")])
         result = await injector.transform([_user("hi")])
 
-        tool_msg = result[1]
+        tool_msg = result[2]
         assert tool_msg.custom_content is not None
         assert tool_msg.custom_content.state == {"marker": "seen"}
 
@@ -359,7 +354,7 @@ class TestEnrichment:
         injector = _AppendIfChangedInjector()
         result = await injector.transform([_user("hi")])
 
-        tool_msg = result[1]
+        tool_msg = result[2]
         assert tool_msg.custom_content is None
 
     @pytest.mark.asyncio
@@ -375,7 +370,7 @@ class TestEnrichment:
         )
         result = await injector.transform([_user("hi")])
 
-        tool_msg = result[1]
+        tool_msg = result[2]
         assert tool_msg.custom_content is not None
         assert tool_msg.custom_content.state == {"marker": "first", "extra": "yes"}
 
@@ -384,7 +379,7 @@ class TestEnrichment:
         injector = _AppendIfChangedInjector(enrichers=[_StampingEnricher()])
         result = await injector.transform([_user("hi")])
 
-        assistant_msg = result[0]
+        assistant_msg = result[1]
         assert assistant_msg.custom_content is None
 
 
@@ -410,7 +405,7 @@ class TestCustomCallIdPrefix:
 
         injector = _PrefixedInjector()
         result = await injector.transform([_user("hi")])
-        call_id = _assert_synthetic_pair(result, 0, "prefixed_tool", "content")
+        call_id = _assert_synthetic_pair(result, 1, "prefixed_tool", "content")
         assert call_id.startswith("my_prefix_")
 
 
@@ -450,14 +445,14 @@ class TestReplaceInPlace:
 
         result = await injector.transform(messages)
         assert len(result) == 3
-        old_call_id = _assert_synthetic_pair(result, 0, "timed_tool", "same")
+        old_call_id = _assert_synthetic_pair(result, 1, "timed_tool", "same")
         assert "_ttl_" in old_call_id
 
         injector._ttl_expiry_seconds = 2000  # different expiry → different call_id
         result2 = await injector.transform(result)
 
         assert len(result2) == 3  # replaced in place, not appended
-        new_call_id = _assert_synthetic_pair(result2, 0, "timed_tool", "same")
+        new_call_id = _assert_synthetic_pair(result2, 1, "timed_tool", "same")
         assert new_call_id != old_call_id  # call_id updated with new expiry
 
     @pytest.mark.asyncio
@@ -472,21 +467,20 @@ class TestReplaceInPlace:
         injector._ttl_expiry_seconds = 2000
         result2 = await injector.transform(result)
 
-        assert len(result2) == 5  # old pair kept, new before last USER
-        _assert_synthetic_pair(result2, 0, "timed_tool", "v1")
-        _assert_synthetic_pair(result2, 2, "timed_tool", "v2")
-        assert result2[4].role == Role.USER
+        assert len(result2) == 5  # old pair kept, new appended
+        _assert_synthetic_pair(result2, 1, "timed_tool", "v1")
+        _assert_synthetic_pair(result2, 3, "timed_tool", "v2")
 
     @pytest.mark.asyncio
     async def test_call_id_contains_ttl_marker_when_expiry_set(self):
         injector = _TTLStampingInjector(content="data", ttl_expiry_seconds=9999)
         result = await injector.transform([_user("hi")])
-        call_id = _assert_synthetic_pair(result, 0, "timed_tool", "data")
+        call_id = _assert_synthetic_pair(result, 1, "timed_tool", "data")
         assert "_ttl_" in call_id
 
     @pytest.mark.asyncio
     async def test_call_id_has_no_ttl_marker_when_expiry_not_set(self):
         injector = _TTLStampingInjector(content="data", ttl_expiry_seconds=None)
         result = await injector.transform([_user("hi")])
-        call_id = _assert_synthetic_pair(result, 0, "timed_tool", "data")
+        call_id = _assert_synthetic_pair(result, 1, "timed_tool", "data")
         assert "_ttl_" not in call_id

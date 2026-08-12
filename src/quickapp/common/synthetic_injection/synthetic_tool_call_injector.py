@@ -107,9 +107,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         if content is None:
             return messages
         call_id = self.make_call_id(tool_name, arguments, uuid4().hex[:12])
-        return self._inject_at(
-            messages, _before_last_user_idx(messages), tool_name, call_id, arguments, content
-        )
+        return self._inject_at(messages, len(messages), tool_name, call_id, arguments, content)
 
     async def _inject_append_if_changed(
         self, messages: list[Message], tool_name: str, arguments: dict
@@ -131,11 +129,9 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
             new_pair = _build_pair(tool_name, call_id, arguments, content, state)
             return messages[:pair_idx] + list(new_pair) + messages[pair_idx + 2 :]
 
-        # First inject and content-changed both land immediately before the last USER
-        # so the latest user turn remains the final message the model sees.
-        return self._inject_at(
-            messages, _before_last_user_idx(messages), tool_name, call_id, arguments, content
-        )
+        has_prior_args = _has_any_pair_with_prefix(messages, args_prefix)
+        idx = len(messages) if has_prior_args else _after_first_user_idx(messages)
+        return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
 
     def _inject_at(
         self,
@@ -175,12 +171,18 @@ def _hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
 
 
-def _before_last_user_idx(messages: list[Message]) -> int:
-    """Return the index of the last USER message, or len(messages) if none."""
-    for i in range(len(messages) - 1, -1, -1):
-        if messages[i].role == Role.USER:
-            return i
-    return len(messages)
+def _after_first_user_idx(messages: list[Message]) -> int:
+    return next(
+        (i + 1 for i, m in enumerate(messages) if m.role == Role.USER),
+        len(messages),
+    )
+
+
+def _has_any_pair_with_prefix(messages: list[Message], id_prefix: str) -> bool:
+    return any(
+        m.role == Role.TOOL and m.tool_call_id is not None and m.tool_call_id.startswith(id_prefix)
+        for m in messages
+    )
 
 
 def _find_pair_with_args_and_content(

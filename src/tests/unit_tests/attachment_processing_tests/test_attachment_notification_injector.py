@@ -47,13 +47,9 @@ def _make_injector(contexts: list[Context] = None) -> _AttachmentNotificationInj
     )
 
 
-def _extract_latest_synthetic(result: list[Message]) -> list[Message]:
-    """Return the synthetic ASSISTANT/TOOL pair immediately before the last USER."""
-    for i in range(len(result) - 1, -1, -1):
-        if result[i].role == Role.USER:
-            assert i >= 2
-            return result[i - 2 : i]
-    raise AssertionError("expected a USER message")
+def _extract_synthetic(result: list[Message], original_count: int) -> list[Message]:
+    """Return only the synthetic messages appended after the original ones."""
+    return result[original_count:]
 
 
 class TestNoChanges:
@@ -82,10 +78,9 @@ class TestContextInjection:
         result = await injector.transform(messages)
         # Original + assistant tool_call + tool result for context
         assert len(result) == 3
-        assert result[0].role == Role.ASSISTANT
-        assert result[0].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
-        assert result[2].role == Role.USER
-        data = json.loads(result[1].content)
+        assert result[1].role == Role.ASSISTANT
+        assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
+        data = json.loads(result[2].content)
         assert len(data["entries"]) == 1
         assert data["entries"][0]["title"] == "ref.csv"
         assert data["entries"][0]["url"] == "files/bucket/ref.csv"
@@ -127,7 +122,7 @@ class TestContextInjection:
         injector2 = _make_injector(contexts=contexts)
         result2 = await injector2.transform(result1)
         assert len(result2) == 5  # 3 original + 2 new synthetic
-        synthetic = _extract_latest_synthetic(result2)
+        synthetic = _extract_synthetic(result2, 3)
         data2 = json.loads(synthetic[1].content)
         assert len(data2["entries"]) == 1
         assert data2["entries"][0]["title"] == "ref.pdf"
@@ -153,7 +148,7 @@ class TestContextInjection:
         injector2 = _make_injector(contexts=contexts)
         result2 = await injector2.transform(messages)
         assert len(result2) == 3
-        data2 = json.loads(result2[1].content)
+        data2 = json.loads(result2[2].content)
         assert len(data2["entries"]) == 2
         by_title = {e["title"]: e for e in data2["entries"]}
         assert by_title["a.csv"]["status"] == "new"
@@ -170,7 +165,7 @@ class TestContextInjection:
         injector4 = _make_injector(contexts=contexts)
         result3 = await injector4.transform(result2)
         assert len(result3) == 5  # 3 original + 2 new synthetic
-        synthetic3 = _extract_latest_synthetic(result3)
+        synthetic3 = _extract_synthetic(result3, 3)
         data3 = json.loads(synthetic3[1].content)
         assert len(data3["entries"]) == 2
         by_title3 = {e["title"]: e for e in data3["entries"]}
@@ -184,7 +179,7 @@ class TestContextInjection:
         injector5 = _make_injector(contexts=contexts)
         result4 = await injector5.transform(result3)
         assert len(result4) == 7  # 5 original + 2 new synthetic
-        synthetic4 = _extract_latest_synthetic(result4)
+        synthetic4 = _extract_synthetic(result4, 5)
         data4 = json.loads(synthetic4[1].content)
         assert len(data4["entries"]) == 1
         assert data4["entries"][0]["title"] == "a.csv"
@@ -201,7 +196,7 @@ class TestContextInjection:
         injector1 = _make_injector(contexts=[ctx])
         result1 = await injector1.transform(messages)
         assert len(result1) == 3
-        data1 = json.loads(result1[1].content)
+        data1 = json.loads(result1[2].content)
         assert data1["entries"][0]["status"] == "new"
         assert data1["entries"][0]["description"] == "V1"
 
@@ -210,7 +205,7 @@ class TestContextInjection:
         injector2 = _make_injector(contexts=[ctx_v2])
         result2 = await injector2.transform(result1)
         assert len(result2) == 5  # 3 original + 2 new synthetic
-        synthetic2 = _extract_latest_synthetic(result2)
+        synthetic2 = _extract_synthetic(result2, 3)
         data2 = json.loads(synthetic2[1].content)
         assert data2["entries"][0]["status"] == "updated"
         assert data2["entries"][0]["description"] == "V2"
