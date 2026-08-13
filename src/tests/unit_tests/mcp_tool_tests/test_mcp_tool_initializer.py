@@ -1,4 +1,5 @@
 import base64
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import httpx
@@ -26,6 +27,25 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
 )
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+
+
+def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
+    """Configure conn.open_init_session to yield (mock_session, mock_init_result)."""
+    session = MagicMock()
+    init_result = MagicMock()
+    init_result.serverInfo.name = "test-server"
+    init_result.serverInfo.version = "1.0"
+    init_result.protocolVersion = "2025-03-26"
+    init_result.capabilities.tools = MagicMock() if supports_tools else None
+    init_result.capabilities.resources = None
+    init_result.capabilities.prompts = None
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session, init_result
+
+    conn.open_init_session = _ctx
+    return session
 
 
 def build_side_effect(tool, tool_config):
@@ -147,6 +167,7 @@ def mcp_tool2(
 def toolset_client_with_tools(tool1, tool2):
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(return_value=[tool1, tool2])
+    _setup_open_init_session(conn)
     return conn
 
 
@@ -253,8 +274,10 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
     # Two toolset clients, each returning one tool
     conn1 = MagicMock()
     conn1.get_tools_list = AsyncMock(return_value=[tool1])
+    _setup_open_init_session(conn1)
     conn2 = MagicMock()
     conn2.get_tools_list = AsyncMock(return_value=[tool2])
+    _setup_open_init_session(conn2)
 
     # Builder returns conn1 for first toolset, conn2 for second
     toolset_client_builder = MagicMock()
@@ -541,6 +564,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=outer)
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
