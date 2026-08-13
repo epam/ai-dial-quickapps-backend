@@ -71,16 +71,11 @@ class _AttachmentGetContentInjector(MessagesTransformer):
     def _has_pair_in_current_turn(
         self,
         messages: list[Message],
-        last_user_idx: int,
+        current_turn_start: int,
         tool_name: str,
         arguments: dict[str, Any],
     ) -> bool:
-        """Return True if a matching synthetic pair sits in the block before last_user_idx."""
-        i = last_user_idx - 1
-        while i >= 0 and messages[i].role in (Role.ASSISTANT, Role.TOOL):
-            i -= 1
-        block_start = i + 1
-        for i in range(block_start, last_user_idx):
+        for i in range(current_turn_start, len(messages)):
             msg = messages[i]
             if msg.role != Role.ASSISTANT or not msg.tool_calls:
                 continue
@@ -94,7 +89,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
                     continue
                 if any(
                     candidate.role == Role.TOOL and candidate.tool_call_id == tc.id
-                    for candidate in messages[i + 1 : last_user_idx]
+                    for candidate in messages[i + 1 :]
                 ):
                     return True
         return False
@@ -193,7 +188,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
 
         tool_name = GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.name
         result_messages = list(messages)
-        insert_idx = last_user_idx
+        insert_idx = last_user_idx + 1
         inserted = 0
 
         input_attachment_types = self.__orchestrator_capabilities.input_attachment_types
@@ -216,7 +211,7 @@ class _AttachmentGetContentInjector(MessagesTransformer):
             # model to drop the prefix on this and other file tools.
             arguments = {"attachment_url": to_file_url_reference(original_url)}
             if self._has_pair_in_current_turn(
-                result_messages, last_user_idx + inserted, tool_name, arguments
+                result_messages, last_user_idx + 1, tool_name, arguments
             ):
                 continue
 

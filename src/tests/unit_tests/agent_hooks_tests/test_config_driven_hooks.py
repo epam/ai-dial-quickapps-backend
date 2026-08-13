@@ -147,10 +147,9 @@ class TestTransformIntegration:
         hook = _make_hook("my_tool", frequency=InjectionFrequency.ALWAYS, tools=[tool])
         messages = [Message(role=Role.USER, content="hi")]
         result = await hook.transform(messages)
-        # ASSISTANT tool_call + TOOL result + original USER
+        # Original USER message + ASSISTANT tool_call + TOOL result
         assert len(result) == 3
-        assert result[1].content == "injected content"
-        assert result[2].content == "hi"
+        assert result[2].content == "injected content"
 
 
 # ---------------------------------------------------------------------------
@@ -273,7 +272,7 @@ class TestTTLEndToEnd:
             result = await hook.transform(messages)
 
         assert len(result) == 3
-        old_call_id = result[0].tool_calls[0].id  # type: ignore[index]
+        old_call_id = result[1].tool_calls[0].id  # type: ignore[index]
         assert "_ttl_" in old_call_id
 
         # TTL expired
@@ -283,7 +282,7 @@ class TestTTLEndToEnd:
             result2 = await hook.transform(result)
 
         assert len(result2) == 3  # replaced in place, not appended
-        new_call_id = result2[0].tool_calls[0].id  # type: ignore[index]
+        new_call_id = result2[1].tool_calls[0].id  # type: ignore[index]
         assert new_call_id != old_call_id  # TTL expiry updated
 
     @pytest.mark.asyncio
@@ -307,7 +306,7 @@ class TestTTLEndToEnd:
             mock_time.time.return_value = expired_time
             result2 = await hook.transform(result)
 
-        assert len(result2) == 5  # old pair kept + new pair before last USER
+        assert len(result2) == 5  # old pair kept + new pair appended
 
     @pytest.mark.asyncio
     async def test_skips_when_ttl_not_expired(self):

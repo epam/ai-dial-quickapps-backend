@@ -1,10 +1,13 @@
 """Tests that verify the pre-transformer pipeline ordering using DI.
 
-The contract the model sees is the **message-list order**: all synthetic
-ASSISTANT/TOOL pairs land immediately before the last USER message. Later
-transformers insert closer to that USER, so with the current DI registration
-order (``AttachmentProcessingModule`` before ``LazyOnDemandStrategyModule``)
-the final list is ``context notification → get-content → last USER``.
+The contract the model sees is the **message-list order**: the get-content
+synthetic pair lands before the context-notification pair, regardless of which
+transformer runs first. The runtime execution order today is
+``_AttachmentNotificationInjector -> _AttachmentGetContentInjector`` (because
+``AttachmentProcessingModule`` is registered before ``LazyOnDemandStrategyModule``
+in ``app_factory.py``), but this is incidental — each injector picks its own
+insertion site (``InjectionFrequency.ALWAYS`` end-append vs. after-last-USER),
+so the final list ordering is invariant to execution order.
 
 - ``_AddSystemPromptTransformer`` ensures a system message exists at the start of the conversation.
 - ``_AttachmentGetContentInjector`` injects synthetic ``internal_attachments_get_content``
@@ -106,17 +109,16 @@ def test_context_file_notified_via_synthetic_tool_call():
 
         result = await messages_setup.run_transformers(messages_setup.extract_tool_calls(messages))
 
-        # Context notification + original USER
+        # Original + synthetic assistant tool_call + tool result
         assert len(result) == 3
-        assert result[0].role == Role.ASSISTANT
-        assert result[0].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
+        assert result[1].role == Role.ASSISTANT
+        assert result[1].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
 
-        data = json.loads(result[1].content)
+        data = json.loads(result[2].content)
         assert len(data["entries"]) == 1
         assert data["entries"][0]["title"] == "reference.pdf"
         assert data["entries"][0]["url"] == "files/bucket/reference.pdf"
         assert data["entries"][0]["status"] == "new"
-        assert result[2].role == Role.USER
 
         return {"message": "success"}
 
@@ -141,20 +143,20 @@ def test_user_attachment_text_and_context_tool_call():
 
         result = await messages_setup.run_transformers(messages_setup.extract_tool_calls(messages))
 
-        # Context notification + get_content pair + original USER
+        # Original message + 2 synthetic get_content messages + 2 synthetic context messages
         assert len(result) == 5
 
-        assert result[0].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
-        data = json.loads(result[1].content)
-        assert data["entries"][0]["title"] == "ref.csv"
-
         get_content_tool_name = GET_CONTENT_TOOL_CONFIG.open_ai_tool.function.name
-        assert result[2].tool_calls[0].function.name == get_content_tool_name
-        assert result[3].role == Role.TOOL
-        assert result[3].custom_content is not None
-        assert result[3].custom_content.attachments is not None
-        assert result[3].custom_content.attachments[0].url == "/files/doc.pdf"
-        assert result[4].role == Role.USER
+        assert result[1].tool_calls[0].function.name == get_content_tool_name
+        assert result[2].role == Role.TOOL
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == "/files/doc.pdf"
+
+        # Context notified via synthetic tool call
+        assert result[3].tool_calls[0].function.name == AVAILABLE_CONTEXT_TOOL_NAME
+        data = json.loads(result[4].content)
+        assert data["entries"][0]["title"] == "ref.csv"
 
         return {"message": "success"}
 
