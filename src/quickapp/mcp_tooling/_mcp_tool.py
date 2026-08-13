@@ -17,7 +17,12 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.url_sanitization import sanitize_url_for_log
-from quickapp.common.utils import generate_attachment_filename, matches_type
+from quickapp.common.utils import (
+    filename_from_url_path,
+    generate_attachment_filename,
+    matches_type,
+    sanitize_filename,
+)
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
@@ -140,6 +145,16 @@ class _MCPTool(StagedBaseTool):
             files_to_share.extend(candidates)
         return files_to_share
 
+    def _resource_title(self, resource: Any) -> str:
+        """Use the filename the MCP server put in ``resource.uri``, when it has one."""
+        uri = getattr(resource, "uri", None)
+        name = filename_from_url_path(str(uri)) if uri else None
+        if name:
+            return sanitize_filename(name)
+        return generate_attachment_filename(
+            getattr(resource, "mimeType", None), base_filename=self.__tool.name
+        )
+
     def _content_to_attachment(self, content: Any) -> Attachment | None:
         ctype = getattr(content, "type", None)
 
@@ -155,9 +170,7 @@ class _MCPTool(StagedBaseTool):
 
         if ctype == "resource":
             resource = getattr(content, "resource", None)
-            title = generate_attachment_filename(
-                getattr(resource, "mimeType", None), base_filename=self.__tool.name
-            )
+            title = self._resource_title(resource)
             if isinstance(resource, TextResourceContents):
                 return Attachment(
                     title=title,
