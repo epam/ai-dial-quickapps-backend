@@ -38,9 +38,6 @@ dependencies = [
     "common>=0.1.2,<0.2.0",                       # Shared utilities
     "pyyaml (>=6.0.2,<7.0.0)",                    # YAML parsing
 
-    # Security: pinned minimum versions to satisfy CVE requirements
-    "setuptools>=78.1.1",                          # CVE-2025-47273
-    "msgpack>=1.2.1",                              # GHSA-6v7p-g79w-8964
 ]
 homepage = "https://dialx.ai"
 repository = "https://github.com/epam/ai-dial-quickapps-backend"
