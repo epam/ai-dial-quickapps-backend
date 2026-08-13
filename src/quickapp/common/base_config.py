@@ -22,6 +22,7 @@ _PREVIEW_MARKER = "x-preview"
 _LEGACY_ALIAS_PROPAGATED_KEYS: tuple[str, ...] = (
     DialJSONSchemaExtensions.RESOURCE,
     DialJSONSchemaExtensions.FILE,
+    DialJSONSchemaExtensions.LOCALIZED,
     "format",
 )
 
@@ -133,6 +134,34 @@ def _dial_resource_config_field(default: Any = ..., **kwargs) -> FieldInfo:
             if callable(original_extra):
                 original_extra(schema)
             schema[DialJSONSchemaExtensions.RESOURCE] = True
+
+        json_schema_extra = new_extra
+
+    kwargs["json_schema_extra"] = json_schema_extra
+    return Field(default, **kwargs)
+
+
+def _dial_localized_field(
+    default: Any = ..., *, property_kind: DialPropertyKind = "server", **kwargs
+) -> FieldInfo:
+    """
+    Create a Pydantic Field that supports LocalizedString (str | dict[str, str]).
+
+    Adds ``dial:localized: true`` to ``json_schema_extra`` so the schema generator
+    can move it into ``dial:meta`` alongside ``propertyKind`` and ``propertyOrder``.
+    """
+    json_schema_extra = kwargs.get("json_schema_extra", {})
+    if isinstance(json_schema_extra, dict):
+        json_schema_extra[DialJSONSchemaExtensions.PROPERTY_KIND] = property_kind
+        json_schema_extra[DialJSONSchemaExtensions.LOCALIZED] = True
+    else:
+        original_extra = json_schema_extra
+
+        def new_extra(schema):
+            if callable(original_extra):
+                original_extra(schema)
+            schema[DialJSONSchemaExtensions.PROPERTY_KIND] = property_kind
+            schema[DialJSONSchemaExtensions.LOCALIZED] = True
 
         json_schema_extra = new_extra
 
@@ -448,11 +477,13 @@ class BaseApplicationTypeConfig(BaseModel):
     _dial_application_type_display_name: ClassVar[str]
     _dial_append_application_properties_header: ClassVar[bool] = False
     _dial_assistant_attachments_in_request_supported: ClassVar[bool] = True
+    _dial_default_locale: ClassVar[str] = "en"
 
     _schema_attributes_order: ClassVar[list[str]] = [
         DialJSONSchemaExtensions.DISPLAY_NAME,
         DialJSONSchemaExtensions.APPEND_APP_PROPERTIES_HEADER,
         DialJSONSchemaExtensions.ASSISTANT_ATTACHMENTS_IN_REQUEST,
+        DialJSONSchemaExtensions.DEFAULT_LOCALE,
         "type",
         "$id",
         "$schema",
@@ -528,10 +559,15 @@ class BaseApplicationTypeConfig(BaseModel):
                 field_info = model_fields[prop_name]
                 property_kind = cls._get_property_kind(field_info)
 
-            prop_schema[DialJSONSchemaExtensions.META] = {
+            meta: dict[str, Any] = {
                 DialJSONSchemaExtensions.PROPERTY_KIND: property_kind,
                 DialJSONSchemaExtensions.PROPERTY_ORDER: idx + 1,
             }
+            if DialJSONSchemaExtensions.LOCALIZED in prop_schema:
+                meta[DialJSONSchemaExtensions.LOCALIZED] = prop_schema.pop(
+                    DialJSONSchemaExtensions.LOCALIZED
+                )
+            prop_schema[DialJSONSchemaExtensions.META] = meta
 
         # Add DIAL-specific root properties
         if include_dial_fields:
@@ -544,6 +580,7 @@ class BaseApplicationTypeConfig(BaseModel):
             schema[DialJSONSchemaExtensions.ASSISTANT_ATTACHMENTS_IN_REQUEST] = (
                 cls._dial_assistant_attachments_in_request_supported
             )
+            schema[DialJSONSchemaExtensions.DEFAULT_LOCALE] = cls._dial_default_locale
 
         # order the schema attributes and append all other attributes
         ordered_schema = {key: schema[key] for key in cls._schema_attributes_order if key in schema}
@@ -556,6 +593,7 @@ class BaseApplicationTypeConfig(BaseModel):
 
 # public aliases for the dial config fields
 DialConfigField = _dial_config_field
+DialLocalizedField = _dial_localized_field
 DialFileConfigField = _dial_file_config_field
 DialResourceConfigField = _dial_resource_config_field
 PreviewField = _preview_field
