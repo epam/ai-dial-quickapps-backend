@@ -352,8 +352,8 @@ The setup pipeline runs the following steps in order:
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
 
-4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Inserts a synthetic
-   `current_timestamp` tool-call + result pair immediately before the last USER message so the agent knows "when" the
+4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
+   `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
    interaction is happening. Historical timestamps are restored from state with their original times.
 
 ### Pre-Invocation Transformers
