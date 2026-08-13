@@ -12,9 +12,7 @@ from quickapp.mcp_tooling._read_mcp_resource_tool import (
 )
 
 
-def _meta(
-    uri: str, toolset: str = "ts", name: str = "res"
-) -> MCPResourceMeta:
+def _meta(uri: str, toolset: str = "ts", name: str = "res") -> MCPResourceMeta:
     return MCPResourceMeta(
         resource_name=name,
         resource_uri=uri,
@@ -167,9 +165,7 @@ async def test_blob_content_returns_unsupported_message():
 @pytest.mark.asyncio
 async def test_mixed_text_and_blob_combines_results():
     client = MagicMock()
-    client.read_mcp_resource = AsyncMock(
-        return_value=[_text_content("part one"), _blob_content()]
-    )
+    client.read_mcp_resource = AsyncMock(return_value=[_text_content("part one"), _blob_content()])
     ctx = _context([_meta("urn://x")], clients={"ts": client})
     tool = _make_tool(ctx)
     result = await tool._run_in_stage_async(uri="urn://x")

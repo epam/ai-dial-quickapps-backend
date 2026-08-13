@@ -8,10 +8,10 @@ from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_eager_resource_transformer import (
-    _MCPEagerResourceTransformer,
     _after_first_user_idx,
     _already_injected_pairs,
     _build_synthetic_pair,
+    _MCPEagerResourceTransformer,
 )
 
 

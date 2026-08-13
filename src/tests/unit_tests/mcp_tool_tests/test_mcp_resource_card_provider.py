@@ -83,9 +83,7 @@ async def test_falls_back_to_toolset_description():
 
 @pytest.mark.asyncio
 async def test_no_description_at_all():
-    provider = _MCPResourceCardProvider(
-        _context([_meta(toolset_desc=None, resource_desc=None)])
-    )
+    provider = _MCPResourceCardProvider(_context([_meta(toolset_desc=None, resource_desc=None)]))
     result = await provider.get_prompt_part()
     # Should not crash and should not contain a stray empty line from description
     lines = result.splitlines()
