@@ -18,6 +18,7 @@ from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesTooli
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
+from quickapp.mcp_endpoint import McpEndpointModule
 from quickapp.mcp_tooling import MCPToolingModule
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand.lazy_on_demand_strategy_module import (
     LazyOnDemandStrategyModule,
@@ -49,6 +50,7 @@ class AppFactory:
             DialDeploymentToolingModule(),
             DialAppToolingModule(),
             MCPToolingModule(),
+            McpEndpointModule(),
             InternalToolModule(),
             StartersModule(),
             ConfigurationSupportApiModule(),
