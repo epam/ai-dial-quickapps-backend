@@ -6,6 +6,7 @@ from quickapp.common.base_config import DialResourceConfigField, LegacyAlias, Le
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.mcp import MCPResourcesConfig
 
 
 class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
@@ -32,3 +33,4 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
     fallback_configuration: ToolFallbackConfig = Field(
         default_factory=ToolFallbackConfig, description="Tool fallback configuration."
     )
+    resources: MCPResourcesConfig | None = Field(default=None)

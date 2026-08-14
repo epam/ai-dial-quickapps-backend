@@ -14,6 +14,7 @@ from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnr
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.tool_message_utils import after_first_user_idx
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
             return messages[:pair_idx] + list(new_pair) + messages[pair_idx + 2 :]
 
         has_prior_args = _has_any_pair_with_prefix(messages, args_prefix)
-        idx = len(messages) if has_prior_args else _after_first_user_idx(messages)
+        idx = len(messages) if has_prior_args else after_first_user_idx(messages)
         return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
 
     def _inject_at(
@@ -169,13 +170,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
 def _hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
-
-
-def _after_first_user_idx(messages: list[Message]) -> int:
-    return next(
-        (i + 1 for i, m in enumerate(messages) if m.role == Role.USER),
-        len(messages),
-    )
 
 
 def _has_any_pair_with_prefix(messages: list[Message], id_prefix: str) -> bool:

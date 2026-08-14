@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Any, ClassVar
 
@@ -263,6 +264,11 @@ class _MCPTool(StagedBaseTool):
                     non_text_contents.append(block)
 
             tool_content = "\n\n".join(filter(None, text_parts))
+
+            if not tool_content:
+                structured = getattr(tool_call_result, "structuredContent", None)
+                if structured is not None:
+                    tool_content = json.dumps(structured)
 
             # Detect-and-raise only; the StagedBaseTool choke point owns the failure
             # WARNING, so this stays at DEBUG (ownership rule). Structure only — the

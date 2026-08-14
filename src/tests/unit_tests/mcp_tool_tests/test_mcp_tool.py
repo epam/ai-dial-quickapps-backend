@@ -1,4 +1,5 @@
 import base64
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -32,6 +33,24 @@ from quickapp.mcp_tooling import MCPToolingModule
 from tests.unit_tests.common import create_test_app
 from tests.unit_tests.common.common import create_app_configuration, noop_timeout_resolver
 
+_OPEN_INIT_SESSION_PATCH = (
+    "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.open_init_session"
+)
+
+
+@asynccontextmanager
+async def _mock_open_init_session(self):
+    """Async context manager mock for open_init_session — yields (session, init_result)."""
+    session = MagicMock()
+    init_result = MagicMock()
+    init_result.serverInfo.name = "test-server"
+    init_result.serverInfo.version = "1.0"
+    init_result.protocolVersion = "2025-03-26"
+    init_result.capabilities.tools = MagicMock()
+    init_result.capabilities.resources = None
+    init_result.capabilities.prompts = None
+    yield session, init_result
+
 
 @pytest.mark.asyncio
 @patch(
@@ -42,6 +61,7 @@ from tests.unit_tests.common.common import create_app_configuration, noop_timeou
     "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.get_tools_list",
     new_callable=AsyncMock,
 )
+@patch(_OPEN_INIT_SESSION_PATCH, new=_mock_open_init_session)
 async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
     # Prepare tools metadata (no coroutines on the tool objects)
     tool_1 = SimpleNamespace(name="test_tool1", description="A test tool 1", inputSchema={})
@@ -237,6 +257,7 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
     "quickapp.mcp_tooling._mcp_tool_initializer._MCPToolsetClient.get_tools_list",
     new_callable=AsyncMock,
 )
+@patch(_OPEN_INIT_SESSION_PATCH, new=_mock_open_init_session)
 async def test_mcp_tool_narrow_supported_types_skips_non_matching(
     mock_get_tools_list, mock_call_mcp_tool
 ):

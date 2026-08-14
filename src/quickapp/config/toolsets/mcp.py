@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
@@ -24,6 +24,32 @@ class MCPProtocol(str, Enum):
     streamable_http = "streamable_http"
 
 
+class MCPResourceConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    uri: str
+    eager: bool = Field(
+        default=False,
+        description=(
+            "Pre-fetch this resource at init time and inject its content as a "
+            "synthetic read_mcp_resource tool call pair before the first LLM invocation."
+        ),
+    )
+
+
+class MCPResourcesConfig(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    enabled: bool = Field(default=False)
+    items: list[MCPResourceConfig] | None = Field(
+        default=None,
+        description=(
+            "Resources to expose. None = expose all resources the server declares, all lazy. "
+            "Provide a list to restrict to specific URIs and/or mark some as eager."
+        ),
+    )
+
+
 class MCPServerInfo(BaseModel):
     url: str = Field(description="URL of the MCP server")
     authorization: Authorization | None = None
@@ -42,3 +68,4 @@ class MCPToolSet(BaseToolSet):
     fallback_configuration: ToolFallbackConfig = Field(
         default_factory=ToolFallbackConfig, description="Tool fallback configuration."
     )
+    resources: MCPResourcesConfig | None = Field(default=None)
