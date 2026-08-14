@@ -1246,6 +1246,17 @@
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
         },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPResourcesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "dial_id": {
           "deprecated": true,
           "description": "DEPRECATED. Legacy alias for `deployment_id`.",
@@ -1983,6 +1994,52 @@
       "title": "MCPProtocol",
       "type": "string"
     },
+    "MCPResourceConfig": {
+      "properties": {
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        },
+        "eager": {
+          "default": false,
+          "description": "Pre-fetch this resource at init time and inject its content as a synthetic read_mcp_resource tool call pair before the first LLM invocation.",
+          "title": "Eager",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "title": "MCPResourceConfig",
+      "type": "object"
+    },
+    "MCPResourcesConfig": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "items": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/MCPResourceConfig"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resources to expose. None = expose all resources the server declares, all lazy. Provide a list to restrict to specific URIs and/or mark some as eager.",
+          "title": "Items"
+        }
+      },
+      "title": "MCPResourcesConfig",
+      "type": "object"
+    },
     "MCPServerInfo": {
       "properties": {
         "url": {
@@ -2094,6 +2151,17 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPResourcesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
