@@ -79,46 +79,50 @@ def _make_toolset_client(
 
 
 @pytest.mark.asyncio
-async def test_get_tools_list_bare_401_raises_unauthorized():
+async def test_open_init_session_bare_401_raises_unauthorized():
     cm = _make_toolset_client()
     err = _make_http_status_error(401)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(MCPUnauthorizedException) as exc_info:
-            await cm.get_tools_list()
+            async with cm.open_init_session():
+                pass
         assert exc_info.value.toolset_name == "test-toolset"
         assert exc_info.value.__cause__ is err
 
 
 @pytest.mark.asyncio
-async def test_get_tools_list_exception_group_401_raises_unauthorized():
+async def test_open_init_session_exception_group_401_raises_unauthorized():
     """Streamable HTTP transport wraps 401 in ExceptionGroup — must still detect it."""
     cm = _make_toolset_client()
     err = _make_http_status_error(401)
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [err])
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=eg):
         with pytest.raises(MCPUnauthorizedException) as exc_info:
-            await cm.get_tools_list()
+            async with cm.open_init_session():
+                pass
         assert exc_info.value.toolset_name == "test-toolset"
         assert exc_info.value.__cause__ is err
 
 
 @pytest.mark.asyncio
-async def test_get_tools_list_exception_group_non_401_propagates():
+async def test_open_init_session_exception_group_non_401_propagates():
     cm = _make_toolset_client()
     err = _make_http_status_error(500)
     eg = ExceptionGroup("unhandled errors in a TaskGroup", [err])
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=eg):
         with pytest.raises(ExceptionGroup):
-            await cm.get_tools_list()
+            async with cm.open_init_session():
+                pass
 
 
 @pytest.mark.asyncio
-async def test_get_tools_list_bare_500_propagates():
+async def test_open_init_session_bare_500_propagates():
     cm = _make_toolset_client()
     err = _make_http_status_error(500)
     with patch(_STREAMABLE_HTTP_PATCH, side_effect=err):
         with pytest.raises(httpx.HTTPStatusError):
-            await cm.get_tools_list()
+            async with cm.open_init_session():
+                pass
 
 
 @pytest.mark.asyncio
@@ -156,4 +160,5 @@ async def test_sse_transport_401_raises_unauthorized():
     err = _make_http_status_error(401)
     with patch(_SSE_PATCH, side_effect=err):
         with pytest.raises(MCPUnauthorizedException):
-            await cm.get_tools_list()
+            async with cm.open_init_session():
+                pass

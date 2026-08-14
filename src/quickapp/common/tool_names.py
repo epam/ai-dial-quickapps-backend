@@ -7,6 +7,7 @@ without pulling in DI or config.
 INTERNAL_ATTACHMENTS_AVAILABLE_CONTEXT_TOOL_NAME = "internal_attachments_available_context"
 INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME = "internal_attachments_get_content"
 INTERNAL_SKILLS_READ_SKILL_TOOL_NAME = "internal_skills_read_skill"
+INTERNAL_MCP_READ_RESOURCE_TOOL_NAME = "read_mcp_resource"
 INTERNAL_TIMEAWARENESS_CURRENT_TIMESTAMP_TOOL_NAME = "internal_timeawareness_current_timestamp"
 INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME = "internal_code_execution_python_interpreter"
 INTERNAL_WEB_FETCH_TOOL_NAME = "internal_web_fetch"
