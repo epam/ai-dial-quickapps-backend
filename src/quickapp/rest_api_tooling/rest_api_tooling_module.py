@@ -3,7 +3,8 @@ import logging
 from fastapi_injector import request_scope
 from injector import Binder, ClassAssistedBuilder, Module, multiprovider
 
-from quickapp.common import StagedBaseTool
+from quickapp.common import AcceptLanguage, StagedBaseTool
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
@@ -28,17 +29,25 @@ class RestApiToolingModule(Module):
 
     @multiprovider
     def __provide_rest_api_tools(
-        self, app_config: ApplicationConfig, tool_builder: ClassAssistedBuilder[_RestApiTool]
+        self,
+        app_config: ApplicationConfig,
+        tool_builder: ClassAssistedBuilder[_RestApiTool],
+        accept_language: AcceptLanguage,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:
-                result.extend(self.__create_rest_api_tools(toolset_info, tool_builder))
+                toolset_stage_name = resolve_localized(toolset_info.name, accept_language)
+                result.extend(
+                    self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
+                )
         return result
 
     @staticmethod
     def __create_rest_api_tools(
-        rest_api_toolset: RestApiToolSet, tool_builder: ClassAssistedBuilder[_RestApiTool]
+        rest_api_toolset: RestApiToolSet,
+        tool_builder: ClassAssistedBuilder[_RestApiTool],
+        toolset_stage_name: str,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for tool_config in rest_api_toolset.tools:
@@ -66,7 +75,7 @@ class RestApiToolingModule(Module):
                                 "function": tool_config.open_ai_tool.function.model_copy(
                                     update={
                                         "name": sanitize_toolname(
-                                            f"{rest_api_toolset.name}_{tool_config.open_ai_tool.function.name}"
+                                            f"{resolve_localized(rest_api_toolset.name)}_{tool_config.open_ai_tool.function.name}"
                                         )
                                     }
                                 )
@@ -74,9 +83,9 @@ class RestApiToolingModule(Module):
                         )
                     }
                 )
-            result.append(
-                tool_builder.build(
-                    tool_config=tool_config, auth_info=rest_api_toolset.authorization
-                )
+            tool = tool_builder.build(
+                tool_config=tool_config, auth_info=rest_api_toolset.authorization
             )
+            tool.stage_name_component = toolset_stage_name
+            result.append(tool)
         return result

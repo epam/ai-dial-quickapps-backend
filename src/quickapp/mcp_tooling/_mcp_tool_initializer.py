@@ -8,11 +8,12 @@ from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
 
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, AcceptLanguage, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
@@ -100,7 +101,7 @@ def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet):
         return f"dial:{toolset_info.deployment_id}"
-    return f"mcp:{toolset_info.name}"
+    return f"mcp:{resolve_localized(toolset_info.name)}"
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
@@ -109,7 +110,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
         return _human_readable_dial_id(toolset_info.deployment_id)
-    return getattr(toolset_info, "name", "")
+    return resolve_localized(getattr(toolset_info, "name", ""))
 
 
 @inject
@@ -125,6 +126,7 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
+        accept_language: AcceptLanguage,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -139,6 +141,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
+        self.__accept_language: AcceptLanguage = accept_language
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -295,7 +298,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         attachment=resolved_toolset.attachment,
                         fallback_configuration=resolved_toolset.fallback_configuration,
                         open_ai_tool=self._convert_to_openai_tool(
-                            sanitize_toolname(f"{resolved_toolset.name}_{tool.name}"),
+                            sanitize_toolname(
+                                f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
+                            ),
                             tool.description,
                             tool.inputSchema,
                         ),
@@ -306,6 +311,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         if isinstance(toolset_info, DialMCPToolSet)
                         else None
                     ),
+                )
+                mcp_tool.stage_name_component = resolve_localized(
+                    resolved_toolset.name, self.__accept_language
                 )
                 created_tools.append(mcp_tool)
             if created_tools:

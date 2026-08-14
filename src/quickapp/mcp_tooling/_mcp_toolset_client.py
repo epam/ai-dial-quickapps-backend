@@ -13,6 +13,7 @@ from mcp.types import CallToolResult
 
 from quickapp.common import DIAL_BEARER, ForwardedHeaders
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.common.tool_timeout_utils import MCP_TIMEOUT_CODE
 from quickapp.config.toolsets.authorization import (
@@ -146,12 +147,16 @@ class _MCPToolsetClient:
                 )
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
-                raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from e
+                raise MCPUnauthorizedException(
+                    toolset_name=resolve_localized(self.__toolset_info.name)
+                ) from e
             raise
         except BaseExceptionGroup as eg:
             http_401 = _extract_http_401(eg)
             if http_401 is not None:
-                raise MCPUnauthorizedException(toolset_name=self.__toolset_info.name) from http_401
+                raise MCPUnauthorizedException(
+                    toolset_name=resolve_localized(self.__toolset_info.name)
+                ) from http_401
             raise
 
     async def get_tools_list(self) -> list[Tool]:
