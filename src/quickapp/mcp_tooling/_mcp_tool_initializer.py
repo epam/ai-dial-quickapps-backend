@@ -456,11 +456,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     )
 
                 # Resource loading — independent error scope
-                if (
-                    isinstance(resolved_toolset, MCPToolSet)
-                    and resolved_toolset.resources
-                    and resolved_toolset.resources.enabled
-                ):
+                if resolved_toolset.resources and resolved_toolset.resources.enabled:
                     if caps.supports_resources:
                         try:
                             await self._load_resources(resolved_toolset, toolset_client, session)

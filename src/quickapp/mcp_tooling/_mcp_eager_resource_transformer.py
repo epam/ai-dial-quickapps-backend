@@ -7,6 +7,7 @@ from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from injector import inject
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.tool_message_utils import after_first_user_idx
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.mcp_tooling._mcp_tooling_context import _MCPToolingContext
 
@@ -62,13 +63,6 @@ def _already_injected_pairs(messages: list[Message]) -> set[tuple[str, str]]:
     return seen
 
 
-def _after_first_user_idx(messages: list[Message]) -> int:
-    return next(
-        (i + 1 for i, m in enumerate(messages) if m.role == Role.USER),
-        len(messages),
-    )
-
-
 @inject
 class _MCPEagerResourceTransformer(MessagesTransformer):
     """Prepends synthetic read_mcp_resource tool call pairs for eager resources.
@@ -87,7 +81,7 @@ class _MCPEagerResourceTransformer(MessagesTransformer):
             return messages
 
         already_seen = _already_injected_pairs(messages)
-        insert_idx = _after_first_user_idx(messages)
+        insert_idx = after_first_user_idx(messages)
 
         new_pairs: list[tuple[Message, Message]] = []
         for resource in eager:

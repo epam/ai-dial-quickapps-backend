@@ -5,10 +5,10 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 
+from quickapp.common.tool_message_utils import after_first_user_idx
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_eager_resource_transformer import (
-    _after_first_user_idx,
     _already_injected_pairs,
     _build_synthetic_pair,
     _MCPEagerResourceTransformer,
@@ -60,18 +60,18 @@ def _make_context(eager: list[MCPEagerTextResource]) -> MagicMock:
 # --- Unit tests for pure helpers ---
 
 
-def test_after_first_user_idx_returns_one_after_first_user():
+def testafter_first_user_idx_returns_one_after_first_user():
     messages = [_assistant_msg(), _user_msg(), _assistant_msg()]
-    assert _after_first_user_idx(messages) == 2
+    assert after_first_user_idx(messages) == 2
 
 
-def test_after_first_user_idx_no_user_returns_len():
+def testafter_first_user_idx_no_user_returns_len():
     messages = [_assistant_msg(), _assistant_msg()]
-    assert _after_first_user_idx(messages) == 2
+    assert after_first_user_idx(messages) == 2
 
 
-def test_after_first_user_idx_empty():
-    assert _after_first_user_idx([]) == 0
+def testafter_first_user_idx_empty():
+    assert after_first_user_idx([]) == 0
 
 
 def test_already_injected_pairs_finds_read_resource_calls():

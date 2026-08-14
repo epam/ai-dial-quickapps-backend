@@ -21,6 +21,7 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.mcp_tooling._mcp_stage_wrapper import _MCPStageWrapper
 from quickapp.mcp_tooling._mcp_tooling_context import _MCPToolingContext
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
+from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,8 @@ class _ReadMcpResourceTool(StagedBaseTool):
 
         try:
             contents = await client.read_mcp_resource(uri)
+        except MCPUnauthorizedException:
+            raise
         except Exception as e:
             logger.error("Failed to read resource '%s': %s", uri, e, exc_info=True)
             msg = f"Error reading resource '{uri}': {e}"
