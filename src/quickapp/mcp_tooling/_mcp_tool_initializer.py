@@ -267,7 +267,9 @@ class _MCPToolInitializer(CompletionInitializer):
                     attachment=resolved_toolset.attachment,
                     fallback_configuration=resolved_toolset.fallback_configuration,
                     open_ai_tool=self._convert_to_openai_tool(
-                        sanitize_toolname(f"{resolve_localized(resolved_toolset.name)}_{tool.name}"),
+                        sanitize_toolname(
+                            f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
+                        ),
                         tool.description,
                         tool.inputSchema,
                     ),
@@ -358,7 +360,7 @@ class _MCPToolInitializer(CompletionInitializer):
                             resolved_toolset.name,
                         )
             except Exception as e:
-                label = resolved_toolset.name
+                label = resolve_localized(resolved_toolset.name)
                 logger.error(
                     "Failed to read eager resource '%s' for toolset '%s': %s",
                     item.uri,
@@ -422,7 +424,7 @@ class _MCPToolInitializer(CompletionInitializer):
             async with toolset_client.open_init_session() as (session, init_result):
                 # Capture server capabilities
                 caps = MCPServerCapabilities(
-                    toolset_name=resolved_toolset.name,
+                    toolset_name=resolve_localized(resolved_toolset.name),
                     server_name=init_result.serverInfo.name,
                     server_version=init_result.serverInfo.version or "",
                     protocol_version=str(init_result.protocolVersion),
@@ -490,7 +492,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         )
 
             # Register client for on-demand resource reads by _ReadMcpResourceTool
-            self.__mcp_context.register_client(resolved_toolset.name, toolset_client)
+            self.__mcp_context.register_client(
+                resolve_localized(resolved_toolset.name), toolset_client
+            )
 
         except MCPUnauthorizedException:
             raise
