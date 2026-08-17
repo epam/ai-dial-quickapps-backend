@@ -16,6 +16,7 @@ from quickapp.common import (
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
+    AcceptLanguage,
     ForwardedHeaders,
     StagedBaseTool,
     ToolCallResult,
@@ -151,11 +152,13 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(AcceptLanguage, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
+
 
     @app.get("/")
     async def get_method(injector: Injector = Injected(Injector)):
@@ -324,11 +327,13 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.bind(PerformanceTimer, to=PerformanceTimer)
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(AcceptLanguage, to=InstanceProvider(None))
         binder.bind(CLIENT_CHANNEL_ID, to=InstanceProvider(None))
         binder.bind(InteractiveLoginSettings, to=InteractiveLoginSettings())
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
+
 
     @app.get("/")
     async def get_method(injector: Injector = Injected(Injector)):

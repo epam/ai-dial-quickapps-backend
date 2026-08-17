@@ -127,6 +127,7 @@ def _make_initializer(
         dial_mcp_cache=dial_mcp_cache,
         tool_config_service=MagicMock(),
         login_service=login_service,
+        accept_language=None,
     )
     return initializer, mcp_context, login_service
 

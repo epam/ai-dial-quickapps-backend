@@ -119,7 +119,7 @@ def mcp_tool1(
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
 
-    return _MCPTool(
+    tool = _MCPTool(
         tool=tool1,
         tool_config=mock_tool_config,
         toolset_client=mock_toolset_client,
@@ -133,6 +133,8 @@ def mcp_tool1(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
+    tool.stage_name_component = "test_toolset"
+    return tool
 
 
 @pytest.fixture
@@ -146,7 +148,7 @@ def mcp_tool2(
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
 
-    return _MCPTool(
+    tool = _MCPTool(
         tool=tool2,
         tool_config=mock_tool_config,
         toolset_client=mock_toolset_client,
@@ -160,6 +162,8 @@ def mcp_tool2(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
+    tool.stage_name_component = "test_toolset"
+    return tool
 
 
 # --- New reusable fixtures to remove duplication ---
@@ -222,6 +226,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # dial_mcp_cache
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
+            None,  # accept_language
         )
         return initializer, mcp_context
 
@@ -308,6 +313,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
 
     await initializer.initialize()
@@ -396,6 +402,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -586,6 +593,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
 
     await initializer.initialize()
