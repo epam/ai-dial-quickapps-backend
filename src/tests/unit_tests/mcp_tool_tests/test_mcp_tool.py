@@ -159,7 +159,6 @@ async def test_mcp_tool(mock_get_tools_list, mock_call_mcp_tool):
 
     app = create_test_app([MCPToolingModule, configure])
 
-
     @app.get("/")
     async def get_method(injector: Injector = Injected(Injector)):
         initializers = injector.get(list[CompletionInitializer])
@@ -333,7 +332,6 @@ async def test_mcp_tool_narrow_supported_types_skips_non_matching(
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([MCPToolingModule, configure])
-
 
     @app.get("/")
     async def get_method(injector: Injector = Injected(Injector)):

@@ -10,7 +10,13 @@ from injector import Binder, Injector, InstanceProvider
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
-from quickapp.common import DIAL_API_KEY, DIAL_BEARER, AcceptLanguage, ForwardedHeaders, StagedBaseTool
+from quickapp.common import (
+    DIAL_API_KEY,
+    DIAL_BEARER,
+    AcceptLanguage,
+    ForwardedHeaders,
+    StagedBaseTool,
+)
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
