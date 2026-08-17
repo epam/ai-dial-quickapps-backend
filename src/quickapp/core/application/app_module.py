@@ -10,7 +10,7 @@ from quickapp.common import (
     DIAL_BEARER,
     RESPONSE_FORMAT,
     TOOL_CHOICE,
-    AcceptLanguage,
+    ACCEPT_LANGUAGE,
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings
@@ -94,7 +94,7 @@ class AppModule(Module):
         return context.client_channel_id
 
     @provider
-    def __provide_accept_language(self, context: _RequestContext) -> AcceptLanguage:
+    def __provide_accept_language(self, context: _RequestContext) -> ACCEPT_LANGUAGE:
         return context.accept_language
 
     @provider

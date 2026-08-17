@@ -15,4 +15,4 @@ CLIENT_CHANNEL_ID = Annotated[str | None, "CLIENT_CHANNEL_ID"]
 CLIENT_CHANNEL_HEADER = "X-DIAL-CLIENT-CHANNEL-ID"
 ORCHESTRATOR_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "ORCHESTRATOR_AZURE_CLIENT"]
 DEPLOYMENT_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "DEPLOYMENT_AZURE_CLIENT"]
-AcceptLanguage = Annotated[str | None, "AcceptLanguage"]
+ACCEPT_LANGUAGE = Annotated[str | None, "AcceptLanguage"]

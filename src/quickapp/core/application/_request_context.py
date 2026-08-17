@@ -7,7 +7,7 @@ from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
     TOOL_CHOICE,
-    AcceptLanguage,
+    ACCEPT_LANGUAGE,
     ForwardedHeaders,
 )
 from quickapp.common.messages_mixin import MessagesMixin
@@ -56,7 +56,7 @@ class _RequestContext(MessagesMixin):
     _client_channel_id: CLIENT_CHANNEL_ID = None
     _tool_choice: TOOL_CHOICE = None
     _extra_tools: list[Tool] | None = None
-    _accept_language: AcceptLanguage = None
+    _accept_language: ACCEPT_LANGUAGE = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -160,11 +160,11 @@ class _RequestContext(MessagesMixin):
         self._extra_tools = value
 
     @property
-    def accept_language(self) -> AcceptLanguage:
+    def accept_language(self) -> ACCEPT_LANGUAGE:
         return self._accept_language
 
     @accept_language.setter
-    def accept_language(self, value: AcceptLanguage) -> None:
+    def accept_language(self, value: ACCEPT_LANGUAGE) -> None:
         if self._accept_language is not None:
             raise RuntimeError("Accept-Language is already set")
         self._accept_language = value

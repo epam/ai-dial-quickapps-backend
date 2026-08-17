@@ -10,7 +10,7 @@ from ._di_types import (
     ORCHESTRATOR_AZURE_CLIENT,
     RESPONSE_FORMAT,
     TOOL_CHOICE,
-    AcceptLanguage,
+    ACCEPT_LANGUAGE,
     ForwardedHeaders,
 )
 from .deployment_usage import DeploymentUsage

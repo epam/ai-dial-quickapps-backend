@@ -13,7 +13,7 @@ from starlette.testclient import TestClient
 from quickapp.common import (
     DIAL_API_KEY,
     DIAL_BEARER,
-    AcceptLanguage,
+    ACCEPT_LANGUAGE,
     ForwardedHeaders,
     StagedBaseTool,
 )
@@ -129,7 +129,7 @@ async def test_web_api_tool_2_make_correct_http_call(mock_async_client, request_
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -213,7 +213,7 @@ async def test_response_as_attachment_enabled_creates_attachment(mock_async_clie
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -279,7 +279,7 @@ async def test_response_as_attachment_include_body_as_content_false(mock_async_c
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -336,7 +336,7 @@ async def test_toolset_level_response_as_attachment_propagation(mock_async_clien
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -388,7 +388,7 @@ async def test_forwarded_x_headers_passed_to_rest_api_request(mock_async_client)
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(forwarded))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -432,7 +432,7 @@ def test_openai_tools_names():
         binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     injector = Injector(modules=[RestApiToolingModule, configure])
@@ -484,7 +484,7 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])
@@ -551,7 +551,7 @@ async def test_http_status_error_can_append_instructions_after_forwarded_error(m
         binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
         binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
         binder.bind(ForwardedHeaders, to=InstanceProvider(None))
-        binder.bind(AcceptLanguage, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
     app = create_test_app([RestApiToolingModule, configure])

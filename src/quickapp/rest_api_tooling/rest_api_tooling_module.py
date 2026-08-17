@@ -3,7 +3,7 @@ import logging
 from fastapi_injector import request_scope
 from injector import Binder, ClassAssistedBuilder, Module, multiprovider
 
-from quickapp.common import AcceptLanguage, StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, StagedBaseTool
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.common.utils import sanitize_toolname
@@ -32,7 +32,7 @@ class RestApiToolingModule(Module):
         self,
         app_config: ApplicationConfig,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
-        accept_language: AcceptLanguage,
+        accept_language: ACCEPT_LANGUAGE,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:

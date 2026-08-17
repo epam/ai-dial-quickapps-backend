@@ -9,7 +9,7 @@ from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
 from mcp.types import BlobResourceContents, TextResourceContents
 
-from quickapp.common import DIAL_API_KEY, AcceptLanguage, StagedBaseTool
+from quickapp.common import DIAL_API_KEY, ACCEPT_LANGUAGE, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
@@ -130,7 +130,7 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
-        accept_language: AcceptLanguage,
+        accept_language: ACCEPT_LANGUAGE,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -145,7 +145,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
-        self.__accept_language: AcceptLanguage = accept_language
+        self.__accept_language: ACCEPT_LANGUAGE = accept_language
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
