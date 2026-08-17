@@ -5,7 +5,7 @@ from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
 from injector import ProviderOf, inject
 
-from quickapp.common import DIAL_API_KEY
+from quickapp.common import DEFAULT_LOCALE, DIAL_API_KEY
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
@@ -40,6 +40,7 @@ class _DialAppResolver(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         deployment_cache: DialDeploymentToolCacheService,
         context: _DialAppResolverContext,
+        default_locale: DEFAULT_LOCALE,
     ):
         self.__app_config: ApplicationConfig = app_config
         self.__dial_settings: DialSettings = dial_settings
@@ -47,6 +48,7 @@ class _DialAppResolver(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
         self.__context: _DialAppResolverContext = context
+        self.__default_locale: str = default_locale
         # Errors are intentionally un-cached so a sibling toolset in the same group can retry.
         self.__metadata_memo: dict[str, Deployment | Application] = {}
 
@@ -84,7 +86,9 @@ class _DialAppResolver(CompletionInitializer):
                         f"transport=mcp requested but features.mcp is not advertised "
                         f"on {toolset.deployment_id}"
                     ),
-                    toolset_name=resolve_localized(toolset.name),
+                    toolset_name=resolve_localized(
+                        toolset.name, default_locale=self.__default_locale
+                    ),
                 )
             else:
                 await self._handle_chat_completion_branch(toolset)
@@ -99,7 +103,9 @@ class _DialAppResolver(CompletionInitializer):
             self.__context.append_exception(
                 ToolInitializationException(
                     message=str(e),
-                    toolset_name=resolve_localized(toolset.name),
+                    toolset_name=resolve_localized(
+                        toolset.name, default_locale=self.__default_locale
+                    ),
                     details=details,
                 )
             )
@@ -117,7 +123,7 @@ class _DialAppResolver(CompletionInitializer):
             logger.warning(
                 "conversation_mode.resumable set on DialAppToolSet '%s' is ignored on the MCP "
                 "branch (resumable sessions apply only to the chat-completion deployment tool).",
-                resolve_localized(toolset.name),
+                resolve_localized(toolset.name, default_locale=self.__default_locale),
             )
         url = f"{self.__dial_settings.url}/v1/deployments/{toolset.deployment_id}/mcp"
         api_key = self.__api_key_provider.get()
@@ -143,12 +149,12 @@ class _DialAppResolver(CompletionInitializer):
             logger.warning(
                 "allowed_tools set on DialAppToolSet '%s' is ignored on the chat-completion "
                 "fallback branch (single synthetic tool).",
-                resolve_localized(toolset.name),
+                resolve_localized(toolset.name, default_locale=self.__default_locale),
             )
         tool_config = await self.__deployment_cache.fetch_basic_tool_config(
             self.__tool_config_service.get_basic_tool_config,
             toolset.deployment_id,
-            toolset_name=resolve_localized(toolset.name),
+            toolset_name=resolve_localized(toolset.name, default_locale=self.__default_locale),
         )
         customised = tool_config.model_copy(
             update={

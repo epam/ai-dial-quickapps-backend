@@ -9,7 +9,7 @@ from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
 from mcp.types import BlobResourceContents, TextResourceContents
 
-from quickapp.common import DIAL_API_KEY, AcceptLanguage, StagedBaseTool
+from quickapp.common import DEFAULT_LOCALE, DIAL_API_KEY, AcceptLanguage, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
@@ -97,7 +97,7 @@ def _login_result_message(result: LoginResult, toolset_label: str) -> str:
     return template.format(name=toolset_label)
 
 
-def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
+def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet, default_locale: str) -> str:
     """Stable per-app key identifying a toolset's session across calls (and, later, turns).
 
     DialMCPToolSet keys on its canonical ``deployment_id``; a directly-addressed MCPToolSet
@@ -105,16 +105,16 @@ def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet):
         return f"dial:{toolset_info.deployment_id}"
-    return f"mcp:{resolve_localized(toolset_info.name)}"
+    return f"mcp:{resolve_localized(toolset_info.name, default_locale=default_locale)}"
 
 
-def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
+def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet, default_locale: str) -> str:
     """Return a label for this toolset suitable for error messages.
     For DialMCPToolSet with default name, use a human-readable form of deployment_id.
     """
     if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
         return _human_readable_dial_id(toolset_info.deployment_id)
-    return resolve_localized(getattr(toolset_info, "name", ""))
+    return resolve_localized(getattr(toolset_info, "name", ""), default_locale=default_locale)
 
 
 @inject
@@ -131,6 +131,7 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
         accept_language: AcceptLanguage,
+        default_locale: DEFAULT_LOCALE,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -146,6 +147,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
         self.__accept_language: AcceptLanguage = accept_language
+        self.__default_locale: str = default_locale
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -189,7 +191,7 @@ class _MCPToolInitializer(CompletionInitializer):
             if isinstance(result, MCPUnauthorizedException) and isinstance(ts, DialMCPToolSet):
                 unauthorized.append(ts)
             elif isinstance(result, MCPUnauthorizedException):
-                label = _toolset_label_for_error(ts)
+                label = _toolset_label_for_error(ts, self.__default_locale)
                 logger.error(
                     "MCP toolset '%s' returned 401 (not eligible for interactive login)", label
                 )
@@ -214,7 +216,7 @@ class _MCPToolInitializer(CompletionInitializer):
             if login_result == LoginResult.SUCCESS:
                 retry_toolsets.append(ts)
             else:
-                label = _toolset_label_for_error(ts)
+                label = _toolset_label_for_error(ts, self.__default_locale)
                 self.__mcp_context.append_exception(
                     ToolInitializationException(
                         message=_login_result_message(login_result, label),
@@ -234,7 +236,7 @@ class _MCPToolInitializer(CompletionInitializer):
         Catches all exceptions (including MCPUnauthorizedException) and converts them to
         ToolInitializationException, since interactive login was already attempted.
         """
-        label = _toolset_label_for_error(toolset_info)
+        label = _toolset_label_for_error(toolset_info, self.__default_locale)
         try:
             await self._process_toolset(toolset_info)
         except Exception as e:
@@ -268,7 +270,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     fallback_configuration=resolved_toolset.fallback_configuration,
                     open_ai_tool=self._convert_to_openai_tool(
                         sanitize_toolname(
-                            f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
+                            f"{resolve_localized(resolved_toolset.name, default_locale=self.__default_locale)}_{tool.name}"
                         ),
                         tool.description,
                         tool.inputSchema,
@@ -280,7 +282,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 ),
             )
             mcp_tool.stage_name_component = resolve_localized(
-                resolved_toolset.name, self.__accept_language
+                resolved_toolset.name, self.__accept_language, default_locale=self.__default_locale
             )
             created_tools.append(mcp_tool)
         if created_tools:
@@ -360,7 +362,9 @@ class _MCPToolInitializer(CompletionInitializer):
                             resolved_toolset.name,
                         )
             except Exception as e:
-                label = resolve_localized(resolved_toolset.name)
+                label = resolve_localized(
+                    resolved_toolset.name, default_locale=self.__default_locale
+                )
                 logger.error(
                     "Failed to read eager resource '%s' for toolset '%s': %s",
                     item.uri,
@@ -391,7 +395,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 if not dial_toolset_info:
                     raise ToolInitializationException(
                         message=f"Failed to retrieve toolset info for DIAL ID {toolset_info.deployment_id}",
-                        toolset_name=_toolset_label_for_error(toolset_info),
+                        toolset_name=_toolset_label_for_error(toolset_info, self.__default_locale),
                     )
                 resolved_toolset = MCPToolSet(
                     name=dial_toolset_info.display_name or toolset_info.name,
@@ -418,13 +422,15 @@ class _MCPToolInitializer(CompletionInitializer):
 
             toolset_client = self.__toolset_client_builder.build(
                 toolset_info=resolved_toolset,
-                toolset_key=_toolset_key(toolset_info),
+                toolset_key=_toolset_key(toolset_info, self.__default_locale),
             )
 
             async with toolset_client.open_init_session() as (session, init_result):
                 # Capture server capabilities
                 caps = MCPServerCapabilities(
-                    toolset_name=resolve_localized(resolved_toolset.name),
+                    toolset_name=resolve_localized(
+                        resolved_toolset.name, default_locale=self.__default_locale
+                    ),
                     server_name=init_result.serverInfo.name,
                     server_version=init_result.serverInfo.version or "",
                     protocol_version=str(init_result.protocolVersion),
@@ -435,7 +441,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 self.__mcp_context.extend_server_capabilities([caps])
 
                 # Tool loading — independent error scope
-                label = _toolset_label_for_error(toolset_info)
+                label = _toolset_label_for_error(toolset_info, self.__default_locale)
                 try:
                     if caps.supports_tools:
                         await self._load_tools(
@@ -493,7 +499,8 @@ class _MCPToolInitializer(CompletionInitializer):
 
             # Register client for on-demand resource reads by _ReadMcpResourceTool
             self.__mcp_context.register_client(
-                resolve_localized(resolved_toolset.name), toolset_client
+                resolve_localized(resolved_toolset.name, default_locale=self.__default_locale),
+                toolset_client,
             )
 
         except MCPUnauthorizedException:
@@ -502,7 +509,7 @@ class _MCPToolInitializer(CompletionInitializer):
             logger.error(e, exc_info=True)
             self.__mcp_context.append_exception(e)
         except httpx.HTTPStatusError as e:
-            label = _toolset_label_for_error(toolset_info)
+            label = _toolset_label_for_error(toolset_info, self.__default_locale)
             logger.error(f"HTTP error: {e}", exc_info=True)
             self.__mcp_context.append_exception(
                 ToolInitializationException(
@@ -511,7 +518,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 )
             )
         except Exception as e:
-            label = _toolset_label_for_error(toolset_info)
+            label = _toolset_label_for_error(toolset_info, self.__default_locale)
             logger.error(e, exc_info=True)
             detail_lines = [_format_leaf_for_user(label, leaf) for leaf in _flatten_exceptions(e)]
             self.__mcp_context.append_exception(

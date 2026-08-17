@@ -20,7 +20,9 @@ def _has_customised_catch_all(fallback: ToolFallbackConfig) -> bool:
     )
 
 
-def log_customised_catch_all_strategies(app_config: ApplicationConfig) -> None:
+def log_customised_catch_all_strategies(
+    app_config: ApplicationConfig, default_locale: str = "en"
+) -> None:
     """Log INFO for any `ContinueStrategyModel(trigger_on=None, instructions=...)`.
 
     These customisations no longer apply to `ToolTimeoutError` — the built-in
@@ -29,7 +31,9 @@ def log_customised_catch_all_strategies(app_config: ApplicationConfig) -> None:
     for tool_set in app_config.tool_sets:
         raw_name = getattr(tool_set, "name", None)
         toolset_name = (
-            resolve_localized(raw_name) if raw_name is not None else type(tool_set).__name__
+            resolve_localized(raw_name, default_locale=default_locale)
+            if raw_name is not None
+            else type(tool_set).__name__
         )
 
         if isinstance(tool_set, (MCPToolSet, DialMCPToolSet)):

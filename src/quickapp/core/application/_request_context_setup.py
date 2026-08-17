@@ -6,7 +6,7 @@ from aidial_sdk.deployment.configuration import ConfigurationRequest
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
-from quickapp.common._di_types import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
+from quickapp.common import CLIENT_CHANNEL_HEADER, CLIENT_CHANNEL_ID, ForwardedHeaders
 from quickapp.common.forwarded_headers import extract_x_headers_from_request
 from quickapp.common.tool_fallback.catch_all_scanner import log_customised_catch_all_strategies
 from quickapp.config.application import ApplicationConfig
@@ -59,7 +59,9 @@ class _RequestContextSetup:
         context.application_config = self.__resolve_application_config(
             await request.request_dial_application_properties()
         )
-        log_customised_catch_all_strategies(context.application_config)
+        log_customised_catch_all_strategies(
+            context.application_config, ApplicationConfig._dial_default_locale
+        )
         if isinstance(request, Request):
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)

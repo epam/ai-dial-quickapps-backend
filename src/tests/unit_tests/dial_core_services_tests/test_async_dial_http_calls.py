@@ -135,6 +135,7 @@ def _tool_config_service(client: AsyncDial) -> ToolConfigCoreService:
         dial_settings=_dial_settings(),
         dial_client_provider=_provider(client),
         timeout_resolver_provider=noop_timeout_resolver_provider(),
+        default_locale="en",
     )
 
 
@@ -225,6 +226,7 @@ class TestToolConfigServiceHttpCalls:
             dial_settings=_dial_settings(),
             dial_client_provider=provider,
             timeout_resolver_provider=noop_timeout_resolver_provider(),
+            default_locale="en",
         )
         result = await svc.get_basic_tool_config("test-model", api_key=SecretStr(API_KEY))
 

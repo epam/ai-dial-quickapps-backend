@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from aidial_sdk.chat_completion import Request
 
-from quickapp.common import ForwardedHeaders
+from quickapp.common._di_types import ForwardedHeaders
 
 
 def extract_x_headers_from_request(request: Request) -> ForwardedHeaders:

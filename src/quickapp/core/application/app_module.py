@@ -6,6 +6,7 @@ from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import (
     CLIENT_CHANNEL_ID,
+    DEFAULT_LOCALE,
     DIAL_API_KEY,
     DIAL_BEARER,
     RESPONSE_FORMAT,
@@ -96,6 +97,10 @@ class AppModule(Module):
     @provider
     def __provide_accept_language(self, context: _RequestContext) -> AcceptLanguage:
         return context.accept_language
+
+    @provider
+    def __provide_default_locale(self, config: ApplicationConfig) -> DEFAULT_LOCALE:
+        return type(config)._dial_default_locale
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:

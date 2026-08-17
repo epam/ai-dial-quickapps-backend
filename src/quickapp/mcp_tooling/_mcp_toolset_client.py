@@ -18,7 +18,7 @@ from mcp.types import (
 )
 from pydantic import AnyUrl as _AnyUrl
 
-from quickapp.common import DIAL_BEARER, ForwardedHeaders
+from quickapp.common import DEFAULT_LOCALE, DIAL_BEARER, ForwardedHeaders
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
@@ -72,6 +72,7 @@ class _MCPToolsetClient:
         session_manager: _MCPSessionManager,
         bearer: DIAL_BEARER = None,
         forwarded_headers: ForwardedHeaders = None,
+        default_locale: DEFAULT_LOCALE = "en",
     ):
         self.__toolset_info = toolset_info
         self.__toolset_key = toolset_key
@@ -81,6 +82,7 @@ class _MCPToolsetClient:
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__session_manager: _MCPSessionManager = session_manager
+        self.__default_locale: str = default_locale
 
     async def __build_headers(self, server_info: MCPServerInfo) -> dict:
         headers = (
@@ -153,14 +155,18 @@ class _MCPToolsetClient:
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 401:
                 raise MCPUnauthorizedException(
-                    toolset_name=resolve_localized(self.__toolset_info.name)
+                    toolset_name=resolve_localized(
+                        self.__toolset_info.name, default_locale=self.__default_locale
+                    )
                 ) from e
             raise
         except BaseExceptionGroup as eg:
             http_401 = _extract_http_401(eg)
             if http_401 is not None:
                 raise MCPUnauthorizedException(
-                    toolset_name=resolve_localized(self.__toolset_info.name)
+                    toolset_name=resolve_localized(
+                        self.__toolset_info.name, default_locale=self.__default_locale
+                    )
                 ) from http_401
             raise
 

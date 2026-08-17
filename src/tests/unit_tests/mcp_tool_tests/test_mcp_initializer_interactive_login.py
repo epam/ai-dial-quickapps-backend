@@ -128,6 +128,7 @@ def _make_initializer(
         tool_config_service=MagicMock(),
         login_service=login_service,
         accept_language=None,
+        default_locale="en",
     )
     return initializer, mcp_context, login_service
 

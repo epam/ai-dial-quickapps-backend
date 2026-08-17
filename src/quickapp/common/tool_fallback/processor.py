@@ -1,9 +1,9 @@
 import logging
 from typing import Any
 
-from quickapp.common import ToolCallResult
 from quickapp.common.exceptions import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
 from quickapp.common.lifecycle_logging import format_event
+from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.common.tool_fallback.applicable_mixin import ApplicableStrategyMixin
 from quickapp.common.tool_fallback.base_strategy import BaseStrategy
 from quickapp.common.tool_fallback.mapping import STRATEGY_TYPE_TO_HANDLER

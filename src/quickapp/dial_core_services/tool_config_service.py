@@ -8,6 +8,7 @@ from aidial_sdk.chat_completion.request import StaticTool
 from injector import ProviderOf, inject
 from pydantic import SecretStr
 
+from quickapp.common import DEFAULT_LOCALE
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
@@ -49,12 +50,14 @@ class ToolConfigCoreService:
         dial_settings: DialSettings,
         dial_client_provider: ProviderOf[AsyncDial],
         timeout_resolver_provider: ProviderOf[ToolTimeoutResolver],
+        default_locale: DEFAULT_LOCALE,
     ):
         self.__dial_settings: DialSettings = dial_settings
         self.__dial_client_provider: ProviderOf[AsyncDial] = dial_client_provider
         self.__timeout_resolver_provider: ProviderOf[ToolTimeoutResolver] = (
             timeout_resolver_provider
         )
+        self.__default_locale: str = default_locale
 
     def _resolve_dial_client(self, api_key: SecretStr | None) -> AsyncDial:
         """Return a client built from the explicit key (controller path) or from the DI provider (completion path)."""
@@ -257,7 +260,9 @@ class ToolConfigCoreService:
         except ParsingDataError:
             # DIAL Core may return LocalizedString dicts for display_name/description.
             # Fall back to a raw fetch so we can normalize before constructing ToolsetInfo.
-            return await self._fetch_toolset_info_localized(dial_client, toolset_dial_id)
+            return await self._fetch_toolset_info_localized(
+                dial_client, toolset_dial_id, self.__default_locale
+            )
         except DialException as e:
             logger.exception("Something went wrong during getting toolset %s", toolset_dial_id)
             if e.status_code == 404:
@@ -274,7 +279,7 @@ class ToolConfigCoreService:
 
     @staticmethod
     async def _fetch_toolset_info_localized(
-        dial_client: AsyncDial, toolset_dial_id: str
+        dial_client: AsyncDial, toolset_dial_id: str, default_locale: str
     ) -> ToolsetInfo | None:
         """Fetch raw toolset JSON and normalize any localized display fields to plain strings."""
         http_client = dial_client.toolset.http_client
@@ -286,5 +291,5 @@ class ToolConfigCoreService:
         for field in ("display_name", "description"):
             val = raw.get(field)
             if isinstance(val, dict):
-                raw[field] = resolve_localized(val)
+                raw[field] = resolve_localized(val, default_locale=default_locale)
         return ToolsetInfo.model_validate(raw)

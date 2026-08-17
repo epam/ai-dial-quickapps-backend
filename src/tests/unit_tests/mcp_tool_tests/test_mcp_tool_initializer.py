@@ -227,6 +227,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
             None,  # accept_language
+            "en",  # default_locale
         )
         return initializer, mcp_context
 
@@ -314,6 +315,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        "en",  # default_locale
     )
 
     await initializer.initialize()
@@ -403,6 +405,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        "en",  # default_locale
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -594,6 +597,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        "en",  # default_locale
     )
 
     await initializer.initialize()

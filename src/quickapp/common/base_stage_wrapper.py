@@ -4,12 +4,12 @@ from typing import Any
 
 from aidial_sdk.chat_completion import Attachment, Stage
 
-from quickapp.common import ToolCallResult
 from quickapp.common.parameter_stage_format import (
     extract_parameters_config_map,
     render_config_map_parameters,
     resolve_tool_stage_display_name,
 )
+from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.config.tools.base import BaseTool
 from quickapp.config.tools.display.paramenter import FormattedParameterConfig
 

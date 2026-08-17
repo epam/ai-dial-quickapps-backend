@@ -2,7 +2,7 @@ import threading
 
 from aidial_sdk.chat_completion.request import StaticTool
 
-from quickapp.common import StagedBaseTool
+from quickapp.common.staged_base_tool import StagedBaseTool
 
 from .exceptions import InitializationException, ToolInitializationException
 

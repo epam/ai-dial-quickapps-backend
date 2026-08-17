@@ -55,6 +55,7 @@ def _make_service(dial_client: MagicMock) -> ToolConfigCoreService:
         dial_settings=_make_dial_settings(),
         dial_client_provider=provider,
         timeout_resolver_provider=noop_timeout_resolver_provider(),
+        default_locale="en",
     )
 
 
@@ -133,6 +134,7 @@ class TestGetBasicToolConfig:
             dial_settings=_make_dial_settings(),
             dial_client_provider=provider,
             timeout_resolver_provider=noop_timeout_resolver_provider(),
+            default_locale="en",
         )
 
         with patch(

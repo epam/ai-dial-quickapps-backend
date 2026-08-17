@@ -3,7 +3,7 @@ import logging
 from fastapi_injector import request_scope
 from injector import Binder, ClassAssistedBuilder, Module, multiprovider
 
-from quickapp.common import AcceptLanguage, StagedBaseTool
+from quickapp.common import DEFAULT_LOCALE, AcceptLanguage, StagedBaseTool
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.common.utils import sanitize_toolname
@@ -33,13 +33,18 @@ class RestApiToolingModule(Module):
         app_config: ApplicationConfig,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         accept_language: AcceptLanguage,
+        default_locale: DEFAULT_LOCALE,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:
-                toolset_stage_name = resolve_localized(toolset_info.name, accept_language)
+                toolset_stage_name = resolve_localized(
+                    toolset_info.name, accept_language, default_locale=default_locale
+                )
                 result.extend(
-                    self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
+                    self.__create_rest_api_tools(
+                        toolset_info, tool_builder, toolset_stage_name, default_locale
+                    )
                 )
         return result
 
@@ -48,6 +53,7 @@ class RestApiToolingModule(Module):
         rest_api_toolset: RestApiToolSet,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         toolset_stage_name: str,
+        default_locale: str,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for tool_config in rest_api_toolset.tools:
@@ -75,7 +81,7 @@ class RestApiToolingModule(Module):
                                 "function": tool_config.open_ai_tool.function.model_copy(
                                     update={
                                         "name": sanitize_toolname(
-                                            f"{resolve_localized(rest_api_toolset.name)}_{tool_config.open_ai_tool.function.name}"
+                                            f"{resolve_localized(rest_api_toolset.name, default_locale=default_locale)}_{tool_config.open_ai_tool.function.name}"
                                         )
                                     }
                                 )

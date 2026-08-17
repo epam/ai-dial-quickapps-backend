@@ -11,13 +11,10 @@ from ._di_types import (
     RESPONSE_FORMAT,
     TOOL_CHOICE,
     AcceptLanguage,
+    DEFAULT_LOCALE,
     ForwardedHeaders,
 )
 from .deployment_usage import DeploymentUsage
-
-# isort: off — ToolCallResult must precede StagedBaseTool (base_stage_wrapper import cycle)
-from .tool_call_result import ToolCallResult
 from .staged_base_tool import StagedBaseTool
 from .timed_stage_wrapper import TimedStageWrapper
-
-# isort: on
+from .tool_call_result import ToolCallResult

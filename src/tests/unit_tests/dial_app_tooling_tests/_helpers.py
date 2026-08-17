@@ -104,5 +104,6 @@ def make_resolver(
         tool_config_service=tool_config_service,
         deployment_cache=deployment_cache,
         context=context,
+        default_locale="en",
     )
     return resolver, context, tool_config_service, deployment_cache

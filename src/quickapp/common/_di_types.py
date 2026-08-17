@@ -16,3 +16,4 @@ CLIENT_CHANNEL_HEADER = "X-DIAL-CLIENT-CHANNEL-ID"
 ORCHESTRATOR_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "ORCHESTRATOR_AZURE_CLIENT"]
 DEPLOYMENT_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "DEPLOYMENT_AZURE_CLIENT"]
 AcceptLanguage = Annotated[str | None, "AcceptLanguage"]
+DEFAULT_LOCALE = Annotated[str, "DefaultLocale"]
