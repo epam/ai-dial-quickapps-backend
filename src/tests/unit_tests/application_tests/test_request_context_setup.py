@@ -8,6 +8,7 @@ from aidial_sdk.chat_completion.request import Function, StaticFunction, StaticT
 from aidial_sdk.deployment.configuration import ConfigurationRequest
 
 from quickapp.core.application import _RequestContext
+from quickapp.core.application._proxy_settings import ProxySettings
 from quickapp.core.application._request_context_setup import _RequestContextSetup
 
 _PATCH_MODEL_VALIDATE = patch(
@@ -16,7 +17,9 @@ _PATCH_MODEL_VALIDATE = patch(
 )
 
 
-def _make_setup() -> tuple[_RequestContextSetup, _RequestContext]:
+def _make_setup(
+    proxy_settings: ProxySettings | None = None,
+) -> tuple[_RequestContextSetup, _RequestContext]:
     context = _RequestContext()
     context_provider = MagicMock()
     context_provider.get.return_value = context
@@ -29,6 +32,7 @@ def _make_setup() -> tuple[_RequestContextSetup, _RequestContext]:
         context_provider=context_provider,
         config_resolver=config_resolver,
         messages_setup=messages_setup,
+        proxy_settings=proxy_settings or ProxySettings(),
     )
     return setup, context
 
@@ -174,3 +178,40 @@ async def test_setup_context_does_not_set_extra_tools_for_configuration_request(
     with _PATCH_MODEL_VALIDATE:
         await setup.setup_context(request)
     assert context.extra_tools == []
+
+
+@pytest.mark.asyncio
+async def test_chat_request_sets_accept_language_from_default_header():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={"accept-language": "fr"})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.accept_language == "fr"
+
+
+@pytest.mark.asyncio
+async def test_chat_request_sets_accept_language_none_when_header_absent():
+    setup, context = _make_setup()
+    request = _make_chat_request(headers={})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.accept_language is None
+
+
+@pytest.mark.asyncio
+async def test_chat_request_reads_accept_language_from_custom_header(monkeypatch):
+    monkeypatch.setenv("PROXY_LANGUAGE_HEADER", "x-custom-locale")
+    setup, context = _make_setup(proxy_settings=ProxySettings())
+    request = _make_chat_request(headers={"x-custom-locale": "de"})
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.accept_language == "de"
+
+
+@pytest.mark.asyncio
+async def test_configuration_request_does_not_set_accept_language():
+    setup, context = _make_setup()
+    request = _make_config_request()
+    with _PATCH_MODEL_VALIDATE:
+        await setup.setup_context(request)
+    assert context.accept_language is None
