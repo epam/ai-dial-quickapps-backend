@@ -13,6 +13,7 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.config.config_template_resolver import ConfigResolver
 
 from ._messages_setup import _MessagesSetup
+from ._proxy_settings import ProxySettings
 from ._request_context import _RequestContext
 
 logger = logging.getLogger(__name__)
@@ -34,10 +35,12 @@ class _RequestContextSetup:
         context_provider: ProviderOf[_RequestContext],
         config_resolver: ConfigResolver,
         messages_setup: _MessagesSetup,
+        proxy_settings: ProxySettings,
     ):
         self.__context_provider = context_provider
         self.__config_resolver = config_resolver
         self.__messages_setup = messages_setup
+        self.__proxy_settings = proxy_settings
 
     def __resolve_application_config(self, application_properties):
         application_config = ApplicationConfig.model_validate(application_properties)
@@ -63,7 +66,7 @@ class _RequestContextSetup:
         if isinstance(request, Request):
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
-            context.accept_language = request.headers.get("accept-language")
+            context.accept_language = request.headers.get(self.__proxy_settings.language_header)
             if request.response_format:
                 context.response_format = request.response_format
             if request.tool_choice is not None:
