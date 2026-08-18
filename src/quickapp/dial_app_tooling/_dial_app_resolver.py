@@ -10,6 +10,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
+from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_app import DialAppToolSet
@@ -83,7 +84,7 @@ class _DialAppResolver(CompletionInitializer):
                         f"transport=mcp requested but features.mcp is not advertised "
                         f"on {toolset.deployment_id}"
                     ),
-                    toolset_name=toolset.name,
+                    toolset_name=resolve_localized(toolset.name),
                 )
             else:
                 await self._handle_chat_completion_branch(toolset)
@@ -98,7 +99,7 @@ class _DialAppResolver(CompletionInitializer):
             self.__context.append_exception(
                 ToolInitializationException(
                     message=str(e),
-                    toolset_name=toolset.name,
+                    toolset_name=resolve_localized(toolset.name),
                     details=details,
                 )
             )
@@ -116,7 +117,7 @@ class _DialAppResolver(CompletionInitializer):
             logger.warning(
                 "conversation_mode.resumable set on DialAppToolSet '%s' is ignored on the MCP "
                 "branch (resumable sessions apply only to the chat-completion deployment tool).",
-                toolset.name,
+                resolve_localized(toolset.name),
             )
         url = f"{self.__dial_settings.url}/v1/deployments/{toolset.deployment_id}/mcp"
         api_key = self.__api_key_provider.get()
@@ -142,12 +143,12 @@ class _DialAppResolver(CompletionInitializer):
             logger.warning(
                 "allowed_tools set on DialAppToolSet '%s' is ignored on the chat-completion "
                 "fallback branch (single synthetic tool).",
-                toolset.name,
+                resolve_localized(toolset.name),
             )
         tool_config = await self.__deployment_cache.fetch_basic_tool_config(
             self.__tool_config_service.get_basic_tool_config,
             toolset.deployment_id,
-            toolset_name=toolset.name,
+            toolset_name=resolve_localized(toolset.name),
         )
         customised = tool_config.model_copy(
             update={

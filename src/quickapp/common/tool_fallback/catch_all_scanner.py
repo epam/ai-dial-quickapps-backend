@@ -1,5 +1,6 @@
 import logging
 
+from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
@@ -26,7 +27,10 @@ def log_customised_catch_all_strategies(app_config: ApplicationConfig) -> None:
     timeout message takes over. See `docs/designs/configurable_timeouts.md` §7.
     """
     for tool_set in app_config.tool_sets:
-        toolset_name = getattr(tool_set, "name", None) or type(tool_set).__name__
+        raw_name = getattr(tool_set, "name", None)
+        toolset_name = (
+            resolve_localized(raw_name) if raw_name is not None else type(tool_set).__name__
+        )
 
         if isinstance(tool_set, (MCPToolSet, DialMCPToolSet)):
             if _has_customised_catch_all(tool_set.fallback_configuration):

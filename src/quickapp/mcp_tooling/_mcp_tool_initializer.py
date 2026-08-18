@@ -9,11 +9,12 @@ from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
 from mcp.types import BlobResourceContents, TextResourceContents
 
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
@@ -104,7 +105,7 @@ def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet):
         return f"dial:{toolset_info.deployment_id}"
-    return f"mcp:{toolset_info.name}"
+    return f"mcp:{resolve_localized(toolset_info.name)}"
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
@@ -113,7 +114,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
         return _human_readable_dial_id(toolset_info.deployment_id)
-    return getattr(toolset_info, "name", "")
+    return resolve_localized(getattr(toolset_info, "name", ""))
 
 
 @inject
@@ -129,6 +130,7 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
+        accept_language: ACCEPT_LANGUAGE,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -143,6 +145,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
+        self.__accept_language: ACCEPT_LANGUAGE = accept_language
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -264,7 +267,9 @@ class _MCPToolInitializer(CompletionInitializer):
                     attachment=resolved_toolset.attachment,
                     fallback_configuration=resolved_toolset.fallback_configuration,
                     open_ai_tool=self._convert_to_openai_tool(
-                        sanitize_toolname(f"{resolved_toolset.name}_{tool.name}"),
+                        sanitize_toolname(
+                            f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
+                        ),
                         tool.description,
                         tool.inputSchema,
                     ),
@@ -273,6 +278,9 @@ class _MCPToolInitializer(CompletionInitializer):
                 dial_toolset_id=(
                     toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
                 ),
+            )
+            mcp_tool.stage_name_component = resolve_localized(
+                resolved_toolset.name, self.__accept_language
             )
             created_tools.append(mcp_tool)
         if created_tools:
@@ -352,7 +360,7 @@ class _MCPToolInitializer(CompletionInitializer):
                             resolved_toolset.name,
                         )
             except Exception as e:
-                label = resolved_toolset.name
+                label = resolve_localized(resolved_toolset.name)
                 logger.error(
                     "Failed to read eager resource '%s' for toolset '%s': %s",
                     item.uri,
@@ -416,7 +424,7 @@ class _MCPToolInitializer(CompletionInitializer):
             async with toolset_client.open_init_session() as (session, init_result):
                 # Capture server capabilities
                 caps = MCPServerCapabilities(
-                    toolset_name=resolved_toolset.name,
+                    toolset_name=resolve_localized(resolved_toolset.name),
                     server_name=init_result.serverInfo.name,
                     server_version=init_result.serverInfo.version or "",
                     protocol_version=str(init_result.protocolVersion),
@@ -484,7 +492,9 @@ class _MCPToolInitializer(CompletionInitializer):
                         )
 
             # Register client for on-demand resource reads by _ReadMcpResourceTool
-            self.__mcp_context.register_client(resolved_toolset.name, toolset_client)
+            self.__mcp_context.register_client(
+                resolve_localized(resolved_toolset.name), toolset_client
+            )
 
         except MCPUnauthorizedException:
             raise

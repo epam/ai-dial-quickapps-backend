@@ -2,7 +2,7 @@ import asyncio
 import logging
 
 from aidial_client import AsyncDial
-from aidial_client.types.metadata import FileMetadata
+from aidial_client.types.metadata import FileItem, FileMetadata
 from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
@@ -41,9 +41,9 @@ class DialFilePromoter:
         self.__external_fetcher = external_fetcher
         self.__attachment_service = attachment_service
         self.__dial_url = dial_settings.url
-        self.__cache: dict[str, asyncio.Task[FileMetadata]] = {}
+        self.__cache: dict[str, asyncio.Task[FileMetadata | FileItem]] = {}
 
-    async def promote(self, url: str, parameter_name: str = "<unknown>") -> FileMetadata:
+    async def promote(self, url: str, parameter_name: str = "<unknown>") -> FileMetadata | FileItem:
         task = self.__cache.get(url)
         if task is not None:
             return await task
@@ -56,7 +56,7 @@ class DialFilePromoter:
             self.__cache.pop(url, None)
             raise
 
-    async def __do_promote(self, url: str, parameter_name: str) -> FileMetadata:
+    async def __do_promote(self, url: str, parameter_name: str) -> FileMetadata | FileItem:
         scheme = classify_url(url, self.__dial_url)
         if scheme == UrlScheme.DIAL:
             return await self.__dial_client.files.get_metadata(strip_file_prefix(url))

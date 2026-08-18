@@ -14,3 +14,9 @@ class DialJSONSchemaExtensions(StrEnum):
     PROPERTY_ORDER = "dial:propertyOrder"
     RESOURCE = "dial:resource"
     FILE = "dial:file"
+
+    DEFAULT_LOCALE = "dial:defaultLocale"
+    LOCALIZED = "dial:localized"
+    TAB = "dial:tab"
+    SECTION = "dial:section"
+    WIDGET = "dial:widget"

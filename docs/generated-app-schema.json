@@ -4,6 +4,7 @@
   "dial:applicationTypeDisplayName": "Quick App 2.0",
   "dial:appendApplicationPropertiesHeader": false,
   "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
+  "dial:defaultLocale": "en",
   "type": "object",
   "$id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
@@ -643,14 +644,30 @@
     "DeploymentToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -702,14 +719,30 @@
     "DialAppToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -1184,6 +1217,12 @@
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -1717,14 +1756,30 @@
     "InternalToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -2095,14 +2150,30 @@
     "MCPToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -2927,14 +2998,30 @@
     "RestApiToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"

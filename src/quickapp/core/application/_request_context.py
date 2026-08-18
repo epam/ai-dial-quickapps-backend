@@ -3,6 +3,7 @@ from aidial_sdk.chat_completion.request import Tool
 from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -55,6 +56,7 @@ class _RequestContext(MessagesMixin):
     _client_channel_id: CLIENT_CHANNEL_ID = None
     _tool_choice: TOOL_CHOICE = None
     _extra_tools: list[Tool] | None = None
+    _accept_language: ACCEPT_LANGUAGE = None
 
     @property
     def bearer(self) -> DIAL_BEARER:
@@ -156,3 +158,13 @@ class _RequestContext(MessagesMixin):
         if self._extra_tools is not None:
             raise RuntimeError("Extra tools are already set")
         self._extra_tools = value
+
+    @property
+    def accept_language(self) -> ACCEPT_LANGUAGE:
+        return self._accept_language
+
+    @accept_language.setter
+    def accept_language(self, value: ACCEPT_LANGUAGE) -> None:
+        if self._accept_language is not None:
+            raise RuntimeError("Accept-Language is already set")
+        self._accept_language = value
