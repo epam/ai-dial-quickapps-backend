@@ -1,6 +1,6 @@
 [project]
 name = "QuickApps"
-version = "0.11.0rc3"
+version = "0.11.0rc4"
 description = "Configurable agentic application for DIAL"
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
