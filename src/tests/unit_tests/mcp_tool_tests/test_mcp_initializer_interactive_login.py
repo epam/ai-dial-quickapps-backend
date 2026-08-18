@@ -1,5 +1,6 @@
 """Tests for multi-phase interactive login in _MCPToolInitializer.initialize()."""
 
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import pytest
@@ -15,6 +16,25 @@ from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+
+
+def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
+    """Configure conn.open_init_session to yield (mock_session, mock_init_result)."""
+    session = MagicMock()
+    init_result = MagicMock()
+    init_result.serverInfo.name = "test-server"
+    init_result.serverInfo.version = "1.0"
+    init_result.protocolVersion = "2025-03-26"
+    init_result.capabilities.tools = MagicMock() if supports_tools else None
+    init_result.capabilities.resources = None
+    init_result.capabilities.prompts = None
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session, init_result
+
+    conn.open_init_session = _ctx
+    return session
 
 
 def _make_dial_toolset(
@@ -75,6 +95,7 @@ def _make_initializer(
     if toolset_client_builder is None:
         conn = MagicMock()
         conn.get_tools_list = AsyncMock(return_value=[])
+        _setup_open_init_session(conn)
         toolset_client_builder = MagicMock()
         toolset_client_builder.build.return_value = conn
 
@@ -106,6 +127,7 @@ def _make_initializer(
         dial_mcp_cache=dial_mcp_cache,
         tool_config_service=MagicMock(),
         login_service=login_service,
+        accept_language=None,
     )
     return initializer, mcp_context, login_service
 
@@ -116,6 +138,7 @@ async def test_no_401_no_login_called():
     ts = _make_mcp_toolset()
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(return_value=[])
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -135,6 +158,7 @@ async def test_dial_toolset_401_triggers_batch_login():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -162,7 +186,7 @@ async def test_dial_toolset_401_success_retries():
 
     call_count = 0
 
-    async def get_tools_side_effect():
+    async def get_tools_side_effect(_session=None):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
@@ -171,6 +195,7 @@ async def test_dial_toolset_401_success_retries():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=get_tools_side_effect)
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -196,6 +221,7 @@ async def test_retry_failure_appends_exception():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -223,6 +249,7 @@ async def test_plain_mcp_toolset_401_not_eligible():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ext"))
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -243,6 +270,7 @@ async def test_batch_multiple_toolsets():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts"))
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -277,6 +305,7 @@ async def test_no_channel_appends_exception():
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=MCPUnauthorizedException("ts1"))
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 

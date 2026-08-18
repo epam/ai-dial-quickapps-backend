@@ -63,6 +63,7 @@ class _RequestContextSetup:
         if isinstance(request, Request):
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
+            context.accept_language = request.headers.get("accept-language")
             if request.response_format:
                 context.response_format = request.response_format
             if request.tool_choice is not None:

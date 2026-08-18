@@ -5,6 +5,7 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
@@ -91,6 +92,10 @@ class AppModule(Module):
     @provider
     def __provide_client_channel_id(self, context: _RequestContext) -> CLIENT_CHANNEL_ID:
         return context.client_channel_id
+
+    @provider
+    def __provide_accept_language(self, context: _RequestContext) -> ACCEPT_LANGUAGE:
+        return context.accept_language
 
     @provider
     def __provide_stage(self, choice: Choice) -> Stage:

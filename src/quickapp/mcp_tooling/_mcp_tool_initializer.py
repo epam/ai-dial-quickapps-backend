@@ -7,12 +7,14 @@ import httpx
 from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
+from mcp.types import BlobResourceContents, TextResourceContents
 
-from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.tools.base import (
     JsonTypeEnum,
@@ -27,6 +29,9 @@ from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
+from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
+from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -100,7 +105,7 @@ def _toolset_key(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet):
         return f"dial:{toolset_info.deployment_id}"
-    return f"mcp:{toolset_info.name}"
+    return f"mcp:{resolve_localized(toolset_info.name)}"
 
 
 def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
@@ -109,7 +114,7 @@ def _toolset_label_for_error(toolset_info: MCPToolSet | DialMCPToolSet) -> str:
     """
     if isinstance(toolset_info, DialMCPToolSet) and toolset_info.name == _UNTITLED_MCP_TOOLSET:
         return _human_readable_dial_id(toolset_info.deployment_id)
-    return getattr(toolset_info, "name", "")
+    return resolve_localized(getattr(toolset_info, "name", ""))
 
 
 @inject
@@ -125,6 +130,7 @@ class _MCPToolInitializer(CompletionInitializer):
         dial_mcp_cache: DialToolsetCacheService,
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
+        accept_language: ACCEPT_LANGUAGE,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -139,6 +145,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__mcp_cache: DialToolsetCacheService = dial_mcp_cache
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
+        self.__accept_language: ACCEPT_LANGUAGE = accept_language
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -240,13 +247,141 @@ class _MCPToolInitializer(CompletionInitializer):
                 )
             )
 
+    async def _load_tools(
+        self,
+        resolved_toolset: MCPToolSet,
+        toolset_info: MCPToolSet | DialMCPToolSet,
+        toolset_client: _MCPToolsetClient,
+        session: Any,
+    ) -> None:
+        tools = await toolset_client.get_tools_list(session)
+
+        if resolved_toolset.allowed_tools:
+            tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
+
+        created_tools: list[StagedBaseTool] = []
+        for tool in tools:
+            mcp_tool = self.__tool_builder.build(
+                tool=tool,
+                tool_config=MCPTool(
+                    attachment=resolved_toolset.attachment,
+                    fallback_configuration=resolved_toolset.fallback_configuration,
+                    open_ai_tool=self._convert_to_openai_tool(
+                        sanitize_toolname(
+                            f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
+                        ),
+                        tool.description,
+                        tool.inputSchema,
+                    ),
+                ),
+                toolset_client=toolset_client,
+                dial_toolset_id=(
+                    toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
+                ),
+            )
+            mcp_tool.stage_name_component = resolve_localized(
+                resolved_toolset.name, self.__accept_language
+            )
+            created_tools.append(mcp_tool)
+        if created_tools:
+            self.__mcp_context.extend_tools(created_tools)
+
+    async def _load_resources(
+        self,
+        resolved_toolset: MCPToolSet,
+        toolset_client: _MCPToolsetClient,
+        session: Any,
+    ) -> None:
+        assert resolved_toolset.resources is not None
+        resources_config = resolved_toolset.resources
+
+        server_resources = await toolset_client.get_resources_list(session)
+
+        # Filter to configured items when an explicit list is provided
+        if resources_config.items is not None:
+            allowed_uris = {item.uri for item in resources_config.items}
+            server_resources = [r for r in server_resources if str(r.uri) in allowed_uris]
+
+        metas: list[MCPResourceMeta] = []
+        for resource in server_resources:
+            metas.append(
+                MCPResourceMeta(
+                    toolset_name=resolved_toolset.name,
+                    toolset_description=resolved_toolset.description,
+                    resource_name=resource.name,
+                    resource_uri=str(resource.uri),
+                    resource_description=resource.description,
+                    mime_type=resource.mimeType,
+                )
+            )
+        if metas:
+            self.__mcp_context.extend_resource_metas(metas)
+
+        # Load eager resources
+        if resources_config.items is None:
+            return
+
+        for item in resources_config.items:
+            if not item.eager:
+                continue
+            try:
+                contents = await toolset_client.read_resource_contents(session, item.uri)
+                for content in contents:
+                    if isinstance(content, TextResourceContents):
+                        meta = next(
+                            (m for m in metas if m.resource_uri == item.uri),
+                            None,
+                        )
+                        if meta is None:
+                            logger.warning(
+                                "Eager resource '%s' in toolset '%s' was configured as eager "
+                                "but not returned by the server — skipping",
+                                item.uri,
+                                resolved_toolset.name,
+                            )
+                            continue
+                        self.__mcp_context.extend_eager_resources(
+                            [
+                                MCPEagerTextResource(
+                                    toolset_name=meta.toolset_name,
+                                    toolset_description=meta.toolset_description,
+                                    resource_name=meta.resource_name,
+                                    resource_uri=meta.resource_uri,
+                                    resource_description=meta.resource_description,
+                                    mime_type=meta.mime_type,
+                                    text=content.text,
+                                )
+                            ]
+                        )
+                    elif isinstance(content, BlobResourceContents):
+                        logger.warning(
+                            "Eager resource '%s' in toolset '%s' is a blob — skipping (Phase 2)",
+                            item.uri,
+                            resolved_toolset.name,
+                        )
+            except Exception as e:
+                label = resolve_localized(resolved_toolset.name)
+                logger.error(
+                    "Failed to read eager resource '%s' for toolset '%s': %s",
+                    item.uri,
+                    label,
+                    e,
+                    exc_info=True,
+                )
+                self.__mcp_context.append_exception(
+                    ToolInitializationException(
+                        message=f"Failed to load eager resource '{item.uri}' for toolset '{label}'",
+                        toolset_name=label,
+                        details=str(e),
+                    )
+                )
+
     async def _process_toolset(self, toolset_info: MCPToolSet | DialMCPToolSet) -> None:
         if not toolset_info.enabled:
             return
 
-        resolved_toolset: MCPToolSet | DialMCPToolSet = toolset_info
         try:
-            # Resolve DialMCPToolSet data asynchronously if needed
+            # Resolve DialMCPToolSet to a plain MCPToolSet before any session work
             if isinstance(toolset_info, DialMCPToolSet):
                 dial_toolset_info: ToolsetInfo | None = await self.__mcp_cache.get(
                     f"mcp_toolset_{toolset_info.deployment_id}",
@@ -276,40 +411,90 @@ class _MCPToolInitializer(CompletionInitializer):
                             else MCPProtocol.streamable_http
                         ),
                     ),
+                    resources=toolset_info.resources,
                 )
+            else:
+                resolved_toolset = toolset_info
 
             toolset_client = self.__toolset_client_builder.build(
                 toolset_info=resolved_toolset,
                 toolset_key=_toolset_key(toolset_info),
             )
-            tools = await toolset_client.get_tools_list()
 
-            if resolved_toolset.allowed_tools:
-                tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
-
-            created_tools: list[StagedBaseTool] = []
-            for tool in tools:
-                mcp_tool = self.__tool_builder.build(
-                    tool=tool,
-                    tool_config=MCPTool(
-                        attachment=resolved_toolset.attachment,
-                        fallback_configuration=resolved_toolset.fallback_configuration,
-                        open_ai_tool=self._convert_to_openai_tool(
-                            sanitize_toolname(f"{resolved_toolset.name}_{tool.name}"),
-                            tool.description,
-                            tool.inputSchema,
-                        ),
-                    ),
-                    toolset_client=toolset_client,
-                    dial_toolset_id=(
-                        toolset_info.deployment_id
-                        if isinstance(toolset_info, DialMCPToolSet)
-                        else None
-                    ),
+            async with toolset_client.open_init_session() as (session, init_result):
+                # Capture server capabilities
+                caps = MCPServerCapabilities(
+                    toolset_name=resolve_localized(resolved_toolset.name),
+                    server_name=init_result.serverInfo.name,
+                    server_version=init_result.serverInfo.version or "",
+                    protocol_version=str(init_result.protocolVersion),
+                    supports_tools=init_result.capabilities.tools is not None,
+                    supports_resources=init_result.capabilities.resources is not None,
+                    supports_prompts=init_result.capabilities.prompts is not None,
                 )
-                created_tools.append(mcp_tool)
-            if created_tools:
-                self.__mcp_context.extend_tools(created_tools)
+                self.__mcp_context.extend_server_capabilities([caps])
+
+                # Tool loading — independent error scope
+                label = _toolset_label_for_error(toolset_info)
+                try:
+                    if caps.supports_tools:
+                        await self._load_tools(
+                            resolved_toolset, toolset_info, toolset_client, session
+                        )
+                    else:
+                        logger.warning(
+                            "Toolset '%s' server does not advertise tools capability — skipping tool list",
+                            label,
+                        )
+                except MCPUnauthorizedException:
+                    raise
+                except Exception as e:
+                    logger.error(
+                        "Tool loading failed for toolset '%s': %s", label, e, exc_info=True
+                    )
+                    detail_lines = [
+                        _format_leaf_for_user(label, leaf) for leaf in _flatten_exceptions(e)
+                    ]
+                    self.__mcp_context.append_exception(
+                        ToolInitializationException(
+                            message=detail_lines[0],
+                            toolset_name=label,
+                            details="\n".join(detail_lines),
+                        )
+                    )
+
+                # Resource loading — independent error scope
+                if resolved_toolset.resources and resolved_toolset.resources.enabled:
+                    if caps.supports_resources:
+                        try:
+                            await self._load_resources(resolved_toolset, toolset_client, session)
+                        except MCPUnauthorizedException:
+                            raise
+                        except Exception as e:
+                            logger.error(
+                                "Resource loading failed for toolset '%s': %s",
+                                label,
+                                e,
+                                exc_info=True,
+                            )
+                            self.__mcp_context.append_exception(
+                                ToolInitializationException(
+                                    message=f"Failed to load resources for toolset '{label}'",
+                                    toolset_name=label,
+                                    details=str(e),
+                                )
+                            )
+                    else:
+                        logger.warning(
+                            "Toolset '%s' has resources.enabled=true but server does not "
+                            "advertise resources capability — skipping",
+                            label,
+                        )
+
+            # Register client for on-demand resource reads by _ReadMcpResourceTool
+            self.__mcp_context.register_client(
+                resolve_localized(resolved_toolset.name), toolset_client
+            )
 
         except MCPUnauthorizedException:
             raise

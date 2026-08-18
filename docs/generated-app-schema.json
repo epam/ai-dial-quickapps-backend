@@ -4,6 +4,7 @@
   "dial:applicationTypeDisplayName": "Quick App 2.0",
   "dial:appendApplicationPropertiesHeader": false,
   "dial:applicationTypeAssistantAttachmentsInRequestSupported": true,
+  "dial:defaultLocale": "en",
   "type": "object",
   "$id": "https://mydial.epam.com/custom_application_schemas/quickapps2",
   "$schema": "https://dial.epam.com/application_type_schemas/schema#",
@@ -643,14 +644,30 @@
     "DeploymentToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -702,14 +719,30 @@
     "DialAppToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -1186,6 +1219,12 @@
               "type": "string"
             },
             {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
               "type": "null"
             }
           ],
@@ -1245,6 +1284,17 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPResourcesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "dial_id": {
           "deprecated": true,
@@ -1706,14 +1756,30 @@
     "InternalToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -1983,6 +2049,52 @@
       "title": "MCPProtocol",
       "type": "string"
     },
+    "MCPResourceConfig": {
+      "properties": {
+        "uri": {
+          "title": "Uri",
+          "type": "string"
+        },
+        "eager": {
+          "default": false,
+          "description": "Pre-fetch this resource at init time and inject its content as a synthetic read_mcp_resource tool call pair before the first LLM invocation.",
+          "title": "Eager",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "uri"
+      ],
+      "title": "MCPResourceConfig",
+      "type": "object"
+    },
+    "MCPResourcesConfig": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "items": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/MCPResourceConfig"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Resources to expose. None = expose all resources the server declares, all lazy. Provide a list to restrict to specific URIs and/or mark some as eager.",
+          "title": "Items"
+        }
+      },
+      "title": "MCPResourcesConfig",
+      "type": "object"
+    },
     "MCPServerInfo": {
       "properties": {
         "url": {
@@ -2038,14 +2150,30 @@
     "MCPToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"
@@ -2094,6 +2222,17 @@
         "fallback_configuration": {
           "$ref": "#/$defs/ToolFallbackConfig",
           "description": "Tool fallback configuration."
+        },
+        "resources": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MCPResourcesConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -2859,14 +2998,30 @@
     "RestApiToolSet": {
       "properties": {
         "name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            }
+          ],
           "description": "The name of the tool set.",
-          "title": "Name",
-          "type": "string"
+          "title": "Name"
         },
         "description": {
           "anyOf": [
             {
               "type": "string"
+            },
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
             },
             {
               "type": "null"

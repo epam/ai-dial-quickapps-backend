@@ -1,5 +1,7 @@
 from pydantic import BaseModel, Field
 
+from quickapp.common.localized_string import LocalizedString
+
 
 class BaseToolSet(BaseModel):
     """
@@ -10,6 +12,8 @@ class BaseToolSet(BaseModel):
     - A logical abstraction on top of separate tools and physical toolsets.
     """
 
-    name: str = Field(description="The name of the tool set.")
-    description: str | None = Field(default=None, description="The description of the tool set.")
+    name: LocalizedString = Field(description="The name of the tool set.")
+    description: LocalizedString | None = Field(
+        default=None, description="The description of the tool set."
+    )
     enabled: bool = Field(default=True, description="Whether the toolset is enabled.")
