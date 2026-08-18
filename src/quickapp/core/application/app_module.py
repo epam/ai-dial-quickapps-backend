@@ -28,6 +28,7 @@ from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutRe
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
 from ._otel_settings import _OtelSettings
+from ._proxy_settings import ProxySettings
 from ._quick_app_application import _QuickAppApplication
 from ._quick_app_completion import _QuickAppCompletion
 from ._request_context import _RequestContext
@@ -49,6 +50,7 @@ class AppModule(Module):
         binder.bind(FastAPI, to=_QuickAppApplication, scope=singleton)
         binder.bind(ChatCompletion, to=_QuickAppCompletion, scope=singleton)  # type: ignore[type-abstract]
         binder.bind(DialSettings, to=DialSettings, scope=singleton)
+        binder.bind(ProxySettings, to=ProxySettings, scope=singleton)
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)

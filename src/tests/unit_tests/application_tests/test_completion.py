@@ -15,6 +15,7 @@ from quickapp.common.exceptions import (
 )
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.core.application import _MessagesSetup, _RequestContext
+from quickapp.core.application._proxy_settings import ProxySettings
 from quickapp.core.application._request_context_setup import _RequestContextSetup
 
 
@@ -140,6 +141,7 @@ def make_request_completion():
             context_provider=provider,
             config_resolver=config_resolver,
             messages_setup=messages_setup,
+            proxy_settings=ProxySettings(),
         )
 
         mapping = {
