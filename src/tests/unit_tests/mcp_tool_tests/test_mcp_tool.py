@@ -13,10 +13,10 @@ from pydantic import AnyUrl, SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
-    ACCEPT_LANGUAGE,
     ForwardedHeaders,
     StagedBaseTool,
     ToolCallResult,

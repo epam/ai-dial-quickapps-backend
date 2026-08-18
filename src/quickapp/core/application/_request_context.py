@@ -3,11 +3,11 @@ from aidial_sdk.chat_completion.request import Tool
 from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
     TOOL_CHOICE,
-    ACCEPT_LANGUAGE,
     ForwardedHeaders,
 )
 from quickapp.common.messages_mixin import MessagesMixin

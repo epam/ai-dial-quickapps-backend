@@ -9,7 +9,7 @@ from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
 from mcp.types import BlobResourceContents, TextResourceContents
 
-from quickapp.common import DIAL_API_KEY, ACCEPT_LANGUAGE, StagedBaseTool
+from quickapp.common import ACCEPT_LANGUAGE, DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException

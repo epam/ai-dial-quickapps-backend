@@ -5,12 +5,12 @@ from fastapi_injector import request_scope
 from injector import Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
     RESPONSE_FORMAT,
     TOOL_CHOICE,
-    ACCEPT_LANGUAGE,
     ForwardedHeaders,
 )
 from quickapp.common.dial_settings import DialSettings

@@ -11,9 +11,9 @@ from pydantic import SecretStr
 from starlette.testclient import TestClient
 
 from quickapp.common import (
+    ACCEPT_LANGUAGE,
     DIAL_API_KEY,
     DIAL_BEARER,
-    ACCEPT_LANGUAGE,
     ForwardedHeaders,
     StagedBaseTool,
 )
