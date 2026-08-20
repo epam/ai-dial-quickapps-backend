@@ -1,8 +1,8 @@
-"""SPIKE validation for Approach A (in-process subagents).
+"""Tests for in-process subagent spawning.
 
-These tests exist to answer one question: can a spawned subagent run its own
-orchestrator loop, against its own manifest, in a DI request scope that is fully
-isolated from the coordinator's — without touching the coordinator's state?
+Cover the guarantees the feature rests on: a spawned subagent runs its own
+orchestrator loop against its own compiled manifest, in a DI request scope
+isolated from the coordinator's, and never touches the coordinator's state.
 """
 
 import asyncio

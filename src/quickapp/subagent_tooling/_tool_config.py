@@ -10,16 +10,16 @@ from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfi
 from quickapp.config.tools.internal import InternalTool
 
 # Tool name and the free-text parameter (``prompt``) mirror Anthropic's Claude Code
-# "Task" tool, whose shape this feature deliberately follows (see the design doc).
+# "Task" tool, so builders and models familiar with it find the same shape here.
 TASK_TOOL_NAME = "task"
 
 
 def build_spawn_tool_config(subagents: list[SubagentConfig]) -> InternalTool:
     """One tool for every declared subagent type, selected by ``subagent_type``.
 
-    Matches Claude Code's "Task" tool shape: a flat tool catalogue that does not grow
-    as the builder adds subagent types, with routing carried by the enum descriptions,
-    and a ``prompt`` parameter carrying the delegated task.
+    A flat tool catalogue that does not grow as the builder adds subagent types:
+    routing is carried by the enum and the per-subagent descriptions, and the
+    ``prompt`` parameter carries the delegated task.
     """
     catalogue = "\n".join(f"- {s.name}: {s.description}" for s in subagents)
     return InternalTool(
