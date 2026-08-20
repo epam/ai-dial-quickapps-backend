@@ -2,13 +2,12 @@ from pydantic import BaseModel, Field
 
 
 class SubagentConfig(BaseModel):
-    """A subagent type declared by the app builder.
+    """A subagent type this app may spawn.
 
-    A spoke inherits the coordinator's ``contexts`` / ``skills`` / ``hooks`` /
-    ``features`` wholesale (see ``compile_subagent_manifest``), so there is no
-    field for them here. Per-subagent *narrowing* of those, and a tool-level
-    (rather than toolset-level) allowlist, are intentionally out of scope — see
-    ``docs/designs/anonymous_subagents.md``.
+    A subagent runs its own orchestrator loop with its own system prompt, model,
+    iteration budget, and tool sets, and returns a single result. It inherits the
+    app's contexts, skills, hooks, and features. Its tools are narrowed per tool
+    set, not per individual tool.
     """
 
     name: str = Field(description="Identifier the coordinator uses to select this subagent.")
