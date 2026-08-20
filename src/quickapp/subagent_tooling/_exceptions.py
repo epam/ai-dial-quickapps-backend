@@ -1,3 +1,19 @@
+from quickapp.common.exceptions.tool_error import ToolErrorException
+
+
+class SubagentToolErrorException(ToolErrorException):
+    """Raised when a spawn fails to produce an answer the coordinator can use.
+
+    A spoke that exhausts ``max_iterations`` mid-tool-loop leaves no final assistant
+    message behind. Returning that as an empty string would reach the coordinator's LLM
+    as a *successful* tool result, and it would then answer from nothing — the same
+    confabulation failure ``SubagentToolSetResolutionError`` exists to prevent. Raising
+    routes the spawn through the ordinary tool-error path instead.
+    """
+
+    tool_kind = "Subagent"
+
+
 class SubagentToolSetResolutionError(RuntimeError):
     """Raised when a subagent's declared tool sets resolve to nothing.
 

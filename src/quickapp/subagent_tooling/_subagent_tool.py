@@ -45,7 +45,7 @@ class _SubagentTool(StagedBaseTool):
         **kwargs: Any,
     ) -> ToolCallResult:
         subagent_type = kwargs.get("subagent_type")
-        task = kwargs.get("task")
+        prompt = kwargs.get("prompt")
 
         subagent = self.__subagents.get(str(subagent_type))
         if subagent is None:
@@ -53,12 +53,12 @@ class _SubagentTool(StagedBaseTool):
                 parameter_name="subagent_type",
                 message=f"Unknown subagent '{subagent_type}'. Available: {sorted(self.__subagents)}",
             )
-        if not task:
+        if not prompt:
             raise InvalidToolCallParameterException(
-                parameter_name="task", message="A task description is required."
+                parameter_name="prompt", message="A task description is required."
             )
 
-        answer = await self.__spawner.spawn(subagent, str(task))
+        answer = await self.__spawner.spawn(subagent, str(prompt))
 
         result = ToolCallResult(content=answer, content_type="text/markdown")
         if stage_wrapper:
