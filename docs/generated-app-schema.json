@@ -3202,6 +3202,76 @@
       "title": "StopStrategyModel",
       "type": "object"
     },
+    "SubagentConfig": {
+      "description": "A subagent type declared by the app builder.\n\nA spoke inherits the coordinator's ``contexts`` / ``skills`` / ``hooks`` /\n``features`` wholesale (see ``compile_subagent_manifest``), so there is no\nfield for them here. Per-subagent *narrowing* of those, and a tool-level\n(rather than toolset-level) allowlist, are intentionally out of scope — see\n``docs/designs/anonymous_subagents.md``.",
+      "properties": {
+        "name": {
+          "description": "Identifier the coordinator uses to select this subagent.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "When to use this subagent. Surfaced to the coordinator's LLM for routing.",
+          "title": "Description",
+          "type": "string"
+        },
+        "system_prompt": {
+          "description": "The subagent's instructions. Replaces the app system prompt, never appends.",
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "tool_sets": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the app's tool sets this subagent may use. When unset, the subagent inherits every tool set.",
+          "title": "Tool Sets"
+        },
+        "deployment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deployment for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Deployment Id"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Max Iterations"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "system_prompt"
+      ],
+      "title": "SubagentConfig",
+      "type": "object"
+    },
     "TTLRefreshCondition": {
       "properties": {
         "kind": {
@@ -3757,6 +3827,27 @@
         "dial:propertyOrder": 7
       }
     },
+    "subagents": {
+      "anyOf": [
+        {
+          "items": {
+            "$ref": "#/$defs/SubagentConfig"
+          },
+          "type": "array"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Subagent types this app may spawn. Each spawn runs its own orchestrator loop in an isolated context and returns a single result.",
+      "title": "Subagents",
+      "x-preview": true,
+      "dial:meta": {
+        "dial:propertyKind": "server",
+        "dial:propertyOrder": 8
+      }
+    },
     "features": {
       "anyOf": [
         {
@@ -3769,7 +3860,7 @@
       "description": "QuickApps Agent features configuration.",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 8
+        "dial:propertyOrder": 9
       }
     },
     "tool_defaults": {
@@ -3795,7 +3886,7 @@
       "type": "object",
       "dial:meta": {
         "dial:propertyKind": "server",
-        "dial:propertyOrder": 9
+        "dial:propertyOrder": 10
       }
     }
   },
