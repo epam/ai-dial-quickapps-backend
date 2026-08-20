@@ -44,13 +44,15 @@ def _as_text(content: str | list[Any] | None) -> str:
 def _headless_choice() -> Choice:
     """A Choice whose chunks go nowhere.
 
-    SPIKE ONLY. The design calls for an output-sink abstraction so the orchestrator
-    stops depending on Choice at all; this stand-in lets the loop run unmodified.
+    A subagent has no user conversation to stream into, but ``Orchestrator`` writes
+    to a ``Choice`` directly. This stand-in lets the loop run unmodified.
 
-    Note what it costs while it stands: everything the orchestrator writes to the
-    choice — the spoke's streamed content, its ``set_state``, and any attachment it
-    produced — is dropped here rather than forwarded to the coordinator. Forwarding
-    attachments is the concrete capability the real sink adds; see the design doc.
+    Known limitation: everything the orchestrator writes to the choice is dropped
+    rather than forwarded to the coordinator. That is harmless for streamed content
+    (the final answer is read back off ``_RequestContext.messages``) and for
+    ``set_state`` (subagents are stateless), but **attachments a subagent produces
+    are lost** — only text crosses back. Lifting that requires decoupling the
+    orchestrator from ``Choice``.
     """
     choice = Choice(_DiscardingQueue(), 0)
     choice.open()
