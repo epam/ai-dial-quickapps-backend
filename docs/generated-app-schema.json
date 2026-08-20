@@ -3203,7 +3203,7 @@
       "type": "object"
     },
     "SubagentConfig": {
-      "description": "A subagent type declared by the app builder.\n\nA spoke inherits the coordinator's ``contexts`` / ``skills`` / ``hooks`` /\n``features`` wholesale (see ``compile_subagent_manifest``), so there is no\nfield for them here. Per-subagent *narrowing* of those, and a tool-level\n(rather than toolset-level) allowlist, are intentionally out of scope — see\n``docs/designs/anonymous_subagents.md``.",
+      "description": "A subagent type this app may spawn.\n\nA subagent runs its own orchestrator loop with its own system prompt, model,\niteration budget, and tool sets, and returns a single result. It inherits the\napp's contexts, skills, hooks, and features. Its tools are narrowed per tool\nset, not per individual tool.",
       "properties": {
         "name": {
           "description": "Identifier the coordinator uses to select this subagent.",
