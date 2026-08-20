@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from typing import Any
 
 from aidial_sdk.chat_completion import Choice, Message, Role
+from aidial_sdk.chat_completion.request import MessageContentTextPart
 from fastapi_injector import RequestScopeFactory
 from injector import Injector, inject
 
@@ -13,19 +15,44 @@ from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.application._request_context import _RequestContext
 from quickapp.core.application._request_context_setup import _RequestContextSetup
 
+from ._exceptions import SubagentToolErrorException
 from ._manifest_compiler import compile_subagent_manifest
 
 logger = logging.getLogger(__name__)
+
+
+class _DiscardingQueue(asyncio.Queue):  # type: ignore[type-arg]
+    """A chunk queue that drops everything put into it.
+
+    ``Choice.send_chunk`` calls ``put_nowait``; overriding it discards the spoke's
+    chunks where they are produced, so none accumulate for the life of a spawn.
+    """
+
+    def put_nowait(self, item: object) -> None:
+        return
+
+
+def _as_text(content: str | list[Any] | None) -> str:
+    """Flatten a message's content down to the text a tool result can carry."""
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    return "".join(part.text for part in content if isinstance(part, MessageContentTextPart))
 
 
 def _headless_choice() -> Choice:
     """A Choice whose chunks go nowhere.
 
     SPIKE ONLY. The design calls for an output-sink abstraction so the orchestrator
-    stops depending on Choice at all; this stand-in lets the loop run unmodified by
-    draining into a queue nobody consumes.
+    stops depending on Choice at all; this stand-in lets the loop run unmodified.
+
+    Note what it costs while it stands: everything the orchestrator writes to the
+    choice — the spoke's streamed content, its ``set_state``, and any attachment it
+    produced — is dropped here rather than forwarded to the coordinator. Forwarding
+    attachments is the concrete capability the real sink adds; see the design doc.
     """
-    choice = Choice(asyncio.Queue(), 0)
+    choice = Choice(_DiscardingQueue(), 0)
     choice.open()
     return choice
 
@@ -80,11 +107,28 @@ class SubagentSpawner:
             orchestrator = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
             await orchestrator.invoke()
 
-            return self.__final_answer(context)
+            return self.__final_answer(context, subagent.name)
 
     @staticmethod
-    def __final_answer(context: _RequestContext) -> str:
+    def __final_answer(context: _RequestContext, subagent_name: str) -> str:
         for message in reversed(context.messages):
             if message.role == Role.ASSISTANT and not message.tool_calls:
-                return message.content or ""
-        return ""
+                # `content` widens to a list of content parts for multimodal messages.
+                # A spoke returns one string to its caller, so join the text parts and
+                # let anything else (images, files) fall through to the error below —
+                # the tool result has no channel to carry them until the output sink
+                # lands. See `_headless_choice`.
+                text = _as_text(message.content)
+                if text:
+                    return text
+                break
+        # A spoke that exhausted its iteration budget mid-tool-loop leaves no final
+        # message. Returning "" here would reach the coordinator's LLM as a successful
+        # tool result and it would answer from nothing; fail the call instead.
+        raise SubagentToolErrorException(
+            tool_name=subagent_name,
+            error_message=(
+                "The subagent produced no answer. It most likely exhausted its "
+                "max_iterations budget before finishing. Retry with a narrower task."
+            ),
+        )
