@@ -26,10 +26,13 @@ from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.application._request_context import _RequestContext
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
-from quickapp.subagent_tooling._exceptions import SubagentToolSetResolutionError
+from quickapp.subagent_tooling._exceptions import (
+    SubagentToolErrorException,
+    SubagentToolSetResolutionError,
+)
 from quickapp.subagent_tooling._manifest_compiler import compile_subagent_manifest
 from quickapp.subagent_tooling._subagent_spawner import SubagentSpawner
-from quickapp.subagent_tooling._tool_config import SPAWN_TOOL_NAME
+from quickapp.subagent_tooling._tool_config import TASK_TOOL_NAME
 from tests.unit_tests.common.common import create_app_configuration
 
 RESEARCHER = SubagentConfig(
@@ -166,7 +169,7 @@ async def test_spawn_tool_is_offered_to_the_coordinator(monkeypatch):
         await invoke_initializers(injector, InitializerType.completion)
 
         tools = injector.get(list[StagedBaseTool])
-        spawn_tools = [t for t in tools if t.openai_function_name() == SPAWN_TOOL_NAME]
+        spawn_tools = [t for t in tools if t.openai_function_name() == TASK_TOOL_NAME]
 
         assert len(spawn_tools) == 1
         function = spawn_tools[0].tool_config.open_ai_tool.function
@@ -192,7 +195,7 @@ async def test_no_spawn_tool_without_declared_subagents(monkeypatch):
 
         tools = injector.get(list[StagedBaseTool])
 
-        assert [t for t in tools if t.openai_function_name() == SPAWN_TOOL_NAME] == []
+        assert [t for t in tools if t.openai_function_name() == TASK_TOOL_NAME] == []
 
 
 @pytest.mark.asyncio
@@ -269,3 +272,47 @@ async def test_dangling_tool_set_reference_is_reported_at_initialization(monkeyp
 
         messages = [str(e) for e in exceptions]
         assert any("Fetch MCP toolset" in m and "researcher" in m for m in messages), messages
+
+
+class _SilentOrchestrator:
+    """A spoke that ends its run without a final assistant message.
+
+    This is what exhausting ``max_iterations`` mid-tool-loop leaves behind.
+    """
+
+    @inject
+    def __init__(self) -> None:
+        pass
+
+    async def invoke(self) -> None:
+        return
+
+
+@pytest.mark.asyncio
+async def test_spawn_without_a_final_answer_fails_the_tool_call(monkeypatch):
+    """An answerless spoke must surface as a tool error, not an empty success.
+
+    Returning "" would reach the coordinator's LLM as a successful result, and it
+    would then answer from nothing.
+    """
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+
+    injector = _test_injector()
+    injector.binder.bind(Orchestrator, to=_SilentOrchestrator)  # type: ignore[type-abstract,arg-type]
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        context = injector.get(_RequestContext)
+        context.api_key = SecretStr("key")
+        context.bearer = None
+        context.forwarded_headers = {}
+        context.application_config = _parent_config()
+        context.messages = [Message(role=Role.USER, content="do the thing")]
+
+        spawner = injector.get(SubagentSpawner)
+
+        with pytest.raises(SubagentToolErrorException) as excinfo:
+            await spawner.spawn(RESEARCHER, "Find out who broke the build.")
+
+    assert "max_iterations" in excinfo.value.user_facing_message
+    assert "researcher" in excinfo.value.user_facing_message
