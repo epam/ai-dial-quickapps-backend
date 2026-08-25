@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "A hyper-realistic, cinematic, ultra-high-quality image of a dinosaur in a natural prehistoric environment. The dinosaur should look lifelike and scientifically plausible, with detailed textured skin, powerful anatomy, expressive eyes, realistic lighting, and subtle atmospheric depth. Place it in a lush ancient forest with ferns, mist, and dramatic sunlight filtering through trees. Photorealistic style, sharp focus, high detail, natural colors, epic composition."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Tue, 21 Jul 2026 08:21:31 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-3c4a6078-35f9-4f5a-993b-05b1679c51c5\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1784622163,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-3c4a6078-35f9-4f5a-993b-05b1679c51c5\",\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":null,\"index\":0}],\"created\":1784622163,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-3c4a6078-35f9-4f5a-993b-05b1679c51c5\",\"choices\":[{\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/684f6Lz7ubje66aoCRsa5c/appdata/gpt-image-1/images/4ea51a8a1e6a902a7e1a068d4172e60a3b4c5f0356cc3cd9bed1607520e4667b.png\"}]}},\"finish_reason\":null,\"index\":0}],\"created\":1784622163,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-3c4a6078-35f9-4f5a-993b-05b1679c51c5\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1784622163,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

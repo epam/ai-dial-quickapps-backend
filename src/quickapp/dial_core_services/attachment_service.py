@@ -2,7 +2,7 @@ import base64
 import logging
 
 from aidial_client import AsyncDial
-from aidial_client.types.metadata import FileMetadata
+from aidial_client.types.metadata import FileItem
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
@@ -61,7 +61,7 @@ class AttachmentService:
         data: bytes,
         content_type: str | None,
         filename: str,
-    ) -> FileMetadata:
+    ) -> FileItem:
         bucket_resp = await self.__dial_client.bucket.get_raw()
         bucket = bucket_resp.appdata or bucket_resp.bucket
         return await self.__dial_client.files.upload(

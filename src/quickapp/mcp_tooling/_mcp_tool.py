@@ -1,13 +1,15 @@
+import json
 import logging
-from typing import Any
+from typing import Any, ClassVar
 
 from aidial_sdk.chat_completion import Attachment
 from injector import AssistedBuilder, inject
-from mcp.types import BlobResourceContents, TextResourceContents, Tool
+from mcp.types import BlobResourceContents, CallToolResult, TextResourceContents, Tool
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.payload_logging import log_payload
@@ -16,7 +18,12 @@ from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
 from quickapp.common.url_sanitization import sanitize_url_for_log
-from quickapp.common.utils import generate_attachment_filename, matches_type
+from quickapp.common.utils import (
+    filename_from_url_path,
+    generate_attachment_filename,
+    matches_type,
+    sanitize_filename,
+)
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
@@ -31,9 +38,13 @@ from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutRe
 
 logger = logging.getLogger(__name__)
 
+_AUTH_CHALLENGE_META_KEY = "dial.epam.com/auth-challenge"
+_EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
+
 
 @inject
 class _MCPTool(StagedBaseTool):
+    argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
     def __init__(
         self,
@@ -135,6 +146,16 @@ class _MCPTool(StagedBaseTool):
             files_to_share.extend(candidates)
         return files_to_share
 
+    def _resource_title(self, resource: Any) -> str:
+        """Use the filename the MCP server put in ``resource.uri``, when it has one."""
+        uri = getattr(resource, "uri", None)
+        name = filename_from_url_path(str(uri)) if uri else None
+        if name:
+            return sanitize_filename(name)
+        return generate_attachment_filename(
+            getattr(resource, "mimeType", None), base_filename=self.__tool.name
+        )
+
     def _content_to_attachment(self, content: Any) -> Attachment | None:
         ctype = getattr(content, "type", None)
 
@@ -150,9 +171,7 @@ class _MCPTool(StagedBaseTool):
 
         if ctype == "resource":
             resource = getattr(content, "resource", None)
-            title = generate_attachment_filename(
-                getattr(resource, "mimeType", None), base_filename=self.__tool.name
-            )
+            title = self._resource_title(resource)
             if isinstance(resource, TextResourceContents):
                 return Attachment(
                     title=title,
@@ -174,6 +193,56 @@ class _MCPTool(StagedBaseTool):
     def _should_upload(self, mime_type: str | None) -> bool:
         return matches_type(mime_type, self._tool_config.attachment.supported_types)
 
+    @staticmethod
+    def __extract_external_service_signin_scope(result: CallToolResult) -> str | None:
+        """Extract the scope from an errored result's dial.epam.com/auth-challenge _meta entry."""
+        if not getattr(result, "isError", False):
+            return None
+        meta = getattr(result, "meta", None)
+        if not meta:
+            return None
+        challenges = meta.get(_AUTH_CHALLENGE_META_KEY)
+        if not isinstance(challenges, list):
+            return None
+        for challenge in challenges:
+            if (
+                isinstance(challenge, dict)
+                and challenge.get("method") == _EXTERNAL_SERVICE_SIGNIN_METHOD
+            ):
+                scope = challenge.get("scope")
+                if isinstance(scope, str):
+                    return scope
+        return None
+
+    async def __call_tool_with_signin(self, **kwargs: Any) -> CallToolResult:
+        """Call the tool, recovering from either signin mechanism once, then return the result.
+
+        A transport-level 401 (``MCPUnauthorizedException``) is only recoverable for a
+        ``DialMCPToolSet`` (``toolset/signin``, keyed by ``dial_toolset_id``); an
+        external-service signin challenge embedded in the result's ``_meta`` (`scope`) applies
+        regardless of toolset type. On denied/timeout/error/no-channel for the latter, the
+        original errored result is returned so the caller's ordinary ``isError`` handling
+        raises ``MCPToolErrorException`` with the real error content.
+        """
+        try:
+            result = await self.__toolset_client.call_mcp_tool(self.__tool.name, **kwargs)
+        except MCPUnauthorizedException:
+            if self.__dial_toolset_id is None:
+                raise
+            login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
+            if login_result != LoginResult.SUCCESS:
+                raise
+            return await self.__toolset_client.call_mcp_tool(self.__tool.name, **kwargs)
+
+        scope = self.__extract_external_service_signin_scope(result)
+        if scope is None:
+            return result
+
+        login_result = await self.__login_service.request_external_service_signin(scope)
+        if login_result != LoginResult.SUCCESS:
+            return result
+        return await self.__toolset_client.call_mcp_tool(self.__tool.name, **kwargs)
+
     async def _run_in_stage_async(
         self,
         stage_wrapper: BaseStageWrapper | None,
@@ -188,19 +257,8 @@ class _MCPTool(StagedBaseTool):
         # Wrap the outer body: anyio task groups can raise BaseExceptionGroup, which
         # is not an Exception and would otherwise bypass `StagedBaseTool.arun()`.
         async with translate_timeout(self.__tool.name, timeout):
-            try:
-                tool_call_result = await self.__toolset_client.call_mcp_tool(
-                    self.__tool.name, **kwargs
-                )
-            except MCPUnauthorizedException:
-                if self.__dial_toolset_id is None:
-                    raise
-                login_result = await self.__login_service.request_signin(self.__dial_toolset_id)
-                if login_result != LoginResult.SUCCESS:
-                    raise
-                tool_call_result = await self.__toolset_client.call_mcp_tool(
-                    self.__tool.name, **kwargs
-                )
+            tool_call_result = await self.__call_tool_with_signin(**kwargs)
+
             contents = getattr(tool_call_result, "content", []) or []
             # Separate text blocks from non-text blocks
             text_parts: list[str] = []
@@ -219,6 +277,11 @@ class _MCPTool(StagedBaseTool):
                     non_text_contents.append(block)
 
             tool_content = "\n\n".join(filter(None, text_parts))
+
+            if not tool_content:
+                structured = getattr(tool_call_result, "structuredContent", None)
+                if structured is not None:
+                    tool_content = json.dumps(structured)
 
             # Detect-and-raise only; the StagedBaseTool choke point owns the failure
             # WARNING, so this stays at DEBUG (ownership rule). Structure only — the

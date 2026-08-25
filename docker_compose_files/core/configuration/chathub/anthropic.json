@@ -29,7 +29,12 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -63,7 +68,12 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -97,7 +107,12 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"
@@ -131,7 +146,12 @@
             "type": "predefined",
             "template_name": "py_interpreter"
           }
-        ]
+        ],
+        "features": {
+          "timestamp": {
+            "injection_strategy": "tool_call"
+          }
+        }
       },
       "inputAttachmentTypes": [
         "*/*"

@@ -110,6 +110,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 
 | Value | Behavior |
 |---|---|
+| `none` | No stages shown at all, not even for errors |
 | `error` | Show stages only for failed tool calls |
 | `info` | Show stages for regular tool calls and errors (default) |
 | `debug` | Show stages for all tool calls, including internal/system ones |
@@ -132,6 +133,8 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
 | `APP_SCHEMA_ID`                            | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used. |
+| **Proxy**                                  |                            |          |                                                                                                              |
+| `PROXY_LANGUAGE_HEADER`                    | `accept-language`          | No       | Name of the incoming HTTP request header that carries the locale for UI display (stage name localization). Override when a reverse proxy rewrites the standard `Accept-Language` header before forwarding the request. |
 | **Logging**                                |                            |          |                                                                                                              |
 | `DIAL_SDK_LOG_FORMAT`                      | `text`                     | No       | Console log output format: `text` (human-readable) or `json` (escape-safe, one record per line). See [docs/logging.md](docs/logging.md). |
 | `DIAL_SDK_TEXT_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom `%`-style format string for `text` output. Unset (default) keeps the built-in format with the conditional OTEL trace block. |
@@ -155,7 +158,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
 | `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
 | **Stage Display**                          |                            |          |                                                                                                              |
-| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
+| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
 | **DIAL Files — Tool-Response Offload**     |                            |          |                                                                                                              |
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                 | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                    | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |

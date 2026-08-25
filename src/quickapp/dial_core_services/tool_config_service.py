@@ -1,7 +1,7 @@
 import logging
 from typing import Any
 
-from aidial_client import AsyncDial, DialException, ToolsetInfo
+from aidial_client import AsyncDial, DialException, ParsingDataError, ToolsetInfo
 from aidial_client.types.application import Application
 from aidial_client.types.deployment import Deployment
 from aidial_sdk.chat_completion.request import StaticTool
@@ -9,6 +9,7 @@ from injector import ProviderOf, inject
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.dial_deployment import DialDeploymentConfig
@@ -253,6 +254,10 @@ class ToolConfigCoreService:
         try:
             logger.debug(f"Getting toolset tool config for {toolset_dial_id}")
             return await dial_client.toolset.get(toolset_dial_id)
+        except ParsingDataError:
+            # DIAL Core may return LocalizedString dicts for display_name/description.
+            # Fall back to a raw fetch so we can normalize before constructing ToolsetInfo.
+            return await self._fetch_toolset_info_localized(dial_client, toolset_dial_id)
         except DialException as e:
             logger.exception("Something went wrong during getting toolset %s", toolset_dial_id)
             if e.status_code == 404:
@@ -266,3 +271,20 @@ class ToolConfigCoreService:
                     details=f"{e.status_code} {e.message}",
                 )
             raise
+
+    @staticmethod
+    async def _fetch_toolset_info_localized(
+        dial_client: AsyncDial, toolset_dial_id: str
+    ) -> ToolsetInfo | None:
+        """Fetch raw toolset JSON and normalize any localized display fields to plain strings."""
+        http_client = dial_client.toolset.http_client
+        auth_headers = await http_client.auth_headers()
+        url = f"{dial_client.base_url}openai/toolsets/{toolset_dial_id}"
+        response = await http_client.internal_http_client.get(url, headers=auth_headers)
+        response.raise_for_status()
+        raw: dict = response.json()
+        for field in ("display_name", "description"):
+            val = raw.get(field)
+            if isinstance(val, dict):
+                raw[field] = resolve_localized(val)
+        return ToolsetInfo.model_validate(raw)

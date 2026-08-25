@@ -71,6 +71,8 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=5, completion_tokens=7),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -88,7 +90,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
     usage_statistics_service = Mock()
     usage_statistics_service.process_usage_statistics = AsyncMock()
 
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
 
     app_config = SimpleNamespace(
         orchestrator=SimpleNamespace(
@@ -150,6 +152,8 @@ async def test_stream_phase_api_error_retries_after_recovery():
         tool_calls=[],
         usage=None,
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     api_err = openai.APIError(message="Unsupported media type", request=MagicMock(), body=None)
@@ -172,7 +176,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
         choice=choice,
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=Mock(),
+        tool_executor=_mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
         app_config=SimpleNamespace(
@@ -235,7 +239,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         choice=choice,
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=Mock(),
+        tool_executor=_mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
         app_config=SimpleNamespace(
@@ -279,6 +283,8 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
         content="final",
@@ -286,6 +292,8 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -320,7 +328,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         DeploymentUsage(model_name="test-model", prompt_tokens=3, completion_tokens=4)
     ]
 
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     app_config = SimpleNamespace(
@@ -393,6 +401,8 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=2),
         state=stream_state,
         stages=[{"name": "Thinking", "content": "..."}],  # stages must not appear in state
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -412,7 +422,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         choice=choice,
         state_holder=state_holder,
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=Mock(),
+        tool_executor=_mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider,
         stream_handler=stream_handler,
         app_config=SimpleNamespace(
@@ -470,6 +480,8 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -487,7 +499,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     usage_statistics_service.process_usage_statistics = AsyncMock()
 
     # Tool executor returns no results (falsy) to trigger the error path
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
     tool_executor.execute = AsyncMock(return_value=[])
 
     app_config = SimpleNamespace(
@@ -523,6 +535,13 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
     tool_executor.execute.assert_awaited_once()
 
 
+def _mock_tool_executor(*, execute=None):
+    m = Mock()
+    if execute is not None:
+        m.execute = execute
+    return m
+
+
 def _make_tool_call(call_id: str, name: str = "tool_a") -> ToolCall:
     return ToolCall(
         id=call_id,
@@ -550,7 +569,7 @@ def _make_orchestrator(
         choice=choice or Mock(add_attachment=Mock(), set_state=Mock()),
         state_holder=Mock(get_state=Mock(return_value={}), add_state=Mock()),
         usage_statistics_service=Mock(process_usage_statistics=AsyncMock()),
-        tool_executor=tool_executor or Mock(),
+        tool_executor=tool_executor or _mock_tool_executor(),
         assistant_invoker_provider=assistant_invoker_provider or Mock(),
         stream_handler=stream_handler or Mock(),
         app_config=SimpleNamespace(
@@ -815,6 +834,8 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         ],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
         content="final",
@@ -822,6 +843,8 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         tool_calls=[],
         usage=SimpleNamespace(prompt_tokens=2, completion_tokens=2),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -865,7 +888,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     orchestrator = Orchestrator(
@@ -939,6 +962,8 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         ],
         usage=SimpleNamespace(prompt_tokens=1, completion_tokens=1),
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -973,7 +998,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     orchestrator = Orchestrator(
@@ -1021,9 +1046,17 @@ def _build_orchestrator_for_propagation(choice, tool_result):
         tool_calls=[_make_accumulated_tool_call(id="tc-1", name="tool_a")],
         usage=None,
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
-        content="final", attachments=[], tool_calls=[], usage=None, state=None
+        content="final",
+        attachments=[],
+        tool_calls=[],
+        usage=None,
+        state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
     assistant_invoker = Mock()
@@ -1035,7 +1068,7 @@ def _build_orchestrator_for_propagation(choice, tool_result):
         side_effect=[assistant_result_with_tools, assistant_result_no_tools]
     )
 
-    tool_executor = Mock()
+    tool_executor = _mock_tool_executor()
     tool_executor.execute = AsyncMock(return_value=[tool_result])
 
     return _make_orchestrator(

@@ -74,6 +74,8 @@ def _stream_result(tool_calls=None, content="response"):
         tool_calls=tool_calls or [],
         usage=None,
         state=None,
+        adopted_tool_stages={},
+        close_remaining_adopted_tool_stages=Mock(),
     )
 
 
@@ -184,7 +186,9 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
     tool_result.propagate_to_choice = []
     tool_result.usage = None
 
-    tool_executor = Mock(execute=AsyncMock(return_value=[tool_result]))
+    tool_executor = Mock(
+        execute=AsyncMock(return_value=[tool_result]),
+    )
 
     orch = Orchestrator(
         presentation_settings=SimpleNamespace(show_usage_statistics=False),
@@ -241,7 +245,9 @@ async def test_all_internal_tools_loop_continues():
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.propagate_to_choice = []
     tool_result.usage = None
-    tool_executor = Mock(execute=AsyncMock(return_value=[tool_result]))
+    tool_executor = Mock(
+        execute=AsyncMock(return_value=[tool_result]),
+    )
 
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda m: messages_list.append(m))
@@ -300,7 +306,9 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.propagate_to_choice = []
     tool_result.usage = None
-    tool_executor = Mock(execute=AsyncMock(return_value=[tool_result]))
+    tool_executor = Mock(
+        execute=AsyncMock(return_value=[tool_result]),
+    )
 
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda m: messages_list.append(m))
@@ -357,7 +365,9 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.propagate_to_choice = []
     tool_result.usage = None
-    tool_executor = Mock(execute=AsyncMock(return_value=[tool_result]))
+    tool_executor = Mock(
+        execute=AsyncMock(return_value=[tool_result]),
+    )
 
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda m: messages_list.append(m))

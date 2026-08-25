@@ -15,6 +15,7 @@ from quickapp.common.chat_completion_recovery import (
     STREAM_ACCUMULATION_RETRY_SCOPE,
     ChatCompletionRecoveryService,
 )
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.exceptions import ChatStreamHandlerError
 from quickapp.common.chat_completion_stream.handler import (
     ChatCompletionStreamHandler,
@@ -232,8 +233,12 @@ class Orchestrator:
             external = []
             internal = tool_calls
 
+        adopted_stages = stream_result.adopted_tool_stages
         if internal:
-            await self._execute_internal_tool_calls(internal)
+            await self._execute_internal_tool_calls(internal, adopted_stages)
+
+        # Close stages for external/unknown tools that were not adopted by arun.
+        stream_result.close_remaining_adopted_tool_stages()
 
         if external:
             self._surface_external_tool_calls(external, period)
@@ -243,10 +248,16 @@ class Orchestrator:
         _log_messages("Message from context", self.__messages_context.messages)
         return True
 
-    async def _execute_internal_tool_calls(self, tool_calls: list[AccumulatedToolCall]) -> None:
+    async def _execute_internal_tool_calls(
+        self,
+        tool_calls: list[AccumulatedToolCall],
+        adopted_tool_stages: dict[str, AdoptedToolStage],
+    ) -> None:
         self.__total_tool_calls += len(tool_calls)
         _log_tool_calls("Agent requests internal tool calls", tool_calls)
-        tool_call_results = await self.__tool_executor.execute(tool_calls)
+        tool_call_results = await self.__tool_executor.execute(
+            tool_calls, adopted_tool_stages=adopted_tool_stages
+        )
         if not tool_call_results:
             names = [tc.name for tc in tool_calls]
             raise RuntimeError(f"Tool call(s) {names} doesn't return any result.")

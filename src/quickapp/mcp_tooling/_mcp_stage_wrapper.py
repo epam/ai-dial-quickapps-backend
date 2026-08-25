@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _MCPStageWrapper(TimedStageWrapper):
-
     def _get_display_name(self) -> str:
         return self.name
 

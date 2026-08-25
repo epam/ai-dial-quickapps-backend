@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 @inject
 class _RestApiStageWrapper(TimedStageWrapper):
-
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return f"> ##### Request:\n```json\n{json.dumps(parameters, indent=4, default=self.__serialize)}\n```\n\n"
 

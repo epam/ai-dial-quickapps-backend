@@ -1,4 +1,5 @@
 import base64
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, Mock
 
 import httpx
@@ -26,6 +27,25 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
 )
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+
+
+def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
+    """Configure conn.open_init_session to yield (mock_session, mock_init_result)."""
+    session = MagicMock()
+    init_result = MagicMock()
+    init_result.serverInfo.name = "test-server"
+    init_result.serverInfo.version = "1.0"
+    init_result.protocolVersion = "2025-03-26"
+    init_result.capabilities.tools = MagicMock() if supports_tools else None
+    init_result.capabilities.resources = None
+    init_result.capabilities.prompts = None
+
+    @asynccontextmanager
+    async def _ctx():
+        yield session, init_result
+
+    conn.open_init_session = _ctx
+    return session
 
 
 def build_side_effect(tool, tool_config):
@@ -99,7 +119,7 @@ def mcp_tool1(
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
 
-    return _MCPTool(
+    tool = _MCPTool(
         tool=tool1,
         tool_config=mock_tool_config,
         toolset_client=mock_toolset_client,
@@ -113,6 +133,8 @@ def mcp_tool1(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
+    tool.stage_name_component = "test_toolset"
+    return tool
 
 
 @pytest.fixture
@@ -126,7 +148,7 @@ def mcp_tool2(
 ):
     from quickapp.mcp_tooling._mcp_tool_initializer import _MCPTool
 
-    return _MCPTool(
+    tool = _MCPTool(
         tool=tool2,
         tool_config=mock_tool_config,
         toolset_client=mock_toolset_client,
@@ -140,6 +162,8 @@ def mcp_tool2(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
+    tool.stage_name_component = "test_toolset"
+    return tool
 
 
 # --- New reusable fixtures to remove duplication ---
@@ -147,6 +171,7 @@ def mcp_tool2(
 def toolset_client_with_tools(tool1, tool2):
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(return_value=[tool1, tool2])
+    _setup_open_init_session(conn)
     return conn
 
 
@@ -201,6 +226,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # dial_mcp_cache
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
+            None,  # accept_language
         )
         return initializer, mcp_context
 
@@ -253,8 +279,10 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
     # Two toolset clients, each returning one tool
     conn1 = MagicMock()
     conn1.get_tools_list = AsyncMock(return_value=[tool1])
+    _setup_open_init_session(conn1)
     conn2 = MagicMock()
     conn2.get_tools_list = AsyncMock(return_value=[tool2])
+    _setup_open_init_session(conn2)
 
     # Builder returns conn1 for first toolset, conn2 for second
     toolset_client_builder = MagicMock()
@@ -285,6 +313,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
 
     await initializer.initialize()
@@ -373,6 +402,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -541,6 +571,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
 
     conn = MagicMock()
     conn.get_tools_list = AsyncMock(side_effect=outer)
+    _setup_open_init_session(conn)
     conn_builder = MagicMock()
     conn_builder.build.return_value = conn
 
@@ -562,6 +593,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # dial_mcp_cache
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
+        None,  # accept_language
     )
 
     await initializer.initialize()

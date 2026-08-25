@@ -371,9 +371,54 @@ The context loaded by URL:
 Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
 fields fall back to the deployment-wide defaults configured via environment variables.
 
-| Field                | Required | Type   | Description                                                                                                                  | Default Value |
-|----------------------|----------|--------|------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `external_url_fetch` | No       | Object | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration). | `{}`          |
+| Field                | Required | Type           | Description                                                                                                                                                                  | Default Value                          |
+|----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `timestamp`          | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
+| `external_url_fetch` | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+
+#### Timestamp configuration
+
+Enables [time awareness](docs/time_awareness.md): the current timestamp is injected at every user
+turn, a `current_timestamp` tool is registered for timezone conversion, and every tool response is
+annotated with the time it was produced.
+
+The feature is **enabled by default** - omitting `features` entirely, or omitting the `timestamp`
+key, yields the default configuration below. Set `"timestamp": null` to turn it off for an app; the
+tool, transformers, and metadata enricher are then not registered at all.
+
+| Field                | Required | Type   | Description                                                                                                | Available Values | Default Value |
+|----------------------|----------|--------|----------------------------------------------------------------------------------------------------------------|------------------|---------------|
+| `injection_strategy` | No       | String | How the current timestamp reaches the model. `tool_call` injects a synthetic `current_timestamp` tool-call and result immediately before the last user message. | `tool_call`      | `tool_call`   |
+
+`tool_call` is the only strategy available today, so you can leave the field out — `{}` behaves
+exactly like `{"injection_strategy": "tool_call"}`. Other strategies may be added in the future.
+
+<details>
+<summary><b>Timestamp configuration JSON sample</b></summary>
+
+Enable with the default strategy, stated explicitly:
+
+```json
+{
+  "features": {
+    "timestamp": {
+      "injection_strategy": "tool_call"
+    }
+  }
+}
+```
+
+Disable time awareness for this app:
+
+```json
+{
+  "features": {
+    "timestamp": null
+  }
+}
+```
+
+</details>
 
 #### External URL fetch configuration
 
@@ -474,6 +519,7 @@ SSRF envelope, deployment dispatch table, error messages and agent retry behavio
 | type                   | Yes      | String             | The type of the tool set.                                                | `mcp`         |
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
+| resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
 
@@ -496,6 +542,7 @@ SSRF envelope, deployment dispatch table, error messages and agent retry behavio
 | dial_id                | Yes      | String                 | The Dial ID associated with this MCP toolset.                         | -             |
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
+| resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
 
@@ -525,6 +572,61 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
+
+#### MCP resources configuration
+
+Applies to both `MCPToolSet` and `DialMCPToolSet`. Disabled (`null`) by default.
+
+| Field   | Required | Type                        | Description                                                                                                                                                              | Default Value |
+|---------|----------|-----------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| enabled | No       | Boolean                     | Whether to expose MCP resources from this toolset to the agent.                                                                                                         | `false`       |
+| items   | No       | Array of `MCPResourceConfig` or null | Resources to expose. `null` = expose all resources the server declares (all lazy). Provide a list to restrict to specific URIs and/or mark some as eager.  | `null`        |
+
+##### MCPResourceConfig structure
+
+| Field  | Required | Type    | Description                                                                                                                                                                             | Default Value |
+|--------|----------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| uri    | Yes      | String  | URI of the resource as declared by the MCP server.                                                                                                                                      | -             |
+| eager  | No       | Boolean | Pre-fetch this resource at init time and inject its content as a synthetic `read_mcp_resource` tool call pair before the first LLM invocation. Useful for small reference documents that the model should always have in context. | `false` |
+
+When `enabled` is `true`:
+
+- Each declared resource gets a **card** in the system prompt (name, URI, MIME type, description) so the LLM knows what is available.
+- A built-in `read_mcp_resource` tool is registered, allowing the LLM to fetch resource content on demand.
+- Resources marked `eager: true` are fetched at startup and their content is injected automatically — the LLM receives them without needing to call the tool explicitly. On subsequent turns the injection is skipped so the same resource is not duplicated in the conversation history.
+
+<details>
+<summary><b>MCP resources configuration JSON sample</b></summary>
+
+Expose all resources the server declares (lazy, fetched on demand):
+
+```json
+{
+  "type": "mcp",
+  "name": "my-toolset",
+  "mcp_server_info": { "url": "https://example.com/mcp", "protocol": "streamable_http" },
+  "resources": { "enabled": true }
+}
+```
+
+Expose only specific resources, one pre-loaded eagerly:
+
+```json
+{
+  "type": "mcp",
+  "name": "my-toolset",
+  "mcp_server_info": { "url": "https://example.com/mcp", "protocol": "streamable_http" },
+  "resources": {
+    "enabled": true,
+    "items": [
+      { "uri": "urn://docs/intro", "eager": true },
+      { "uri": "urn://docs/api-reference" }
+    ]
+  }
+}
+```
+
+</details>
 
 #### InternalToolSet Configuration
 

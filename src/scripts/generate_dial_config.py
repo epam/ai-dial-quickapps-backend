@@ -129,11 +129,31 @@ def get_dial_applications() -> list[dict]:
 
 
 def replace_envs(config_models: dict):
+    """
+    Replace env placeholders in upstream entries of model configs.
+
+    This function is defensive: it tolerates missing `upstreams` keys, skips
+    non-list `upstreams` values, and ignores upstream entries that aren't
+    mappings. It only calls `replace_env` for string-valued `endpoint` and
+    `key` fields.
+    """
     for model_id, model_config in config_models.items():
-        upstreams = model_config["upstreams"]
+        # If the model config is not a mapping, skip it
+        if not isinstance(model_config, dict):
+            continue
+        upstreams = model_config.get("upstreams") or []
+        # Defensive: only process list-like upstreams
+        if not isinstance(upstreams, list):
+            continue
         for upstream in upstreams:
-            upstream["endpoint"] = replace_env(upstream["endpoint"])
-            upstream["key"] = replace_env(upstream["key"])
+            if not isinstance(upstream, dict):
+                continue
+            endpoint = upstream.get("endpoint")
+            if isinstance(endpoint, str):
+                upstream["endpoint"] = replace_env(endpoint)
+            key = upstream.get("key")
+            if isinstance(key, str):
+                upstream["key"] = replace_env(key)
     return config_models
 
 

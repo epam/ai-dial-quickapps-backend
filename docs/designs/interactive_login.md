@@ -23,7 +23,10 @@ QuickApp. This design describes how QuickApp integrates with that mechanism.
 - If no client channel ID is present in the request (e.g. programmatic clients), the 401 falls through
   to the existing error handling unchanged.
 - The timeout for waiting on user sign-in is configurable via an environment variable.
-- Only `DialMCPToolSet` toolsets participate in interactive login; plain `MCPToolSet` toolsets are unaffected.
+- Only `DialMCPToolSet` toolsets participate in `toolset/signin` (transport-level 401) interactive
+  login; plain `MCPToolSet` toolsets are unaffected by that mechanism. A separate, toolset-type-agnostic
+  mechanism (`external-service/signin`, see UC-2b) reacts to an external-service signin challenge
+  embedded in any tool call's error result.
 
 ---
 
@@ -52,6 +55,36 @@ used), and the 401 occurs when a tool is called mid-request during the orchestra
 **Behavior:** Same interact call as UC-1. After success, the specific tool call is retried once.
 
 **Outcome:** The tool call succeeds. The orchestrator loop continues.
+
+### UC-2b: External-service signin challenge in a tool call result
+
+**Trigger:** A tool call (any `_MCPTool`, regardless of toolset type) reaches an MCP server backed by
+`ai-dial-openapi-to-mcp` with `ai_dial_config.external_service` configured, and DIAL Core has no
+stored credential for that external service yet. Unlike UC-2, this is not a transport-level 401: the
+bridge returns a normal HTTP 200 `CallToolResult` with `isError=True`, whose `_meta` carries
+machine-readable detail — `_meta["dial.epam.com/error"] = {"status_code": 401, "external_service":
+...}` and `_meta["dial.epam.com/auth-challenge"] = [{"method": "external-service/signin", "scope":
+"<application>/external_services/<external_service>"}]`.
+
+**Behavior:** This reaction is handled by `_MCPTool.__call_tool_with_signin`, unified with the UC-2
+transport-401 handling in the same method (not split across classes): it calls
+`_MCPToolsetClient.call_mcp_tool()`, and — whether that call succeeded or raised
+`MCPUnauthorizedException` and was already retried via `toolset/signin` — reads the result's
+`meta["dial.epam.com/auth-challenge"]` entry via the private static helper
+`_MCPTool.__extract_external_service_signin_scope()`, defined right above `__call_tool_with_signin`.
+If a `method: "external-service/signin"` challenge is present, it extracts the `scope` and calls
+`InteractiveLoginService.request_external_service_signin(scope)`, which sends a single-entry
+`external-service/signin` RPC
+(`{"jsonrpc":"2.0","method":"external-service/signin","params":{"url":...},"id":"1"}`) over the same
+`/v1/ops/client-channel/interact` mechanism as `toolset/signin`. On success, the tool call is retried
+once and the retried result is returned; on denied/timeout/error/no-channel, the original errored
+result is returned unchanged, so the ordinary `isError` handling in `_run_in_stage_async` raises
+`MCPToolErrorException` with the real error content — no information is lost.
+
+**Outcome:** The tool call succeeds. This path applies independently of `dial_toolset_id` — it also
+covers the "app MCP" case (a `DialAppToolSet` resolved to a plain `MCPToolSet` pointing at
+`/v1/deployments/{id}/mcp`), which UC-1/UC-2's `toolset/signin` mechanism does not reach — because,
+unlike `toolset/signin`, it needs no toolset context at all, only the `CallToolResult` itself.
 
 ### UC-3: Login timeout or denial
 
@@ -468,3 +501,11 @@ wall-clock time when the interactive login wait occurs, so the tool will appear 
 | `mcp_tooling/_mcp_tool.py`                         | Catch `MCPUnauthorizedException`, call `request_signin()`, retry                                                              |
 | `mcp_tooling/mcp_tooling_module.py`                | Update DI wiring for new `InteractiveLoginService` dependency on `_MCPTool` and `_MCPToolInitializer`                         |
 | `docs/agent.md`                                    | Document interactive login flow, new DI types, `InteractiveLoginService`, heartbeat setting                                   |
+
+**Follow-up (UC-2b):**
+
+| Component                                          | Change                                                                                                                        |
+|----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
+| `dial_core_services/interactive_login_service.py`  | Add `request_external_service_signin(url)`, sending a single `external-service/signin` RPC entry; logs the url through `sanitize_url_for_log` |
+| `mcp_tooling/_mcp_toolset_client.py`                | Unchanged — `call_mcp_tool()` remains a single call, no retry |
+| `mcp_tooling/_mcp_tool.py`                          | Add `__extract_external_service_signin_scope()` and `__call_tool_with_signin()`, unifying `toolset/signin` (transport-401) and `external-service/signin` retry-once handling in one method |

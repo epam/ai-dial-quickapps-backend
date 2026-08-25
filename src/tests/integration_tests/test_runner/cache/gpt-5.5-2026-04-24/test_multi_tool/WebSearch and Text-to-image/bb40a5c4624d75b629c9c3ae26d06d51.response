@@ -1,0 +1,27 @@
+{
+  "body_human_readable": "",
+  "request": {
+    "system_message": null,
+    "model": "gpt-image-1",
+    "temperature": null,
+    "user_message": [
+      "Create a high-quality, natural-style square image of Kyiv, Ukraine in the current weather: sunny and clear, warm summer daylight, approximately 24\u201327\u00b0C, low precipitation, light north wind. Show recognizable Kyiv scenery such as the Dnipro River, chestnut trees, and historic city architecture with golden domes in the distance. Natural realistic colors, clear blue sky with only a few faint clouds, sunlight reflecting on buildings and river, people dressed for warm sunny weather, calm atmosphere. Photorealistic, detailed, natural style, no text, no watermark."
+    ],
+    "assistant_message": []
+  },
+  "response": {
+    "status_code": 200,
+    "headers": {
+      "access-control-allow-origin": "*",
+      "date": "Wed, 22 Jul 2026 12:56:12 GMT",
+      "server": "uvicorn",
+      "content-type": "text/event-stream; charset=utf-8",
+      "x-accel-buffering": "no",
+      "x-upstream-attempts": "1",
+      "content-encoding": "gzip",
+      "transfer-encoding": "chunked"
+    }
+  },
+  "body": "data: {\"id\":\"chatcmpl-0bbc1bc1-f100-45fc-b9f6-84219dd96d40\",\"choices\":[{\"delta\":{\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"created\":1784725014,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-0bbc1bc1-f100-45fc-b9f6-84219dd96d40\",\"choices\":[{\"delta\":{\"content\":\"\"},\"finish_reason\":null,\"index\":0}],\"created\":1784725014,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-0bbc1bc1-f100-45fc-b9f6-84219dd96d40\",\"choices\":[{\"delta\":{\"custom_content\":{\"attachments\":[{\"index\":0,\"type\":\"image/png\",\"title\":\"Image\",\"url\":\"files/684f6Lz7ubje66aoCRsa5c/appdata/gpt-image-1/images/aabe55971f4524ede6958b13f37c67965cbd9fdc8d94b94c4e96d010f9524a16.png\"}]}},\"finish_reason\":null,\"index\":0}],\"created\":1784725014,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":null}\n\ndata: {\"id\":\"chatcmpl-0bbc1bc1-f100-45fc-b9f6-84219dd96d40\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1784725014,\"model\":\"gpt-image-1\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":1,\"prompt_tokens\":0,\"total_tokens\":1}}\n\ndata: [DONE]\n\n",
+  "body_encoded": ""
+}

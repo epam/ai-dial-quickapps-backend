@@ -18,6 +18,10 @@ class AccumulatedToolCall:
         return self._id
 
     @property
+    def id_or_none(self) -> str | None:
+        return self._id
+
+    @property
     def name(self) -> str:
         if self._name is None:
             raise ValueError("Tool call name has not been received yet")

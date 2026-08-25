@@ -7,7 +7,6 @@ from quickapp.common import TimedStageWrapper, ToolCallResult
 
 @inject
 class _PyInterpreterStageWrapper(TimedStageWrapper):
-
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
         return self._render_config_map_parameters(parameters)
 
