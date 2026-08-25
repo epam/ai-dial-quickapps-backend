@@ -349,6 +349,110 @@
         ]
       }
     },
+    "subagent_demo": {
+      "displayName": "Subagent Demo",
+      "description": "QuickApp that spawns anonymous subagents. Each subagent runs its own orchestrator loop over a narrowed tool set and returns only its final answer — the coordinator never sees the intermediate tool traffic. Requires ENABLE_PREVIEW_FEATURES=true on the QuickApps backend.",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "deployment_id": "gpt-4.1-2025-04-14"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are a coordinator. You do not do research or computation yourself — you delegate it.\n\nWhen a request breaks into independent pieces, spawn one subagent per piece with the `task` tool, and spawn them in a single turn so they run in parallel. Each subagent starts with no knowledge of this conversation: the `prompt` you write is everything it will ever see, so state the full task, the exact output you want back, and any values it needs. Never ask a subagent to 'continue' earlier work — there is no earlier work.\n\nWhen the results come back, combine them yourself and answer the user. Do not re-run a subagent's work to check it. Always format your responses in markdown."
+          },
+          "max_iterations": 20
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "location"
+          },
+          {
+            "type": "predefined",
+            "template_name": "weather"
+          },
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          },
+          {
+            "name": "Web search toolset",
+            "description": "Grounded web search.",
+            "type": "dial-deployment",
+            "tools": [
+              {
+                "type": "predefined-tool",
+                "template_name": "web_search"
+              }
+            ]
+          }
+        ],
+        "subagents": [
+          {
+            "name": "weather_scout",
+            "description": "Looks up the current weather for ONE named place. Spawn one per city — never ask it about several places at once.",
+            "system_prompt": "You report weather for exactly one place.\n\nResolve the place name to coordinates with the location tool, then fetch the current weather for those coordinates. Reply with a single line and nothing else:\n\n<place> — <temperature>°C, wind <speed> km/h\n\nIf the place cannot be resolved, reply exactly: <place> — not found.",
+            "tool_sets": [
+              "Location rest-api toolset",
+              "Weather rest-api toolset"
+            ],
+            "deployment_id": "gpt-4.1-mini-2025-04-14",
+            "max_iterations": 8
+          },
+          {
+            "name": "web_researcher",
+            "description": "Researches a question on the web and reports what it found. Use for anything needing current or external information.",
+            "system_prompt": "You research questions using web search.\n\nSearch as many times as you need to actually answer the question you were given — narrow follow-up queries beat one broad one. Your reply is the only thing the caller will ever see: no search transcripts, no describing what you looked up, no offers to continue. Lead with the answer, then at most five supporting bullets. If the searches do not settle it, say exactly what remains unknown.",
+            "tool_sets": [
+              "Web search toolset"
+            ],
+            "max_iterations": 12
+          },
+          {
+            "name": "analyst",
+            "description": "Runs Python for calculations and data wrangling, and reports the numbers. Give it the inputs in the task — it cannot see the conversation. It cannot return files or charts, only text.",
+            "system_prompt": "You compute with Python.\n\nThe task contains every input you need; do not ask for more. Write and run the code, then reply with the result and a one-line note on how you got it. Do not paste the code unless the caller asked for it.\n\nYour reply is text only — the caller cannot receive files, images, or charts from you. Report figures in the reply itself; do not offer to plot anything.",
+            "tool_sets": [
+              "internal-tool-set"
+            ],
+            "max_iterations": 10
+          }
+        ],
+        "features": {
+          "stage_display": {
+            "level": "info"
+          }
+        },
+        "conversation_starters": {
+          "intro_text": "Each of these fans out to subagents — watch the stages",
+          "starters": [
+            {
+              "title": "Three cities, three subagents",
+              "text": "Compare the current weather in Lisbon, Reykjavik and Singapore. Spawn a separate weather_scout for each city, all in one turn, then rank the three by temperature."
+            },
+            {
+              "title": "Five cities, then crunch the numbers",
+              "text": "Get the current temperature in Warsaw, Cairo, Oslo, Nairobi and Tokyo — one weather_scout per city, all spawned together. Then hand the five numbers to the analyst and ask it for the mean, the spread, and which city is furthest from the mean."
+            },
+            {
+              "title": "Research a topic",
+              "text": "Spawn a web_researcher to find out what problem the Model Context Protocol solves and what its main primitives are."
+            },
+            {
+              "title": "Mixed fan-out",
+              "text": "In one turn: spawn a weather_scout for Reykjavik, and a web_researcher to find what Reykjavik's weather is normally like in August. Then tell me whether today is typical, using both answers."
+            }
+          ]
+        }
+      }
+    },
     "quickapp_with_code_interpreter": {
       "displayName": "QuickApp with code interpreter",
       "description": "Sample QuickApp that has access to PyInterpreter tool",
