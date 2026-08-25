@@ -1,7 +1,7 @@
 # Design: ai-dial-interpreter-mcp — Cloud Python Interpreter Adapter
 
-- **Status:** Draft
-- **Last updated:** 2026-08-24
+- **Status:** Approved
+- **Last updated:** 2026-08-25
 - **Dependencies:**
   - None — this design describes a **new, standalone project** (`ai-dial-interpreter-mcp`).
     Changes to quickapps itself are configuration-only (no code modifications).
@@ -225,24 +225,31 @@ The adapter itself is stateless with respect to session IDs — it does not pers
 requests. The session ID flows through the LLM's context window as a tool result value,
 analogous to how smolagents and other agent frameworks handle sandbox session continuity.
 
-The adapter does not persist session state itself — state lives in the DIAL conversation
-state on the quickapps side, exactly as the existing `SessionManager` in `py_interpreter_tooling/`.
+The adapter is stateless — it holds no session-to-conversation mapping. The session ID is
+returned in the tool result JSON and travels through the LLM's context window; the LLM is
+expected to echo it back on each subsequent call. This is distinct from the existing
+`SessionManager` in `py_interpreter_tooling/`, which reads and writes session IDs through
+quickapps's `StateHolder` and is tightly coupled to the quickapps request lifecycle. The
+risk of the LLM dropping the session ID is documented in Open Question #5.
 
 ### DIAL file integration
 
 Display content (charts, Plotly figures, CSVs) produced by the sandbox must reach the user
 as DIAL file attachments. The adapter needs the caller's DIAL credentials to upload them.
 
-**Credential delivery:** quickapps passes the DIAL URL and API key as custom HTTP headers
-on the MCP connection:
+**Credential delivery:** The adapter is deployed as a DIAL-internal service (its URL is
+rooted under the DIAL Core base URL). quickapps's MCP client already forwards the caller's
+per-request DIAL API key as `Authorization: Bearer <api-key>` to any MCP server whose URL
+starts with `dial_settings.url` (`_mcp_toolset_client.py`, `__build_headers`). No additional
+configuration is required in the quickapps toolset config.
 
-```
-X-Dial-Url: https://dial.example.com
-X-Dial-Api-Key: <caller's DIAL API key>
-```
+- **DIAL URL** — configured as the `DIAL_URL` env var on the adapter at deploy time.
+- **DIAL API key** — received as the `Authorization: Bearer` header on every incoming MCP
+  request; forwarded automatically by quickapps from the caller's per-request credentials.
 
-These headers are extracted at connection time and held for the lifetime of the MCP session
-in a per-connection context. They are never logged and never returned to the caller.
+The adapter reads the API key from the incoming `Authorization` header and passes it to
+`DialStorageClient` for file operations. It must never be logged and must not be passed to
+`ProviderBase` implementations.
 
 **Upload flow (within `execute_python`):**
 
@@ -254,7 +261,7 @@ in a per-connection context. They are never logged and never returned to the cal
 
 **Input file flow (within `execute_python` / `upload_file`):**
 
-1. Adapter downloads the DIAL file using `X-Dial-Api-Key`.
+1. Adapter downloads the DIAL file using `DIAL_URL` + the forwarded API key.
 2. Calls `provider.transfer_file(session_id, filename, content)`.
 
 ### Provider implementations
@@ -307,10 +314,11 @@ All adapter configuration is env-var driven (pydantic-settings, no quickapps inv
 | Var | Default | Description |
 |---|---|---|
 | `INTERPRETER_BACKEND` | — | **Required.** `internal` \| `azure` |
+| `DIAL_URL` | — | **Required.** Base URL of the DIAL Core instance (e.g. `https://dial.example.com`). Used by `DialStorageClient` for file uploads and downloads. |
 | `INTERPRETER_CLIENT_TIMEOUT` | `120` | HTTP timeout in seconds for provider calls |
 | `INTERPRETER_MAX_RETRIES` | `3` | Retry count on transient provider errors |
 | `INTERPRETER_INTERNAL_URL` | — | Required when `INTERPRETER_BACKEND=internal` |
-| `INTERPRETER_INTERNAL_API_KEY` | — | Required when `INTERPRETER_BACKEND=internal` (standalone) |
+| `INTERPRETER_INTERNAL_API_KEY` | — | Required when `INTERPRETER_BACKEND=internal` (not routed through DIAL Core) |
 | `AZURE_SESSION_POOL_URL` | — | Required when `INTERPRETER_BACKEND=azure` |
 | `AZURE_CLIENT_ID` | — | Azure service principal (or use workload identity) |
 | `AZURE_CLIENT_SECRET` | — | Azure service principal |
@@ -318,7 +326,9 @@ All adapter configuration is env-var driven (pydantic-settings, no quickapps inv
 
 ### quickapps integration (configuration only)
 
-No code changes in quickapps. Clients configure an MCP toolset pointing to the adapter:
+No code changes in quickapps. The adapter is deployed as a DIAL-internal service (URL
+rooted under DIAL Core). quickapps automatically forwards the caller's Bearer token to
+DIAL-internal MCP servers — no `authorization` field is needed in the toolset config:
 
 ```json
 {
@@ -327,12 +337,8 @@ No code changes in quickapps. Clients configure an MCP toolset pointing to the a
       "type": "mcp",
       "name": "py_interpreter",
       "mcp_server_info": {
-        "url": "https://interpreter-adapter.example.com/mcp",
-        "protocol": "streamable_http",
-        "headers": {
-          "X-Dial-Url": "${DIAL_URL}",
-          "X-Dial-Api-Key": "${DIAL_API_KEY}"
-        }
+        "url": "https://dial.example.com/openai/deployments/interpreter-mcp/mcp",
+        "protocol": "streamable_http"
       }
     }
   ]
@@ -373,6 +379,7 @@ migrate from the built-in tool to the adapter swap one toolset entry in their ap
 Adapter deployment env:
 ```
 INTERPRETER_BACKEND=azure
+DIAL_URL=https://dial.example.com
 AZURE_SESSION_POOL_URL=https://westeurope.dynamicsessions.io/subscriptions/xxx/resourceGroups/rg/sessionPools/mypool
 AZURE_CLIENT_ID=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
 AZURE_CLIENT_SECRET=<secret>
@@ -387,12 +394,8 @@ quickapps app config:
       "type": "mcp",
       "name": "py_interpreter",
       "mcp_server_info": {
-        "url": "https://interpreter-adapter.internal/mcp",
-        "protocol": "streamable_http",
-        "headers": {
-          "X-Dial-Url": "https://dial.example.com",
-          "X-Dial-Api-Key": "${env:DIAL_API_KEY}"
-        }
+        "url": "https://dial.example.com/openai/deployments/interpreter-mcp/mcp",
+        "protocol": "streamable_http"
       }
     }
   ]
@@ -445,9 +448,10 @@ This migration is optional and reversible.
 
 ## Open Questions
 
-1. **MCP connection headers support in quickapps.** The design assumes quickapps can pass
-   custom HTTP headers (`X-Dial-Url`, `X-Dial-Api-Key`) on the MCP connection. Confirm this
-   is supported by the current `mcp_tooling/` infrastructure, or add it as a prerequisite.
+1. ~~**MCP connection headers support in quickapps.**~~ **Resolved.** The `headers` field
+   approach is not needed. Credential delivery uses the existing `MCPApiKeyAuthorization`
+   mechanism (`authorization.type = "api_key"`) to pass `X-Dial-Api-Key`; `DIAL_URL` is an
+   adapter-side env var. No quickapps code changes required; G1 holds.
 2. **Azure Session Pool provisioning.** Azure Dynamic Sessions requires a Session Pool
    resource to be pre-provisioned. Should the adapter docs include a Terraform/ARM snippet,
    or is this the client's responsibility?
@@ -483,3 +487,4 @@ This migration is optional and reversible.
 | `settings.py` | New | Env-var config (pydantic-settings) |
 | quickapps `internal_tooling/` | **Unchanged** | No modifications |
 | quickapps app config | Configuration only | Add MCP toolset entry pointing to adapter URL |
+
