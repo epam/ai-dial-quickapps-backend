@@ -21,7 +21,7 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
-from quickapp.config.subagent import SubagentConfig
+from quickapp.config.subagent import SubagentsConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -210,6 +210,15 @@ class Features(BaseModel):
             "(binary / oversized content must be saved rather than read inline)."
         ),
     )
+    subagents: SubagentsConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Built-in `task` tool: delegate a scoped sub-task to a general-purpose "
+            "subagent that runs in its own isolated context and returns a single "
+            "result. Omit or set to null to disable. Set `enabled` to true to turn it "
+            "on; the remaining fields tune the subagent."
+        ),
+    )
     representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description=(
@@ -264,13 +273,6 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description="Config-driven hooks fired at named orchestrator seams.",
-    )
-    subagents: list[SubagentConfig] | None = PreviewField(  # type: ignore[assignment]
-        default=None,
-        description=(
-            "Subagent types this app may spawn. Each spawn runs its own orchestrator "
-            "loop in an isolated context and returns a single result."
-        ),
     )
     features: Features | None = Field(
         default_factory=Features,

@@ -1463,6 +1463,19 @@
           "description": "Built-in internal_web_fetch tool: fetch an external resource and return it inline, or persist it to the workspace when a save_path is given (binary / oversized content must be saved rather than read inline).",
           "x-preview": true
         },
+        "subagents": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubagentsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in `task` tool: delegate a scoped sub-task to a general-purpose subagent that runs in its own isolated context and returns a single result. Omit or set to null to disable. Set `enabled` to true to turn it on; the remaining fields tune the subagent.",
+          "x-preview": true
+        },
         "representation_tooling": {
           "anyOf": [
             {
@@ -3200,6 +3213,73 @@
         }
       },
       "title": "StopStrategyModel",
+      "type": "object"
+    },
+    "SubagentsConfig": {
+      "description": "Configuration for the built-in ``general-purpose`` subagent.\n\nA subagent is a helper agent the app spawns to carry out one scoped task. It runs\nits own orchestrator loop and returns a single result; its intermediate steps never\nenter the coordinator's conversation.\n\nThere is exactly one subagent type. Which tools a given spawn may use is not decided\nhere — the coordinator names them per call through the ``task`` tool's ``tool_sets``\nargument, so a spoke's tool surface fits the task rather than the whole app.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether to offer the `task` tool, which spawns a general-purpose subagent.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subagent's instructions. Replaces the built-in general-purpose prompt, never appends to it. When unset, the built-in prompt is used.",
+          "title": "System Prompt"
+        },
+        "deployment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deployment subagents run on. When unset, the app's orchestrator model is used.",
+          "title": "Deployment Id"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for one spawn. When unset, the app's budget is used.",
+          "title": "Max Iterations"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wall-clock budget for one spawn. Narrows the admin ceiling set by `SUBAGENT_TIMEOUT_SECONDS` but never extends it.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "SubagentsConfig",
       "type": "object"
     },
     "TTLRefreshCondition": {

@@ -1,17 +1,14 @@
-import logging
-
+from quickapp.common.localized_string import resolve_localized
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.prompt import CustomSystemPromptConfig
-from quickapp.config.subagent import SubagentConfig
+from quickapp.config.subagent import SubagentsConfig
 from quickapp.config.toolsets.predefined import PredefinedToolSet
 from quickapp.config.toolsets.toolset import ToolSet
 
-from ._exceptions import SubagentToolSetResolutionError
-
-logger = logging.getLogger(__name__)
+from ._builtin_subagents import GENERAL_PURPOSE_SYSTEM_PROMPT
 
 
-def _tool_set_name(tool_set: ToolSet) -> str | None:
+def tool_set_name(tool_set: ToolSet) -> str | None:
     """The name of a resolved tool set, or ``None`` for a predefined reference.
 
     A ``PredefinedToolSet`` is a template pointer with a ``template_name`` and no
@@ -19,63 +16,68 @@ def _tool_set_name(tool_set: ToolSet) -> str | None:
     during config resolution, well before a subagent manifest is compiled — so this
     returns ``None`` only for a shape that cannot reach us at runtime. The branch exists
     because the declared type of ``ApplicationConfig.tool_sets`` still admits it.
+
+    A tool set name is a ``LocalizedString``, so it may be a per-locale mapping rather
+    than a plain string. Resolved with no locale — the default-locale form — because the
+    coordinator selects a tool set by an identifier it read out of the `task` tool's
+    schema, and that identifier must not shift with the caller's Accept-Language.
     """
     if isinstance(tool_set, PredefinedToolSet):
         return None
-    return tool_set.name
+    return resolve_localized(tool_set.name)
+
+
+def selectable_tool_sets(config: ApplicationConfig) -> list[ToolSet]:
+    """The tool sets a spawn may be given, in manifest order.
+
+    Disabled tool sets are excluded: they produce no tools, so offering one to the
+    coordinator would only invite it to hand a spoke an empty set and wonder why.
+    """
+    return [
+        ts
+        for ts in config.tool_sets
+        if not isinstance(ts, PredefinedToolSet) and ts.enabled and tool_set_name(ts)
+    ]
 
 
 def tool_set_names(config: ApplicationConfig) -> list[str]:
-    """Names of the app's resolved tool sets, sorted."""
-    return sorted(name for ts in config.tool_sets if (name := _tool_set_name(ts)) is not None)
+    """Names of the app's selectable tool sets, in manifest order.
 
-
-def unknown_tool_sets(parent: ApplicationConfig, subagent: SubagentConfig) -> list[str]:
-    """Tool set names a subagent declares that the app does not define.
-
-    One definition, two call sites with deliberately different severities:
-    ``SubagentToolingModule`` turns a non-empty result into an initialization error, so
-    the builder sees the typo by name before any spawn; ``compile_subagent_manifest``
-    only logs, because by the time it runs initialization has already vetoed the app.
+    One definition, two call sites: it fills the `task` tool's `tool_sets` enum, and it
+    vets what the coordinator actually passed back.
     """
-    return sorted(set(subagent.tool_sets or []) - set(tool_set_names(parent)))
+    return [name for ts in selectable_tool_sets(config) if (name := tool_set_name(ts))]
 
 
 def compile_subagent_manifest(
-    parent: ApplicationConfig, subagent: SubagentConfig
+    parent: ApplicationConfig, config: SubagentsConfig, requested_tool_sets: list[str]
 ) -> ApplicationConfig:
-    """Compile a declared subagent type into a full manifest the orchestrator can run.
+    """Compile one spawn into a full manifest the orchestrator can run.
 
-    The spoke is just a QuickApp with a narrowed manifest — which is why the tool
-    allowlist needs no dedicated filtering machinery.
+    The spoke is just a QuickApp with a narrowed manifest — which is why scoping its
+    tools needs no dedicated filtering machinery.
     """
     manifest = parent.model_copy(deep=True)
 
     manifest.orchestrator.system_prompt = CustomSystemPromptConfig(
-        content=subagent.system_prompt, variables={}
+        content=config.system_prompt or GENERAL_PURPOSE_SYSTEM_PROMPT, variables={}
     )
-    if subagent.max_iterations is not None:
-        manifest.orchestrator.max_iterations = subagent.max_iterations
-    if subagent.deployment_id is not None:
-        manifest.orchestrator.deployment.deployment_id = subagent.deployment_id
+    if config.max_iterations is not None:
+        manifest.orchestrator.max_iterations = config.max_iterations
+    if config.deployment_id is not None:
+        manifest.orchestrator.deployment.deployment_id = config.deployment_id
 
-    if subagent.tool_sets is not None:
-        allowed = set(subagent.tool_sets)
-        manifest.tool_sets = [ts for ts in manifest.tool_sets if _tool_set_name(ts) in allowed]
-        unknown = unknown_tool_sets(parent, subagent)
-        if unknown:
-            logger.warning("Subagent %s references unknown tool sets: %s", subagent.name, unknown)
-        if allowed and not manifest.tool_sets:
-            # A subagent that asked for tools and got none would run anyway and
-            # confabulate an answer from the task text alone. Fail instead.
-            raise SubagentToolSetResolutionError(
-                subagent_name=subagent.name,
-                requested=sorted(allowed),
-                available=tool_set_names(parent),
-            )
+    # A spoke gets the tool sets this spawn asked for and nothing else — never the
+    # coordinator's whole surface. The names were vetted by `_SubagentTool` before we
+    # got here, so an empty result means the caller deliberately asked for no tools.
+    allowed = set(requested_tool_sets)
+    manifest.tool_sets = [
+        ts for ts in selectable_tool_sets(manifest) if tool_set_name(ts) in allowed
+    ]
 
     # Depth 1: a spoke cannot spawn. Starters are a coordinator-only concern.
-    manifest.subagents = None
+    if manifest.features is not None:
+        manifest.features.subagents = None
     manifest.starters = None
     manifest.conversation_starters = None
 

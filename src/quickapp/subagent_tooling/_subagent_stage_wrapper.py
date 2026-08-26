@@ -9,7 +9,12 @@ from quickapp.common import TimedStageWrapper, ToolCallResult
 class _SubagentStageWrapper(TimedStageWrapper):
 
     def _get_formatted_parameters(self, parameters: dict[str, Any]) -> str:
-        return f"**Task:** {parameters.get('prompt', '')}\n\n"
+        # The tool sets are shown because the coordinator picks them per spawn: without
+        # them the user cannot tell why one subagent could search the web and the next
+        # one could not.
+        tool_sets = parameters.get("tool_sets") or []
+        rendered = ", ".join(str(name) for name in tool_sets) if tool_sets else "none"
+        return f"**Task:** {parameters.get('prompt', '')}\n\n**Tools:** {rendered}\n\n"
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
         return f"### Exception:\n\r{exception}\n\r"

@@ -1,35 +1,43 @@
 from pydantic import BaseModel, Field
 
 
-class SubagentConfig(BaseModel):
-    """A subagent type this app may spawn.
+class SubagentsConfig(BaseModel):
+    """Configuration for the built-in ``general-purpose`` subagent.
 
-    A subagent runs its own orchestrator loop with its own system prompt, model,
-    iteration budget, and tool sets, and returns a single result. It inherits the
-    app's contexts, skills, hooks, and features. Its tools are narrowed per tool
-    set, not per individual tool.
+    A subagent is a helper agent the app spawns to carry out one scoped task. It runs
+    its own orchestrator loop and returns a single result; its intermediate steps never
+    enter the coordinator's conversation.
+
+    There is exactly one subagent type. Which tools a given spawn may use is not decided
+    here — the coordinator names them per call through the ``task`` tool's ``tool_sets``
+    argument, so a spoke's tool surface fits the task rather than the whole app.
     """
 
-    name: str = Field(description="Identifier the coordinator uses to select this subagent.")
-    description: str = Field(
-        description="When to use this subagent. Surfaced to the coordinator's LLM for routing."
+    enabled: bool = Field(
+        default=False,
+        description="Whether to offer the `task` tool, which spawns a general-purpose subagent.",
     )
-    system_prompt: str = Field(
-        description="The subagent's instructions. Replaces the app system prompt, never appends."
-    )
-    tool_sets: list[str] | None = Field(
+    system_prompt: str | None = Field(
         default=None,
         description=(
-            "Names of the app's tool sets this subagent may use. "
-            "When unset, the subagent inherits every tool set."
+            "The subagent's instructions. Replaces the built-in general-purpose prompt, "
+            "never appends to it. When unset, the built-in prompt is used."
         ),
     )
     deployment_id: str | None = Field(
         default=None,
-        description="Deployment for this subagent. When unset, the coordinator's is inherited.",
+        description="Deployment subagents run on. When unset, the app's orchestrator model is used.",
     )
     max_iterations: int | None = Field(
         default=None,
         gt=0,
-        description="Iteration budget for this subagent. When unset, the coordinator's is inherited.",
+        description="Iteration budget for one spawn. When unset, the app's budget is used.",
+    )
+    timeout_seconds: float | None = Field(
+        default=None,
+        gt=0,
+        description=(
+            "Wall-clock budget for one spawn. Narrows the admin ceiling set by "
+            "`SUBAGENT_TIMEOUT_SECONDS` but never extends it."
+        ),
     )
