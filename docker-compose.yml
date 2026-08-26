@@ -8,7 +8,7 @@ services:
   chat:
     ports:
       - "3010:3000"
-    image: epam/ai-dial-chat:development
+    image: epam/ai-dial-chat:development-0.x
     depends_on:
       - themes
       - core
