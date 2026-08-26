@@ -2,7 +2,7 @@
 name: tool-call-file-parameter-formatting
 description: Formats file and URL parameters for tool calls. You must analyze the target tool's parameter names and descriptions to choose the correct format (data URI, base64, text, or URL ref).
 metadata:
-  version: "1.1"
+  version: "1.2"
 ---
 
 # File Parameter Formatting
@@ -28,6 +28,13 @@ Inspect the **Parameter Name** and **Parameter Description** in the tool definit
     *   *Clues:* Parameter is a navigation target or path reference with **no** inline-content / `data:` scheme support (e.g. "URL to navigate to", "pass the link").
     *   *Action:* Use `url` prefix.
     *   *Do not* map bare names like `uri` to `url` when the description says the value may be a `data:` URI — use `data` instead.
+
+> **Rule — a parameter that names URLs takes `url`, never inline content.** If the parameter name says URL,
+> path, or link (`attachment_urls`, `file_url`, `source_url`, `image_urls`), the receiving side fetches the
+> reference itself; it has no use for content pasted into the field. Always use `file:url::` or the bare
+> DIAL path there, never `data`, `base64`, or `text` — including when the description also mentions the
+> files being "ingested," "read," or "processed." This rule takes precedence over the inline-content default
+> above.
 
 ### 2. Format the Value
 Construct the string using the format: `file:{prefix}::{path_or_url}`
@@ -128,8 +135,9 @@ Before executing the tool call, perform this check:
 *  `name`: `rag`
     *   `parameter`: `attachment_urls` (type: array of strings)
     *   `description`: "List of URLs pointing to the files to be ingested."
-*   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element.
+*   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element. The URL-reference rule applies whether the file lives in DIAL or on the web.
 *   **Result:** `["file:url::https://example.com/doc1.pdf", "file:url::https://example.com/doc2.pdf"]`
+*   **Uploaded file:** `["file:url::files/uploads/report.docx"]` — *not* `file:data::`, even though the description says the files are "ingested."
 
 ### Example 11: Fallback after MCP failure
 *   **First attempt:** `file:data::files/uploads/document.pdf` → MCP tool call fails.
@@ -143,6 +151,7 @@ Before executing the tool call, perform this check:
 *   ❌ Passing `file:base64::...` on the first attempt when `file:data::...` is the default for content.
 *   ❌ After a failed `file:data::...` MCP call, retrying `data` again instead of falling back to `file:base64::...`.
 *   ❌ Passing raw paths (`files/doc.pdf`) without the `file:...` schema.
+*   ❌ Using `data`/`base64`/`text` on a parameter whose name says URL or path (`attachment_urls`) — it takes `url`.
 
 ## External URL Fallback
 

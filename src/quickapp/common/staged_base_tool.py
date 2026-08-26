@@ -36,6 +36,22 @@ from .utils import matches_type, substitute_media_type
 
 logger = logging.getLogger(__name__)
 
+# Upper bound on an error message echoed back to the model as a retry instruction.
+_MAX_RETRY_MESSAGE_CHARS = 2000
+
+
+def _cap_retry_message(message: str) -> str:
+    """Bound an error message before it is fed back into the model's context.
+
+    Any tool can author an ``InvalidToolCallParameterException`` message, and this is the
+    line that puts it into the next LLM call. A message that accidentally embeds a payload
+    (an inline ``data:`` URI, a response body) would otherwise be able to push the
+    conversation past the context window. No legitimate error needs more than this.
+    """
+    if len(message) <= _MAX_RETRY_MESSAGE_CHARS:
+        return message
+    return f"{message[:_MAX_RETRY_MESSAGE_CHARS]}... (truncated)"
+
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
@@ -215,7 +231,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             return FallbackProcessor.process_fallback(
                 [
                     RetryStrategyModel(
-                        instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {e.message}"
+                        instructions=f"Parameter {e.parameter_name} is invalid, try to call the tool again with fixed exception: {_cap_retry_message(e.message)}"
                     )
                 ],
                 tool_call_id,

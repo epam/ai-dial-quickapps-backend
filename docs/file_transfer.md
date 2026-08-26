@@ -134,6 +134,9 @@ File loading is handled by `FileLoaderService`, a request-scoped service that:
 - **Classifies** every URL via `classify_url`: bare DIAL paths and absolute URLs whose host matches the configured
   DIAL endpoint route to `DialDownloader` (DIAL Core download API); other `http(s)://` URLs route to
   `ExternalUrlFetcher`; everything else (`file:`, `ftp:`, `data:`, malformed) is rejected with a clear error.
+  `classify_url` reports `data:` as unsupported for every consumer; the two promotion paths that *do* accept
+  inline content (`AttachmentResolver` and the Python interpreter's `InputFileHandler`) check for it explicitly
+  before dispatching, so no other consumer's behaviour changes.
 - **Caches downloads** within the request via `StateHolder`, keyed by `sha256(url)`. If the same URL appears in
   multiple tool call parameters (or across multiple tool calls in the same orchestrator iteration), it is loaded
   only once.
@@ -197,7 +200,22 @@ applies.
 | DIAL               | (any)                                 | `AttachmentParam(url=<resolved DIAL url>, type=…, title=…)`                           |
 | External           | `true`                                | `AttachmentParam(reference_url=url, title=<URL filename>)` — no QuickApps egress      |
 | External           | `false` / `null` / absent             | `DialFilePromoter.promote(url)` → upload to caller's bucket → `AttachmentParam(url=)` |
+| `data:` URI        | (any)                                 | `DialFilePromoter.promote(url)` → decode inline content → upload → `AttachmentParam(url=)` |
 | Unsupported        | (any)                                 | `InvalidToolCallParameterException` with the offending URL                            |
+
+A `data:` URI is promoted even when the deployment advertises `url_attachments` — a deployment can fetch an
+`http(s)` reference, but it cannot fetch inline content, so it needs a real file URL either way. The decoded
+bytes are subject to the same `FileLoadingSizeLimitResolver` limit as any other file load.
+
+### Inline prefixes on `attachment_urls` are normalized
+
+`attachment_urls` is a URL-reference parameter by contract, so `file:data::`, `file:base64::` and `file:text::`
+on it are always a model mistake. `BaseDeploymentTool._pre_process_params` rewrites them to `file:url::`
+**before** the global `_FileArgumentTransformer` runs, so the payload is never materialised at all: no
+download, no base64 round-trip, and nothing multi-MB reaching the stage, the logs, or the retry instruction fed
+back to the model. `file:data::files/bucket/doc.docx` therefore resolves exactly as `files/bucket/doc.docx`
+would. The `data:` row above covers the remaining case — a model that emits a bare `data:` URI without a
+`file:` prefix.
 
 The `features.url_attachments` flag is snapshotted at tool-config build time and cached in
 `DialDeploymentToolCacheService` for the process. An operator who flips the flag on a deployment sees the new
@@ -239,6 +257,13 @@ response includes the error details so the agent can self-correct:
 | Host not in per-app allowlist                | "External URL host is not in this app's allowlist (features.external_url_fetch.host_allowlist)." |
 | `dial_url: true` parameter received external | "Parameter `…` requires a DIAL file but received an external URL …"                              |
 | `dial_url` without configured toolset ID     | "Files cannot be shared because dial_toolset_id is not configured"                               |
+| Malformed `data:` URI                        | "Parameter `…` carries a malformed data: URI. Pass a DIAL file path … instead."                  |
+| Inline `data:` content over the size limit   | "Inline data: content for parameter `…` is N bytes, over the M-byte file size limit …"           |
+
+Error messages are payload-free by construction. `sanitize_url_for_log` collapses a `data:` URI to its media
+type plus an elided byte count, and the retry instruction built from an `InvalidToolCallParameterException` is
+length-capped — a payload echoed back here would otherwise push the conversation past the model's context
+window.
 
 ## Limitations
 

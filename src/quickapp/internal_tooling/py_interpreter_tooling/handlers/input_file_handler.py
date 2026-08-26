@@ -6,6 +6,7 @@ from injector import inject
 from pydantic import SecretStr
 
 from quickapp.common import DIAL_API_KEY
+from quickapp.common.data_uri import is_data_uri
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url, unsupported_scheme_error
@@ -43,22 +44,30 @@ class InputFileHandler:
     ) -> str:
         """Resolve a conversation attachment URL into a URL the interpreter can fetch.
 
-        External URLs are first promoted to a DIAL file (the interpreter only
-        accepts DIAL `sourceUrl`s). When a separate dev-DIAL is configured via
-        ``settings.api_key``, the (possibly promoted) DIAL URL is downloaded
-        from the host DIAL and re-uploaded to the dev DIAL — preserving the
-        existing local-run behaviour.
+        External URLs and ``data:`` URIs are first promoted to a DIAL file (the
+        interpreter only accepts DIAL `sourceUrl`s). When a separate dev-DIAL is
+        configured via ``settings.api_key``, the (possibly promoted) DIAL URL is
+        downloaded from the host DIAL and re-uploaded to the dev DIAL — preserving
+        the existing local-run behaviour.
         """
-        scheme = classify_url(attachment_url, self.__dial_url)
-        if scheme == UrlScheme.EXTERNAL:
+        # Checked ahead of classify_url, which reports every non-http(s) scheme as
+        # UNSUPPORTED; inline content is accepted only on this opt-in path.
+        if is_data_uri(attachment_url):
             metadata = await self.__promoter.promote(
                 attachment_url, parameter_name="attachment_urls"
             )
             effective_url = metadata.url
-        elif scheme == UrlScheme.DIAL:
-            effective_url = attachment_url
         else:
-            raise unsupported_scheme_error(attachment_url, parameter_name="attachment_urls")
+            scheme = classify_url(attachment_url, self.__dial_url)
+            if scheme == UrlScheme.EXTERNAL:
+                metadata = await self.__promoter.promote(
+                    attachment_url, parameter_name="attachment_urls"
+                )
+                effective_url = metadata.url
+            elif scheme == UrlScheme.DIAL:
+                effective_url = attachment_url
+            else:
+                raise unsupported_scheme_error(attachment_url, parameter_name="attachment_urls")
 
         if not settings.api_key:
             return effective_url
