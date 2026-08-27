@@ -1,11 +1,16 @@
-import pytest
-from pydantic import ValidationError
+import logging
 
-from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
-from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
+import pytest
+
+from quickapp.common.exceptions import (
+    FallbackAgentStopException,
+    ToolErrorException,
+    ToolTimeoutError,
+)
 from quickapp.common.tool_fallback.processor import FallbackProcessor, _format_timeout_message
 from quickapp.config.tools.tool_fallback import (
     ContinueStrategyModel,
+    HardStopStrategyModel,
     RetryStrategyModel,
     StopStrategyModel,
     ToolFallbackConfig,
@@ -47,7 +52,9 @@ def test_explicit_trigger_continue_preempts_builtin():
         ContinueStrategyModel(),  # implicit catch-all, should be skipped
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "custom tool-timeout instructions"
+    # trigger matched: error forwarded + instructions appended
+    assert "timed out" in result.content
+    assert "custom tool-timeout instructions" in result.content
 
 
 def test_non_matching_trigger_falls_through_to_builtin():
@@ -74,16 +81,27 @@ def test_customised_catch_all_is_skipped_for_timeout():
     assert "customised-catch-all" not in result.content
 
 
-def test_stop_strategy_with_trigger_preempts():
+def test_hard_stop_strategy_with_trigger_preempts_by_raising():
     err = ToolTimeoutError("rag_search", 300)
     strategies = [
-        StopStrategyModel(
+        HardStopStrategyModel(
             trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
         ),
     ]
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback(strategies, "c", err)
+
+
+def test_stop_strategy_deprecated_with_trigger_returns_content(caplog):
+    err = ToolTimeoutError("rag_search", 300)
+    with caplog.at_level(logging.WARNING, logger="quickapp.config.tools.tool_fallback"):
+        strategies = [
+            StopStrategyModel(
+                trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+            ),
+        ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    # Stop strategy returns its handler's message (non-empty per handler)
-    assert result.content
+    assert "STOP" in result.content
 
 
 # -- Non-timeout path unchanged --------------------------------------------
@@ -92,26 +110,25 @@ def test_stop_strategy_with_trigger_preempts():
 def test_non_timeout_error_uses_default_catchall():
     err = ValueError("something else")
     result = FallbackProcessor.process_fallback(_default_strategies(), "c", err)
-    # Default ContinueStrategyModel catch-all returns the generic text.
-    assert "An error occurs" in result.content
+    assert "something else" in result.content
     assert "timed out" not in result.content
 
 
-def test_non_timeout_error_ignores_forward_tool_error_message_for_non_tool_errors():
+def test_non_timeout_error_forwards_error_regardless_of_deprecated_flag():
     err = ValueError("something else")
     strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert "An error occurs" in result.content
+    assert "something else" in result.content
 
 
-def test_tool_error_can_forward_tool_error_message():
+def test_tool_error_always_forwarded_without_explicit_flag():
     err = ToolErrorException("rag_search", "public error")
-    strategies = [ContinueStrategyModel(forward_tool_error_message=True)]
+    strategies = [ContinueStrategyModel()]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\n" + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
+    assert result.content == "The tool call failed with an error: public error"
 
 
-def test_tool_error_can_append_instructions_after_forwarded_error():
+def test_continue_catchall_with_instructions_included():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         ContinueStrategyModel(
@@ -120,10 +137,11 @@ def test_tool_error_can_append_instructions_after_forwarded_error():
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\nTry another applicable tool."
+    assert "public error" in result.content
+    assert "Try another applicable tool." in result.content
 
 
-def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error():
+def test_retry_catchall_includes_instructions():
     err = ToolErrorException("rag_search", "public error")
     strategies = [
         RetryStrategyModel(
@@ -132,7 +150,8 @@ def test_tool_error_retry_strategy_can_append_instructions_after_forwarded_error
         )
     ]
     result = FallbackProcessor.process_fallback(strategies, "c", err)
-    assert result.content == "public error\n\nAnalyze the error and retry."
+    assert "public error" in result.content
+    assert "Analyze the error and retry." in result.content
 
 
 def test_non_timeout_no_matching_strategy_reraises():
@@ -150,11 +169,13 @@ def test_non_timeout_no_matching_strategy_reraises():
 # -- ContinueStrategyModel validator ---------------------------------------
 
 
-def test_continue_strategy_bare_trigger_without_instructions_rejected():
-    with pytest.raises(ValidationError):
-        ContinueStrategyModel(
-            trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
-        )
+def test_continue_strategy_trigger_without_instructions_now_valid():
+    # Validator removed — trigger_on without instructions is now valid (error always forwarded)
+    cs = ContinueStrategyModel(
+        trigger_on=TriggerOn(type=TriggerOnType.contains, value="timed out"),
+    )
+    assert cs.trigger_on is not None
+    assert cs.instructions is None
 
 
 def test_continue_strategy_trigger_with_instructions_ok():
@@ -176,11 +197,6 @@ def test_continue_strategy_trigger_with_forward_tool_error_message_ok():
 def test_continue_strategy_no_trigger_no_instructions_ok():
     # Implicit catch-all with no instructions — still valid.
     ContinueStrategyModel()
-
-
-def test_retry_strategy_requires_instructions_unchanged():
-    with pytest.raises(ValidationError):
-        RetryStrategyModel()  # type: ignore[call-arg]
 
 
 # -- Message formatter -----------------------------------------------------

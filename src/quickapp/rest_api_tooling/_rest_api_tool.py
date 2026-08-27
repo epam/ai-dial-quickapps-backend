@@ -101,11 +101,11 @@ class _RestApiTool(StagedBaseTool):
                     error_message = self._extract_response_error_message(e.response)
                     # Detect-and-raise only; the StagedBaseTool choke point owns the
                     # failure WARNING, so this stays at DEBUG (ownership rule).
+                    # Response body is intentionally excluded from the log (payload logging policy).
                     logger.debug(
-                        "REST API tool '%s' returned HTTP %s; error: %s",
+                        "REST API tool '%s' returned HTTP %s",
                         self._tool_config.open_ai_tool.function.name,
                         e.response.status_code,
-                        error_message,
                     )
                     raise RestApiToolErrorException(
                         self._tool_config.open_ai_tool.function.name,
@@ -150,4 +150,9 @@ class _RestApiTool(StagedBaseTool):
 
     @staticmethod
     def _extract_response_error_message(response: httpx.Response) -> str:
-        return f"HTTP error {response.status_code} while calling REST API tool."
+        base = f"HTTP error {response.status_code} while calling REST API tool."
+        try:
+            body = response.text.strip()
+        except Exception:
+            body = ""
+        return f"{base} Response: {body}" if body else base

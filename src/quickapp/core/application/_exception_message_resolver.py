@@ -7,6 +7,7 @@ from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import (
+    FallbackAgentStopException,
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
     ToolErrorException,
@@ -89,6 +90,12 @@ _MSG_HTTP_UNEXPECTED = (
     "An unexpected HTTP error occurred. Please try again or contact your administrator."
 )
 _MSG_HTTP_GENERIC = "An HTTP error occurred. Please try again or contact your administrator."
+
+# --- Internal / orchestration wording ---
+_MSG_FALLBACK_STOP = (
+    "A tool encountered an error and the agent was stopped by a configured fallback strategy. "
+    "Please try again or contact your administrator if the issue persists."
+)
 
 # Error codes that resolve to a specific message ahead of the status ladder. All are
 # non-retryable: re-sending the same request will not change the outcome.
@@ -215,21 +222,21 @@ def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
     if status is None:
         return None
     if status == 401:
-        return (_MSG_AI_MODEL_AUTH_FAILED, False)
+        return _MSG_AI_MODEL_AUTH_FAILED, False
     if status == 403:
-        return (_MSG_AI_MODEL_NO_PERMISSION, False)
+        return _MSG_AI_MODEL_NO_PERMISSION, False
     if status == 404:
-        return (_MSG_AI_MODEL_NOT_FOUND, False)
+        return _MSG_AI_MODEL_NOT_FOUND, False
     if status == 413:
-        return (_MSG_AI_MODEL_PAYLOAD_TOO_LARGE, False)
+        return _MSG_AI_MODEL_PAYLOAD_TOO_LARGE, False
     if status in (400, 422):
-        return (_MSG_AI_MODEL_INVALID_REQUEST, False)
+        return _MSG_AI_MODEL_INVALID_REQUEST, False
     if status == 409:
-        return (_MSG_AI_MODEL_CONFLICT, True)
+        return _MSG_AI_MODEL_CONFLICT, True
     if status == 429:
-        return (_MSG_AI_MODEL_RATE_LIMITED, True)
+        return _MSG_AI_MODEL_RATE_LIMITED, True
     if status >= 500:
-        return (_MSG_AI_MODEL_INTERNAL_ERROR, True)
+        return _MSG_AI_MODEL_INTERNAL_ERROR, True
     return None
 
 
@@ -237,34 +244,34 @@ def _resolve_openai_status_or_type(e: openai.APIError, details: ErrorDetails) ->
     # Type branches carry no HTTP status. APITimeoutError must precede APIConnectionError
     # (it is a subclass), and both must precede the stream-failure rule.
     if isinstance(e, openai.APITimeoutError):
-        return (_MSG_AI_MODEL_TIMEOUT, True)
+        return _MSG_AI_MODEL_TIMEOUT, True
     if isinstance(e, openai.APIConnectionError):
         # The openai client already retried this; a lingering failure is deterministic
         # (wrong endpoint / DNS / TLS), so it is non-retryable with admin-escalation advice.
-        return (_MSG_SERVICE_NO_CONNECTIVITY, False)
+        return _MSG_SERVICE_NO_CONNECTIVITY, False
     return _resolve_ai_model_status(details.status_code)
 
 
 def _resolve_httpx_status_or_type(e: httpx.HTTPError, details: ErrorDetails) -> _Resolution:
     # httpx is a terminal source (no stream-failure fallthrough), so it always resolves.
     if isinstance(e, httpx.TimeoutException):
-        return (_MSG_SERVICE_TIMEOUT, True)
+        return _MSG_SERVICE_TIMEOUT, True
     if isinstance(e, httpx.NetworkError):
-        return (_MSG_SERVICE_NETWORK_ERROR, True)
+        return _MSG_SERVICE_NETWORK_ERROR, True
     if isinstance(e, httpx.HTTPStatusError):
         status = details.status_code
         if status == 401:
-            return (_MSG_SERVICE_AUTH_FAILED, False)
+            return _MSG_SERVICE_AUTH_FAILED, False
         if status == 403:
-            return (_MSG_SERVICE_NO_PERMISSION, False)
+            return _MSG_SERVICE_NO_PERMISSION, False
         if status == 404:
-            return (_MSG_SERVICE_NOT_FOUND, False)
+            return _MSG_SERVICE_NOT_FOUND, False
         if status == 429:
-            return (_MSG_SERVICE_RATE_LIMITED, True)
+            return _MSG_SERVICE_RATE_LIMITED, True
         if status is not None and status >= 500:
-            return (_MSG_SERVICE_INTERNAL_ERROR, True)
-        return (_MSG_HTTP_UNEXPECTED, False)
-    return (_MSG_HTTP_GENERIC, False)
+            return _MSG_SERVICE_INTERNAL_ERROR, True
+        return _MSG_HTTP_UNEXPECTED, False
+    return _MSG_HTTP_GENERIC, False
 
 
 def _resolve_status_or_type(e: Exception, details: ErrorDetails) -> _Resolution | None:
@@ -297,10 +304,12 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 
 
 def _resolve_internal(e: Exception) -> _Resolution | None:
+    if isinstance(e, FallbackAgentStopException):
+        return _MSG_FALLBACK_STOP, False
     if isinstance(e, OrchestratorExceedMaxIterationsException):
-        return (str(e), False)
+        return str(e), False
     if isinstance(e, OrchestratorInitializationException):
-        return (_MSG_AI_MODEL_NOT_FOUND, False)
+        return _MSG_AI_MODEL_NOT_FOUND, False
     if isinstance(e, ToolsetNotFoundException):
         toolset = f" ({e.toolset_id})" if e.toolset_id else ""
         return (

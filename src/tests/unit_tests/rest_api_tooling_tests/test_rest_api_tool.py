@@ -19,7 +19,6 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.dial_settings import DialSettings
-from quickapp.common.tool_fallback.continue_strategy import ContinueStrategyHandler
 from quickapp.config.application import ApplicationConfig, StageDisplayLevel
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -494,8 +493,7 @@ async def test_http_status_error_can_forward_error_message_via_fallback(mock_asy
         result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
         assert (
             result.content
-            == "HTTP error 400 while calling REST API tool.\n\n"
-            + ContinueStrategyHandler._DEFAULT_INSTRUCTIONS
+            == 'The tool call failed with an error: HTTP error 400 while calling REST API tool. Response: {"error":"Invalid API key"}'
         )
         assert result.content_type == "text/markdown"
         return {"message": "success"}
@@ -561,7 +559,7 @@ async def test_http_status_error_can_append_instructions_after_forwarded_error(m
         result = await tools[0].arun("call-1", None, **{"query_key": "query_value"})
         assert (
             result.content
-            == "HTTP error 429 while calling REST API tool.\n\nWait a bit and try a different tool."
+            == 'The tool call failed with an error: HTTP error 429 while calling REST API tool. Response: {"detail":"Rate limit exceeded"}\n\nWait a bit and try a different tool.'
         )
         return {"message": "success"}
 

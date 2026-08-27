@@ -503,12 +503,13 @@
             }
           ],
           "default": null,
-          "description": "Instructions to LLM what to do next.",
+          "description": "Optional instructions appended to the forwarded error message. Applied regardless of whether trigger_on is set.",
           "title": "Instructions"
         },
         "forward_tool_error_message": {
           "default": false,
-          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "deprecated": true,
+          "description": "Deprecated: no longer has any effect. Tool error messages are now always forwarded to the LLM.",
           "title": "Forward Tool Error Message",
           "type": "boolean"
         },
@@ -1691,6 +1692,31 @@
         }
       },
       "title": "ForwardAuthTokenAuthorization",
+      "type": "object"
+    },
+    "HardStopStrategyModel": {
+      "properties": {
+        "trigger_on": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TriggerOn"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The trigger on condition. If set as `null`, it will be applied to all tool errors."
+        },
+        "type": {
+          "const": "hard_stop",
+          "default": "hard_stop",
+          "description": "The type of the strategy.",
+          "title": "Type",
+          "type": "string"
+        }
+      },
+      "title": "HardStopStrategyModel",
       "type": "object"
     },
     "HookEvent": {
@@ -3132,27 +3158,27 @@
           "description": "The trigger on condition. If set as `null`, it will be applied to all tool errors."
         },
         "instructions": {
-          "description": "Instructions to LLM what to do next. Must be provided for retry strategy.",
+          "default": "An error occurred, try to analyze what went wrong and retry the operation.",
+          "description": "Instructions to LLM what to do next.",
           "title": "Instructions",
           "type": "string"
         },
         "forward_tool_error_message": {
           "default": false,
-          "description": "Whether to include the Tool error message in the fallback message returned to the model. Applies only to `ToolErrorException`.",
+          "deprecated": true,
+          "description": "Deprecated: no longer has any effect. Tool error messages are now always forwarded to the LLM.",
           "title": "Forward Tool Error Message",
           "type": "boolean"
         },
         "type": {
           "const": "retry",
           "default": "retry",
-          "description": "The type of the strategy.",
+          "deprecated": true,
+          "description": "Deprecated: use type 'continue' instead.",
           "title": "Type",
           "type": "string"
         }
       },
-      "required": [
-        "instructions"
-      ],
       "title": "RetryStrategyModel",
       "type": "object"
     },
@@ -3194,7 +3220,8 @@
         "type": {
           "const": "stop",
           "default": "stop",
-          "description": "The type of the strategy.",
+          "deprecated": true,
+          "description": "Deprecated: use type 'hard_stop' instead.",
           "title": "Type",
           "type": "string"
         }
@@ -3374,6 +3401,7 @@
             "discriminator": {
               "mapping": {
                 "continue": "#/$defs/ContinueStrategyModel",
+                "hard_stop": "#/$defs/HardStopStrategyModel",
                 "retry": "#/$defs/RetryStrategyModel",
                 "stop": "#/$defs/StopStrategyModel"
               },
@@ -3388,6 +3416,9 @@
               },
               {
                 "$ref": "#/$defs/RetryStrategyModel"
+              },
+              {
+                "$ref": "#/$defs/HardStopStrategyModel"
               }
             ]
           },

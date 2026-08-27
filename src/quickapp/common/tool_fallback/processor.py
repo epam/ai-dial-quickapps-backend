@@ -44,7 +44,6 @@ class FallbackProcessor(ApplicableStrategyMixin):
             return FallbackProcessor._process_timeout(strategies, tool_call_id, error)
 
         message: str = ""
-        matched_strategy: str | None = None
         for strategy in strategies:
             if FallbackProcessor._is_applicable(strategy, error):
                 logger.debug(
@@ -52,10 +51,11 @@ class FallbackProcessor(ApplicableStrategyMixin):
                     strategy.type,
                     tool_call_id,
                 )
-                strategy_message = FallbackProcessor._handle_fallback_strategy(strategy, error)
+                strategy_message = FallbackProcessor._handle_fallback_strategy(
+                    strategy, error, tool_call_id
+                )
                 if strategy_message:
                     message = strategy_message
-                    matched_strategy = strategy.type
                     break
 
         if not message:
@@ -66,9 +66,6 @@ class FallbackProcessor(ApplicableStrategyMixin):
             )
             raise error
 
-        logger.info(
-            format_event("Fallback applied", tool_call_id=tool_call_id, strategy=matched_strategy)
-        )
         return ToolCallResult(
             content=message, tool_call_id=tool_call_id, content_type="text/markdown"
         )
@@ -80,21 +77,24 @@ class FallbackProcessor(ApplicableStrategyMixin):
         error: ToolTimeoutError,
     ) -> ToolCallResult:
         message = ""
-        strategy_label = "timeout_default"
         for strategy in strategies:
             if strategy.trigger_on is None:
                 continue
             if not FallbackProcessor._is_applicable(strategy, error):
                 continue
-            strategy_message = FallbackProcessor._handle_fallback_strategy(strategy, error)
+            strategy_message = FallbackProcessor._handle_fallback_strategy(
+                strategy, error, tool_call_id
+            )
             if strategy_message:
                 message = strategy_message
-                strategy_label = strategy.type
                 break
 
-        logger.info(
-            format_event("Fallback applied", tool_call_id=tool_call_id, strategy=strategy_label)
-        )
+        if not message:
+            logger.info(
+                format_event(
+                    "Fallback applied", tool_call_id=tool_call_id, strategy="timeout_default"
+                )
+            )
         return ToolCallResult(
             content=message or _format_timeout_message(error),
             tool_call_id=tool_call_id,
@@ -103,11 +103,11 @@ class FallbackProcessor(ApplicableStrategyMixin):
 
     @staticmethod
     def _handle_fallback_strategy(
-        strategy_config: ToolFallbackStrategyModel, error: Exception
+        strategy_config: ToolFallbackStrategyModel, error: Exception, tool_call_id: str
     ) -> str:
         handler_cls: type[BaseStrategy[Any]] | None = STRATEGY_TYPE_TO_HANDLER.get(
             strategy_config.type
         )
         if not handler_cls:
             return ""
-        return handler_cls.handle(strategy_config, error)
+        return handler_cls.handle(strategy_config, error, tool_call_id)
