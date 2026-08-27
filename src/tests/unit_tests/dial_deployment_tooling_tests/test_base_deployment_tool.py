@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
+from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.config.application import StageDisplayLevel
@@ -30,6 +31,8 @@ from quickapp.config.tools.deployment import (
     DialDeploymentTool,
 )
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
+from quickapp.file_transfer._file_argument_transformer import _FileArgumentTransformer
+from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 
 def _make_messages_mixin(messages: list[Message]) -> MessagesMixin:
@@ -819,3 +822,142 @@ def test_enrich_no_propagation_is_noop():
     enriched = tool.enrich_openai_tool_schema(open_ai_tool)
 
     assert set(enriched.function.parameters.properties.keys()) == original_props
+
+
+class TestAttachmentUrlPrefixNormalization:
+    """``attachment_urls`` is a URL-reference parameter, so an inline ``file:`` prefix on
+    it is normalized to ``url::`` *before* the global file-argument transformer runs.
+    Without this the transformer inlines the whole file as a multi-MB ``data:`` URI that
+    the deployment cannot use and that pollutes the stage, the logs, and the retry
+    instruction fed back to the model."""
+
+    @staticmethod
+    def _normalize(kwargs: dict[str, Any]) -> dict[str, Any]:
+        BaseDeploymentTool._normalize_attachment_url_prefixes(kwargs)
+        return kwargs
+
+    @pytest.mark.parametrize("prefix", ["data", "base64", "text", "DATA", "Base64"])
+    def test_inline_prefixes_normalized_to_url(self, prefix):
+        kwargs = self._normalize(
+            {"attachment_urls": [f"file:{prefix}::files/bucket/document.docx"]}
+        )
+        assert kwargs["attachment_urls"] == ["file:url::files/bucket/document.docx"]
+
+    @pytest.mark.parametrize(
+        "reference",
+        [
+            "file:url::files/bucket/doc.pdf",
+            "file:url::https://example.com/doc.pdf",
+            "files/bucket/doc.pdf",
+            "https://example.com/doc.pdf",
+            "data:application/pdf;base64,QUJD",
+        ],
+    )
+    def test_other_reference_forms_untouched(self, reference):
+        assert self._normalize({"attachment_urls": [reference]})["attachment_urls"] == [reference]
+
+    def test_mixed_list_normalizes_only_inline_entries(self):
+        kwargs = self._normalize(
+            {
+                "attachment_urls": [
+                    "file:data::files/a.docx",
+                    "file:url::https://example.com/b.pdf",
+                    "files/c.txt",
+                ]
+            }
+        )
+        assert kwargs["attachment_urls"] == [
+            "file:url::files/a.docx",
+            "file:url::https://example.com/b.pdf",
+            "files/c.txt",
+        ]
+
+    def test_other_parameters_keep_their_inline_prefix(self):
+        """Only the URL-reference parameter is rewritten — a genuine content parameter
+        still gets its content inlined."""
+        kwargs = self._normalize(
+            {
+                "attachment_urls": ["file:data::files/a.docx"],
+                "document": "file:data::files/b.docx",
+            }
+        )
+        assert kwargs["attachment_urls"] == ["file:url::files/a.docx"]
+        assert kwargs["document"] == "file:data::files/b.docx"
+
+    def test_bare_string_value_handled(self):
+        kwargs = self._normalize({"attachment_urls": "file:data::files/a.docx"})
+        assert kwargs["attachment_urls"] == "file:url::files/a.docx"
+
+    @pytest.mark.parametrize("value", [None, 42, [1, 2], []])
+    def test_non_string_values_left_alone(self, value):
+        assert self._normalize({"attachment_urls": value})["attachment_urls"] == value
+
+    def test_absent_parameter_is_a_no_op(self):
+        assert self._normalize({"query": "hi"}) == {"query": "hi"}
+
+    @pytest.mark.parametrize(
+        "reference",
+        [
+            "file:data::files/bucket/uploads/2026-08/expo-2020%20(6).pptx",
+            "file:data::files/bucket/a,b;c=d.pdf",
+            "file:data::files/bucket/%D0%BE%D1%82%D1%87%D1%91%D1%82.docx",
+        ],
+    )
+    def test_path_is_preserved_verbatim(self, reference):
+        """Percent-encoding and punctuation in a DIAL path must survive the rewrite
+        untouched — the model copies the path out of the <attachments> block and the
+        metadata lookup needs it byte-for-byte."""
+        normalized = self._normalize({"attachment_urls": [reference]})["attachment_urls"][0]
+
+        assert normalized == reference.replace("file:data::", "file:url::", 1)
+        assert strip_file_prefix(normalized) == strip_file_prefix(reference)
+
+    @pytest.mark.asyncio
+    async def test_both_observed_llm_forms_converge(self):
+        """The model picks between these two forms non-deterministically for the same
+        file. After normalization both must reach the resolver as the identical bare
+        DIAL path, so which one it picked stops mattering."""
+        bare = "files/bucket/uploads/2026-08/expo-2020%20(6).pptx"
+        file_service = MagicMock(spec=FileLoaderService)
+        file_service.load = AsyncMock()
+        file_service.load_with_content_type = AsyncMock()
+
+        results = []
+        for emitted in (bare, f"file:data::{bare}"):
+            kwargs = {"attachment_urls": [emitted]}
+            BaseDeploymentTool._normalize_attachment_url_prefixes(kwargs)
+            transformed = await _FileArgumentTransformer(file_service=file_service).transform(
+                kwargs
+            )
+            results.append(transformed["attachment_urls"])
+
+        assert results[0] == results[1] == [bare]
+        file_service.load.assert_not_awaited()
+        file_service.load_with_content_type.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_pre_process_params_never_loads_the_file_bytes(self):
+        """The regression guard: with a real file-argument transformer in the pipeline,
+        an ``attachment_urls`` entry must reach the resolver as a bare DIAL path and the
+        file must never be downloaded."""
+        file_service = MagicMock(spec=FileLoaderService)
+        file_service.load = AsyncMock()
+        file_service.load_with_content_type = AsyncMock()
+
+        tool = _build_tool([])
+        tool_config = tool.tool_config
+        tool_config.deployment.parameters = DialDeploymentParameters()
+        tool_config.deployment._configuration_param_names = set()
+        object.__setattr__(
+            tool,
+            "_StagedBaseTool__argument_transformers",
+            [_FileArgumentTransformer(file_service=file_service)],
+        )
+
+        prepared = await tool._pre_process_params(
+            query="summarise", attachment_urls=["file:data::files/bucket/document.docx"]
+        )
+
+        assert prepared["attachment_urls"] == ["files/bucket/document.docx"]
+        file_service.load.assert_not_awaited()
+        file_service.load_with_content_type.assert_not_awaited()

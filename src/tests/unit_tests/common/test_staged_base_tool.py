@@ -11,6 +11,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
+from quickapp.common.staged_base_tool import _MAX_RETRY_MESSAGE_CHARS, _cap_retry_message
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
@@ -487,3 +488,24 @@ async def test_error_at_none_level_no_stage_and_returns_fallback(
     # A result was returned (fallback), not an exception
     assert result is not None
     assert result.tool_call_id == "call-id"
+
+
+class TestCapRetryMessage:
+    """The retry instruction built from an ``InvalidToolCallParameterException`` message
+    goes straight into the next LLM call. Any tool can author that message, so it is
+    bounded — an accidental payload in one must not be able to blow the context window."""
+
+    def test_short_message_passed_through_unchanged(self):
+        assert _cap_retry_message("URL scheme not supported") == "URL scheme not supported"
+
+    def test_message_at_the_limit_not_truncated(self):
+        message = "x" * _MAX_RETRY_MESSAGE_CHARS
+        assert _cap_retry_message(message) == message
+
+    def test_oversized_message_truncated(self):
+        message = "y" * (_MAX_RETRY_MESSAGE_CHARS + 5000)
+        capped = _cap_retry_message(message)
+
+        assert len(capped) < len(message)
+        assert capped.endswith("... (truncated)")
+        assert capped.startswith("y" * 100)

@@ -16,6 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.file_reference_pattern import FILE_PATTERN, to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -34,6 +35,9 @@ from quickapp.dial_deployment_tooling.dial_completion_service import DialComplet
 from .deployment_stage_wrapper import DeploymentStageWrapper
 
 logger = logging.getLogger(__name__)
+
+# file: prefixes that inline content rather than reference it.
+_INLINE_FILE_PREFIXES = frozenset({"data", "base64", "text"})
 
 
 class BaseDeploymentTool(StagedBaseTool):
@@ -268,6 +272,8 @@ class BaseDeploymentTool(StagedBaseTool):
         return assistant_msg
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        # Must precede super(), which expands any remaining file: reference into content.
+        self._normalize_attachment_url_prefixes(kwargs)
         kwargs = await super()._pre_process_params(**kwargs)
 
         prepared: dict[str, Any] = {}
@@ -307,6 +313,30 @@ class BaseDeploymentTool(StagedBaseTool):
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)
 
         return prepared
+
+    @staticmethod
+    def _normalize_attachment_url_prefixes(kwargs: dict[str, Any]) -> None:
+        """Normalize ``file:`` prefixes on ``attachment_urls`` to ``file:url::``, in place.
+
+        The parameter takes a fetchable URL, not inlined bytes.
+        """
+        value = kwargs.get(ATTACHMENT_PARAM)
+
+        def rewrite(reference: Any) -> Any:
+            if not isinstance(reference, str):
+                return reference
+            match = FILE_PATTERN.match(reference)
+            if match is None:
+                return reference
+            prefix = match.group("prefix")
+            if prefix is None or prefix.lower() not in _INLINE_FILE_PREFIXES:
+                return reference
+            return to_file_url_reference(match.group("file_url"))
+
+        if isinstance(value, str):
+            kwargs[ATTACHMENT_PARAM] = rewrite(value)
+        elif isinstance(value, list):
+            kwargs[ATTACHMENT_PARAM] = [rewrite(item) for item in value]
 
     @staticmethod
     def _merge_to_prepared_params(params: DialDeploymentParameters, prepared: dict[str, Any]):

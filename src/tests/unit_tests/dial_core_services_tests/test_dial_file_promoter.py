@@ -1,4 +1,5 @@
 import asyncio
+import base64
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -7,6 +8,9 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
+    FileLoadingSizeLimitResolver,
+)
 from quickapp.shared.external_fetch.external_url_fetcher import (
     ExternalFetchError,
     ExternalUrlFetcher,
@@ -14,6 +18,7 @@ from quickapp.shared.external_fetch.external_url_fetcher import (
 )
 
 DIAL_URL = "https://dial.example.com"
+DEFAULT_SIZE_LIMIT = 10 * 1024 * 1024
 
 
 def _settings() -> MagicMock:
@@ -30,10 +35,17 @@ def _make_metadata(url: str = "https://dial.example.com/v1/files/x", name: str =
     return meta
 
 
+def _size_limit(limit: int = DEFAULT_SIZE_LIMIT) -> MagicMock:
+    resolver = MagicMock(spec=FileLoadingSizeLimitResolver)
+    resolver.resolve.return_value = limit
+    return resolver
+
+
 def _make_promoter(
     files_get_metadata: AsyncMock | None = None,
     fetcher: MagicMock | None = None,
     attachments: MagicMock | None = None,
+    size_limit: int = DEFAULT_SIZE_LIMIT,
 ) -> DialFilePromoter:
     dial_client = MagicMock()
     dial_client.files.get_metadata = files_get_metadata or AsyncMock(return_value=_make_metadata())
@@ -42,6 +54,7 @@ def _make_promoter(
         external_fetcher=fetcher or MagicMock(spec=ExternalUrlFetcher),
         attachment_service=attachments or MagicMock(spec=AttachmentService),
         dial_settings=_settings(),
+        size_limit=_size_limit(size_limit),
     )
 
 
@@ -181,3 +194,104 @@ async def test_external_fetch_error_translated_to_invalid_param():
     with pytest.raises(InvalidToolCallParameterException) as excinfo:
         await promoter.promote("https://internal/x", parameter_name="attachment_urls")
     assert excinfo.value.parameter_name == "attachment_urls"
+
+
+class TestDataUriBranch:
+    """A ``data:`` URI is decoded once and uploaded through the same helper the
+    external branch uses, so a target that needs a fetchable URL gets one."""
+
+    @staticmethod
+    def _attachments(uploaded: MagicMock | None = None) -> MagicMock:
+        attachments = MagicMock(spec=AttachmentService)
+        attachments.upload_bytes = AsyncMock(
+            return_value=uploaded
+            or _make_metadata(url="https://dial.example.com/v1/files/inline.pdf", name="inline.pdf")
+        )
+        return attachments
+
+    @pytest.mark.asyncio
+    async def test_decodes_and_uploads_without_touching_the_fetcher(self):
+        payload = b"%PDF-1.7 inline body"
+        encoded = base64.b64encode(payload).decode()
+        fetcher = MagicMock(spec=ExternalUrlFetcher)
+        fetcher.fetch = AsyncMock()
+        attachments = self._attachments()
+
+        promoter = _make_promoter(fetcher=fetcher, attachments=attachments)
+        result = await promoter.promote(f"data:application/pdf;base64,{encoded}")
+
+        assert result.url == "https://dial.example.com/v1/files/inline.pdf"
+        fetcher.fetch.assert_not_awaited()
+        attachments.upload_bytes.assert_awaited_once()
+        call = attachments.upload_bytes.await_args.kwargs
+        assert call["data"] == payload
+        assert call["content_type"] == "application/pdf"
+        assert call["filename"].endswith(".pdf")
+
+    @pytest.mark.asyncio
+    async def test_percent_encoded_payload_supported(self):
+        attachments = self._attachments()
+        promoter = _make_promoter(attachments=attachments)
+
+        await promoter.promote("data:text/plain,hello%20world")
+
+        assert attachments.upload_bytes.await_args.kwargs["data"] == b"hello world"
+
+    @pytest.mark.asyncio
+    async def test_second_call_for_same_data_uri_hits_cache(self):
+        encoded = base64.b64encode(b"cached").decode()
+        url = f"data:text/plain;base64,{encoded}"
+        attachments = self._attachments()
+        promoter = _make_promoter(attachments=attachments)
+
+        first = await promoter.promote(url)
+        second = await promoter.promote(url)
+
+        assert first is second
+        attachments.upload_bytes.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_over_size_limit_rejected_without_uploading(self):
+        encoded = base64.b64encode(b"x" * 100).decode()
+        attachments = self._attachments()
+        promoter = _make_promoter(attachments=attachments, size_limit=10)
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await promoter.promote(
+                f"data:application/pdf;base64,{encoded}", parameter_name="attachment_urls"
+            )
+
+        assert excinfo.value.parameter_name == "attachment_urls"
+        assert "100 bytes" in excinfo.value.message
+        assert "10-byte" in excinfo.value.message
+        attachments.upload_bytes.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_malformed_data_uri_rejected(self):
+        attachments = self._attachments()
+        promoter = _make_promoter(attachments=attachments)
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await promoter.promote(
+                "data:application/pdf;base64,not!valid!", parameter_name="attachment_urls"
+            )
+
+        assert excinfo.value.parameter_name == "attachment_urls"
+        assert "malformed data: URI" in excinfo.value.message
+        attachments.upload_bytes.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("size_limit", [10, DEFAULT_SIZE_LIMIT])
+    async def test_rejection_messages_never_carry_the_payload(self, size_limit):
+        """The message becomes a retry instruction in the next LLM call; a multi-MB
+        payload in one is what pushed the original bug past the context window."""
+        encoded = base64.b64encode(b"y" * 2048).decode()
+        promoter = _make_promoter(size_limit=size_limit)
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            # Trailing junk makes the payload undecodable regardless of the limit.
+            await promoter.promote(
+                f"data:application/pdf;base64,{encoded}!!!", parameter_name="attachment_urls"
+            )
+
+        assert encoded not in excinfo.value.message

@@ -158,3 +158,24 @@ async def test_external_url_with_dev_dial_promotes_then_uploads_to_dev():
         "https://example.com/x.csv", parameter_name="attachment_urls"
     )
     request_dial.files.download.assert_awaited_once_with("files/bucket/promoted.csv")
+
+
+@pytest.mark.asyncio
+async def test_data_uri_promoted_then_returned():
+    """The interpreter only accepts DIAL ``sourceUrl``s, so inline content is promoted
+    the same way an external URL is."""
+    data_uri = "data:text/csv;base64,YSxiCjEsMg=="
+    metadata = MagicMock()
+    metadata.url = "files/bucket/inline.csv"
+    promoter = MagicMock(spec=DialFilePromoter)
+    promoter.promote = AsyncMock(return_value=metadata)
+    handler = _make_handler(promoter=promoter)
+
+    url = await handler.get_attachment_url(
+        settings=_settings_no_dev_dial(),
+        attachment_url=data_uri,
+        attachment=Attachment(type="text/csv", url=data_uri),
+    )
+
+    assert url == "files/bucket/inline.csv"
+    promoter.promote.assert_awaited_once_with(data_uri, parameter_name="attachment_urls")

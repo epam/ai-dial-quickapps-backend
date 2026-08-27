@@ -7,6 +7,8 @@ or user-facing error message must pass through :func:`sanitize_url_for_log` firs
 
 from urllib.parse import urlsplit, urlunsplit
 
+from quickapp.common.data_uri import collapse_data_uri_for_log, is_data_uri
+
 
 def sanitize_url_for_log(url: str) -> str:
     """Strip a URL to scheme, host, and path for logging (content rule, issue #436).
@@ -15,9 +17,15 @@ def sanitize_url_for_log(url: str) -> str:
     any userinfo (``user:pass@``). A relative DIAL path (``files/...``) has no scheme or
     host and is returned with only its query/fragment removed. A URL that cannot be parsed
     falls back to the substring before the first ``?`` / ``#``.
+
+    A ``data:`` URI is collapsed to its metadata plus an elided payload size. Without this,
+    ``urlsplit`` parks the entire inline payload in ``.path`` and it would be echoed back
+    verbatim -- into log lines, and into the retry instruction the model reads next.
     """
     if not url:
         return url
+    if is_data_uri(url):
+        return collapse_data_uri_for_log(url)
     try:
         split = urlsplit(url)
     except ValueError:

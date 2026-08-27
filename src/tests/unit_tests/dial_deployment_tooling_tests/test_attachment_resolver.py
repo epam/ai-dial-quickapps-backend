@@ -1,3 +1,4 @@
+import base64
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -184,3 +185,82 @@ async def test_resolve_attachment_urls_first_failure_surfaces_sibling_completion
     # DIAL metadata was still queried for the good URL despite the sibling
     # eventually raising.
     dial_client.metadata.get.assert_called_once()
+
+
+class TestDataUriAttachments:
+    """A ``data:`` URI reaches the resolver whenever the model emits one directly
+    (the ``file:data::`` form is normalized upstream in ``BaseDeploymentTool``).
+    The deployment needs a fetchable URL, so the payload is promoted."""
+
+    @staticmethod
+    def _promoted() -> MagicMock:
+        meta = MagicMock()
+        meta.content_type = "application/pdf"
+        meta.name = "inline.pdf"
+        meta.url = "files/bucket/inline.pdf"
+        return meta
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("supports_url_attachments", [True, False])
+    async def test_promoted_to_a_dial_file_url(self, supports_url_attachments):
+        encoded = base64.b64encode(b"%PDF-1.7 body").decode()
+        data_uri = f"data:application/pdf;base64,{encoded}"
+        dial_client = MagicMock()
+        dial_client.metadata.get = AsyncMock()
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock(return_value=self._promoted())
+
+        resolver = _make_resolver(dial_client=dial_client, file_promoter=promoter)
+        result = await resolver._resolve_attachment(
+            data_uri, supports_url_attachments=supports_url_attachments
+        )
+
+        # Even a deployment advertising url_attachments cannot fetch a data: URI,
+        # so it is promoted rather than forwarded as a reference_url.
+        promoter.promote.assert_awaited_once_with(data_uri, parameter_name="attachment_urls")
+        dial_client.metadata.get.assert_not_called()
+        assert result == AttachmentParam(
+            type="application/pdf", title="inline.pdf", url="files/bucket/inline.pdf"
+        )
+        assert result.get("reference_url") is None
+
+    @pytest.mark.asyncio
+    async def test_file_data_prefix_form_resolves_as_a_dial_path(self):
+        """The history-rebuild path sees raw, untransformed arguments; the bare path
+        behind the prefix is what matters there."""
+        fileinfo = MagicMock()
+        fileinfo.content_type = "application/pdf"
+        fileinfo.name = "doc.docx"
+        fileinfo.url = "files/bucket/doc.docx"
+        dial_client = MagicMock()
+        dial_client.metadata.get = AsyncMock(return_value=fileinfo)
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock()
+
+        resolver = _make_resolver(dial_client=dial_client, file_promoter=promoter)
+        result = await resolver._resolve_attachment(
+            "file:data::files/bucket/doc.docx", supports_url_attachments=False
+        )
+
+        dial_client.metadata.get.assert_called_once_with("files", "files/bucket/doc.docx")
+        promoter.promote.assert_not_awaited()
+        assert result.get("url") == "files/bucket/doc.docx"
+
+    @pytest.mark.asyncio
+    async def test_promotion_failure_message_carries_no_payload(self):
+        encoded = base64.b64encode(b"z" * 4096).decode()
+        promoter = MagicMock(spec=DialFilePromoter)
+        promoter.promote = AsyncMock(
+            side_effect=InvalidToolCallParameterException(
+                parameter_name="attachment_urls",
+                message="Inline data: content for parameter `attachment_urls` is too large.",
+            )
+        )
+
+        resolver = _make_resolver(file_promoter=promoter)
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await resolver.resolve_attachment_urls(
+                [f"data:application/pdf;base64,{encoded}"], supports_url_attachments=False
+            )
+
+        assert encoded not in excinfo.value.message
