@@ -34,6 +34,9 @@ def _make_resolver(
     "file_relative_url",
     [
         "file:base64::files/images/chart.png",
+        # Issue #527: the model routinely emits this form; it must resolve like a bare path.
+        "file:data::files/images/chart.png",
+        "file:url::files/images/chart.png",
         "files/images/chart.png",
     ],
 )

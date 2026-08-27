@@ -202,18 +202,22 @@ class ToolConfigCoreService:
                 items=ConfigurableSchemaSimpleType(
                     type=JsonTypeEnum.string,
                     description=(
-                        "Attachment url related to tool call. Accepts both DIAL "
+                        "Attachment reference related to tool call. Accepts both DIAL "
                         "file paths (e.g. files/bucket/foo.pdf) and external URLs "
-                        "(e.g. https://example.com/foo.pdf). Use full url."
+                        "(e.g. https://example.com/foo.pdf), optionally in the "
+                        "`file:url::` form. Do NOT use `file:data::`, `file:base64::` "
+                        "or `file:text::` here: those replace the reference with the "
+                        "file's own bytes, which this parameter cannot carry, and the "
+                        "call fails."
                     ),
                     display=ParameterDisplayConfig(
                         stage=FormattedParameterConfig(name="**Prompt:** ")
                     ),
                 ),
                 description=(
-                    "The list of attachment urls related to tool call. Each entry "
-                    "may be a DIAL file path or an external `https://` URL. Use "
-                    "full url for each item in the list. If no attachments are "
+                    "The list of attachment references related to tool call. Each entry "
+                    "may be a DIAL file path or an external `https://` URL — a reference "
+                    "to the file, never the file's own content. If no attachments are "
                     "related use empty list argument value."
                 ),
             )

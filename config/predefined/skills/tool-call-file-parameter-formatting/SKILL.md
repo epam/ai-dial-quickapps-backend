@@ -2,7 +2,7 @@
 name: tool-call-file-parameter-formatting
 description: Formats file and URL parameters for tool calls. You must analyze the target tool's parameter names and descriptions to choose the correct format (data URI, base64, text, or URL ref).
 metadata:
-  version: "1.1"
+  version: "1.2"
 ---
 
 # File Parameter Formatting
@@ -29,6 +29,20 @@ Inspect the **Parameter Name** and **Parameter Description** in the tool definit
     *   *Action:* Use `url` prefix.
     *   *Do not* map bare names like `uri` to `url` when the description says the value may be a `data:` URI — use `data` instead.
 
+### 1a. Exception: reference-only parameters
+
+Some parameters are **references by contract** and never accept inline content. `attachment_urls`
+is the canonical one: the tool passes the reference on to a DIAL deployment, which fetches the file
+itself. A content prefix replaces the reference with the file's own bytes, and the call fails.
+
+Use the `url` prefix for these: `file:url::files/bucket/foo.pdf` or `file:url::https://example.com/foo.pdf`.
+A parameter whose **name** contains `url`, `uri`, or `link` — such as `attachment_urls` — is
+reference-only unless its description explicitly says it accepts inline content.
+
+**Never** use `file:data::`, `file:base64::`, or `file:text::` here — no matter what the "inline
+content" clues in step 1 suggest, and no matter how the call failed before. This exception overrides
+both the `data`-first default and the step 3 fallback.
+
 ### 2. Format the Value
 Construct the string using the format: `file:{prefix}::{path_or_url}`
 
@@ -40,6 +54,10 @@ Construct the string using the format: `file:{prefix}::{path_or_url}`
 
 ### 3. MCP / tool failure fallback
 If a tool call that used `file:data::...` fails (MCP communication error, rejection, or the tool cannot consume a data URI), retry the **same** call once with `file:base64::...` (plain base64, no `data:` envelope). Do not keep retrying `data` blindly.
+
+This fallback does **not** apply to reference-only parameters (step 1a). If a call that inlined
+content into `attachment_urls` failed, retry with `file:url::` instead — `file:base64::` fails there
+for exactly the same reason.
 
 ## Thinking Process
 Before executing the tool call, perform this check:
@@ -131,6 +149,15 @@ Before executing the tool call, perform this check:
 *   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element.
 *   **Result:** `["file:url::https://example.com/doc1.pdf", "file:url::https://example.com/doc2.pdf"]`
 
+### Example 10a: Reference-only parameter with an uploaded DIAL file
+*   **Tool Definition:**
+    *   `name`: `pdf_search_tool`
+    *   `parameter`: `attachment_urls` (type: array of strings)
+    *   `description`: "A list of references to the attachments related to the tool call."
+*   **Reasoning:** `attachment_urls` is reference-only (step 1a). The file lives in DIAL, so pass a reference to it; a content prefix would replace the reference with the file's own bytes and the call would fail.
+*   **Result:** `["file:url::files/bucket/uploads/report.pdf"]`
+*   **Wrong:** `["file:data::files/bucket/uploads/report.pdf"]`, `["file:base64::files/bucket/uploads/report.pdf"]`
+
 ### Example 11: Fallback after MCP failure
 *   **First attempt:** `file:data::files/uploads/document.pdf` → MCP tool call fails.
 *   **Retry:** `file:base64::files/uploads/document.pdf` (plain base64 payload).
@@ -143,13 +170,15 @@ Before executing the tool call, perform this check:
 *   ❌ Passing `file:base64::...` on the first attempt when `file:data::...` is the default for content.
 *   ❌ After a failed `file:data::...` MCP call, retrying `data` again instead of falling back to `file:base64::...`.
 *   ❌ Passing raw paths (`files/doc.pdf`) without the `file:...` schema.
+*   ❌ Using `file:data::` / `file:base64::` / `file:text::` on a reference-only parameter such as `attachment_urls` — use `file:url::`.
 
 ## External URL Fallback
 
-External `https://` URLs are valid file references — `attachment_urls` accepts them, and `file:data::https://...`
-/ `file:base64::https://...` / `file:text::https://...` will inline external content. They may fail with a clear
-error when the operator has disabled external egress (`EXTERNAL_URL_FETCH_ENABLED=false`) or the per-app config
-has opted out (`features.external_url_fetch.enabled: false`). When that happens:
+External `https://` URLs are valid file references — `attachment_urls` accepts them via `file:url::`, and on
+content parameters `file:data::https://...` / `file:base64::https://...` / `file:text::https://...` will
+inline external content. Both may fail with a clear error when the operator has disabled external egress
+(`EXTERNAL_URL_FETCH_ENABLED=false`) or the per-app config has opted out
+(`features.external_url_fetch.enabled: false`). When that happens:
 
 *   For `file:data::https://...`, `file:base64::https://...`, and `file:text::https://...`, retry by asking the
     user to upload the file to DIAL and re-issue the call with `files/...` instead.

@@ -47,7 +47,7 @@
             "items": {
               "type": "string"
             },
-            "description": "List of URLs of user-uploaded files that your code needs to access. Files listed here are transferred into the working directory and become accessible by their original filename. Reference them in code using just the filename, not the full path.\n\nExample 1: attachment_urls=[\"files/abc123/uploads/2026-03/sales_data.csv\"] → in code use: pd.read_csv(\"sales_data.csv\")\nExample 2: attachment_urls=[\"files/abc123/uploads/2026-03/My%20Report.xlsx\"] → in code use: pd.read_excel(\"My Report.xlsx\")",
+            "description": "List of references to user-uploaded files that your code needs to access. Files listed here are transferred into the working directory and become accessible by their original filename. Reference them in code using just the filename, not the full path.\n\nEach item must be a DIAL file path or an http(s) URL, optionally in the `file:url::` form. Do NOT use `file:data::`, `file:base64::` or `file:text::` here: those replace the reference with the file's own bytes, which this parameter cannot carry, and the call fails.\n\nExample 1: attachment_urls=[\"files/abc123/uploads/2026-03/sales_data.csv\"] → in code use: pd.read_csv(\"sales_data.csv\")\nExample 2: attachment_urls=[\"files/abc123/uploads/2026-03/My%20Report.xlsx\"] → in code use: pd.read_excel(\"My Report.xlsx\")",
             "default": [],
             "display": {
               "stage": {
