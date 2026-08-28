@@ -2,7 +2,7 @@
 name: tool-call-file-parameter-formatting
 description: Formats file and URL parameters for tool calls. You must analyze the target tool's parameter names and descriptions to choose the correct format (data URI, base64, text, or URL ref).
 metadata:
-  version: "1.1"
+  version: "1.2"
 ---
 
 # File Parameter Formatting
@@ -14,20 +14,46 @@ Standardize file and URL inputs for tool calls using the `file:{prefix}::{path_o
 
 When a tool parameter requires a file or URL, follow this process:
 
-### 1. Analyze Tool Parameter Definition
-Inspect the **Parameter Name** and **Parameter Description** in the tool definition to determine the requirement:
+### 1. Decide first: content or reference?
 
-*   **Requirement: Inline file content (default)**
-    *   *Clues:* Description mentions "content," "base64," "encoded," "file data," `data:` URI, RFC 2397, or a URI that accepts schemes including `data:` (e.g. `http:`, `https:`, `file:`, or `data:`).
-    *   *Action:* Use `data` prefix (RFC 2397 data URI). Prefer this over plain `base64` for first attempts.
-*   **Requirement: Plain Text**
-    *   *Purpose:* Use this mode when the tool expects the actual text file content as the parameter. When a file is marked with the `text` prefix, the tool-call processor will read the file's contents and pass that text as the tool call parameter.
-    *   *Clues:* Description mentions "text", "string content" (and does **not** ask for a URI or encoded bytes).
-    *   *Action:* Use `text` prefix.
-*   **Requirement: URL/Path Reference only**
-    *   *Clues:* Parameter is a navigation target or path reference with **no** inline-content / `data:` scheme support (e.g. "URL to navigate to", "pass the link").
-    *   *Action:* Use `url` prefix.
-    *   *Do not* map bare names like `uri` to `url` when the description says the value may be a `data:` URI — use `data` instead.
+Inspect the **Parameter Name** and **Parameter Description**, and answer one question before
+choosing any prefix: **does the tool want the file's bytes, or a locator it resolves itself?**
+
+*   **Requirement: URL/Path reference — the tool resolves the location itself**
+    *   *Clues:* The parameter names a location — a URL, URI, link, path, or attachment
+        reference — and the description does **not** offer to accept inline content.
+        A parameter name containing `url`, `urls`, `uri`, `link`, `path`, or `href` is a
+        reference by default.
+    *   *Action:* Use the `url` prefix, then go to step 2.
+*   **Requirement: Inline file content**
+    *   *Clues:* Description mentions "content," "base64," "encoded," "file data," `data:` URI,
+        RFC 2397, or a URI that accepts schemes including `data:` (e.g. `http:`, `https:`,
+        `file:`, or `data:`).
+    *   *Action:* Pick the content prefix in step 1b.
+
+An explicit description always overrides the name: a parameter called `uri` whose description
+lists `data:` among its accepted schemes wants content, not a reference (Example 8).
+
+**When the parameter gives no clear signal either way, use `url`.** The two mistakes do not cost
+the same — a reference the tool rejects is one cheap, retryable error, while an inlined file the
+tool never wanted is a multi-megabyte payload in the conversation that cannot be taken back.
+
+### 1a. `attachment_urls` is always a reference
+
+`attachment_urls` accepts **only** `file:url::` references — a DIAL file path
+(`file:url::files/bucket/report.pdf`) or an external URL
+(`file:url::https://example.com/report.pdf`). This holds for files the user just uploaded: pass
+the path as a reference, never as inlined bytes. `file:data::`, `file:base64::`, and
+`file:text::` are not valid here and will be rejected.
+
+### 1b. If the parameter wants content, pick the content prefix
+
+*   **Encoded bytes (default for content):** Use the `data` prefix (RFC 2397 data URI). Prefer
+    this over plain `base64` for first attempts.
+*   **Plain text:** Use the `text` prefix when the tool expects the actual text file content as
+    the parameter — the description mentions "text" or "string content" and does **not** ask for
+    a URI or encoded bytes. When a file is marked with the `text` prefix, the tool-call processor
+    will read the file's contents and pass that text as the tool call parameter.
 
 ### 2. Format the Value
 Construct the string using the format: `file:{prefix}::{path_or_url}`
@@ -45,8 +71,8 @@ If a tool call that used `file:data::...` fails (MCP communication error, reject
 Before executing the tool call, perform this check:
 
 1.  **Inspect Definition:** "I am calling tool `[tool_name]`. The parameter `[param_name]` has the description: `[description]`."
-2.  **Deduce Type:** "Based on the name/description, this tool expects [inline content | text string | URL reference]."
-3.  **Apply Format:** "Therefore, I will use the `[data | text | url]` prefix (default `data` for content; `base64` only as fallback after failure)."
+2.  **Content or reference:** "Does this parameter want the file's bytes, or a locator? The name suggests [...]; the description suggests [...]. If neither is clear, it is a reference."
+3.  **Apply Format:** "Therefore, I will use the `[url | data | text]` prefix (`data` is the default only once content is established; `base64` only as a fallback after a failed `data` call)."
 
 ## Examples
 
@@ -112,7 +138,7 @@ Before executing the tool call, perform this check:
     *   `name`: `convert_to_markdown`
     *   `parameter`: `uri`
     *   `description`: "Convert a resource described by an http:, https:, file: or data: URI to markdown."
-*   **Reasoning:** Description explicitly supports `data:` URIs; do **not** use `url` for an uploaded file.
+*   **Reasoning:** Description explicitly supports `data:` URIs, which overrides the reference-shaped name; do **not** use `url` for an uploaded file.
 *   **Result:** `file:data::files/uploads/report.docx`
 
 ### Example 9: Multi-file upload tool (array parameter, inline content)
@@ -131,6 +157,15 @@ Before executing the tool call, perform this check:
 *   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element.
 *   **Result:** `["file:url::https://example.com/doc1.pdf", "file:url::https://example.com/doc2.pdf"]`
 
+### Example 10a: `attachment_urls` with an uploaded DIAL file
+*   **Tool Definition:**
+    *   `name`: `rag`
+    *   `parameter`: `attachment_urls` (type: array of strings)
+    *   `description`: "The list of attachment urls related to tool call."
+*   **Context:** The user uploaded `files/bucket/report.pdf` in this conversation.
+*   **Reasoning:** `attachment_urls` is reference-only (step 1a). A DIAL path is passed as a reference; the tool resolves it itself. Inlining the bytes here would be rejected.
+*   **Result:** `["file:url::files/bucket/report.pdf"]`
+
 ### Example 11: Fallback after MCP failure
 *   **First attempt:** `file:data::files/uploads/document.pdf` → MCP tool call fails.
 *   **Retry:** `file:base64::files/uploads/document.pdf` (plain base64 payload).
@@ -138,6 +173,8 @@ Before executing the tool call, perform this check:
 > **Note:** The `file:{prefix}::` format works for both single string parameters and individual elements within array parameters.
 
 ## Common Mistakes
+*   ❌ Reaching for `data` before deciding whether the parameter wants content at all — the content/reference question comes first.
+*   ❌ Inlining a file into a parameter that names a URL or attachment reference; `file:data::` into `attachment_urls` sends a `data:` URI the tool cannot resolve.
 *   ❌ Ignoring the tool description and defaulting to `url` for local files that need content.
 *   ❌ Mapping a parameter named `uri` to `url` when the description allows `data:` URIs — use `data`.
 *   ❌ Passing `file:base64::...` on the first attempt when `file:data::...` is the default for content.
