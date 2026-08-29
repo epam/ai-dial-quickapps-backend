@@ -73,6 +73,9 @@
               "schema": {
                 "oneOf": [
                   {
+                    "$ref": "#/components/schemas/DialSkillConfig"
+                  },
+                  {
                     "$ref": "#/components/schemas/DialPromptSkillConfig"
                   }
                 ],
@@ -80,6 +83,7 @@
                 "discriminator": {
                   "propertyName": "type",
                   "mapping": {
+                    "dial-skill": "#/components/schemas/DialSkillConfig",
                     "dial-prompt": "#/components/schemas/DialPromptSkillConfig"
                   }
                 }
@@ -136,6 +140,30 @@
           "url"
         ],
         "title": "DialPromptSkillConfig"
+      },
+      "DialSkillConfig": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "const": "dial-skill",
+            "title": "Type",
+            "description": "Skill sourced from a DIAL skill resource.",
+            "default": "dial-skill"
+          },
+          "url": {
+            "type": "string",
+            "title": "Url",
+            "description": "Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)",
+            "dial:resource": true
+          }
+        },
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "title": "DialSkillConfig",
+        "description": "A skill stored in DIAL as a folder-shaped `skills/` resource.",
+        "x-preview": true
       },
       "HTTPValidationError": {
         "properties": {

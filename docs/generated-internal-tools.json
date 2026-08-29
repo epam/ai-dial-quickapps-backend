@@ -344,7 +344,7 @@
   },
   {
     "name": "internal_skills_read_skill",
-    "description": "Read the full content of an agent skill. Use this tool when you need to get detailed instructions about a specific skill that is available to you.",
+    "description": "Read an agent skill. Call it with only `skill_name` to get the skill's instructions plus a list of the files bundled with it. Call it again with `file_path` to read one of those files when the instructions point you at it.",
     "properties": {
       "skill_name": {
         "display": {
@@ -357,6 +357,18 @@
         },
         "type": "string",
         "description": "The name of the skill to read. This should match the name from the available_skills list."
+      },
+      "file_path": {
+        "display": {
+          "stage": {
+            "ignore": true,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true,
+            "order": 0
+          }
+        },
+        "type": "string",
+        "description": "Optional. Path of a bundled file to read, relative to the skill root (e.g. 'references/api-schema.md'), as listed in the skill_files block of a previous read. Omit to read the skill's instructions."
       }
     },
     "required": [

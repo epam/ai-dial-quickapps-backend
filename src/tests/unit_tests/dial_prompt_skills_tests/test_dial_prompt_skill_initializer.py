@@ -74,7 +74,9 @@ class TestDialPromptSkillInitializer:
 
         await initializer.initialize()
 
-        resolver.resolve.assert_awaited_once_with(configs)
+        # The initializer attaches each entry's position in the configured
+        # `skills` list, which is what cross-source precedence is ordered by.
+        resolver.resolve.assert_awaited_once_with(list(enumerate(configs)))
         assert len(context.resolved_skills) == 1
         assert context.resolved_skills[0].metadata.name == "s1"
         assert context.exceptions == []

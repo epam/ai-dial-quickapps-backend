@@ -81,9 +81,11 @@ per-app `features.external_url_fetch.enabled` field. The deployment-attachment p
 
 ### Skills
 
-Skills are reusable instruction modules. Predefined skills are loaded at startup from `config/predefined/skills/`.
-DIAL prompt skills (`dial_prompt_skills/`) are fetched at request time from DIAL Core's prompts API.
-`SkillsRegistry` merges both sources per request.
+Skills are reusable instruction modules — a `SKILL.md` manifest plus, for sources that support one, a file
+tree the agent reads on demand (`read_skill(skill_name, file_path)`). Three sources: predefined skills loaded
+at startup from `config/predefined/skills/` (manifest only); DIAL skill resources (`dial_skills/`, preview)
+fetched per request from Core's `/v2/skills` API; and DIAL prompts (`dial_prompt_skills/`) from the prompts
+API. `SkillsRegistry` merges all three per request and owns precedence between them.
 
 ### Configuration Model
 

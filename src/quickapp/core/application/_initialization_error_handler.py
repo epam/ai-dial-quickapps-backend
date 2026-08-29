@@ -21,8 +21,10 @@ _TOOL_SECTION = "#### Tool initialization"
 _HOOK_SECTION = "#### Hook initialization"
 _SKILL_SECTION = "#### Skill loading"
 _OFFLOAD_SECTION = "#### Large tool-response offload"
+# Source-neutral on purpose: this header renders for any skill source whose
+# resolver failed as a whole, not just DIAL prompts.
 _CATASTROPHIC_HEADER = (
-    "> DIAL prompts as a whole could not be loaded — falling back to predefined skills only."
+    "> Configured skills could not be loaded — falling back to predefined skills only."
 )
 _PER_URL_ERRORS_HEADER = "> Errors:"
 _PER_URL_WARNINGS_HEADER = "> Warnings:"

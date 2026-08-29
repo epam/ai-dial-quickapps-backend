@@ -13,7 +13,8 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
-from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
+from quickapp.dial_prompt_skills import _DialPromptSkill
+from quickapp.skills._predefined_skill import _PredefinedSkill
 from quickapp.skills._skill_metadata import SkillMetadata
 
 MODULE_TYPE: TypeAlias = Callable[[Binder], None] | Module | type[Module]
@@ -118,12 +119,33 @@ def make_resolved_dial_prompt_skill(
     name: str,
     description: str = "A skill",
     content: str = "body",
-) -> ResolvedDialPromptSkill:
-    """Builder for ``ResolvedDialPromptSkill`` fixtures shared by skill/registry
+    config_index: int = 0,
+) -> _DialPromptSkill:
+    """Builder for ``_DialPromptSkill`` fixtures shared by skill/registry
     and dial-prompt-skills tests.
     """
-    return ResolvedDialPromptSkill(
+    return _DialPromptSkill(
         url=url,
         metadata=SkillMetadata(name=name, description=description),
         content=content,
+        config_index=config_index,
+    )
+
+
+def make_predefined_skill(
+    name: str,
+    description: str = "A skill",
+    content: str = "body",
+) -> _PredefinedSkill:
+    """Builder for a ``_PredefinedSkill`` backed by a stubbed provider.
+
+    The real provider is a singleton that scans the filesystem at startup;
+    tests that care about the registry's merge only need the manifest it reads
+    back through the skill.
+    """
+    provider = MagicMock()
+    provider.get_skill_content.return_value = content
+    return _PredefinedSkill(
+        metadata=SkillMetadata(name=name, description=description),
+        provider=provider,
     )

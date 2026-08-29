@@ -249,6 +249,7 @@ The project contains predefined configs of application and predefined tools
 | contexts     | Yes      | List[Object] | The list of contexts. [Contexts configuration](#contexts-configuration)                                                                               | -                | -             |
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
 | features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, etc.). [Features configuration](#features-configuration)                  | -                | `{}`          |
+| skills       | No       | List[Object] | The list of user-configured agent skills. [Skills configuration](#skills-configuration)                                                               | -                | `null`        |
 
 ### Orchestrator configuration
 
@@ -362,6 +363,63 @@ The context loaded by URL:
   "url": "files/{path}/{name}"
 }
 
+```
+
+</details>
+
+### Skills configuration
+
+Skills are reusable instruction modules the agent reads on demand. Predefined skills are shipped in the
+image and are always available; the `skills` array adds user-configured ones on top. A skill's `name` and
+`description` appear in the system prompt; its instructions and bundled files are fetched only when the
+agent asks for them.
+
+This section is the field reference. For how to *author* a skill — frontmatter fields, directory layout,
+progressive disclosure — see [docs/skills.md](docs/skills.md), which stays canonical for that.
+
+`skills` is a discriminated union on `type`:
+
+| Field | Required | Type   | Description                                          | Available Values             | Default Value |
+|-------|----------|--------|------------------------------------------------------|------------------------------|---------------|
+| type  | Yes      | String | The skill source                                     | `dial-skill`, `dial-prompt`  | -             |
+| url   | Yes      | String | Relative DIAL URL of the skill, including its resource-type prefix | -              | -             |
+
+**`dial-skill`** — a folder-shaped skill resource at `skills/<bucket>/<path>`. Holds `SKILL.md` plus any
+bundled `references/`, `scripts/`, or `assets/`. The URL addresses the skill as a unit: never a file inside
+it, never a grouping folder.
+
+> [!NOTE]
+> `dial-skill` is a **preview feature**. Its entries are removed from the configuration unless
+> `ENABLE_PREVIEW_FEATURES=true`.
+
+**`dial-prompt`** — a skill sourced from a DIAL prompt at `prompts/<bucket>/<path>`. A prompt is a single
+text document, so it can carry no bundled files; prefer `dial-skill` for anything that needs them.
+
+Name collisions are resolved in one place and never silently: a predefined skill beats anything configured,
+and among configured skills the earliest entry in this array wins. Every loser is reported with its URL.
+
+A skill that fails to load — a bad URL, a 403, invalid frontmatter — is skipped and reported in the
+*Initialization issues* stage. The request is still served with the skills that did load.
+
+Related environment variables: `SKILLS_FILE_MAX_BYTES`, `SKILLS_INVENTORY_MAX_ENTRIES`, and
+`DIAL_SKILLS_MAX_CONFIGURED_SKILLS` — see [Environment Variables](README.md#environment-variables).
+
+<details>
+<summary><b>Skills configuration JSON sample</b></summary>
+
+```json
+{
+  "skills": [
+    {
+      "type": "dial-skill",
+      "url": "skills/my-bucket/support/refund-policy"
+    },
+    {
+      "type": "dial-prompt",
+      "url": "prompts/my-bucket/skills/code-review"
+    }
+  ]
+}
 ```
 
 </details>

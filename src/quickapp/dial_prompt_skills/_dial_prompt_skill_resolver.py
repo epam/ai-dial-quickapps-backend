@@ -1,33 +1,21 @@
 import asyncio
+from typing import NamedTuple
 
 from aidial_client import AsyncDial
 from injector import inject
-from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
+from quickapp.dial_prompt_skills._dial_prompt_skill import _DialPromptSkill
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
+from quickapp.skills._skill_metadata import ParsedSkill
 
 
-class ResolvedDialPromptSkill(BaseModel):
-    """A successfully fetched DIAL prompt skill, including its source URL."""
-
-    model_config = ConfigDict(frozen=True)
-
-    url: str
-    metadata: SkillMetadata
-    content: str
-    warnings: list[str] = Field(default_factory=list)
-
-
-class DialPromptSkillResolverOutput(BaseModel):
+class DialPromptSkillResolverOutput(NamedTuple):
     """Return shape of ``DialPromptSkillResolver.resolve``."""
 
-    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
-
-    resolved: list[ResolvedDialPromptSkill]
+    resolved: list[_DialPromptSkill]
     exceptions: list[SkillInitializationException]
 
 
@@ -55,73 +43,66 @@ class DialPromptSkillResolver:
 
     async def resolve(
         self,
-        skill_configs: list[DialPromptSkillConfig],
+        skill_configs: list[tuple[int, DialPromptSkillConfig]],
     ) -> DialPromptSkillResolverOutput:
-        """Resolve skill configs into validated ``ResolvedDialPromptSkill`` entries.
+        """Resolve indexed skill configs into validated ``_DialPromptSkill`` entries.
 
-        - Deduplicates by URL before fetching.
+        - Deduplicates by URL before fetching, keeping the first occurrence's
+          config index.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
-        - Deduplicates by skill name after fetching (first configured wins).
         - Per-URL failures and non-fatal parser warnings both become
           ``SkillInitializationException`` entries in the ``exceptions`` list,
           distinguished by ``severity``. Both ride the unified
           initialization-issues flow.
+
+        Name collisions are deliberately **not** resolved here. Precedence spans
+        every source and this resolver can only see one of them, so dropping a
+        name locally would discard a lower-indexed entry before
+        ``SkillsRegistry`` — the only component that sees every source — could
+        weigh it.
         """
         seen_urls: set[str] = set()
-        unique_configs: list[DialPromptSkillConfig] = []
-        for cfg in skill_configs:
+        unique_configs: list[tuple[int, DialPromptSkillConfig]] = []
+        for index, cfg in skill_configs:
             if cfg.url not in seen_urls:
                 seen_urls.add(cfg.url)
-                unique_configs.append(cfg)
+                unique_configs.append((index, cfg))
 
         if not unique_configs:
             return DialPromptSkillResolverOutput(resolved=[], exceptions=[])
 
         results = await asyncio.gather(
-            *(self._fetch_one(cfg) for cfg in unique_configs),
+            *(self._fetch_one(index, cfg) for index, cfg in unique_configs),
             return_exceptions=True,
         )
 
-        resolved: list[ResolvedDialPromptSkill] = []
+        resolved: list[_DialPromptSkill] = []
         exceptions: list[SkillInitializationException] = []
-        seen_names: set[str] = set()
-
         for i, result in enumerate(results):
-            url = unique_configs[i].url
+            url = unique_configs[i][1].url
             if isinstance(result, BaseException):
                 exceptions.append(SkillInitializationException(url=url, reason=str(result)))
                 continue
 
-            for warning in result.warnings:
+            skill, warnings = result
+            for warning in warnings:
                 exceptions.append(
                     SkillInitializationException(url=url, reason=warning, severity="warning")
                 )
-
-            if result.metadata.name in seen_names:
-                exceptions.append(
-                    SkillInitializationException(
-                        url=url,
-                        reason=(
-                            f"Duplicate skill name '{result.metadata.name}';"
-                            " keeping first occurrence"
-                        ),
-                    )
-                )
-                continue
-
-            seen_names.add(result.metadata.name)
-            resolved.append(result)
+            resolved.append(skill)
 
         return DialPromptSkillResolverOutput(resolved=resolved, exceptions=exceptions)
 
     async def _fetch_one(
         self,
+        config_index: int,
         config: DialPromptSkillConfig,
-    ) -> ResolvedDialPromptSkill:
+    ) -> tuple[_DialPromptSkill, list[str]]:
         parsed, content = await fetch_and_validate_dial_prompt_skill(self._dial_client, config.url)
-        return ResolvedDialPromptSkill(
-            url=config.url,
+        skill = _DialPromptSkill(
             metadata=parsed.metadata,
             content=content,
-            warnings=parsed.warnings,
+            url=config.url,
+            config_index=config_index,
         )
+        return skill, parsed.warnings

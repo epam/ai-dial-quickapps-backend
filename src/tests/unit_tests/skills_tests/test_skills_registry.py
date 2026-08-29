@@ -1,38 +1,34 @@
-from unittest.mock import MagicMock
-
 import pytest
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.dial_prompt_skills import _DialPromptSkillsContext
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills._exceptions import SkillFileNotFound
+from quickapp.skills._skill import Skill
+from quickapp.skills._skills_context import _SkillsContext
 from quickapp.skills._skills_registry import SkillsRegistry
+from tests.unit_tests.common.common import make_predefined_skill as _predefined
+from tests.unit_tests.common.common import make_provider
 from tests.unit_tests.common.common import make_resolved_dial_prompt_skill as _resolved
 
 
-def _make_predefined_provider(
-    skills: list[SkillMetadata] | None = None,
-    contents: dict[str, str] | None = None,
-) -> MagicMock:
-    provider = MagicMock()
-    provider.get_all_skills.return_value = skills or []
-    provider.get_all_skill_contents.return_value = contents or {}
-    return provider
-
-
-def _skill(name: str, description: str = "A skill") -> SkillMetadata:
-    return SkillMetadata(name=name, description=description)
+def _registry(
+    skills: list[Skill] | None = None,
+    context: _SkillsContext | None = None,
+) -> SkillsRegistry:
+    """Build a registry over the source-neutral ``list[Skill]`` the modules contribute."""
+    return SkillsRegistry(
+        skills_provider=make_provider(skills or []),
+        context=context or _SkillsContext(),
+    )
 
 
 class TestSkillsRegistryNoContext:
-    """Preview off: no _DialPromptSkillsContext is bound."""
+    """No configured skills: predefined are the only source contributing."""
 
     @pytest.mark.asyncio
     async def test_returns_predefined_only(self):
-        predefined = [_skill("predefined-skill")]
-        contents = {"predefined-skill": "# Predefined\nContent here"}
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=None,
+        registry = _registry(
+            [_predefined("predefined-skill", content="# Predefined\nContent here")]
         )
 
         xml = await registry.get_prompt_part()
@@ -41,49 +37,33 @@ class TestSkillsRegistryNoContext:
         assert "<available_skills>" in xml
 
     def test_get_skill_content_returns_predefined(self):
-        contents = {"my-skill": "# My Skill\nContent"}
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider([_skill("my-skill")], contents),
-            dial_prompt_skills_context=None,
-        )
+        registry = _registry([_predefined("my-skill", content="# My Skill\nContent")])
 
-        assert registry.get_skill_content("my-skill") == "# My Skill\nContent"
+        assert registry.get_skill("my-skill").read_manifest() == "# My Skill\nContent"
 
     def test_get_skill_content_unknown_raises(self):
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=None,
-        )
+        registry = _registry()
 
-        with pytest.raises(FileNotFoundError, match="Skill not found"):
-            registry.get_skill_content("nonexistent")
+        with pytest.raises(SkillFileNotFound, match="Skill not found"):
+            registry.get_skill("nonexistent")
 
     @pytest.mark.asyncio
     async def test_empty_predefined_returns_empty_xml(self):
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=None,
-        )
+        registry = _registry()
 
         assert await registry.get_prompt_part() == ""
 
 
 class TestSkillsRegistryWithContext:
-    """Preview on: _DialPromptSkillsContext is bound and pre-populated."""
+    """Configured skills present alongside predefined ones."""
 
     @pytest.mark.asyncio
     async def test_merges_predefined_and_context_skills(self):
-        predefined = [_skill("predefined")]
-        contents = {"predefined": "Predefined content"}
-
-        context = _DialPromptSkillsContext()
-        context.extend_resolved_skills(
-            [_resolved("prompts/b/dial-skill", "dial-skill", "From DIAL", "DIAL skill content")]
-        )
-
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+        registry = _registry(
+            [
+                _predefined("predefined", content="Predefined content"),
+                _resolved("prompts/b/dial-skill", "dial-skill", "From DIAL", "DIAL skill content"),
+            ]
         )
 
         xml = await registry.get_prompt_part()
@@ -93,22 +73,18 @@ class TestSkillsRegistryWithContext:
 
     @pytest.mark.asyncio
     async def test_predefined_wins_on_name_collision_and_appends_exception(self):
-        predefined = [_skill("shared-name", "Predefined version")]
-        contents = {"shared-name": "Predefined content"}
-
-        context = _DialPromptSkillsContext()
-        context.extend_resolved_skills(
-            [_resolved("prompts/b/collides", "shared-name", "DIAL version", "DIAL content")]
-        )
-
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+        context = _SkillsContext()
+        registry = _registry(
+            [
+                _predefined("shared-name", "Predefined version", "Predefined content"),
+                _resolved("prompts/b/collides", "shared-name", "DIAL version", "DIAL content"),
+            ],
+            context=context,
         )
 
         xml = await registry.get_prompt_part()
         assert "Predefined version" in xml
-        assert registry.get_skill_content("shared-name") == "Predefined content"
+        assert registry.get_skill("shared-name").read_manifest() == "Predefined content"
 
         assert len(context.exceptions) == 1
         collision = context.exceptions[0]
@@ -118,55 +94,80 @@ class TestSkillsRegistryWithContext:
 
     @pytest.mark.asyncio
     async def test_get_skill_content_for_context_skill(self):
-        context = _DialPromptSkillsContext()
-        context.extend_resolved_skills(
+        registry = _registry(
             [_resolved("prompts/b/only", "dial-only", content="DIAL prompt skill content")]
         )
 
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=context,
-        )
-
-        assert registry.get_skill_content("dial-only") == "DIAL prompt skill content"
+        assert registry.get_skill("dial-only").read_manifest() == "DIAL prompt skill content"
 
     @pytest.mark.asyncio
     async def test_merge_caches_result(self):
         """Repeated calls must not re-run the merge (and so must not re-append
         collision warnings)."""
-        predefined = [_skill("shared")]
-        contents = {"shared": "Predefined content"}
-
-        context = _DialPromptSkillsContext()
-        context.extend_resolved_skills(
-            [_resolved("prompts/b/collides", "shared", "DIAL version", "DIAL content")]
-        )
-
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+        context = _SkillsContext()
+        registry = _registry(
+            [
+                _predefined("shared", content="Predefined content"),
+                _resolved("prompts/b/collides", "shared", "DIAL version", "DIAL content"),
+            ],
+            context=context,
         )
 
         await registry.get_prompt_part()
         await registry.get_prompt_part()
-        registry.get_skill_content("shared")
+        registry.get_skill("shared")
 
         assert len(context.exceptions) == 1
 
     @pytest.mark.asyncio
     async def test_context_exceptions_preserved_through_merge(self):
-        """Pre-existing per-URL exceptions in the context are not lost by
-        the registry's merge."""
-        context = _DialPromptSkillsContext()
-        context.append_exception(
+        """A source context's own per-URL exceptions are untouched by the merge —
+        each source module contributes them independently of the registry."""
+        source_context = _DialPromptSkillsContext()
+        source_context.append_exception(
             SkillInitializationException(url="prompts/b/broken", reason="Fetch failed")
         )
 
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=context,
+        registry = _registry()
+
+        await registry.get_prompt_part()
+        assert len(source_context.exceptions) == 1
+        assert source_context.exceptions[0].url == "prompts/b/broken"
+
+
+class TestConfiguredSkillPrecedence:
+    """Rules the registry owns because it is the only component that sees every source."""
+
+    @pytest.mark.asyncio
+    async def test_lowest_config_index_wins_among_configured(self):
+        context = _SkillsContext()
+        registry = _registry(
+            [
+                _resolved("prompts/b/second", "dup", content="second", config_index=3),
+                _resolved("prompts/b/first", "dup", content="first", config_index=1),
+            ],
+            context=context,
         )
 
         await registry.get_prompt_part()
+
+        assert registry.get_skill("dup").read_manifest() == "first"
+        assert [e.url for e in context.exceptions] == ["prompts/b/second"]
+        assert "earlier configured skill" in context.exceptions[0].reason
+
+    @pytest.mark.asyncio
+    async def test_predefined_beats_a_lower_config_index(self):
+        """Predefined precedence is absolute — config position never overrides it."""
+        context = _SkillsContext()
+        registry = _registry(
+            [
+                _predefined("shared", content="predefined body"),
+                _resolved("prompts/b/first", "shared", content="configured", config_index=0),
+            ],
+            context=context,
+        )
+
+        await registry.get_prompt_part()
+
+        assert registry.get_skill("shared").read_manifest() == "predefined body"
         assert len(context.exceptions) == 1
-        assert context.exceptions[0].url == "prompts/b/broken"

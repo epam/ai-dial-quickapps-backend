@@ -1,5 +1,6 @@
 from xml.sax.saxutils import escape as _stdlib_escape
 
+from quickapp.skills._skill import SkillFileEntry
 from quickapp.skills._skill_metadata import SkillMetadata
 
 _QUOTE_ENTITIES = {'"': "&quot;", "'": "&apos;"}
@@ -44,3 +45,59 @@ def generate_skills_xml(skills: list[SkillMetadata]) -> str:
     xml_parts.append("</available_skills>")
 
     return "\n".join(xml_parts)
+
+
+_INVENTORY_TRUNCATED_LINE = "... (inventory truncated; this skill has more files)"
+
+
+def generate_skill_files_xml(
+    entries: list[SkillFileEntry],
+    truncated: bool = False,
+    max_bytes: int | None = None,
+) -> str:
+    """Render a skill's bundled-file inventory.
+
+    Appended to a *manifest* read, never to ``<available_skills>``: the system
+    prompt carries every skill on every request, so file trees there would tax
+    every request for detail that only matters once the agent has committed to
+    a skill.
+
+    Returns an empty string when the skill has no files beyond ``SKILL.md``,
+    so a single-document skill reads exactly as it did before.
+    """
+    if not entries:
+        return ""
+
+    # Deliberately unescaped, unlike the metadata block above. The model copies
+    # these paths straight back into `read_skill(file_path=...)`, and
+    # `escape_xml` is the *attribute* variant - it turns
+    # `references/user's-guide.md` into `references/user&apos;s-guide.md`, a name
+    # no lookup can resolve. The recovery hint in the reader tool lists them
+    # unescaped too, so escaping here also showed the model two spellings of one
+    # file. A skill author already controls SKILL.md's body verbatim, so this
+    # opens no door that was not already open.
+    paths = [entry.path for entry in entries]
+    if max_bytes is not None:
+        # The manifest is capped on its own, but the block appended to it was
+        # not, so a large manifest plus a long inventory could put a single tool
+        # result well past the documented ceiling - and `read_skill` is excluded
+        # from offload, so nothing downstream would trim it either.
+        kept: list[str] = []
+        budget = max_bytes
+        for path in paths:
+            cost = len(path.encode("utf-8")) + 1
+            if cost > budget:
+                truncated = True
+                break
+            budget -= cost
+            kept.append(path)
+        paths = kept
+        if not paths:
+            return ""
+
+    lines = ["<skill_files>"]
+    lines.extend(paths)
+    if truncated:
+        lines.append(_INVENTORY_TRUNCATED_LINE)
+    lines.append("</skill_files>")
+    return "\n".join(lines)

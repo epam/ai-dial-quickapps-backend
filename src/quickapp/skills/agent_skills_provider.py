@@ -67,10 +67,6 @@ class AgentSkillsProvider:
         """Return the cached list of predefined skill metadata."""
         return self._skills
 
-    def get_all_skill_contents(self) -> dict[str, str]:
-        """Return ``{name: full_content}`` for all predefined skills."""
-        return self._contents
-
     def get_skill_content(self, skill_name: str) -> str:
         """Return the full content of a skill file. Raises FileNotFoundError if not found."""
         try:
