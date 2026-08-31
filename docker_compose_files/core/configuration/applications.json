@@ -349,6 +349,86 @@
         ]
       }
     },
+    "general_purpose_demo": {
+      "displayName": "General-Purpose Subagent Demo",
+      "description": "QuickApp that delegates to a general-purpose subagent. `features.subagents.enabled` is the only configuration; the coordinator scopes each spawn itself by naming tool sets on the `task` call, and the subagent inherits none of the coordinator's tools. Requires ENABLE_PREVIEW_FEATURES=true on the QuickApps backend.",
+      "applicationTypeSchemaId": "https://mydial.epam.com/custom_application_schemas/quickapps2",
+      "inputAttachmentTypes": [
+        "*/*"
+      ],
+      "applicationProperties": {
+        "orchestrator": {
+          "deployment": {
+            "deployment_id": "gpt-4.1-2025-04-14"
+          },
+          "system_prompt": {
+            "type": "custom",
+            "variables": {},
+            "content": "You are a coordinator. You have tools, but you do not use them directly for anything that takes more than a single call — you delegate that work to a subagent with the `task` tool.\n\nDelegate when a request needs several tool calls whose intermediate results you do not need to see: research, multi-step lookups, computation. When a request breaks into independent pieces, spawn one subagent per piece in a single turn so they run in parallel.\n\nA subagent starts with nothing, so every call has to supply two things:\n- `prompt` — everything it will ever see. State the full task, the exact output you want back, and any values it needs. Never ask it to 'continue' earlier work; there is no earlier work.\n- `tool_sets` — the tools it may use. It inherits none of yours, so name every set the task needs, and nothing beyond that. Pass an empty list when the task is pure reasoning over text you already hold.\n\nWhen results come back, combine them yourself and answer the user. Do not re-run a subagent's work to check it. Always format your responses in markdown."
+          },
+          "max_iterations": 20
+        },
+        "contexts": [],
+        "tool_sets": [
+          {
+            "type": "predefined",
+            "template_name": "location"
+          },
+          {
+            "type": "predefined",
+            "template_name": "weather"
+          },
+          {
+            "type": "predefined",
+            "template_name": "py_interpreter"
+          },
+          {
+            "name": "Web search toolset",
+            "description": "Grounded web search.",
+            "type": "dial-deployment",
+            "tools": [
+              {
+                "type": "predefined-tool",
+                "template_name": "web_search"
+              }
+            ]
+          }
+        ],
+        "features": {
+          "subagents": {
+            "enabled": true
+          },
+          "stage_display": {
+            "level": "info"
+          }
+        },
+        "conversation_starters": {
+          "intro_text": "Nothing is declared up front — the coordinator scopes each subagent's tools as it spawns it",
+          "starters": [
+            {
+              "title": "Delegate a multi-step lookup",
+              "text": "Spawn a subagent to find the current weather in Reykjavik. It will need to resolve the city to coordinates first, so give it the location and weather tool sets and nothing else. Report just its answer."
+            },
+            {
+              "title": "Fan out to three subagents",
+              "text": "Compare the current weather in Lisbon, Reykjavik and Singapore. Spawn one subagent per city, all in one turn, each scoped to just the tools it needs, then rank the three by temperature."
+            },
+            {
+              "title": "Delegate research, web tools only",
+              "text": "Spawn a subagent to research what problem the Model Context Protocol solves and what its main primitives are. Give it the web search tool set only. Ask it for the answer plus at most five supporting bullets."
+            },
+            {
+              "title": "Ask for a chart back",
+              "text": "Spawn a subagent with only the Python interpreter tool set, give it these five temperatures — Warsaw 4, Cairo 22, Oslo -3, Nairobi 19, Tokyo 11 — and ask it to compute the mean and spread and to plot the cities as a bar chart. Show me the chart it produces."
+            },
+            {
+              "title": "Delegate with no tools at all",
+              "text": "Spawn a subagent with an empty tool_sets list and ask it to turn this into three bullet points: a QuickApp coordinator can hand a subagent any of its own tool sets, chooses them per spawn, and sees only the subagent's final answer."
+            }
+          ]
+        }
+      }
+    },
     "quickapp_with_code_interpreter": {
       "displayName": "QuickApp with code interpreter",
       "description": "Sample QuickApp that has access to PyInterpreter tool",

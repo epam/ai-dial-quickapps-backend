@@ -21,6 +21,7 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
+from quickapp.config.subagent import SubagentsConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -207,6 +208,15 @@ class Features(BaseModel):
             "Built-in internal_web_fetch tool: fetch an external resource and return "
             "it inline, or persist it to the workspace when a save_path is given "
             "(binary / oversized content must be saved rather than read inline)."
+        ),
+    )
+    subagents: SubagentsConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Built-in `task` tool: delegate a scoped sub-task to a general-purpose "
+            "subagent that runs in its own isolated context and returns a single "
+            "result. Omit or set to null to disable. Set `enabled` to true to turn it "
+            "on; the remaining fields tune the subagent."
         ),
     )
     representation_tooling: RepresentationToolingConfig | None = PreviewField(  # type: ignore[assignment]
