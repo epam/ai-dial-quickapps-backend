@@ -1349,7 +1349,8 @@
         "url"
       ],
       "title": "DialSkillConfig",
-      "type": "object"
+      "type": "object",
+      "x-preview": true
     },
     "DialSystemPromptConfig": {
       "properties": {
