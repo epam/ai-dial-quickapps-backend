@@ -21,7 +21,7 @@ class _SkillReaderStageWrapper(TimedStageWrapper):
         """
         skill_name = parameters.get("skill_name") or ""
         file_path = parameters.get("file_path")
-        return f"{skill_name} / {file_path}" if file_path else str(skill_name)
+        return f"{skill_name}/{file_path}" if file_path else str(skill_name)
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
         return f"Error:\n{fenced_code_block(str(exception))}\n"

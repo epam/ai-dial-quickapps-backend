@@ -124,7 +124,7 @@ optional features. The table below summarises what is and isn't supported.
 | `allowed-tools` | Partial | Exposed in XML metadata but **not enforced** at runtime. |
 | Optional subdirectories (`scripts/`, `references/`, `assets/`) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) (text files only). Predefined and DIAL-prompt skills read `SKILL.md` alone. |
 | Progressive disclosure (on-demand file references) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) via `read_skill(skill_name, file_path)`. Not available for the other two sources. |
-| Dynamic skill registration | Not supported | Predefined skills are loaded once at startup; adding or modifying them requires a restart. DIAL skills are resolved per request. |
+| Dynamic skill registration | Partial | DIAL-prompt and DIAL-skill sources are resolved fresh per request. Predefined skills are loaded once at startup; adding or modifying them requires a restart. |
 
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
 For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).

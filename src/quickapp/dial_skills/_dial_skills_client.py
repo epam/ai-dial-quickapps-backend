@@ -74,14 +74,7 @@ class _DialSkillsClient:
 
     @property
     def _skills(self) -> Any:
-        """The client's ``/v2/skills`` resource.
-
-        TODO(#418): the pinned aidial-client (0.16.x) has no ``skills``
-        resource — it lives on an unreleased branch. This shim is the single
-        place that concession is made; drop it, and the ``Any``, once
-        ``pyproject.toml`` pins the release that carries it. Until then nothing
-        here can run against a real DIAL Core.
-        """
+        """The client's ``/v2/skills`` resource."""
         return self._dial_client.skills  # type: ignore[attr-defined]
 
     async def read_manifest(self, url: str) -> str:
