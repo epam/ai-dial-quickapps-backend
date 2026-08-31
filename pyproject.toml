@@ -10,7 +10,7 @@ authors = [
 ]
 dependencies = [
     # Core framework & DI
-    "aidial-client (>=0.16.0,<0.17.0)",           # DIAL API client
+    "aidial-client",                              # DIAL API client - TEMPORARY: unpinned, see [tool.poetry.dependencies]
     "aidial-sdk[telemetry]>=0.38.0,<0.39.0",      # DIAL integration SDK
     "pydantic>=2.12.4,<3.0.0",                    # Data validation
     "pydantic-settings>=2.14.2,<3.0.0",           # Settings management
@@ -45,6 +45,20 @@ keywords = ["ai"]
 [tool.poetry]
 package-mode = false
 requires-poetry = '>=2.0.0,<3.0.0'
+
+# TEMPORARY - MUST NOT MERGE.
+#
+# Pinned to the feat/skills-read branch of aidial-client, which carries the
+# `skills` resource (/v2/skills reads) this feature needs but has not been
+# released yet.
+#
+# To undo: delete this block and restore the pin in `[project].dependencies` to
+# the released version carrying the `skills` resource, then re-run `poetry lock`.
+# The version constraint had to move out of `[project]` because the branch
+# checkout reports version 0.0.0 (CI stamps the real one), which no released
+# range accepts.
+[tool.poetry.dependencies]
+aidial-client = { git = "https://github.com/epam/ai-dial-client-python.git", branch = "feat/skills-read" }
 
 [tool.poetry.group.dev.dependencies]
 black = { version = "^26.3.1", extras = ["jupyter"] }
