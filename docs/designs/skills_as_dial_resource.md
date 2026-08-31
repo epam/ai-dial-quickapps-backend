@@ -1,6 +1,7 @@
 # Design: Skills as DIAL Resource (Phase 1)
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-08-31
 - **Issue:** [epam/ai-dial-quickapps-backend#418](https://github.com/epam/ai-dial-quickapps-backend/issues/418)
 - **Dependencies:**
   - [epam/ai-dial-core#1633](https://github.com/epam/ai-dial-core/issues/1633) — folder-as-resource / `/v2/skills`. All
