@@ -2,157 +2,96 @@
 name: tool-call-file-parameter-formatting
 description: Formats file and URL parameters for tool calls. You must analyze the target tool's parameter names and descriptions to choose the correct format (data URI, base64, text, or URL ref).
 metadata:
-  version: "1.1"
+  version: "1.2"
 ---
 
 # File Parameter Formatting
 
-## Purpose
-Standardize file and URL inputs for tool calls using the `file:{prefix}::{path_or_url}` schema. You must determine the correct prefix by strictly analyzing the target tool's parameter definition.
+Every file or URL you pass to a tool must be written as `file:{prefix}::{path_or_url}` — prefix one of
+`url`, `data`, `text`, `base64`; path either a DIAL path (`files/bucket/report.pdf`) or an external URL
+(`https://example.com/report.pdf`). A raw path with no `file:...::` form is not processed. The same form
+is used for a single string parameter and for each element of an array parameter.
 
-## Instructions
+## Step 1 — what does the parameter want?
 
-When a tool parameter requires a file or URL, follow this process:
+Read the parameter's **name and description in the tool definition** and answer: **does the tool want the
+file's bytes, or a locator it resolves itself?**
 
-### 1. Analyze Tool Parameter Definition
-Inspect the **Parameter Name** and **Parameter Description** in the tool definition to determine the requirement:
+| The tool wants | Signals | Prefix |
+|---|---|---|
+| A locator it fetches itself | Name contains `url`, `uri`, `link`, `path`, `href` or `attachment`; description says "URL", "link" or "reference" and never offers to accept inline content | `url` |
+| The bytes, inline | Description mentions "content", "base64", "encoded", "file data", RFC 2397, or a URI accepting a `data:` scheme | `data` |
+| The text itself, inline | Description asks for "text" or "string content" and does **not** ask for a URI or encoded bytes | `text` |
 
-*   **Requirement: Inline file content (default)**
-    *   *Clues:* Description mentions "content," "base64," "encoded," "file data," `data:` URI, RFC 2397, or a URI that accepts schemes including `data:` (e.g. `http:`, `https:`, `file:`, or `data:`).
-    *   *Action:* Use `data` prefix (RFC 2397 data URI). Prefer this over plain `base64` for first attempts.
-*   **Requirement: Plain Text**
-    *   *Purpose:* Use this mode when the tool expects the actual text file content as the parameter. When a file is marked with the `text` prefix, the tool-call processor will read the file's contents and pass that text as the tool call parameter.
-    *   *Clues:* Description mentions "text", "string content" (and does **not** ask for a URI or encoded bytes).
-    *   *Action:* Use `text` prefix.
-*   **Requirement: URL/Path Reference only**
-    *   *Clues:* Parameter is a navigation target or path reference with **no** inline-content / `data:` scheme support (e.g. "URL to navigate to", "pass the link").
-    *   *Action:* Use `url` prefix.
-    *   *Do not* map bare names like `uri` to `url` when the description says the value may be a `data:` URI — use `data` instead.
+Hints in the tool's own name or description count too (`base64_image_processor`, "reads their text content
+directly"). The description wins over the name: a parameter called `uri` whose description accepts `http:`,
+`https:`, `file:` **or** `data:` URIs wants content, so use `data`.
 
-### 2. Format the Value
-Construct the string using the format: `file:{prefix}::{path_or_url}`
+## Step 2 — if it wants a locator, can the receiver resolve it?
 
-*   **Prefix:** One of `data`, `base64`, `text`, or `url` (determined from step 1)
-*   **Separator:** Always use `::`
-*   **Path:**
-    *   For system files: `files/path/to/file.ext`
-    *   For web resources: `https://example.com/resource`
+A reference is only useful if the tool receiving it can actually fetch the file. `file:url::` is passed
+through verbatim, with no credentials attached, so a **DIAL path handed to a tool that lives outside DIAL
+arrives as a meaningless relative string**. Check the receiver before settling on `url`:
 
-### 3. MCP / tool failure fallback
-If a tool call that used `file:data::...` fails (MCP communication error, rejection, or the tool cannot consume a data URI), retry the **same** call once with `file:base64::...` (plain base64, no `data:` envelope). Do not keep retrying `data` blindly.
+- **An external `https://` URL** — anyone can fetch it. Use `url`, whatever the tool is.
+- **A DIAL path to a DIAL deployment tool** (including `attachment_urls`) — the deployment is inside DIAL
+  and resolves the path itself. Use `url`.
+- **A DIAL path to an MCP or REST tool** — the server is off-platform. It can only resolve the path if the
+  parameter is marked `"dial_url": true` in the schema (QuickApps grants that server access to the file
+  first) or the description says it accepts DIAL paths. Use `url` then. **Otherwise inline the bytes with
+  `data`** — a reference the server cannot fetch usually fails silently rather than returning a usable error.
 
-## Thinking Process
-Before executing the tool call, perform this check:
+When you cannot tell, prefer `url` for an external URL and `data` for a DIAL path going off-platform.
 
-1.  **Inspect Definition:** "I am calling tool `[tool_name]`. The parameter `[param_name]` has the description: `[description]`."
-2.  **Deduce Type:** "Based on the name/description, this tool expects [inline content | text string | URL reference]."
-3.  **Apply Format:** "Therefore, I will use the `[data | text | url]` prefix (default `data` for content; `base64` only as fallback after failure)."
+## `attachment_urls` is always a reference
+
+`attachment_urls` accepts **only** `file:url::` — a DIAL path (`file:url::files/bucket/report.pdf`) or an
+external URL (`file:url::https://example.com/report.pdf`). The receiving deployment resolves it itself, so
+step 2 is already satisfied; this holds for a file the user just uploaded — pass its path, never its bytes.
+`file:data::`, `file:base64::` and `file:text::` are not valid here and will be rejected.
+
+## When someone names a prefix for you
+
+A prefix asked for in a message — "use `file:data::`", "send it as base64", a pasted literal `data:` URI —
+does not by itself override the parameter definition. Re-run steps 1 and 2; if the request conflicts with
+what they imply, send what they imply and say in one line what you sent instead.
+
+The exception is a request that carries **information you could not read off the definition** — most often
+reach: "our MCP server has no access to DIAL storage", "that endpoint can't resolve `files/` paths". The
+schema rarely states this, so take it at face value and inline. What you must not do is inline bytes into a
+reference-only parameter on an unexplained request: the tool cannot resolve a `data:` URI, and the rejected
+payload stays in the conversation.
+
+## Fallbacks
+
+- A `file:data::` call that fails (MCP error, rejection, or the tool cannot consume a data URI) — retry the
+  same call **once** with `file:base64::` (plain base64, no `data:` envelope). Do not retry `data` blindly.
+- A `file:url::` DIAL path that comes back empty, not-found, or with the tool reporting it could not read
+  the file — the server likely cannot reach DIAL. Retry once with `file:data::`.
+- An external `https://` URL that fails because external fetching is disabled — for `file:data::`,
+  `file:base64::` and `file:text::`, ask the user to upload the file to DIAL and re-issue the call with the
+  `files/...` path. For `attachment_urls`, the same `file:url::` call may still succeed: the URL is
+  forwarded and the deployment fetches it itself.
 
 ## Examples
 
-### Example 1: Visual Analysis Tool
-*   **Tool Definition:**
-    *   `name`: `analyze_image`
-    *   `parameter`: `image_data`
-    *   `description`: "The base64 encoded contents of the image file."
-*   **Reasoning:** Description asks for encoded contents — default to RFC 2397 data URI.
-*   **Result:** `file:data::files/images/chart.png`
+| Tool parameter | Its description | Value to send |
+|---|---|---|
+| `target_url` | "The URL to navigate to." | `file:url::https://example.com/page` |
+| `attachment_urls` (array) | "A list of full URLs for each attachment related to the tool call." | `["file:url::files/bucket/report.pdf"]` |
+| `doc_url` on an MCP tool, schema has `"dial_url": true` | "Path of the document to index." | `file:url::files/bucket/report.pdf` |
+| `doc_url` on an MCP tool, no `dial_url` flag | "Path of the document to index." | `file:data::files/bucket/report.pdf` — the server cannot fetch a DIAL path |
+| `image_data` | "The base64 encoded contents of the image file." | `file:data::files/images/chart.png` |
+| `uri` | "Convert a resource described by an http:, https:, file: or data: URI to markdown." | `file:data::files/uploads/report.docx` |
+| `documents` (array) | "List of base64-encoded file contents." | `["file:data::files/a.pdf", "file:data::files/b.pdf"]` |
+| `script_content` | "The text content of the python script." | `file:text::files/scripts/main.py` |
+| `input_file`, after a failed `data` call | "Pass the base64-encoded file data for processing." | `file:base64::files/uploads/document.pdf` |
 
-### Example 2: Browser Tool
-*   **Tool Definition:**
-    *   `name`: `web_browser`
-    *   `parameter`: `target_url`
-    *   `description`: "The URL to navigate to."
-*   **Reasoning:** Parameter name is `target_url` and expects a navigation link (no inline content).
-*   **Result:** `file:url::https://google.com`
+## Common mistakes
 
-### Example 3: Code Reader
-*   **Tool Definition:**
-    *   `name`: `read_script`
-    *   `parameter`: `script_content`
-    *   `description`: "The text content of the python script."
-*   **Reasoning:** Description asks for "text content."
-*   **Result:** `file:text::files/scripts/main.py`
-
-### Example 4: Format Hint in Tool Name
-*   **Tool Definition:**
-    *   `name`: `base64_image_processor`
-    *   `parameter`: `image_input`
-    *   `description`: "Image to process."
-*   **Reasoning:** Tool name mentions "base64," indicating encoded content — still prefer `data` first.
-*   **Result:** `file:data::files/photos/portrait.jpg`
-
-### Example 5: Format Hint in Tool Description
-*   **Tool Definition:**
-    *   `name`: `document_analyzer`
-    *   `description`: "Analyzes documents by reading their text content directly."
-    *   `parameter`: `document`
-    *   `description`: "Document to analyze."
-*   **Reasoning:** Tool description mentions "reading text content directly," suggesting text mode.
-*   **Result:** `file:text::files/reports/annual_report.txt`
-
-### Example 6: Format Hint in Argument Name
-*   **Tool Definition:**
-    *   `name`: `fetch_resource`
-    *   `parameter`: `resource_url`
-    *   `description`: "The resource to fetch."
-*   **Reasoning:** Parameter name ends with `_url`, indicating a URL reference is expected.
-*   **Result:** `file:url::https://api.example.com/data.json`
-
-### Example 7: Document bytes / encoded file data
-*   **Tool Definition:**
-    *   `name`: `process_file`
-    *   `parameter`: `input_file`
-    *   `description`: "Pass the base64-encoded file data for processing."
-*   **Reasoning:** Description asks for encoded file data — default to `data`.
-*   **Result:** `file:data::files/uploads/document.pdf`
-
-### Example 8: Multi-scheme URI (MarkItDown-style)
-*   **Tool Definition:**
-    *   `name`: `convert_to_markdown`
-    *   `parameter`: `uri`
-    *   `description`: "Convert a resource described by an http:, https:, file: or data: URI to markdown."
-*   **Reasoning:** Description explicitly supports `data:` URIs; do **not** use `url` for an uploaded file.
-*   **Result:** `file:data::files/uploads/report.docx`
-
-### Example 9: Multi-file upload tool (array parameter, inline content)
-*   **Tool Definition:**
-    *   `name`: `batch_processor`
-    *   `parameter`: `documents` (type: array of strings)
-    *   `description`: "List of base64-encoded file contents."
-*   **Reasoning:** Description asks for encoded file contents for each element — default to `data`.
-*   **Result:** `["file:data::files/doc1.pdf", "file:data::files/doc2.pdf"]`
-
-### Example 10: Multi-file upload tool (array parameter, URL references)
-*   **Tool Definition:**
-*  `name`: `rag`
-    *   `parameter`: `attachment_urls` (type: array of strings)
-    *   `description`: "List of URLs pointing to the files to be ingested."
-*   **Reasoning:** Name `attachment_urls` and description "URLs pointing to the files" indicate URL references for each element.
-*   **Result:** `["file:url::https://example.com/doc1.pdf", "file:url::https://example.com/doc2.pdf"]`
-
-### Example 11: Fallback after MCP failure
-*   **First attempt:** `file:data::files/uploads/document.pdf` → MCP tool call fails.
-*   **Retry:** `file:base64::files/uploads/document.pdf` (plain base64 payload).
-
-> **Note:** The `file:{prefix}::` format works for both single string parameters and individual elements within array parameters.
-
-## Common Mistakes
-*   ❌ Ignoring the tool description and defaulting to `url` for local files that need content.
-*   ❌ Mapping a parameter named `uri` to `url` when the description allows `data:` URIs — use `data`.
-*   ❌ Passing `file:base64::...` on the first attempt when `file:data::...` is the default for content.
-*   ❌ After a failed `file:data::...` MCP call, retrying `data` again instead of falling back to `file:base64::...`.
-*   ❌ Passing raw paths (`files/doc.pdf`) without the `file:...` schema.
-
-## External URL Fallback
-
-External `https://` URLs are valid file references — `attachment_urls` accepts them, and `file:data::https://...`
-/ `file:base64::https://...` / `file:text::https://...` will inline external content. They may fail with a clear
-error when the operator has disabled external egress (`EXTERNAL_URL_FETCH_ENABLED=false`) or the per-app config
-has opted out (`features.external_url_fetch.enabled: false`). When that happens:
-
-*   For `file:data::https://...`, `file:base64::https://...`, and `file:text::https://...`, retry by asking the
-    user to upload the file to DIAL and re-issue the call with `files/...` instead.
-*   For deployment-tool `attachment_urls`, the same call may still succeed against a deployment that supports
-    `features.url_attachments` (the URL is forwarded as a `reference_url` and the deployment fetches the bytes
-    itself, never via QuickApps).
+- ❌ Reaching for `data` before deciding whether the parameter wants content at all.
+- ❌ Inlining a file into a parameter that names a URL or an attachment reference.
+- ❌ Sending a DIAL path as `file:url::` to an off-platform tool that has no way to fetch it.
+- ❌ Mapping a parameter named `uri` to `url` when its description accepts `data:` URIs.
+- ❌ Sending `base64` on the first attempt, or retrying `data` after it already failed.
+- ❌ Sending a raw path (`files/doc.pdf`) without the `file:...::` form.
