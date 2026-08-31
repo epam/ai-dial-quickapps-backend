@@ -80,8 +80,9 @@ def generate_skill_files_xml(
     if max_bytes is not None:
         # The manifest is capped on its own, but the block appended to it was
         # not, so a large manifest plus a long inventory could put a single tool
-        # result well past the documented ceiling - and `read_skill` is excluded
-        # from offload, so nothing downstream would trim it either.
+        # result well past the documented ceiling. Trimmed here rather than left
+        # to the offload processor: offloading a skill read replaces the
+        # instructions the agent just asked for with a pointer to them.
         kept: list[str] = []
         budget = max_bytes
         for path in paths:

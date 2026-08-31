@@ -28,22 +28,30 @@ named directories. They are automatically loaded and made available to the agent
 A skill is a directory. `SKILL.md` is required at its root. For a DIAL skill resource anything alongside it is
 offered to the agent on demand; for a predefined skill only `SKILL.md` is read today.
 
+A DIAL skill resource:
+
+```
+skills/<bucket>/my-skill/
+├── SKILL.md
+├── references/
+│   └── api-schema.md
+├── scripts/
+│   └── validate.py
+└── assets/
+    └── template.csv
+```
+
+A predefined skill — anything beside `SKILL.md` is ignored today:
+
 ```
 config/predefined/skills/
 └── my-skill/
-    ├── SKILL.md
-    ├── references/
-    │   └── api-schema.md
-    ├── scripts/
-    │   └── validate.py
-    └── assets/
-        └── template.csv
+    └── SKILL.md
 ```
 
 The directory name **should** match the `name` field in the YAML frontmatter. A mismatch is logged as a warning
 and the skill still loads, keyed by its frontmatter `name` — that is the name the agent sees and passes to
-`read_skill`. If two skill directories declare the same frontmatter `name`, the first by directory name wins and
-the other is skipped with a warning.
+`read_skill`.
 
 ## Creating a Skill
 

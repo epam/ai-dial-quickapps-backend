@@ -107,8 +107,10 @@ class _SkillReaderTool(StagedBaseTool):
     def __read_manifest(self, skill: Skill) -> str:
         manifest = skill.read_manifest()
         # Whatever the manifest did not spend of the file budget is what the
-        # inventory may use, so the two together stay inside the cap the manifest
-        # alone was measured against.
+        # inventory's *paths* may use, keeping the two together at roughly the cap
+        # the manifest alone was measured against. The XML wrapper and the
+        # truncation line are outside the budget, so the total can exceed the cap
+        # by a fixed ~76 bytes - bounded, and 0.2% of the 40 kB default.
         remaining = self.__settings.file_max_bytes - len(manifest.encode("utf-8"))
         inventory = generate_skill_files_xml(
             skill.list_files(),

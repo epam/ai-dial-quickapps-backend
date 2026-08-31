@@ -1,6 +1,9 @@
 # Design: Skills as DIAL Resource
 
 - **Status:** Draft
+- **Delivery:** Split into phases — see [Delivery phases](#delivery-phases). This document describes the
+  design *whole*; Phase 1 implements a subset of it. Sections marked **(Phase 2)** or **(Phase 3)** are
+  designed but not yet built.
 - **Dependencies:**
   - [`skills_and_file_transfer.md`](skills_and_file_transfer.md) — the original skills framework (`SKILL.md`, `read_skill`, `<available_skills>`)
   - [`dial_prompts_as_skills.md`](dial_prompts_as_skills.md) — the `dial-prompt` skill source this design deprecates
@@ -625,7 +628,7 @@ description explains the two modes. `_SkillReaderTool._run_in_stage_async` gains
 that branch awaits, since `read_manifest` and `list_files` are synchronous per §1. `_SkillReaderStageWrapper`
 shows the resolved path in the stage title so a reader of the conversation can see which file was opened.
 
-### 6. Predefined skills become folder skills
+### 6. Predefined skills become folder skills **(Phase 3)**
 
 **What.** `ContentType.SKILL` handling in `PredefinedContentProvider` is extended from *"read
 `<name>/SKILL.md`"* to *"read `<name>/SKILL.md` and index the rest of `<name>/`"*.
@@ -1110,7 +1113,7 @@ Identical agent-side behavior; no config entry needed.
 
 None. `dial-prompt` continues to resolve, and no existing config, env var, or predefined skill layout changes meaning.
 
-### Deprecations
+### Deprecations **(Phase 2)**
 
 `DialPromptSkillConfig` is marked deprecated in the schema and emits a per-entry warning at resolve time. Migration
 is a two-step move a user can perform without QuickApps' involvement:
@@ -1124,36 +1127,54 @@ Frontmatter requirements are identical on both sides — Core's `Skillr` enforce
 
 ### Non-breaking changes
 
-- Predefined skills gain bundled-file support; a skill directory containing only `SKILL.md` behaves exactly as before.
+- **(Phase 3)** Predefined skills gain bundled-file support; a skill directory containing only `SKILL.md`
+  behaves exactly as before.
 - `read_skill` gains an optional parameter; existing single-argument calls are unaffected.
 - The manifest read result gains a `<skill_files>` block **only** for skills that have bundled files;
   `read_manifest` keeps today's contract of returning the raw file including frontmatter.
 - `generate_skills_xml` is untouched, and so is the shape of the `<available_skills>` block. Its *contents* change
   in one existing edge case: two predefined skills sharing a frontmatter `name` — a state that today yields a
-  duplicate entry and serves the **last**-scanned body from `read_skill` — now resolve to the first by directory
+  duplicate entry and serves the **last**-scanned body from `read_skill` — resolve to the first by directory
   name (§4a rule 0), consistent with rules 1 and 2. This is a deliberate change to what an existing tool returns
-  for that input; every other input is unaffected.
+  for that input; every other input is unaffected. **(Phase 2 — not yet built; today's duplicate-entry behavior
+  is unchanged.)**
 - `_InjectFileTransferInstructionTransformer` is untouched: it reads the built-in file-transfer skill's *manifest*,
   which stays resident and synchronous.
-- `make dump_app_schema` must be re-run: `SkillConfig` becomes a union and `dial-prompt` gains its deprecation marker.
+- `make dump_app_schema` must be re-run: `SkillConfig` becomes a union (Phase 1) and `dial-prompt` gains its
+  deprecation marker (Phase 2).
 
 ### Delivery phases
 
-| Phase | Scope | Gated on |
-|-------|-------|----------|
-| 1 | `Skill` model, `list[Skill]` multiprovider, `_SkillsContext` + `SkillsModule` `list[InitializationException]` multiprovider, registry precedence (§4a) over the sources installed *at that point* (predefined + `dial-prompt`), predefined folder skills, `read_skill(file_path)`, `SkillsSettings`, `read_skill` offload exclusion | — |
-| 2 | `dial-skill` config type (`@preview_model`), `DialSkillsClient`, `dial_skills/` package (`@preview_module`), `DialSkillsSettings`, `dial-prompt` deprecation, catastrophic-header fix | **`aidial-client` release carrying both the `skills` resource and the [ai-dial-client-python#124] encoding fix** + pin bump; then ships behind `ENABLE_PREVIEW_FEATURES`; ungated on **C-1** |
-| 3 | Cross-request caching | **C-2** |
+The original draft of this section planned to land predefined folder skills first and the network path second.
+That was re-sliced before implementation: the combined change reached ~6,800 lines across 65 files, too large for
+one review pass, and the predefined-side work turned out to have **zero importers** in `dial_skills/` — so it was
+separable in either direction. The order was inverted because `dial-skill` is what [#418] actually asks for, and
+because the predefined file walk carries this design's highest-risk code (symlink containment over
+operator-mounted `PREDEFINED_EXTRA_PATHS`), which is worth its own focused review rather than a share of a large
+one.
 
-Phase 1 is self-contained, ships value on its own (UC-4, and progressive disclosure for predefined skills), and
-de-risks Phase 2 by landing the model change separately from the network path. It carries both agent-facing caps,
-because they govern predefined skills too — nothing in Phase 1 depends on `dial_skills/`. Phase 2 ships behind the
-preview flag rather than waiting for **C-1**, so the read path can be exercised end to end in a user's own bucket
-while the auto-share gap is fixed in Core.
+| Phase | Scope | Status |
+|-------|-------|--------|
+| 1 | `Skill` model, `list[Skill]` multiprovider, `_SkillsContext` + `SkillsModule` `list[InitializationException]` multiprovider, registry precedence (§4a rules 1–2) across predefined + `dial-prompt` + `dial-skill`, `read_skill(file_path)`, `SkillsSettings`, `dial-skill` config type (`@preview_model`), `DialSkillsClient`, `dial_skills/` package (`@preview_module`), `DialSkillsSettings`, catastrophic-header fix | **Implemented.** Merge gated on an **`aidial-client` release carrying both the `skills` resource and the [ai-dial-client-python#124] encoding fix** (see §3) + pin bump; then ships behind `ENABLE_PREVIEW_FEATURES`; ungated on **C-1** |
+| 2 | `dial-prompt` deprecation, editor Validate endpoint for `dial-skill`, `read_skill` offload exclusion, `_frontmatter.py` YAML scalar type-safety, `_SkillReaderStageWrapper` title, §4a **rule 0** (predefined duplicate-`name` resolution) | Planned. Each item is independent of the others and of Phase 3 |
+| 3 | **§6 — predefined skills become folder skills**: `is_publishable_skill_file`, the `PredefinedContentProvider` walk, `AgentSkillsProvider` inventory + lazy read + containment check, `_PredefinedSkill` stub → real implementation | Planned. Carries the symlink-containment surface; separate review |
+| 4 | Cross-request caching | **C-2** |
+
+**What Phase 1 does *not* do.** Predefined skills stay manifest-only: `_PredefinedSkill.list_files()` returns
+`[]` and `read_file` raises, so §6 is designed here but unbuilt. §4a rule 0 is likewise unbuilt — two predefined
+directories declaring the same frontmatter `name` still yield a duplicate `<available_skills>` entry with
+last-scanned content, exactly as before this design. `read_skill` is not yet in `_MANDATORY_EXCLUDED_TOOLS`, so a
+skill read can still be offloaded into a pointer. `DialPromptSkillConfig` carries no deprecation marker yet.
+
+Phase 1 ships behind the preview flag rather than waiting for **C-1**, so the read path can be exercised end to
+end in a user's own bucket while the auto-share gap is fixed in Core.
 
 ---
 
 ## Summary of Changes
+
+> These tables describe the design **as a whole**, across all phases — not the contents of any one pull request.
+> See [Delivery phases](#delivery-phases) for what is built today.
 
 ### `quickapp/skills/` (skills framework)
 

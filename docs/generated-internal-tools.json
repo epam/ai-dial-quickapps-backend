@@ -361,9 +361,9 @@
       "file_path": {
         "display": {
           "stage": {
-            "ignore": true,
+            "ignore": false,
             "ignore_parameter_name": false,
-            "show_value_in_stage_title": true,
+            "show_value_in_stage_title": false,
             "order": 0
           }
         },

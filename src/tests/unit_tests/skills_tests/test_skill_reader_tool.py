@@ -157,8 +157,8 @@ class TestFileMode:
 
 class TestCombinedSizeCap:
     """The manifest is capped on its own; the inventory appended to it must not
-    push the single tool result past the same ceiling - `read_skill` is excluded
-    from offload, so nothing downstream would trim it."""
+    push the single tool result past the same ceiling. The cap covers the paths,
+    not the XML wrapper, so the total lands just above `file_max_bytes`."""
 
     @pytest.mark.asyncio
     async def test_inventory_is_trimmed_to_the_remaining_budget(self):
