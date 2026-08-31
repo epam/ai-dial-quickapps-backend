@@ -18,7 +18,20 @@ class DialPromptSkillConfig(BaseModel):
     ]
 
 
+class DialSkillConfig(BaseModel):
+    type: Literal["dial-skill"] = Field(
+        default="dial-skill",
+        description="Skill sourced from a DIAL skill resource (folder with SKILL.md).",
+    )
+    url: Annotated[
+        str,
+        DialResourceConfigField(
+            description="Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)"
+        ),
+    ]
+
+
 SkillConfig = Annotated[
-    DialPromptSkillConfig,
+    DialPromptSkillConfig | DialSkillConfig,
     Field(discriminator="type"),
 ]

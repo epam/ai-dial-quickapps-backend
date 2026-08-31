@@ -14,6 +14,7 @@ from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.dial_prompt_skills import ResolvedDialPromptSkill
+from quickapp.dial_skills import ResolvedDialSkill
 from quickapp.skills._skill_metadata import SkillMetadata
 
 MODULE_TYPE: TypeAlias = Callable[[Binder], None] | Module | type[Module]
@@ -126,4 +127,22 @@ def make_resolved_dial_prompt_skill(
         url=url,
         metadata=SkillMetadata(name=name, description=description),
         content=content,
+    )
+
+
+def make_resolved_dial_skill(
+    url: str,
+    name: str,
+    description: str = "A skill",
+    content: str = "body",
+    files: tuple[str, ...] = (),
+) -> ResolvedDialSkill:
+    """Builder for ``ResolvedDialSkill`` fixtures shared by skill/registry and
+    dial-skills tests.
+    """
+    return ResolvedDialSkill(
+        url=url,
+        metadata=SkillMetadata(name=name, description=description),
+        content=content,
+        files=files,
     )

@@ -10,6 +10,14 @@ named directories. They are automatically loaded and made available to the agent
 
 ## How Skills Work
 
+Skills come from three sources, merged per request:
+
+| Source | Origin | Bundled files |
+|---|---|---|
+| Predefined | `config/predefined/skills/`, loaded at startup | No |
+| [DIAL prompt](#dial-prompt-skills) | `prompts/<bucket>/<path>`, per request | No |
+| [DIAL skill resource](#dial-skill-resources) | `skills/<bucket>/<path>`, per request | Yes, text files |
+
 - Skills are loaded from `config/predefined/skills/` at startup. Each skill lives in its own subdirectory
   (e.g. `skills/my-skill/SKILL.md`).
 - Each skill is presented to the agent as XML metadata in the system prompt.
@@ -114,9 +122,9 @@ optional features. The table below summarises what is and isn't supported.
 | `name` validation (length, charset, consecutive hyphens) | Supported | |
 | `description`, `license`, `compatibility`, `metadata` | Supported | |
 | `allowed-tools` | Partial | Exposed in XML metadata but **not enforced** at runtime. |
-| Optional subdirectories (`scripts/`, `references/`, `assets/`) | Not supported | Only `SKILL.md` is read; other directory contents are ignored. |
-| Progressive disclosure (on-demand file references) | Not supported | The agent can read `SKILL.md` content via `read_skill` but cannot access referenced files within the skill directory. |
-| Dynamic skill registration | Not supported | Skills are loaded once at startup; adding or modifying skills requires a restart. |
+| Optional subdirectories (`scripts/`, `references/`, `assets/`) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) (text files only). Predefined and DIAL-prompt skills read `SKILL.md` alone. |
+| Progressive disclosure (on-demand file references) | Partial | Supported for [DIAL skill resources](#dial-skill-resources) via `read_skill(skill_name, file_path)`. Not available for the other two sources. |
+| Dynamic skill registration | Not supported | Predefined skills are loaded once at startup; adding or modifying them requires a restart. DIAL skills are resolved per request. |
 
 For the full specification, see [agentskills.io/specification](https://agentskills.io/specification).
 For design rationale and known limitations, see [the design doc](designs/skills_and_file_transfer.md).
@@ -177,9 +185,112 @@ skill takes precedence**. The DIAL prompt skill is skipped and a warning is logg
 - DIAL prompts are single text documents — they cannot contain `scripts/`, `references/`, or `assets/`
   subdirectories.
 - DIAL prompts are fetched fresh on each request (no cross-request caching).
-- The `skills` config field is a **preview feature** — it requires `ENABLE_PREVIEW_FEATURES=true`.
+- A prompt cannot bundle files. Use a [DIAL skill resource](#dial-skill-resources) when the skill
+  needs reference material the agent can open on demand.
 
 For design details, see [the design doc](designs/dial_prompts_as_skills.md).
+
+---
+
+## DIAL Skill Resources
+
+DIAL Core stores skills as **folder-shaped resources**: a mandatory `SKILL.md` plus an arbitrary file
+hierarchy, served through the `/v2/skills` API. Unlike a DIAL prompt, such a skill can bundle the
+reference material its manifest points at, and the agent reads those files **on demand**.
+
+### Configuration
+
+```json
+{
+  "skills": [
+    {
+      "type": "dial-skill",
+      "url": "skills/<bucket>/<path>"
+    }
+  ]
+}
+```
+
+The `url` is a relative path including the `skills/` resource type prefix
+(e.g. `skills/my-bucket/refund-policy`), following the same convention as `dial-prompt` and file
+context URLs.
+
+### Progressive Disclosure
+
+At request time QuickApps reads the skill's `SKILL.md` and lists its bundled files. The file list is
+appended to the manifest as a `<skill_files>` block, so the agent sees it the moment it calls
+`read_skill`:
+
+```markdown
+---
+name: refund-policy
+description: How to handle refund requests, by region.
+---
+
+# Refund Policy
+
+Determine the customer's region, then read the matching reference file.
+
+<skill_files>
+references/eu-rules.md
+references/us-rules.md
+</skill_files>
+```
+
+The agent then opens one with `read_skill(skill_name="refund-policy", file_path="references/eu-rules.md")`
+— one request to DIAL Core per file, and only for files it actually asks for. Repeat reads within a
+request are served from memory.
+
+A path is readable **only if it appears in that skill's `<skill_files>` block**. Anything else — a
+traversal attempt, a hidden file, a path the model invented — is refused, and the error hands the
+inventory back so the agent can correct itself.
+
+### Which Files Are Advertised
+
+A bundled file is listed and readable when it is a regular file whose extension is one of
+`.md`, `.markdown`, `.txt`, `.json`, `.yaml`, `.yml`, `.csv`, `.tsv`, `.xml`, `.html`, `.toml`,
+`.ini`, `.sql`, `.py`, `.sh`, `.js`, `.ts`.
+
+Excluded: subfolders, hidden entries at any depth (including Core's own `.dial-resource` marker),
+`SKILL.md` itself (already returned by `read_skill` without a `file_path`), and everything binary —
+images, PDFs and other assets are **not** available in this release.
+
+### Limits
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DIAL_SKILLS_FILE_MAX_BYTES` | `262144` | Cap on a single file read, `SKILL.md` included. |
+| `DIAL_SKILLS_MAX_FILES` | `200` | Maximum files advertised per skill. |
+| `DIAL_SKILLS_LISTING_MAX_PAGES` | `10` | Maximum listing pages followed per skill. |
+
+An over-cap `SKILL.md` drops the skill; an over-cap bundled file fails that one read. Files must be
+valid UTF-8.
+
+### Name Collision
+
+Precedence is **predefined > dial-prompt > dial-skill**, and first configured wins within a source.
+A skill that loses a collision is skipped and reported in the initialization issues stage.
+
+### Error Handling
+
+- **Inaccessible skill** (403, 404): skipped with a reported reason; other skills stay available.
+- **Invalid `SKILL.md`**: skipped, same as a DIAL prompt skill.
+- **File listing fails**: the skill is still loaded, without its bundled files, and a warning is
+  reported.
+- **DIAL Core outage**: all DIAL skills are dropped and the request is served with the remaining
+  sources.
+
+### Limitations
+
+- **Access**: DIAL Core does not yet auto-share config-declared skills to the application's
+  per-request key. A `dial-skill` therefore resolves only when the caller's own key already has
+  access — a skill in the user's own bucket, one shared with them, or a published one.
+- Skills are fetched fresh on each request (no cross-request caching).
+- Binary and asset files are not readable.
+- Validation of a `dial-skill` URL is not offered by `/skills/validate`: DIAL Core validates
+  `SKILL.md` when the skill is written, so a stored skill is already valid.
+
+For design details, see [the design doc](designs/skills_as_dial_resource.md).
 
 ---
 
