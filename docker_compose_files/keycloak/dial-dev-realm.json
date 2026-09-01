@@ -1,4 +1,5 @@
 {
+  "id": "dial-dev-realm-id",
   "realm": "dial-dev",
   "enabled": true,
   "sslRequired": "none",
@@ -27,6 +28,7 @@
   },
   "users": [
     {
+      "id": "admin-dev-user-id",
       "username": "admin-dev",
       "email": "admin-dev@localhost",
       "enabled": true,
@@ -47,6 +49,7 @@
       ]
     },
     {
+      "id": "user-dev-user-id",
       "username": "user-dev",
       "email": "user-dev@localhost",
       "enabled": true,
@@ -68,6 +71,7 @@
   ],
   "clients": [
     {
+      "id": "dial-local-client-id",
       "clientId": "dial-local",
       "name": "DIAL local dev (chat + admin panel)",
       "enabled": true,
