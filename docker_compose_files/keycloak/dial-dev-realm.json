@@ -1,0 +1,125 @@
+{
+  "realm": "dial-dev",
+  "enabled": true,
+  "sslRequired": "none",
+  "registrationAllowed": false,
+  "roles": {
+    "realm": [
+      {
+        "name": "admin",
+        "description": "DIAL admin role \u2014 grants isAdmin in Chat/Admin and Core admin access.rules"
+      },
+      {
+        "name": "user",
+        "description": "Regular DIAL user"
+      }
+    ]
+  },
+  "defaultRole": {
+    "name": "default-roles-dial-dev",
+    "composite": true,
+    "composites": {
+      "realm": [
+        "user",
+        "offline_access"
+      ]
+    }
+  },
+  "users": [
+    {
+      "username": "admin-dev",
+      "email": "admin-dev@localhost",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Dev",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "admin-dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "admin",
+        "user",
+        "offline_access"
+      ]
+    },
+    {
+      "username": "user-dev",
+      "email": "user-dev@localhost",
+      "enabled": true,
+      "emailVerified": true,
+      "firstName": "User",
+      "lastName": "Dev",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "user-dev",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "user",
+        "offline_access"
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "dial-local",
+      "name": "DIAL local dev (chat + admin panel)",
+      "enabled": true,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "dial-local-dev-secret",
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "serviceAccountsEnabled": false,
+      "implicitFlowEnabled": false,
+      "redirectUris": [
+        "http://localhost:3010/api/auth/callback/keycloak",
+        "http://localhost:3020/api/auth/callback/keycloak",
+        "http://localhost:3012/api/v1/auth/callback/keycloak",
+        "http://localhost:4600/api/auth/callback/keycloak"
+      ],
+      "webOrigins": [
+        "http://localhost:3010",
+        "http://localhost:3020",
+        "http://localhost:3012",
+        "http://localhost:4600"
+      ],
+      "fullScopeAllowed": true,
+      "defaultClientScopes": [
+        "web-origins",
+        "profile",
+        "roles",
+        "email"
+      ],
+      "optionalClientScopes": [
+        "offline_access"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:3010##http://localhost:3020##http://localhost:3012##http://localhost:4600"
+      },
+      "protocolMappers": [
+        {
+          "name": "sub-in-access-token",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-property-mapper",
+          "consentRequired": false,
+          "config": {
+            "user.attribute": "id",
+            "claim.name": "sub",
+            "jsonType.label": "String",
+            "id.token.claim": "false",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "false"
+          }
+        }
+      ]
+    }
+  ]
+}

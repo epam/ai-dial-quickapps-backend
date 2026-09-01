@@ -16,7 +16,7 @@ export PYDANTIC_V2=True
 
 .PHONY: init_venv install install_dev install_integration install_all clean \
 	lint mypy format install_pre_commit_hooks run_chat run_error_injection_app test test_cov \
-	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config start_test_server stop_test_server \
+	dump_app_schema dump_internal_tools dump_config_support_openapi generate_dial_config generate_certs start_test_server stop_test_server \
 	integration_test integration_test_run integration_test_ci integration_test_all print-integration-test-models \
 	e2e_test run_python \
 	black black_check isort isort_check autoflake autoflake_check flake8
@@ -133,6 +133,12 @@ generate_dial_config: install_dev
 	--template docker_compose_files/core/configuration/models-template.json \
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag
+
+# TLS certificate for the local Keycloak used by the docker-compose stack. Only openssl is
+# needed, so this deliberately does not depend on install_dev. Re-run with FORCE=1 to mint a
+# new CA (which then has to be trusted again).
+generate_certs:
+	./docker_compose_files/keycloak/generate-certs.sh
 
 start_test_server: stop_test_server
 	echo "Starting MCP + REST servers..."
