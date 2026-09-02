@@ -134,9 +134,7 @@ generate_dial_config: install_dev
 	--config docker_compose_files/core/configuration/generated/models.json \
 	--applications dial-rag,dial-web-rag
 
-# TLS certificate for the local Keycloak used by the docker-compose stack. Only openssl is
-# needed, so this deliberately does not depend on install_dev. Re-run with FORCE=1 to mint a
-# new CA (which then has to be trusted again).
+# TLS certificate for the local Keycloak used by the docker-compose stack.
 generate_certs:
 	./docker_compose_files/keycloak/generate-certs.sh
 
