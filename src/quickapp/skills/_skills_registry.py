@@ -3,11 +3,9 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.exceptions import SkillInitializationException
-from quickapp.dial_prompt_skills._dial_prompt_skills_context import _DialPromptSkillsContext
-from quickapp.dial_skills._dial_skill_resolver import ResolvedDialSkill
-from quickapp.dial_skills._dial_skills_client import MANIFEST_NAME
-from quickapp.dial_skills._dial_skills_context import _DialSkillsContext
-from quickapp.skills._exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
+from quickapp.dial_prompt_skills import _DialPromptSkillsContext
+from quickapp.dial_skills import DialSkillReader, ResolvedDialSkill, _DialSkillsContext
+from quickapp.skills._exceptions import SkillFilesNotSupportedError
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 
@@ -44,10 +42,12 @@ class SkillsRegistry(PromptPartProvider):
         predefined_provider: AgentSkillsProvider,
         dial_prompt_skills_context: _DialPromptSkillsContext | None = None,
         dial_skills_context: _DialSkillsContext | None = None,
+        dial_skill_reader: DialSkillReader | None = None,
     ) -> None:
         self._predefined_provider = predefined_provider
         self._context = dial_prompt_skills_context
         self._dial_skills_context = dial_skills_context
+        self._dial_skill_reader = dial_skill_reader
         self._merged: _MergedSkills | None = None
 
     def _get_merged(self) -> _MergedSkills:
@@ -131,32 +131,19 @@ class SkillsRegistry(PromptPartProvider):
     async def read_skill_file(self, skill_name: str, file_path: str) -> str:
         """Return the content of a file bundled with *skill_name*.
 
-        Readability is inventory membership: a path is served only if it was
-        advertised in the skill's ``<skill_files>`` block. That single check
-        also covers traversal, encoded separators and hidden files — the model
-        can only ask for what it was told exists.
+        Pure lookup plus one delegated call: inventory membership, path
+        normalization and the manifest special-case all live in
+        ``DialSkillReader``, which is also where the actual I/O happens.
         """
         merged = self._get_merged()
         if skill_name not in merged.contents:
             raise FileNotFoundError(f"Skill not found: {skill_name}")
 
-        # A dial skill only reaches the merged set through the context, so the
+        # A dial skill only reaches the merged set through the reader, so the
         # two are absent together; checking both here narrows the type as well.
-        context = self._dial_skills_context
+        reader = self._dial_skill_reader
         dial_skill = merged.dial_skills.get(skill_name)
-        if dial_skill is None or context is None:
+        if dial_skill is None or reader is None:
             raise SkillFilesNotSupportedError(skill_name)
 
-        normalized = self._normalize_file_path(file_path)
-        if normalized == MANIFEST_NAME:
-            # The manifest is not in the inventory; serve what read_skill would.
-            return merged.contents[skill_name]
-        if normalized not in dial_skill.files:
-            raise SkillFileNotFoundError(skill_name, file_path, dial_skill.files)
-
-        return await context.read_file(dial_skill.url, normalized)
-
-    @staticmethod
-    def _normalize_file_path(file_path: str) -> str:
-        """Strip the decorations a model tends to add around a listed path."""
-        return file_path.strip().lstrip("/").removeprefix("./")
+        return await reader.read_bundled_file(dial_skill, file_path)

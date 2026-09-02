@@ -7,6 +7,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.preview import preview_module
 from quickapp.dial_skills._dial_skill_initializer import _DialSkillInitializer
+from quickapp.dial_skills._dial_skill_reader import DialSkillReader
 from quickapp.dial_skills._dial_skill_resolver import DialSkillResolver
 from quickapp.dial_skills._dial_skills_client import _DialSkillsClient
 from quickapp.dial_skills._dial_skills_context import _DialSkillsContext
@@ -23,6 +24,7 @@ class DialSkillsModule(Module):
         binder.bind(_DialSkillsClient, to=_DialSkillsClient, scope=request_scope)
         binder.bind(DialSkillResolver, to=DialSkillResolver, scope=request_scope)
         binder.bind(_DialSkillsContext, to=_DialSkillsContext, scope=request_scope)
+        binder.bind(DialSkillReader, to=DialSkillReader, scope=request_scope)
         binder.bind(_DialSkillInitializer, to=_DialSkillInitializer, scope=request_scope)
         logger.debug("DialSkillsModule configuration completed")
 

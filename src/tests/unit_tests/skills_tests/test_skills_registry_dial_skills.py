@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.dial_prompt_skills import _DialPromptSkillsContext
-from quickapp.dial_skills import _DialSkillsContext
+from quickapp.dial_skills import DialSkillReader, _DialSkillsContext
 from quickapp.skills._exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._skills_registry import SkillsRegistry
@@ -21,19 +21,22 @@ def _make_predefined_provider(
     return provider
 
 
-def _make_dial_skills_context(skills: list, read_result: str = "file body") -> _DialSkillsContext:
+def _make_dial_skills(
+    skills: list, read_result: str = "file body"
+) -> tuple[_DialSkillsContext, DialSkillReader, MagicMock]:
+    """Build the context/reader pair ``SkillsRegistry`` takes for DIAL skills."""
     client = MagicMock()
     client.read_text_file = AsyncMock(return_value=read_result)
-    context = _DialSkillsContext(client)
+    context = _DialSkillsContext()
     context.extend_resolved_skills(skills)
-    return context
+    return context, DialSkillReader(client), client
 
 
 class TestMerge:
 
     @pytest.mark.asyncio
     async def test_dial_skill_appears_in_available_skills(self):
-        context = _make_dial_skills_context([_dial_skill("skills/b/refunds", "refunds")])
+        context, _, _ = _make_dial_skills([_dial_skill("skills/b/refunds", "refunds")])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             dial_skills_context=context,
@@ -45,7 +48,7 @@ class TestMerge:
 
     def test_predefined_wins_over_dial_skill(self):
         predefined = [SkillMetadata(name="shared", description="predefined")]
-        context = _make_dial_skills_context([_dial_skill("skills/b/shared", "shared")])
+        context, _, _ = _make_dial_skills([_dial_skill("skills/b/shared", "shared")])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(predefined, {"shared": "predefined"}),
             dial_skills_context=context,
@@ -59,7 +62,7 @@ class TestMerge:
         prompt_context.extend_resolved_skills(
             [_prompt_skill("prompts/b/shared", "shared", content="from prompt")]
         )
-        dial_context = _make_dial_skills_context([_dial_skill("skills/b/shared", "shared")])
+        dial_context, _, _ = _make_dial_skills([_dial_skill("skills/b/shared", "shared")])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             dial_prompt_skills_context=prompt_context,
@@ -72,7 +75,7 @@ class TestMerge:
     def test_all_three_sources_coexist(self):
         prompt_context = _DialPromptSkillsContext()
         prompt_context.extend_resolved_skills([_prompt_skill("prompts/b/p", "from-prompt")])
-        dial_context = _make_dial_skills_context([_dial_skill("skills/b/s", "from-skill")])
+        dial_context, _, _ = _make_dial_skills([_dial_skill("skills/b/s", "from-skill")])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(
                 [SkillMetadata(name="predef", description="d")], {"predef": "body"}
@@ -90,10 +93,11 @@ class TestReadSkillFile:
     @pytest.mark.asyncio
     async def test_reads_an_advertised_file(self):
         skill = _dial_skill("skills/b/s", "s", files=("references/eu.md",))
-        context = _make_dial_skills_context([skill], read_result="# EU rules")
+        context, reader, _ = _make_dial_skills([skill], read_result="# EU rules")
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             dial_skills_context=context,
+            dial_skill_reader=reader,
         )
 
         assert await registry.read_skill_file("s", "references/eu.md") == "# EU rules"
@@ -101,9 +105,11 @@ class TestReadSkillFile:
     @pytest.mark.asyncio
     async def test_unadvertised_path_is_refused_with_the_inventory(self):
         skill = _dial_skill("skills/b/s", "s", files=("references/eu.md",))
+        context, reader, _ = _make_dial_skills([skill])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
-            dial_skills_context=_make_dial_skills_context([skill]),
+            dial_skills_context=context,
+            dial_skill_reader=reader,
         )
 
         with pytest.raises(SkillFileNotFoundError) as exc:
@@ -125,10 +131,11 @@ class TestReadSkillFile:
         # Containment is inventory membership: nothing that was not advertised
         # can be reached, whatever its shape.
         skill = _dial_skill("skills/b/s", "s", files=("references/eu.md",))
-        context = _make_dial_skills_context([skill])
+        context, reader, _ = _make_dial_skills([skill])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             dial_skills_context=context,
+            dial_skill_reader=reader,
         )
 
         with pytest.raises(SkillFileNotFoundError):
@@ -137,9 +144,11 @@ class TestReadSkillFile:
     @pytest.mark.asyncio
     async def test_manifest_path_returns_the_manifest(self):
         skill = _dial_skill("skills/b/s", "s", content="# Manifest", files=("a.md",))
+        context, reader, _ = _make_dial_skills([skill])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
-            dial_skills_context=_make_dial_skills_context([skill]),
+            dial_skills_context=context,
+            dial_skill_reader=reader,
         )
 
         assert await registry.read_skill_file("s", "SKILL.md") == "# Manifest"
@@ -165,11 +174,11 @@ class TestReadSkillFile:
     @pytest.mark.asyncio
     async def test_repeat_read_is_memoized(self):
         skill = _dial_skill("skills/b/s", "s", files=("a.md",))
-        context = _make_dial_skills_context([skill])
-        client = context._client  # type: ignore[attr-defined]
+        context, reader, client = _make_dial_skills([skill])
         registry = SkillsRegistry(
             predefined_provider=_make_predefined_provider(),
             dial_skills_context=context,
+            dial_skill_reader=reader,
         )
 
         await registry.read_skill_file("s", "a.md")

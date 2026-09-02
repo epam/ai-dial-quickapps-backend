@@ -15,7 +15,7 @@ from starlette.testclient import TestClient
 
 from quickapp.dial_prompt_skills._dial_prompt_skills_context import _DialPromptSkillsContext
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
-from quickapp.dial_skills._dial_skills_context import _DialSkillsContext
+from quickapp.dial_skills import DialSkillReader, _DialSkillsContext
 from quickapp.dial_skills.dial_skills_module import DialSkillsModule
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills.skills_module import SkillsModule
@@ -48,6 +48,9 @@ def _make_client() -> TestClient:
             "skills_context": isinstance(
                 registry._dial_skills_context, _DialSkillsContext  # noqa: SLF001
             ),
+            "skills_reader": isinstance(
+                registry._dial_skill_reader, DialSkillReader  # noqa: SLF001
+            ),
         }
 
     return TestClient(app)
@@ -59,5 +62,9 @@ class TestSkillSourcesWiring:
         response = _make_client().get("/wiring")
 
         assert response.status_code == 200
-        # Neither context may be left at its None default.
-        assert response.json() == {"prompt_context": True, "skills_context": True}
+        # None of the three may be left at its None default.
+        assert response.json() == {
+            "prompt_context": True,
+            "skills_context": True,
+            "skills_reader": True,
+        }

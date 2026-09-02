@@ -8,8 +8,7 @@ from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
 from quickapp.dial_skills._dial_skills_client import SkillInventory, _DialSkillsClient
 from quickapp.dial_skills._exceptions import describe_exception
-from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills import SkillMetadata, parse_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +34,7 @@ class DialSkillResolverOutput(BaseModel):
     exceptions: list[SkillInitializationException]
 
 
-def build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
+def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
     """Render the ``<skill_files>`` inventory appended to a skill's manifest.
 
     Paths are emitted verbatim — deliberately not XML-escaped. Escaping would
@@ -78,17 +77,13 @@ class DialSkillResolver:
         if not unique_configs:
             return DialSkillResolverOutput(resolved=[], exceptions=[])
 
-        results = await asyncio.gather(
-            *(self._fetch_one(cfg) for cfg in unique_configs),
-            return_exceptions=True,
-        )
+        results = await asyncio.gather(*(self._fetch_labeled(cfg) for cfg in unique_configs))
 
         resolved: list[ResolvedDialSkill] = []
         exceptions: list[SkillInitializationException] = []
         seen_names: set[str] = set()
 
-        for i, result in enumerate(results):
-            url = unique_configs[i].url
+        for url, result in results:
             if isinstance(result, BaseException):
                 exceptions.append(
                     SkillInitializationException(url=url, reason=describe_exception(result))
@@ -117,12 +112,26 @@ class DialSkillResolver:
 
         return DialSkillResolverOutput(resolved=resolved, exceptions=exceptions)
 
+    async def _fetch_labeled(
+        self, config: DialSkillConfig
+    ) -> tuple[str, ResolvedDialSkill | BaseException]:
+        """Fetch one skill, pairing the result with its own URL.
+
+        Pairing here (rather than correlating results back to
+        ``unique_configs`` by position) keeps the association obvious at the
+        call site instead of resting on ``asyncio.gather`` preserving order.
+        """
+        try:
+            return config.url, await self._fetch_one(config)
+        except BaseException as exc:
+            return config.url, exc
+
     async def _fetch_one(self, config: DialSkillConfig) -> ResolvedDialSkill:
         manifest = await self._client.read_manifest(config.url)
         parsed = parse_frontmatter(manifest, config.url)
 
         inventory, warnings = await self._list_files(config.url)
-        block = build_skill_files_block(inventory, self._client.max_files)
+        block = _build_skill_files_block(inventory, self._client.max_files)
         content = f"{manifest.rstrip()}\n\n{block}\n" if block else manifest
 
         return ResolvedDialSkill(
