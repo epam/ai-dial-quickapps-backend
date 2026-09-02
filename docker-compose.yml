@@ -1,5 +1,31 @@
 services:
 
+  # keycloak.localtest.me resolves to 127.0.0.1 for the browser and to this container via the
+  # network alias, so browser and backend see the same issuer. HTTPS cert is a local CA
+  # (regenerate with generate-certs.sh); plain HTTP on 8080 is a backchannel for Core's jwksUrl.
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7
+    command: >
+      start-dev --import-realm
+      --hostname=https://keycloak.localtest.me:8443
+      --https-certificate-file=/opt/keycloak/certs/keycloak.crt
+      --https-certificate-key-file=/opt/keycloak/certs/keycloak.key
+    ports:
+      - "8180:8080"
+      - "8443:8443"
+    networks:
+      default:
+        aliases:
+          - keycloak.localtest.me
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: "admin"
+      KC_BOOTSTRAP_ADMIN_PASSWORD: "admin"
+    volumes:
+      - ./docker_compose_files/keycloak/dial-dev-realm.json:/opt/keycloak/data/import/dial-dev-realm.json:ro
+      # Leaf cert/key only — the CA private key stays out of the container.
+      - ./docker_compose_files/keycloak/certs/keycloak.crt:/opt/keycloak/certs/keycloak.crt:ro
+      - ./docker_compose_files/keycloak/certs/keycloak.key:/opt/keycloak/certs/keycloak.key:ro
+
   themes:
     image: epam/ai-dial-chat-themes:0.10.0
     ports:
@@ -12,16 +38,87 @@ services:
     depends_on:
       - themes
       - core
+      - keycloak
     environment:
       NEXTAUTH_SECRET: "secret"
+      # Without this, NextAuth infers the callback host from its internal port (3000) instead
+      # of the published one (3010), sending Keycloak an unregistered redirect_uri.
+      NEXTAUTH_URL: "http://localhost:3010"
       THEMES_CONFIG_HOST: "http://themes:8080"
       DIAL_API_HOST: "http://core:8080"
       DIAL_API_KEY: "dial_api_key"
       ENABLED_FEATURES: "voice-input,conversations-section,prompts-section,top-settings,top-clear-conversation,top-chat-info,top-chat-model-settings,empty-chat-settings,header,footer,request-api-key,report-an-issue,likes,conversations-sharing,prompts-sharing,input-files,attachments-manager,conversations-publishing,prompts-publishing,custom-logo,input-links,custom-applications,message-templates,marketplace,code-apps,applications-sharing,marketplace-table-view,edit-last-assistant-message,edit-all-assistant-message,toolsets,dislike-comment,code-interpreter,live-chat-interaction"
-      # ENABLED_FEATURES: "conversations-section,prompts-section,top-settings,top-clear-conversation,top-chat-info,top-chat-model-settings,empty-chat-settings,header,footer,request-api-key,report-an-issue,likes,conversations-sharing,prompts-sharing,input-files,attachments-manager,conversations-publishing,prompts-publishing,input-links,custom-applications,message-templates,marketplace,quick-apps,toolsets"
       AUTH_DEBUG_ENABLED: "true"
       PROXY_LANGUAGE_HEADER: "accept-language"
+      # dev users: admin-dev/admin-dev, user-dev/user-dev
+      AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
+      AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
+      AUTH_KEYCLOAK_HOST: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      AUTH_KEYCLOAK_ADMIN_ROLE_NAMES: "admin"
+      AUTH_KEYCLOAK_DIAL_ROLES_FIELD: "realm_access.roles"
+      NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
+    volumes:
+      - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
 
+  # New NestJS-based chat-api/SPA build, run alongside legacy `chat` above (see PR #519).
+  chat-new:
+    image: epam/ai-dial-chat:development
+    ports:
+      - "3012:5000"
+    restart: on-failure
+    depends_on:
+      - themes
+      - core
+      - keycloak
+    environment:
+      AUTH_SESSION_SECRET: "48c69bd559cffffb2cbee3951430f324e0cd0c79fd8a83de0a991648cae706c8"
+      AUTH_CALLBACK_BASE_URL: "http://localhost:3012"
+      AUTH_POST_LOGOUT_REDIRECT_URI: "http://localhost:3012"
+      AUTH_COOKIE_SECURE: "false"
+      CORS_ORIGIN: "http://localhost:3012"
+      DIAL_CORE_URL: "http://core:8080"
+      DIAL_API_KEY: "dial_api_key"
+      THEMES_CONFIG_URL: "http://themes:8080"
+      AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
+      AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
+      AUTH_KEYCLOAK_HOST: "keycloak.localtest.me:8443/realms/dial-dev"
+      AUTH_KEYCLOAK_ADMIN_ROLE_NAMES: "admin"
+      AUTH_KEYCLOAK_DIAL_ROLES_FIELD: "realm_access.roles"
+      NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
+      # Points the Settings-step iframe at the local quickapps-frontend service.
+      DEV_QUICKAPPS_EDITOR_URL: "http://localhost:4600"
+      # Required or chat-api's CSP frame-src blocks the iframe above.
+      ALLOWED_IFRAME_ORIGINS: "http://localhost:4600"
+    volumes:
+      - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
+
+  # Quick Apps 2.0 settings editor (https://github.com/epam/ai-dial-quickapps-frontend),
+  # embedded by chat-new's Settings step over postMessage.
+  quickapps-frontend:
+    image: epam/ai-dial-quickapps-frontend:development
+    platform: linux/amd64
+    ports:
+      - "4600:5000"
+    restart: on-failure
+    depends_on:
+      - themes
+      - core
+      - keycloak
+    environment:
+      NEXTAUTH_SECRET: "0e5b1c4f9a2d47e8b3c6f1a894d2e7b5c0a3f6d9e2b5c8a1f4d7e0b3c6a9f2d5"
+      NEXTAUTH_URL: "http://localhost:4600"
+      AUTH_KEYCLOAK_ISSUER: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
+      AUTH_KEYCLOAK_CLIENT_SECRET: "dial-local-dev-secret"
+      DIAL_CORE_URL: "http://core:8080"
+      # CSP frame-ancestors + postMessage origin, both as the browser sees chat-new.
+      ALLOWED_FRAME_ANCESTORS: "http://localhost:3012"
+      ALLOWED_ORIGIN: "http://localhost:3012"
+      DIAL_CHAT_URL: "http://localhost:3012"
+      THEMES_URL: "http://themes:8080/config.json"
+      NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
+    volumes:
+      - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
 
   redis:
     image: redis:7.4.1-alpine3.20
@@ -121,9 +218,7 @@ services:
       start_period: 120s
     volumes:
       - admin-backend-data:/app/data
-      # Core JSON configs (read-only) — imported into Admin H2 on first startup when DB is empty
       - ./docker_compose_files/core/configuration:/opt/core-config:ro
-      # Exported Core config (read/write) — shared with core service at /opt/admin-export/out.json
       - ./docker_compose_files/core/admin-export:/app/data/export
     environment:
       CONFIG_REST_SECURITY_MODE: "none"
@@ -159,17 +254,27 @@ services:
         condition: service_healthy
       themes:
         condition: service_started
+      keycloak:
+        condition: service_started
     environment:
       DIAL_ADMIN_API_URL: "http://admin-backend:8080/"
       NEXTAUTH_SECRET: "secret"
-      # Do not set NEXTAUTH_URL for local dev — it enables NextAuth middleware (get-auth-toggle.ts).
-      # With no AUTH_* providers that yields an empty /api/auth/signin page.
+      NEXTAUTH_URL: "http://localhost:3020"
+      DIAL_CORE_API_URL: "http://core:8080"
       THEMES_CONFIG_URL: "http://themes:8080"
       DIAL_LINK: "http://localhost:3010"
       DEPLOYMENTS_ENABLED: "true"
       MCP_REGISTRY_ENABLED: "false"
       NIM_ENABLED: "false"
       HF_ENABLED: "false"
+      AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
+      AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
+      AUTH_KEYCLOAK_HOST: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      AUTH_KEYCLOAK_ADMIN_ROLE_NAMES: "admin"
+      AUTH_KEYCLOAK_DIAL_ROLES_FIELD: "realm_access.roles"
+      NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
+    volumes:
+      - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
 
 volumes:
   admin-backend-data:

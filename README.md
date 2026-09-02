@@ -287,6 +287,26 @@ never logged, even with the switch on. The switch is additive to the level — c
    This command will generate two files in `docker_compose_files/core/configuration/generated/`:
     - `models.json` - contains the models configuration for DIAL.
 
+6. Generate the local Keycloak TLS certificate (only needed for the docker-compose stack in
+   [Option A](#run)):
+
+    ```bash
+    make generate_certs
+    ```
+
+   The local stack serves Keycloak over HTTPS at `https://keycloak.localtest.me:8443`. The
+   certificates it signs are gitignored, so run this once before your first `docker compose up` —
+   Docker creates a *directory* wherever a bind-mount source is missing, so without them Keycloak
+   fails to start with a confusing error. The target is a no-op when the certificates already
+   exist; pass `FORCE=1` to mint a new CA, which you then have to trust again.
+
+   Then trust the generated CA so your browser accepts the login redirect (macOS):
+
+    ```bash
+    sudo security add-trusted-cert -d -r trustRoot \
+      -k /Library/Keychains/System.keychain docker_compose_files/keycloak/certs/ca.crt
+    ```
+
 ### Run
 
 - Option A — Full local stack (docker-compose)
@@ -306,6 +326,26 @@ never logged, even with the switch on. The switch is additive to the level — c
       docker compose up -d
       ```
 
+    - What the stack exposes:
+
+      | URL                                     | What it is                                                              |
+      |-----------------------------------------|-------------------------------------------------------------------------|
+      | http://localhost:3010                   | DIAL Chat (legacy 0.x), which ships the Quick Apps 2.0 editor built in   |
+      | http://localhost:3012                   | DIAL Chat (current), which embeds the editor below as an iframe          |
+      | http://localhost:4600                   | Quick Apps 2.0 settings editor ([ai-dial-quickapps-frontend](https://github.com/epam/ai-dial-quickapps-frontend)) |
+      | http://localhost:8090                   | DIAL Core                                                               |
+      | https://keycloak.localtest.me:8443      | Keycloak (dev users: `admin-dev`/`admin-dev`, `user-dev`/`user-dev`)     |
+
+    - Notes on authoring a Quick App through the UI:
+        - Set `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID` in your `.env` to a tool-calling deployment. It is
+          what puts a `default` on `orchestrator.deployment` in the generated schema; without it the
+          editor cannot pre-fill that required field and creating an application fails with
+          `400 Custom application validation failed`.
+        - The chat at :3012 finds the editor through `DEV_QUICKAPPS_EDITOR_URL`, and is allowed to
+          frame it by `ALLOWED_IFRAME_ORIGINS` — both already set on the `chat-new` service. The
+          editor in turn only accepts being framed by the origin in its own
+          `ALLOWED_FRAME_ANCESTORS`, so both sides must name each other.
+
     - Optional — DIAL Admin (UI + backend API, embedded H2 database):
 
       ```bash
@@ -314,9 +354,10 @@ never logged, even with the switch on. The switch is additive to the level — c
 
       Or uncomment `COMPOSE_PROFILES=admin` in `.env` and run `docker compose up -d` as usual.
 
-      Startup order: `admin-export-init` → `redis` / `core` (healthy) → `admin-backend` (healthy) → `admin-frontend`.
+      Startup order: `admin-export-init` → `redis` / `core` (healthy) / `keycloak` → `admin-backend` (healthy) → `admin-frontend`.
 
-      - Admin UI: http://localhost:3020 (unauthenticated — only `DIAL_ADMIN_API_URL` + `NEXTAUTH_SECRET`; do not set `NEXTAUTH_URL` or any `AUTH_*` vars)
+      - Admin UI: http://localhost:3020 — sign in with Keycloak as `admin-dev`/`admin-dev`. The `admin`
+        realm role is what grants DIAL Core admin access, so a `user-dev` login will not do.
       - Admin API: http://localhost:8092
       - Backend uses H2 with dev encryption keys; Core access via `dial_api_key`. Not production-equivalent.
       - **Admin → Core sync:** `admin-export-init` creates `docker_compose_files/core/admin-export/out.json` (gitignored) before Core starts. Admin exports merged config there (~15s after changes) and calls Core reload (`ENABLE_CONFIG_RELOAD`). Core loads static JSON from `docker_compose_files/core/configuration/` plus `out.json` (last), so Admin UI edits override the static files. Allow ~20s after a save for export + reload.
