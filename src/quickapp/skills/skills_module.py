@@ -9,10 +9,12 @@ from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.skills._inject_file_transfer_instruction_transformer import (
     _InjectFileTransferInstructionTransformer,
 )
+from quickapp.skills._predefined_skills_source import _PredefinedSkillsSource
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.skill_source import SkillSource
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,7 @@ class SkillsModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
+        binder.bind(_PredefinedSkillsSource, to=_PredefinedSkillsSource, scope=singleton)
         binder.bind(SkillsRegistry, to=SkillsRegistry, scope=request_scope)
         binder.bind(_SkillReaderTool, to=_SkillReaderTool, scope=request_scope)
         binder.bind(
@@ -48,6 +51,10 @@ class SkillsModule(Module):
         skills_registry: SkillsRegistry,
     ) -> list[PromptPartProvider]:
         return [skills_registry]
+
+    @multiprovider
+    def _provide_skill_sources(self, source: _PredefinedSkillsSource) -> list[SkillSource]:
+        return [source]
 
     @multiprovider
     def _provide_message_transformers(

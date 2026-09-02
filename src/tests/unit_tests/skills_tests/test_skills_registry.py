@@ -4,19 +4,22 @@ import pytest
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.dial_prompt_skills import _DialPromptSkillsContext
+from quickapp.dial_prompt_skills._dial_prompt_skills_source import _DialPromptSkillsSource
+from quickapp.skills._predefined_skills_source import _PredefinedSkillsSource
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._skills_registry import SkillsRegistry
+from quickapp.skills.agent_skills_provider import AgentSkillsProvider
 from tests.unit_tests.common.common import make_resolved_dial_prompt_skill as _resolved
 
 
-def _make_predefined_provider(
+def _predefined_source(
     skills: list[SkillMetadata] | None = None,
     contents: dict[str, str] | None = None,
-) -> MagicMock:
-    provider = MagicMock()
+) -> _PredefinedSkillsSource:
+    provider = MagicMock(spec=AgentSkillsProvider)
     provider.get_all_skills.return_value = skills or []
     provider.get_all_skill_contents.return_value = contents or {}
-    return provider
+    return _PredefinedSkillsSource(provider)
 
 
 def _skill(name: str, description: str = "A skill") -> SkillMetadata:
@@ -24,16 +27,13 @@ def _skill(name: str, description: str = "A skill") -> SkillMetadata:
 
 
 class TestSkillsRegistryNoContext:
-    """Preview off: no _DialPromptSkillsContext is bound."""
+    """Preview off: no dial-prompt source is contributed."""
 
     @pytest.mark.asyncio
     async def test_returns_predefined_only(self):
         predefined = [_skill("predefined-skill")]
         contents = {"predefined-skill": "# Predefined\nContent here"}
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=None,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source(predefined, contents)])
 
         xml = await registry.get_prompt_part()
 
@@ -42,34 +42,25 @@ class TestSkillsRegistryNoContext:
 
     def test_get_skill_content_returns_predefined(self):
         contents = {"my-skill": "# My Skill\nContent"}
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider([_skill("my-skill")], contents),
-            dial_prompt_skills_context=None,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source([_skill("my-skill")], contents)])
 
         assert registry.get_skill_content("my-skill") == "# My Skill\nContent"
 
     def test_get_skill_content_unknown_raises(self):
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=None,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source()])
 
         with pytest.raises(FileNotFoundError, match="Skill not found"):
             registry.get_skill_content("nonexistent")
 
     @pytest.mark.asyncio
     async def test_empty_predefined_returns_empty_xml(self):
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=None,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source()])
 
         assert await registry.get_prompt_part() == ""
 
 
 class TestSkillsRegistryWithContext:
-    """Preview on: _DialPromptSkillsContext is bound and pre-populated."""
+    """Preview on: a dial-prompt source is contributed and pre-populated."""
 
     @pytest.mark.asyncio
     async def test_merges_predefined_and_context_skills(self):
@@ -82,8 +73,7 @@ class TestSkillsRegistryWithContext:
         )
 
         registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+            sources=[_predefined_source(predefined, contents), _DialPromptSkillsSource(context)]
         )
 
         xml = await registry.get_prompt_part()
@@ -102,8 +92,7 @@ class TestSkillsRegistryWithContext:
         )
 
         registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+            sources=[_predefined_source(predefined, contents), _DialPromptSkillsSource(context)]
         )
 
         xml = await registry.get_prompt_part()
@@ -114,7 +103,7 @@ class TestSkillsRegistryWithContext:
         collision = context.exceptions[0]
         assert isinstance(collision, SkillInitializationException)
         assert collision.url == "prompts/b/collides"
-        assert "predefined" in collision.reason.lower()
+        assert "already provided by predefined skills" in collision.reason
 
     @pytest.mark.asyncio
     async def test_get_skill_content_for_context_skill(self):
@@ -123,10 +112,7 @@ class TestSkillsRegistryWithContext:
             [_resolved("prompts/b/only", "dial-only", content="DIAL prompt skill content")]
         )
 
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=context,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source(), _DialPromptSkillsSource(context)])
 
         assert registry.get_skill_content("dial-only") == "DIAL prompt skill content"
 
@@ -143,8 +129,7 @@ class TestSkillsRegistryWithContext:
         )
 
         registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(predefined, contents),
-            dial_prompt_skills_context=context,
+            sources=[_predefined_source(predefined, contents), _DialPromptSkillsSource(context)]
         )
 
         await registry.get_prompt_part()
@@ -162,10 +147,7 @@ class TestSkillsRegistryWithContext:
             SkillInitializationException(url="prompts/b/broken", reason="Fetch failed")
         )
 
-        registry = SkillsRegistry(
-            predefined_provider=_make_predefined_provider(),
-            dial_prompt_skills_context=context,
-        )
+        registry = SkillsRegistry(sources=[_predefined_source(), _DialPromptSkillsSource(context)])
 
         await registry.get_prompt_part()
         assert len(context.exceptions) == 1
