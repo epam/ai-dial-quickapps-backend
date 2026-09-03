@@ -12,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 
 _INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]+")
-_INVALID_TOOLNAME_LEADING_CHAR_REGEXP: re.Pattern[str] = re.compile(r"^[^a-zA-Z_]")
 
 
 # Normalize propagation types (split wildcards like 'image/*' for matching)
@@ -83,7 +82,10 @@ def sanitize_toolname(input_str: str) -> str:
     the result is truncated to 64 characters.
     """
     sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('_', input_str)
-    if _INVALID_TOOLNAME_LEADING_CHAR_REGEXP.match(sanitized):
+    # After the substitution the name holds only [a-zA-Z0-9_-], so an invalid
+    # leading character can only be a digit or '-'.
+    first_char = sanitized[:1]
+    if first_char.isdigit() or first_char == "-":
         sanitized = f"_{sanitized}"
     sanitized = sanitized[:64]
     return sanitized
