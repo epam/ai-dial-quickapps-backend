@@ -1,32 +1,35 @@
 import threading
 
 from quickapp.common.exceptions import InitializationException, SkillInitializationException
+from quickapp.skills import ResolvedSkill, SkillsProvider
 
-from ._dial_prompt_skill_resolver import ResolvedDialPromptSkill
 
-
-class _DialPromptSkillsContext:
+class _DialPromptSkillsContext(SkillsProvider):
     """Request-scoped bag of state populated by ``_DialPromptSkillInitializer``
-    and consumed by ``SkillsRegistry`` during message finalization.
+    and the ``SkillsProvider`` ``SkillsRegistry`` consumes for it.
 
     Mirrors ``_MCPToolingContext`` in spirit but is a standalone class — the
     ``ToolingContextBase._tools`` field name does not fit the skills domain.
+    Prompt skills are single-document, so their skills carry no ``reader``.
     """
 
+    order = 10
+    display_name = "DIAL prompt skills"
+
     def __init__(self) -> None:
-        self._resolved_skills: list[ResolvedDialPromptSkill] = []
+        self._resolved_skills: list[ResolvedSkill] = []
         self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
 
     @property
-    def resolved_skills(self) -> list[ResolvedDialPromptSkill]:
+    def resolved_skills(self) -> list[ResolvedSkill]:
         return self._resolved_skills
 
     @property
     def exceptions(self) -> list[InitializationException]:
         return self._exceptions
 
-    def extend_resolved_skills(self, skills: list[ResolvedDialPromptSkill]) -> None:
+    def extend_resolved_skills(self, skills: list[ResolvedSkill]) -> None:
         with self._lock:
             self._resolved_skills.extend(skills)
 

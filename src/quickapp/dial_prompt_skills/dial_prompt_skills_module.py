@@ -8,8 +8,7 @@ from quickapp.common.exceptions import InitializationException
 from quickapp.dial_prompt_skills._dial_prompt_skill_initializer import _DialPromptSkillInitializer
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolver
 from quickapp.dial_prompt_skills._dial_prompt_skills_context import _DialPromptSkillsContext
-from quickapp.dial_prompt_skills._dial_prompt_skills_source import _DialPromptSkillsSource
-from quickapp.skills import SkillSource
+from quickapp.skills import SkillsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,6 @@ class DialPromptSkillsModule(Module):
     def configure(self, binder: Binder) -> None:
         binder.bind(DialPromptSkillResolver, to=DialPromptSkillResolver, scope=request_scope)
         binder.bind(_DialPromptSkillsContext, to=_DialPromptSkillsContext, scope=request_scope)
-        binder.bind(_DialPromptSkillsSource, to=_DialPromptSkillsSource, scope=request_scope)
         binder.bind(
             _DialPromptSkillInitializer, to=_DialPromptSkillInitializer, scope=request_scope
         )
@@ -38,5 +36,5 @@ class DialPromptSkillsModule(Module):
         return context.exceptions
 
     @multiprovider
-    def __provide_skill_sources(self, source: _DialPromptSkillsSource) -> list[SkillSource]:
-        return [source]
+    def __provide_skill_providers(self, context: _DialPromptSkillsContext) -> list[SkillsProvider]:
+        return [context]

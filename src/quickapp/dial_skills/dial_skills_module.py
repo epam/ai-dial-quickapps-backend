@@ -11,9 +11,8 @@ from quickapp.dial_skills._dial_skill_reader import DialSkillReader
 from quickapp.dial_skills._dial_skill_resolver import DialSkillResolver
 from quickapp.dial_skills._dial_skills_client import _DialSkillsClient
 from quickapp.dial_skills._dial_skills_context import _DialSkillsContext
-from quickapp.dial_skills._dial_skills_source import _DialSkillsSource
 from quickapp.dial_skills._settings import DialSkillsSettings
-from quickapp.skills import SkillSource
+from quickapp.skills import SkillsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +26,6 @@ class DialSkillsModule(Module):
         binder.bind(DialSkillResolver, to=DialSkillResolver, scope=request_scope)
         binder.bind(_DialSkillsContext, to=_DialSkillsContext, scope=request_scope)
         binder.bind(DialSkillReader, to=DialSkillReader, scope=request_scope)
-        binder.bind(_DialSkillsSource, to=_DialSkillsSource, scope=request_scope)
         binder.bind(_DialSkillInitializer, to=_DialSkillInitializer, scope=request_scope)
         logger.debug("DialSkillsModule configuration completed")
 
@@ -44,5 +42,5 @@ class DialSkillsModule(Module):
         return context.exceptions
 
     @multiprovider
-    def __provide_skill_sources(self, source: _DialSkillsSource) -> list[SkillSource]:
-        return [source]
+    def __provide_skill_providers(self, context: _DialSkillsContext) -> list[SkillsProvider]:
+        return [context]

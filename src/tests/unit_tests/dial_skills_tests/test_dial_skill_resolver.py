@@ -8,6 +8,7 @@ import pytest
 # the first of them to load. Keep this import above the config one.
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
+from quickapp.dial_skills._dial_skill_reader import DialSkillReader
 from quickapp.dial_skills._dial_skill_resolver import DialSkillResolver
 from quickapp.dial_skills._dial_skills_client import SkillInventory
 from quickapp.dial_skills._exceptions import DialSkillFileReadError
@@ -31,7 +32,7 @@ def _make_resolver(
     client.max_files = max_files
     client.read_manifest = AsyncMock(return_value=manifest)
     client.list_text_files = AsyncMock(return_value=inventory or SkillInventory())
-    return DialSkillResolver(client), client
+    return DialSkillResolver(client, MagicMock(spec=DialSkillReader)), client
 
 
 def _config(url: str) -> DialSkillConfig:

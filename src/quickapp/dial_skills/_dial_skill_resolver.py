@@ -2,27 +2,16 @@ import asyncio
 import logging
 
 from injector import inject
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
+from quickapp.dial_skills._dial_skill_reader import DialSkillReader
 from quickapp.dial_skills._dial_skills_client import SkillInventory, _DialSkillsClient
 from quickapp.dial_skills._exceptions import describe_exception
-from quickapp.skills import SkillMetadata, parse_frontmatter
+from quickapp.skills import ResolvedSkill, parse_frontmatter
 
 logger = logging.getLogger(__name__)
-
-
-class ResolvedDialSkill(BaseModel):
-    """A successfully fetched DIAL skill resource, including its source URL."""
-
-    model_config = ConfigDict(frozen=True)
-
-    url: str
-    metadata: SkillMetadata
-    content: str
-    files: tuple[str, ...] = ()
-    warnings: list[str] = Field(default_factory=list)
 
 
 class DialSkillResolverOutput(BaseModel):
@@ -30,7 +19,7 @@ class DialSkillResolverOutput(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
-    resolved: list[ResolvedDialSkill]
+    resolved: list[ResolvedSkill]
     exceptions: list[SkillInitializationException]
 
 
@@ -53,14 +42,15 @@ def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
 class DialSkillResolver:
     """Request-scoped resolver that fetches DIAL skill resources and validates them."""
 
-    def __init__(self, client: _DialSkillsClient) -> None:
+    def __init__(self, client: _DialSkillsClient, reader: DialSkillReader) -> None:
         self._client = client
+        self._reader = reader
 
     async def resolve(
         self,
         skill_configs: list[DialSkillConfig],
     ) -> DialSkillResolverOutput:
-        """Resolve skill configs into validated ``ResolvedDialSkill`` entries.
+        """Resolve skill configs into validated ``ResolvedSkill`` entries.
 
         Mirrors ``DialPromptSkillResolver.resolve``: dedup by URL, fetch in
         parallel, dedup by name (first configured wins), and turn both per-URL
@@ -79,7 +69,7 @@ class DialSkillResolver:
 
         results = await asyncio.gather(*(self._fetch_labeled(cfg) for cfg in unique_configs))
 
-        resolved: list[ResolvedDialSkill] = []
+        resolved: list[ResolvedSkill] = []
         exceptions: list[SkillInitializationException] = []
         seen_names: set[str] = set()
 
@@ -114,7 +104,7 @@ class DialSkillResolver:
 
     async def _fetch_labeled(
         self, config: DialSkillConfig
-    ) -> tuple[str, ResolvedDialSkill | BaseException]:
+    ) -> tuple[str, ResolvedSkill | BaseException]:
         """Fetch one skill, pairing the result with its own URL.
 
         Pairing here (rather than correlating results back to
@@ -126,7 +116,7 @@ class DialSkillResolver:
         except BaseException as exc:
             return config.url, exc
 
-    async def _fetch_one(self, config: DialSkillConfig) -> ResolvedDialSkill:
+    async def _fetch_one(self, config: DialSkillConfig) -> ResolvedSkill:
         manifest = await self._client.read_manifest(config.url)
         parsed = parse_frontmatter(manifest, config.url)
 
@@ -134,7 +124,8 @@ class DialSkillResolver:
         block = _build_skill_files_block(inventory, self._client.max_files)
         content = f"{manifest.rstrip()}\n\n{block}\n" if block else manifest
 
-        return ResolvedDialSkill(
+        return ResolvedSkill(
+            reader=self._reader,
             url=config.url,
             metadata=parsed.metadata,
             content=content,

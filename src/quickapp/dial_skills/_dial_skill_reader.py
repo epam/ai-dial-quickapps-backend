@@ -3,7 +3,7 @@ import threading
 from injector import inject
 
 from quickapp.dial_skills._dial_skills_client import MANIFEST_NAME, _DialSkillsClient
-from quickapp.skills import ResolvedSkillCandidate, SkillFileNotFoundError, SkillFileReader
+from quickapp.skills import ResolvedSkill, SkillFileNotFoundError, SkillFileReader
 
 
 def _normalize_file_path(file_path: str) -> str:
@@ -13,7 +13,7 @@ def _normalize_file_path(file_path: str) -> str:
 
 @inject
 class DialSkillReader(SkillFileReader):
-    """Reads one file bundled with a resolved DIAL skill candidate.
+    """Reads one file bundled with a resolved DIAL skill.
 
     Request-scoped; its own memoization cache lives as long as one request.
     """
@@ -23,7 +23,7 @@ class DialSkillReader(SkillFileReader):
         self._file_cache: dict[tuple[str, str], str] = {}
         self._lock = threading.Lock()
 
-    async def read_bundled_file(self, skill: ResolvedSkillCandidate, file_path: str) -> str:
+    async def read_bundled_file(self, skill: ResolvedSkill, file_path: str) -> str:
         """Read one file bundled with *skill*, honoring its inventory.
 
         Readability is inventory membership — covers traversal, encoded

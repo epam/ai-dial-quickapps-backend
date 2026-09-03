@@ -2,24 +2,14 @@ import asyncio
 
 from aidial_client import AsyncDial
 from injector import inject
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
-
-
-class ResolvedDialPromptSkill(BaseModel):
-    """A successfully fetched DIAL prompt skill, including its source URL."""
-
-    model_config = ConfigDict(frozen=True)
-
-    url: str
-    metadata: SkillMetadata
-    content: str
-    warnings: list[str] = Field(default_factory=list)
+from quickapp.skills._skill_metadata import ParsedSkill
+from quickapp.skills.skills_provider import ResolvedSkill
 
 
 class DialPromptSkillResolverOutput(BaseModel):
@@ -27,7 +17,7 @@ class DialPromptSkillResolverOutput(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
 
-    resolved: list[ResolvedDialPromptSkill]
+    resolved: list[ResolvedSkill]
     exceptions: list[SkillInitializationException]
 
 
@@ -57,7 +47,7 @@ class DialPromptSkillResolver:
         self,
         skill_configs: list[DialPromptSkillConfig],
     ) -> DialPromptSkillResolverOutput:
-        """Resolve skill configs into validated ``ResolvedDialPromptSkill`` entries.
+        """Resolve skill configs into validated ``ResolvedSkill`` entries.
 
         - Deduplicates by URL before fetching.
         - Fetches in parallel with ``asyncio.gather(return_exceptions=True)``.
@@ -82,7 +72,7 @@ class DialPromptSkillResolver:
             return_exceptions=True,
         )
 
-        resolved: list[ResolvedDialPromptSkill] = []
+        resolved: list[ResolvedSkill] = []
         exceptions: list[SkillInitializationException] = []
         seen_names: set[str] = set()
 
@@ -117,9 +107,9 @@ class DialPromptSkillResolver:
     async def _fetch_one(
         self,
         config: DialPromptSkillConfig,
-    ) -> ResolvedDialPromptSkill:
+    ) -> ResolvedSkill:
         parsed, content = await fetch_and_validate_dial_prompt_skill(self._dial_client, config.url)
-        return ResolvedDialPromptSkill(
+        return ResolvedSkill(
             url=config.url,
             metadata=parsed.metadata,
             content=content,
