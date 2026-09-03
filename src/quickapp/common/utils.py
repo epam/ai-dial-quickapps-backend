@@ -75,17 +75,15 @@ def sanitize_toolname(input_str: str) -> str:
     """
     Sanitizes a non-empty string to match the pattern ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$
 
-    Invalid characters are replaced with '_'; a leading character that isn't
-    a letter or underscore (a digit or '-') is itself prefixed with '_'
-    (some providers, e.g. Gemini, reject function names that don't start
-    with a letter or underscore, even though OpenAI and Anthropic allow it);
-    the result is truncated to 64 characters.
+    Invalid characters are replaced with '_'; a name that doesn't start with
+    a letter or an underscore is prefixed with '_' (some providers, e.g.
+    Gemini, reject such function names, even though OpenAI and Anthropic
+    allow them); the result is truncated to 64 characters.
+
+    An empty input is returned as-is.
     """
     sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('_', input_str)
-    # After the substitution the name holds only [a-zA-Z0-9_-], so an invalid
-    # leading character can only be a digit or '-'.
-    first_char = sanitized[:1]
-    if first_char.isdigit() or first_char == "-":
+    if sanitized and not (sanitized[0].isalpha() or sanitized[0] == "_"):
         sanitized = f"_{sanitized}"
     sanitized = sanitized[:64]
     return sanitized
