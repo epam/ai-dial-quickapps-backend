@@ -1,12 +1,4 @@
-"""Conformance tests for the three ``SkillSource`` adapters.
-
-Each adapter is a thin translation layer between an existing focused class
-(``AgentSkillsProvider``, ``_DialPromptSkillsContext``, ``_DialSkillsContext``
-+ ``DialSkillReader``) and the ``SkillSource`` shape ``SkillsRegistry``
-consumes. These tests pin that translation, independent of
-``SkillsRegistry``'s own merge logic (covered in
-``test_skills_registry_dial_skills.py``).
-"""
+"""Conformance tests for the three ``SkillSource`` adapters."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -32,7 +24,7 @@ class TestPredefinedSkillsSource:
     def test_display_name_is_human_readable(self):
         assert _PredefinedSkillsSource.display_name == "predefined skills"
 
-    def test_get_candidates_maps_metadata_and_content_with_no_read_file(self):
+    def test_get_candidates_maps_metadata_and_content_with_no_reader(self):
         provider = MagicMock(spec=AgentSkillsProvider)
         metadata = SkillMetadata(name="refunds", description="d")
         provider.get_all_skills.return_value = [metadata]
@@ -45,7 +37,7 @@ class TestPredefinedSkillsSource:
         candidate = candidates[0]
         assert candidate.metadata is metadata
         assert candidate.content == "body"
-        assert candidate.read_file is None
+        assert candidate.reader is None
 
     def test_report_exceptions_no_ops(self):
         source = _PredefinedSkillsSource(MagicMock(spec=AgentSkillsProvider))
@@ -62,7 +54,7 @@ class TestDialPromptSkillsSource:
     def test_display_name_is_human_readable(self):
         assert _DialPromptSkillsSource.display_name == "DIAL prompt skills"
 
-    def test_get_candidates_maps_from_context_with_no_read_file(self):
+    def test_get_candidates_maps_from_context_with_no_reader(self):
         context = _DialPromptSkillsContext()
         context.extend_resolved_skills([_prompt_skill("prompts/b/p", "p", content="body")])
         source = _DialPromptSkillsSource(context)
@@ -74,7 +66,7 @@ class TestDialPromptSkillsSource:
         assert candidate.url == "prompts/b/p"
         assert candidate.metadata.name == "p"
         assert candidate.content == "body"
-        assert candidate.read_file is None
+        assert candidate.reader is None
 
     def test_report_exceptions_forwards_to_context(self):
         context = _DialPromptSkillsContext()
@@ -107,10 +99,11 @@ class TestDialSkillsSource:
         assert candidate.url == "skills/b/s"
         assert candidate.metadata.name == "s"
         assert candidate.content == "body"
-        assert candidate.read_file is not None
+        assert candidate.files == ("a.md",)
+        assert candidate.reader is not None
 
     @pytest.mark.asyncio
-    async def test_candidate_read_file_calls_reader_with_the_right_skill(self):
+    async def test_candidate_read_file_calls_reader_with_itself(self):
         skill = _dial_skill("skills/b/s", "s", files=("a.md",))
         context = _DialSkillsContext()
         context.extend_resolved_skills([skill])
@@ -122,7 +115,7 @@ class TestDialSkillsSource:
         result = await candidate.read_file("a.md")
 
         assert result == "file content"
-        reader.read_bundled_file.assert_awaited_once_with(skill, "a.md")
+        reader.read_bundled_file.assert_awaited_once_with(candidate, "a.md")
 
     def test_report_exceptions_forwards_to_context(self):
         context = _DialSkillsContext()

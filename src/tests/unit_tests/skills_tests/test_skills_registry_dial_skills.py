@@ -86,10 +86,6 @@ class TestMerge:
             assert registry.get_skill_content(name)
 
     def test_precedence_is_independent_of_source_list_order(self):
-        # SkillsRegistry sorts by SkillSource.order itself, so the order the
-        # `sources` list arrives in (which — via DI — traces back to
-        # AppFactory.build_di_modules()'s module list order) must not affect
-        # the outcome: predefined must still beat a same-named dial skill.
         predefined = [SkillMetadata(name="shared", description="predefined")]
         predefined_source = _predefined_source(predefined, {"shared": "predefined"})
         dial_source, _, _ = _dial_skills_source([_dial_skill("skills/b/shared", "shared")])

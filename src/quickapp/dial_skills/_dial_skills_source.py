@@ -1,5 +1,3 @@
-import functools
-
 from injector import inject
 
 from quickapp.common.exceptions import SkillInitializationException
@@ -10,13 +8,7 @@ from quickapp.skills import ResolvedSkillCandidate, SkillSource
 
 @inject
 class _DialSkillsSource(SkillSource):
-    """Adapts ``_DialSkillsContext`` + ``DialSkillReader`` to ``SkillSource``.
-
-    The only source with bundled-file capability today: each candidate's
-    ``read_file`` is a closure over the specific ``ResolvedDialSkill`` and the
-    shared ``DialSkillReader``, so ``SkillsRegistry`` never needs to see
-    ``ResolvedDialSkill`` at all.
-    """
+    """Adapts ``_DialSkillsContext`` + ``DialSkillReader`` to ``SkillSource``."""
 
     order = 20
     display_name = "DIAL skill resources"
@@ -31,7 +23,8 @@ class _DialSkillsSource(SkillSource):
                 url=skill.url,
                 metadata=skill.metadata,
                 content=skill.content,
-                read_file=functools.partial(self._reader.read_bundled_file, skill),
+                files=skill.files,
+                reader=self._reader,
             )
             for skill in self._context.resolved_skills
         ]

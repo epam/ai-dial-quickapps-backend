@@ -3,7 +3,6 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.exceptions import SkillInitializationException
-from quickapp.skills._exceptions import SkillFilesNotSupportedError
 from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills._xml import generate_skills_xml
 from quickapp.skills.skill_source import ResolvedSkillCandidate, SkillSource
@@ -21,23 +20,15 @@ class SkillsRegistry(PromptPartProvider):
     """Request-scoped registry that merges every ``SkillSource`` into a single
     ``<available_skills>`` XML block.
 
-    By contract each source's underlying context is populated by its own
-    initializer during the initialization phase, so this class does **no
-    I/O** while merging: the first ``get_prompt_part()`` call runs a pure
-    in-memory merge and caches the result for the rest of the request.
-    Reading a *bundled file* of a skill is the one exception — that is lazy
-    by design and goes through ``read_skill_file``.
+    No I/O during merge — sources are populated by their own initializers
+    beforehand; ``get_prompt_part()`` runs a pure in-memory merge and caches
+    it. Reading a bundled file is the lazy exception, via ``read_skill_file``.
 
-    Precedence across sources is fixed by each ``SkillSource.order`` (a plain
-    int; lower wins), not by DI module registration order — reordering
-    ``AppFactory.build_di_modules()`` cannot change behavior. Within a single
-    source, first configured still wins (unchanged, source-internal dedup
-    already happens in each resolver). A name collision produces one
-    unified exception message naming the source that already claimed it by
-    its ``display_name``, regardless of which two sources are involved. The
-    exception is reported back to the losing candidate's own source via
-    ``report_exceptions``, so it surfaces in the unified "Initialization
-    issues" stage alongside per-URL and catastrophic failures.
+    Precedence is fixed by ``SkillSource.order`` (lower wins), not by DI
+    module registration order. A name collision produces one unified
+    exception message naming the winning source's ``display_name``,
+    reported back to the losing candidate's own source via
+    ``report_exceptions``.
     """
 
     def __init__(self, sources: list[SkillSource]) -> None:
@@ -81,38 +72,21 @@ class SkillsRegistry(PromptPartProvider):
         return self._merged
 
     async def get_prompt_part(self) -> str:
-        """Return merged skills XML for inclusion in the system prompt.
-
-        ``async`` to match ``PromptPartProvider``; body does no ``await`` —
-        the skill data is already loaded.
-        """
+        """Merged skills XML for the system prompt."""
         return self._get_merged().xml
 
     def get_skill_content(self, skill_name: str) -> str:
-        """Return the full content of a skill by name.
-
-        Synchronous pure dict lookup. Raises ``FileNotFoundError`` if the skill
-        is not in the merged set.
-        """
+        """Full content of a skill by name. Raises ``FileNotFoundError`` if unknown."""
         try:
             return self._get_merged().entries[skill_name].content
         except KeyError:
             raise FileNotFoundError(f"Skill not found: {skill_name}")
 
     async def read_skill_file(self, skill_name: str, file_path: str) -> str:
-        """Return the content of a file bundled with *skill_name*.
-
-        Pure lookup plus one delegated call: which sources support bundled
-        files, path normalization, and the I/O itself are all decided by
-        whichever ``SkillSource`` produced this candidate — this method never
-        needs to know which one that was.
-        """
+        """Content of a file bundled with *skill_name*, delegated to the candidate."""
         merged = self._get_merged()
         entry = merged.entries.get(skill_name)
         if entry is None:
             raise FileNotFoundError(f"Skill not found: {skill_name}")
-
-        if entry.read_file is None:
-            raise SkillFilesNotSupportedError(skill_name)
 
         return await entry.read_file(file_path)

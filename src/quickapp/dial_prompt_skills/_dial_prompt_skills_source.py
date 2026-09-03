@@ -7,11 +7,8 @@ from quickapp.skills import ResolvedSkillCandidate, SkillSource
 
 @inject
 class _DialPromptSkillsSource(SkillSource):
-    """Adapts ``_DialPromptSkillsContext`` to ``SkillSource``.
-
-    DIAL prompt skills are always single-document (no bundled files), so
-    every candidate's ``read_file`` stays ``None``.
-    """
+    """Adapts ``_DialPromptSkillsContext`` to ``SkillSource``. Prompt skills
+    are single-document, so candidates get no ``reader``."""
 
     order = 10
     display_name = "DIAL prompt skills"

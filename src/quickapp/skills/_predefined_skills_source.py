@@ -7,18 +7,8 @@ from quickapp.skills.skill_source import ResolvedSkillCandidate, SkillSource
 
 @inject
 class _PredefinedSkillsSource(SkillSource):
-    """Adapts ``AgentSkillsProvider`` to ``SkillSource``.
-
-    Predefined skills always win against every *other* source
-    (``order = 0``, the lowest value in practice); ``report_exceptions``
-    no-ops rather than growing ``AgentSkillsProvider`` — which stays exactly
-    the "pure data store" its own docstring promises — with collision
-    handling. Two predefined skills sharing a name is a same-source
-    collision this no-op would silently swallow, but that is
-    ``AgentSkillsProvider``'s own data-quality concern (a content-authoring
-    mistake at build time), not something a per-request merge adapter should
-    police.
-    """
+    """Adapts ``AgentSkillsProvider`` to ``SkillSource``. Predefined skills
+    always win (``order = 0``), so ``report_exceptions`` no-ops."""
 
     order = 0
     display_name = "predefined skills"
