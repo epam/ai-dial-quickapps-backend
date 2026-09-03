@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 _INVALID_TOOLNAME_CHARS_REGEXP: re.Pattern[str] = re.compile(r"[^a-zA-Z0-9_-]+")
+_INVALID_TOOLNAME_LEADING_CHAR_REGEXP: re.Pattern[str] = re.compile(r"^[^a-zA-Z_]")
 
 
 # Normalize propagation types (split wildcards like 'image/*' for matching)
@@ -73,12 +74,17 @@ def substitute_media_type(
 
 def sanitize_toolname(input_str: str) -> str:
     """
-    Sanitizes a string to match the pattern ^[a-zA-Z0-9_-]{1,64}$
+    Sanitizes a non-empty string to match the pattern ^[a-zA-Z_][a-zA-Z0-9_-]{0,63}$
 
-    Invalid characters are replaced with '_' and the result is truncated
-    to 64 characters.
+    Invalid characters are replaced with '_'; a leading character that isn't
+    a letter or underscore (a digit or '-') is itself prefixed with '_'
+    (some providers, e.g. Gemini, reject function names that don't start
+    with a letter or underscore, even though OpenAI and Anthropic allow it);
+    the result is truncated to 64 characters.
     """
     sanitized = _INVALID_TOOLNAME_CHARS_REGEXP.sub('_', input_str)
+    if _INVALID_TOOLNAME_LEADING_CHAR_REGEXP.match(sanitized):
+        sanitized = f"_{sanitized}"
     sanitized = sanitized[:64]
     return sanitized
 
