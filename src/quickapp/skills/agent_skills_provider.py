@@ -24,7 +24,6 @@ class AgentSkillsProvider(SkillsProvider):
     display_name = "predefined skills"
 
     def __init__(self, provider: PredefinedContentProvider) -> None:
-        self._resolved_skills: list[ResolvedSkill] = []
         self._by_name: dict[str, ResolvedSkill] = {}
         self._provider = provider
         self._load_skills()
@@ -36,7 +35,7 @@ class AgentSkillsProvider(SkillsProvider):
             logger.debug("No skills found in predefined content")
             return
 
-        skills: list[ResolvedSkill] = []
+        skills: dict[str, ResolvedSkill] = {}
         for file_stem in skill_names:
             try:
                 logger.debug(f"Loading skill `{file_stem}`")
@@ -59,22 +58,21 @@ class AgentSkillsProvider(SkillsProvider):
                     metadata.name,
                     file_stem,
                 )
-            skills.append(
-                ResolvedSkill(url=f"predefined:{metadata.name}", metadata=metadata, content=content)
+            skills[metadata.name] = ResolvedSkill(
+                url=f"predefined:{metadata.name}", metadata=metadata, content=content
             )
 
-        self._resolved_skills = skills
-        self._by_name = {skill.metadata.name: skill for skill in skills}
+        self._by_name = skills
         # DEBUG: superseded at INFO by the request-initialized lifecycle event.
         logger.debug("Loaded %d skill(s)", len(skills))
 
     @property
     def resolved_skills(self) -> list[ResolvedSkill]:
-        return self._resolved_skills
+        return list(self._by_name.values())
 
     def get_all_skills(self) -> list[SkillMetadata]:
         """Return the cached list of predefined skill metadata."""
-        return [skill.metadata for skill in self._resolved_skills]
+        return [skill.metadata for skill in self._by_name.values()]
 
     def get_skill_content(self, skill_name: str) -> str:
         """Return the full content of a skill file. Raises FileNotFoundError if not found."""
