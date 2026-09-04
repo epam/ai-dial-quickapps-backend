@@ -13,7 +13,7 @@ When a QuickApp calls another QuickApp as a tool, the sub-app's UI stages are si
 
 ## Root Cause
 
-`DialCompletionService._consume_stream()` constructs `ChatStreamConfig` without a `destination` and without `propagate_stages=True`. As a result, `ChoiceUiSink` is instantiated but completely inert: it parses the sub-app's stage deltas into `ChatStreamAccumulator.stages` but never forwards them to the parent `Choice`. The accumulated stages are never read by `complete_request_async()` and are effectively thrown away.
+`DialCompletionService._consume_stream()` constructs `ChatStreamConfig` without a `destination` and without `propagate_stages=True`. As a result, `ChoiceUiSink` is instantiated but completely inert — its `on_delta()` returns immediately when `destination is None`. The sub-app's stage deltas are accumulated into `ChatStreamAccumulator.stages` by `AccumulationSink`, but `complete_request_async()` never reads that field, so the stages are effectively thrown away.
 
 ```
 BaseDeploymentTool
@@ -157,3 +157,46 @@ The UI must:
 |---|---|---|
 | Approach 1 | — | 6 files, ~40 lines |
 | Approach 2 | 3 files, ~40 lines | 8 files, ~80 lines |
+
+---
+
+## Review Notes — Round 1
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-09-04
+
+### Verdict
+
+Blocking issues must be addressed.
+
+The root cause description contains a factual inaccuracy that would mislead implementors, and the document presents two competing approaches without declaring which is the proposal. Structurally, the doc is missing five required sections from the template. Once a single approach is chosen and the structural gaps are filled, this should be straightforward to bring to approval.
+
+### Blocking issues
+
+1. **Root Cause** — The doc states: "ChoiceUiSink is instantiated but completely inert: it parses the sub-app's stage deltas into `ChatStreamAccumulator.stages` but never forwards them to the parent `Choice`." Both claims are wrong. `ChoiceUiSink.on_delta()` returns immediately when `destination is None` (`choice_ui_stream_sink.py`, line 80) — it does not parse or accumulate anything in the deployment path. The accumulation of stage deltas into `ChatStreamAccumulator.stages` is performed by `AccumulationSink.on_delta()` (`common/chat_completion_stream/accumulation_stream_sink.py`, lines 23–24), a separate sink that always runs. An implementor reading the doc and then the code will not find accumulation logic in `ChoiceUiSink` and may look in the wrong place for the fix.
+   **Suggestion:** Revise the root cause to attribute stage accumulation to `AccumulationSink`. Describe `ChoiceUiSink` as inert in the deployment path because `on_delta` short-circuits at `destination is None` before it ever reaches `_apply_custom` — the pipeline runs, stages are accumulated by `AccumulationSink`, but `ChoiceUiSink` never forwards them to the parent `Choice`.
+
+2. **No clear proposed approach** — The doc presents Approach 1 and Approach 2 as parallel options without indicating which is the proposal and which is deferred. A design document must converge on one approach. As written, it reads as a comparison study, not a design ready for approval and implementation.
+   **Suggestion:** Nominate one approach as the proposal (the doc's own framing of Approach 1 as "short-term" and Approach 2 as "target architecture" suggests a natural split). Move the deferred approach — most likely Approach 2, which requires an `aidial_sdk` bump and UI-team coordination — into an "Out of Scope" section with a note explaining its prerequisites.
+
+### Suggestions
+
+1. **Missing Design Goals section** — The doc has no "Design Goals" section. Per `docs/designs/README.md`, goals must be concrete and independently verifiable. Consider: "Sub-app stage names appear in the parent stream for any A→B call when `ENABLE_PREVIEW_FEATURES=true`"; "Nesting depth > 1 produces distinct prefixes per level without index collision"; "Disabling the feature (`orchestrator.propagate_sub_stages: false`) produces byte-identical output to today."
+
+2. **Missing Use Cases section** — No trigger/behavior/outcome scenarios are given. Even a single use case — QuickApp A calling QuickApp B as a tool — anchored with what a user sees in the UI before and after, would ground both approaches and make the trade-off between them concrete.
+
+3. **Missing Out of Scope section** — Nothing is explicitly deferred. At minimum: stage content/attachments from sub-apps; non-deployment tools (REST, MCP, internal); error stages from the sub-app; and the Approach 1 → Approach 2 migration path. Without explicit deferrals, reviewers and implementors will ask about these themselves.
+
+4. **Missing Migration section** — (a) Existing manifests without `orchestrator.propagate_sub_stages` will silently opt in to sub-stage propagation when `ENABLE_PREVIEW_FEATURES=true` because the proposed default is `true`. This is a behavioral change for anyone relying on the current (silent) behavior; state it explicitly and justify the choice of an opt-in default. (b) For Approach 2: the `parent_stage_index` backward-compatibility guarantee (absent field = top-level stage) lives only in the wire-format section; it must also appear in a Migration section for UI and SDK consumers.
+
+5. **Missing Configuration / Usage Examples section** — The doc introduces `orchestrator.propagate_sub_stages` but never shows what the field looks like in a manifest, how to disable it, or what the observable difference is between `true` and `false`. A one- or two-entry manifest snippet would suffice.
+
+6. **"Scale of changes" is not a Summary of Changes** — The closing table lists file counts, not the fields, classes, and interfaces added or modified. Per `docs/designs/README.md`, a Summary of Changes should be "a scannable reference of all additions, removals, and modifications, grouped by component." Replace the table with a grouped list (e.g., new `PreviewField orchestrator.propagate_sub_stages`, new `ChatStreamConfig.sub_stage_prefix`, changed `ChoiceUiSink.__init__` signature, new `Stage.stage_index` property, etc.).
+
+7. **Approach 1 / Approach 2 DI asymmetry** — Approach 1 says "Inject `Choice` into `DialCompletionService`" while Approach 2 threads `parent_stage: Stage | None` as a new method parameter to `complete_request_async`. No rationale is given for the asymmetry. Since `stage_wrapper` is already passed as a method parameter today, parameter-threading is the established pattern and introduces less coupling. Consider making Approach 1 use the same pattern.
+
+### Nits
+
+1. **Header metadata format** — The doc uses `**Status:** Draft` as inline bold text rather than the list format `- **Status:** Draft` that `docs/designs/template.md` specifies. Other docs in this directory follow the list form. Also, there is no `- **Dependencies:**` entry.
+
+2. **Gating description in Approach 2** — "The feature is gated identically to Approach 1" assumes the reader read Approach 1 first. Readers who start from Approach 2 or read non-linearly won't have the context. Consider restating the gating in one sentence.
