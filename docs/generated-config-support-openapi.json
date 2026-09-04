@@ -71,18 +71,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "oneOf": [
-                  {
-                    "$ref": "#/components/schemas/DialPromptSkillConfig"
-                  }
-                ],
-                "title": "Config",
-                "discriminator": {
-                  "propertyName": "type",
-                  "mapping": {
-                    "dial-prompt": "#/components/schemas/DialPromptSkillConfig"
-                  }
-                }
+                "$ref": "#/components/schemas/DialPromptSkillConfig"
               }
             }
           },

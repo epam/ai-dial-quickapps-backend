@@ -7,7 +7,7 @@ from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.skill import DialPromptSkillConfig, SkillConfig
+from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import (
     fetch_and_validate_dial_prompt_skill,
 )
@@ -47,14 +47,14 @@ class _Controller:
         async def get_skills() -> list[SkillMetadata]:
             return self.__skills_provider.get_all_skills()
 
+        # Deliberately typed to DialPromptSkillConfig rather than the SkillConfig
+        # union: a DIAL skill resource is created and validated by Core (a stored
+        # skill already has a valid SKILL.md), so there is nothing for this
+        # endpoint to add for `dial-skill`. Keeping the union here would publish
+        # an OpenAPI that advertises a request this handler cannot serve.
         @app.post(CONFIG_SUPPORT_URI + "/skills/validate", response_model=SkillMetadata)
-        async def validate_skill(config: SkillConfig, request: Request) -> SkillMetadata:
-            if isinstance(config, DialPromptSkillConfig):
-                return await self._validate_dial_prompt_skill(config, request)
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unsupported skill type: {config.type}",
-            )
+        async def validate_skill(config: DialPromptSkillConfig, request: Request) -> SkillMetadata:
+            return await self._validate_dial_prompt_skill(config, request)
 
     async def _validate_dial_prompt_skill(
         self,

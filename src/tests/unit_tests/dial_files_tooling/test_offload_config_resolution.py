@@ -66,13 +66,19 @@ class TestOffloadConfigResolution:
         config = _resolve(_make_app_config(offload=_make_offload(excluded_tools={"tool_a"})))
         assert isinstance(config.excluded_tools, frozenset)
         assert config.excluded_tools == frozenset(
-            {"tool_a", "internal_file_read_lines", "internal_file_search"}
+            {
+                "tool_a",
+                "internal_file_read_lines",
+                "internal_file_search",
+                "internal_skills_read_skill",
+            }
         )
 
     def test_read_back_tools_always_excluded_even_when_config_omits_them(self):
         config = _resolve(_make_app_config(offload=_make_offload(excluded_tools=set())))
         assert "internal_file_read_lines" in config.excluded_tools
         assert "internal_file_search" in config.excluded_tools
+        assert "internal_skills_read_skill" in config.excluded_tools
 
     def test_disabled_when_read_back_tools_not_in_enabled_list(self):
         config = _resolve(_make_app_config(enabled_tools=["write", "edit"]))

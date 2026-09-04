@@ -1329,6 +1329,29 @@
       "title": "DialPromptSkillConfig",
       "type": "object"
     },
+    "DialSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-skill",
+          "default": "dial-skill",
+          "description": "Skill sourced from a DIAL skill resource (folder with SKILL.md).",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialSkillConfig",
+      "type": "object",
+      "x-preview": true
+    },
     "DialSystemPromptConfig": {
       "properties": {
         "type": {
@@ -3743,13 +3766,17 @@
           "items": {
             "discriminator": {
               "mapping": {
-                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+                "dial-prompt": "#/$defs/DialPromptSkillConfig",
+                "dial-skill": "#/$defs/DialSkillConfig"
               },
               "propertyName": "type"
             },
             "oneOf": [
               {
                 "$ref": "#/$defs/DialPromptSkillConfig"
+              },
+              {
+                "$ref": "#/$defs/DialSkillConfig"
               }
             ]
           },
