@@ -12,6 +12,7 @@ from quickapp.dial_skills._dial_skill_resolver import DialSkillResolver
 from quickapp.dial_skills._dial_skills_client import _DialSkillsClient
 from quickapp.dial_skills._dial_skills_context import _DialSkillsContext
 from quickapp.dial_skills._settings import DialSkillsSettings
+from quickapp.skills import SkillsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -39,3 +40,7 @@ class DialSkillsModule(Module):
         self, context: _DialSkillsContext
     ) -> list[InitializationException]:
         return context.exceptions
+
+    @multiprovider
+    def __provide_skill_providers(self, context: _DialSkillsContext) -> list[SkillsProvider]:
+        return [context]

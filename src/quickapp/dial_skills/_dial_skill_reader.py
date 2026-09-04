@@ -2,9 +2,8 @@ import threading
 
 from injector import inject
 
-from quickapp.dial_skills._dial_skill_resolver import ResolvedDialSkill
 from quickapp.dial_skills._dial_skills_client import MANIFEST_NAME, _DialSkillsClient
-from quickapp.skills import SkillFileNotFoundError
+from quickapp.skills import ResolvedSkill, SkillFileNotFoundError, SkillFileReader
 
 
 def _normalize_file_path(file_path: str) -> str:
@@ -13,14 +12,10 @@ def _normalize_file_path(file_path: str) -> str:
 
 
 @inject
-class DialSkillReader:
+class DialSkillReader(SkillFileReader):
     """Reads one file bundled with a resolved DIAL skill.
 
-    The one I/O operation the ``skills`` layer needs from ``dial_skills``
-    beyond the merge-time state ``_DialSkillsContext`` already exposes.
-    Request-scoped, so its own memoization cache lives exactly as long as one
-    request needs it — nothing else reads or writes this cache, so it stays
-    private here rather than in the shared context.
+    Request-scoped; its own memoization cache lives as long as one request.
     """
 
     def __init__(self, client: _DialSkillsClient) -> None:
@@ -28,14 +23,12 @@ class DialSkillReader:
         self._file_cache: dict[tuple[str, str], str] = {}
         self._lock = threading.Lock()
 
-    async def read_bundled_file(self, skill: ResolvedDialSkill, file_path: str) -> str:
+    async def read_bundled_file(self, skill: ResolvedSkill, file_path: str) -> str:
         """Read one file bundled with *skill*, honoring its inventory.
 
-        Readability is inventory membership: a path is served only if it was
-        advertised in the skill's ``<skill_files>`` block. That single check
-        also covers traversal, encoded separators and hidden files — the model
-        can only ask for what it was told exists. Reads are memoized for the
-        rest of the request, so re-reading a reference costs nothing.
+        Readability is inventory membership — covers traversal, encoded
+        separators and hidden files too, since the model can only ask for
+        what it was told exists.
         """
         normalized = _normalize_file_path(file_path)
         if normalized == MANIFEST_NAME:

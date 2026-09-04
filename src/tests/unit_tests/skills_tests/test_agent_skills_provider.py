@@ -303,3 +303,35 @@ class TestGetSkillContent:
 
         with pytest.raises(FileNotFoundError, match="Skill not found"):
             asp.get_skill_content("nonexistent-skill")
+
+
+# ---------------------------------------------------------------------------
+# SkillsProvider conformance
+# ---------------------------------------------------------------------------
+
+
+class TestSkillsProvider:
+    """AgentSkillsProvider is the SkillsProvider for predefined skills."""
+
+    def test_order_is_lowest(self):
+        assert AgentSkillsProvider.order == 0
+
+    def test_display_name_is_human_readable(self):
+        assert AgentSkillsProvider.display_name == "predefined skills"
+
+    def test_resolved_skills_carry_metadata_and_content_with_no_reader(self):
+        provider = PredefinedContentProvider(PredefinedSettings())
+        asp = AgentSkillsProvider(provider)
+
+        by_name = {s.metadata.name: s for s in asp.resolved_skills}
+
+        assert "tool-call-file-parameter-formatting" in by_name
+        skill = by_name["tool-call-file-parameter-formatting"]
+        assert skill.content == asp.get_skill_content("tool-call-file-parameter-formatting")
+        assert skill.reader is None
+
+    def test_resolved_skills_agrees_with_get_all_skills(self):
+        provider = PredefinedContentProvider(PredefinedSettings())
+        asp = AgentSkillsProvider(provider)
+
+        assert [s.metadata for s in asp.resolved_skills] == asp.get_all_skills()
