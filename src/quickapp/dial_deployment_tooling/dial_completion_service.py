@@ -7,6 +7,7 @@ from aidial_client.types.chat.request_param import (
     CustomContentParam,
     UserMessageParam,
 )
+from aidial_sdk.chat_completion import Choice, Stage
 from injector import inject
 from openai.types.chat import ChatCompletionChunk
 
@@ -42,12 +43,14 @@ class DialCompletionService:
         stream_handler: ChatCompletionStreamHandler,
         timeout_resolver: ToolTimeoutResolver,
         attachment_resolver: AttachmentResolver,
+        choice: Choice,
     ) -> None:
         self.__azure_client = azure_client
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
         self.__stream_handler = stream_handler
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__attachment_resolver = attachment_resolver
+        self.__choice = choice
 
     async def complete_request_async(
         self,
@@ -58,6 +61,7 @@ class DialCompletionService:
         relative_attachment_urls: list[str] | None = None,
         history: list[UserMessageParam | AssistantMessageParam] | None = None,
         supports_url_attachments: bool = False,
+        parent_stage: Stage | None = None,
     ) -> ToolCallResult:
         # Expect params to be pre-processed by BaseDeploymentTool._pre_process_params
         content = params.get(CONTENT_PARAM, "")
@@ -77,7 +81,7 @@ class DialCompletionService:
                 params, deployment_id, messages, self.__forwarded_headers
             )
             chunks = await self.__azure_client.chat.completions.create(**chat_params)
-            result = await self._consume_stream(chunks, stage_wrapper)
+            result = await self._consume_stream(chunks, stage_wrapper, parent_stage)
 
         return ToolCallResult(
             content=result.content,
@@ -121,11 +125,22 @@ class DialCompletionService:
         self,
         chunks: AsyncIterable[ChatCompletionChunk],
         stage_wrapper: BaseStageWrapper | None,
+        parent_stage: Stage | None = None,
     ) -> ChatStreamAccumulator:
+        if parent_stage is not None:
+            config = ChatStreamConfig(
+                stage_wrapper=stage_wrapper,
+                destination=self.__choice,
+                propagate_stages=True,
+                stream_content=False,
+                parent_stage=parent_stage,
+            )
+        else:
+            config = ChatStreamConfig(stage_wrapper=stage_wrapper)
         try:
             return await self.__stream_handler.process_stream(
                 chunks=chunks,
-                config=ChatStreamConfig(stage_wrapper=stage_wrapper),
+                config=config,
             )
         except ChatStreamHandlerError:
             logger.exception("Deployment stream handling failed.")

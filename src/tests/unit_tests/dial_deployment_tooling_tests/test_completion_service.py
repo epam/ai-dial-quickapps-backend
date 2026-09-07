@@ -51,6 +51,7 @@ def completion_service(azure_client, attachment_resolver):
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
     )
 
 
@@ -294,6 +295,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
     )
 
     await service.complete_request_async(

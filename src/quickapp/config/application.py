@@ -95,6 +95,14 @@ class OrchestratorConfig(BaseModel):
             "MIMEs are surfaced as XML metadata only)."
         ),
     )
+    propagate_sub_stages: bool | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "When True (default when preview features are enabled), stages emitted by "
+            "sub-apps called as tools are propagated as nested children of the "
+            "'Calling X' stage. Set to False to disable."
+        ),
+    )
 
 
 def nullify_preview_fields(model: BaseModel) -> None:

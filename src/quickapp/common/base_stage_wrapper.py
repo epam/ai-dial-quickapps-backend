@@ -31,6 +31,10 @@ class BaseStageWrapper(ABC):
             extract_parameters_config_map(tool_config)
         )
 
+    @property
+    def stage(self) -> Stage:
+        return self.__stage
+
     def __enter__(self) -> "BaseStageWrapper":
         if self.__already_open:
             # Stage was opened while tool-call arguments streamed; skip re-open.
