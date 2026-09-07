@@ -126,7 +126,10 @@ class BaseDeploymentTool(StagedBaseTool):
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
         history = await self._resolve_history(tool_config, session_id)
-        propagate = self.__app_config.orchestrator.propagate_sub_stages is not False
+        stage_display = (
+            self.__app_config.features.stage_display if self.__app_config.features else None
+        )
+        propagate = stage_display.propagate_sub_stages is not False if stage_display else True
         parent_stage = stage_wrapper.stage if (propagate and stage_wrapper is not None) else None
         result = await self.__dial_completion_service.complete_request_async(
             kwargs,

@@ -42,6 +42,14 @@ class StageDisplayConfig(BaseModel):
         default=StageDisplayLevel.INFO,
         description="Threshold for stage visibility. none=no stages at all; errors=failures only; info=user-facing (default); debug=all.",
     )
+    propagate_sub_stages: bool | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "When True (default when preview features are enabled), stages emitted by "
+            "sub-apps called as tools are propagated as nested children of the "
+            "'Calling X' stage. Set to False to disable."
+        ),
+    )
 
 
 def get_max_iterations() -> int:
@@ -93,14 +101,6 @@ class OrchestratorConfig(BaseModel):
             "When unset, the orchestrator gets no admin/user attachments on the "
             "native path (legacy behaviour: USER `image/*` passes through, other "
             "MIMEs are surfaced as XML metadata only)."
-        ),
-    )
-    propagate_sub_stages: bool | None = PreviewField(  # type: ignore[assignment]
-        default=None,
-        description=(
-            "When True (default when preview features are enabled), stages emitted by "
-            "sub-apps called as tools are propagated as nested children of the "
-            "'Calling X' stage. Set to False to disable."
         ),
     )
 
