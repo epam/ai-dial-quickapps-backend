@@ -81,7 +81,7 @@ class ChatStreamSinkFactory:
         return ChatStreamPipeline(
             accumulator,
             [
-                AccumulationSink(accumulator, stream_content=config.stream_content),
+                AccumulationSink(accumulator),
                 ChoiceUiSink(
                     accumulator,
                     destination=config.destination,

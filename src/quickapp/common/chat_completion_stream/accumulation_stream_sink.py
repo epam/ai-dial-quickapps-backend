@@ -9,9 +9,8 @@ from quickapp.common.chat_completion_stream.stream_sink import ChatStreamSink
 class AccumulationSink(ChatStreamSink):
     """Always active: builds the in-memory stream result for history / execute / logs."""
 
-    def __init__(self, accumulator: ChatStreamAccumulator, *, stream_content: bool = True) -> None:
+    def __init__(self, accumulator: ChatStreamAccumulator) -> None:
         self._accumulator = accumulator
-        self._stream_content = stream_content
 
     def on_stream_start(self) -> None:
         return
@@ -25,7 +24,7 @@ class AccumulationSink(ChatStreamSink):
             if norm.state is not None:
                 self._accumulator.merge_state(norm.state)
 
-        if delta.content and self._stream_content:
+        if delta.content:
             self._accumulator.append_content(delta.content)
 
         for tool_call in delta.tool_calls:
