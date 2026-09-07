@@ -89,7 +89,7 @@ class _DialSkillsClient:
         catch and a message that always names a reason.
         """
         try:
-            response = await self._skills.get_file(url, file_path)
+            response = await self._skills(url=url).files(path=file_path).read()
             content = await response.aget_content()
         except Exception as exc:
             raise DialSkillFileReadError(file_path, describe_exception(exc)) from exc
@@ -110,13 +110,16 @@ class _DialSkillsClient:
         by a repeated-token guard: nothing above this imposes a deadline, so a
         stuck cursor must not be able to hang initialization.
         """
+        # Built once: the url is parsed here rather than on every page.
+        files = self._skills(url=url).files
+
         paths: dict[str, None] = {}
         seen_tokens: set[str] = set()
         token: str | None = None
         truncated = False
 
         for _ in range(self._settings.listing_max_pages):
-            page = await self._skills.list_files(url, token=token, recursive=True)
+            page = await files.list(token=token, recursive=True)
             prefix = page.url if page.url.endswith("/") else f"{page.url}/"
 
             for item in page.items or []:
@@ -156,8 +159,6 @@ class _DialSkillsClient:
     def _is_advertisable(relative_path: str) -> bool:
         """Whether *relative_path* may be shown to, and read by, the model."""
         if not relative_path or relative_path.endswith("/"):
-            # Core reports subfolders as items too; the trailing slash is the
-            # only reliable signal (see SkillFileItem in aidial-client).
             return False
         if relative_path == MANIFEST_NAME:
             # Already served by read_skill without a file_path.

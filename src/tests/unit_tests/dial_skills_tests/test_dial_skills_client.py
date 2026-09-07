@@ -1,7 +1,8 @@
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
+from typing import cast
 
 import pytest
+from aidial_client import AsyncDial
 
 from quickapp.dial_skills._dial_skills_client import _DialSkillsClient
 from quickapp.dial_skills._exceptions import (
@@ -24,18 +25,79 @@ def _page(urls: list[str], next_token: str | None = None) -> SimpleNamespace:
     )
 
 
+class _FakeFilesRef:
+    """The tail of ``client.skills(url=...).files(path=...)``.
+
+    Hand-written rather than a MagicMock chain: ``skill.files.list()`` and
+    ``skill.files(path=...).read()`` land on *different* auto-created mocks,
+    so a fixture that stubs one silently fails to intercept the other. The
+    signatures mirror the real reference, so a drift shows up as a TypeError.
+    """
+
+    def __init__(self, recorder: "_FakeSkills", url: str, path: str | None = None):
+        self._recorder = recorder
+        self._url = url
+        self._path = path
+
+    def __call__(self, *, path: str) -> "_FakeFilesRef":
+        return _FakeFilesRef(self._recorder, self._url, path)
+
+    async def list(
+        self,
+        *,
+        limit: int | None = None,
+        token: str | None = None,
+        recursive: bool | None = None,
+    ) -> SimpleNamespace:
+        self._recorder.list_calls.append({"url": self._url, "token": token, "recursive": recursive})
+        pages = self._recorder.pages
+        return pages[min(len(self._recorder.list_calls) - 1, len(pages) - 1)]
+
+    async def read(self) -> SimpleNamespace:
+        self._recorder.read_calls.append((self._url, self._path))
+        if self._recorder.read_error is not None:
+            raise self._recorder.read_error
+
+        async def aget_content() -> bytes:
+            return self._recorder.content
+
+        return SimpleNamespace(aget_content=aget_content)
+
+
+class _FakeSkillRef:
+    def __init__(self, recorder: "_FakeSkills", url: str):
+        self._recorder = recorder
+        self._url = url
+
+    @property
+    def files(self) -> _FakeFilesRef:
+        return _FakeFilesRef(self._recorder, self._url)
+
+
+class _FakeSkills:
+    """Stands in for ``AsyncDial.skills`` and records what was asked for."""
+
+    def __init__(self, pages: list[SimpleNamespace], content: bytes):
+        self.pages = pages
+        self.content = content
+        self.read_error: BaseException | None = None
+        self.list_calls: list[dict[str, object]] = []
+        self.read_calls: list[tuple[str, str | None]] = []
+
+    def __call__(self, *, url: str) -> _FakeSkillRef:
+        return _FakeSkillRef(self, url)
+
+
 def _make_client(
     *,
     pages: list[SimpleNamespace] | None = None,
     content: bytes = b"hello",
     settings: DialSkillsSettings | None = None,
-) -> tuple[_DialSkillsClient, MagicMock]:
-    dial_client = MagicMock()
-    download = MagicMock()
-    download.aget_content = AsyncMock(return_value=content)
-    dial_client.skills.get_file = AsyncMock(return_value=download)
-    dial_client.skills.list_files = AsyncMock(side_effect=pages or [_page([])])
-    return _DialSkillsClient(dial_client, settings or DialSkillsSettings()), dial_client
+) -> tuple[_DialSkillsClient, _FakeSkills]:
+    skills = _FakeSkills(pages or [_page([])], content)
+    dial_client = cast(AsyncDial, SimpleNamespace(skills=skills))
+    client = _DialSkillsClient(dial_client, settings or DialSkillsSettings())
+    return client, skills
 
 
 class TestListTextFiles:
@@ -113,7 +175,7 @@ class TestListTextFiles:
         inventory = await client.list_text_files(SKILL_URL)
 
         assert inventory.files == ("a.md", "b.md")
-        assert dial.skills.list_files.await_count == 2
+        assert len(dial.list_calls) == 2
 
     @pytest.mark.asyncio
     async def test_stops_on_repeated_token(self):
@@ -128,7 +190,7 @@ class TestListTextFiles:
 
         # A cursor that does not advance must not spend the page budget.
         assert inventory.files == ("a.md", "b.md")
-        assert dial.skills.list_files.await_count == 2
+        assert len(dial.list_calls) == 2
 
     @pytest.mark.asyncio
     async def test_page_budget_marks_truncated(self):
@@ -146,7 +208,7 @@ class TestListTextFiles:
 
         assert inventory.files == ("a.md", "b.md")
         assert inventory.truncated is True
-        assert dial.skills.list_files.await_count == 2
+        assert len(dial.list_calls) == 2
 
     @pytest.mark.asyncio
     async def test_max_files_marks_truncated(self):
@@ -205,7 +267,7 @@ class TestReadTextFile:
         client, dial = _make_client()
         # str(TimeoutError()) is empty, which would otherwise produce a
         # reason-less "Failed to read ...: " message.
-        dial.skills.get_file = AsyncMock(side_effect=TimeoutError())
+        dial.read_error = TimeoutError()
 
         with pytest.raises(DialSkillFileReadError, match="TimeoutError"):
             await client.read_text_file(SKILL_URL, "slow.md")
@@ -215,4 +277,4 @@ class TestReadTextFile:
         client, dial = _make_client(content=b"manifest")
 
         assert await client.read_manifest(SKILL_URL) == "manifest"
-        dial.skills.get_file.assert_awaited_once_with(SKILL_URL, "SKILL.md")
+        assert dial.read_calls == [(SKILL_URL, "SKILL.md")]
