@@ -21,6 +21,7 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
+from quickapp.config.subagent import SubagentConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -263,6 +264,13 @@ class ApplicationConfig(BaseApplicationTypeConfig):
     hooks: list[HookConfig] | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description="Config-driven hooks fired at named orchestrator seams.",
+    )
+    subagents: list[SubagentConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Subagent types this app may spawn. Each spawn runs its own orchestrator "
+            "loop in an isolated context and returns a single result."
+        ),
     )
     features: Features | None = Field(
         default_factory=Features,
