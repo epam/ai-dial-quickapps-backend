@@ -30,3 +30,23 @@ class TestSanitizeToolname:
 
     def test_empty_string_returns_empty(self):
         assert sanitize_toolname("") == ""
+
+    def test_leading_digit_prefixed_with_underscore(self):
+        assert sanitize_toolname("27.03 notion toolset") == "_27_03_notion_toolset"
+
+    def test_sanitizing_twice_is_idempotent(self):
+        once = sanitize_toolname("123abc")
+        assert sanitize_toolname(once) == once == "_123abc"
+
+    def test_leading_hyphen_prefixed_with_underscore(self):
+        assert sanitize_toolname("-notion toolset") == "_-notion_toolset"
+
+    def test_leading_letter_not_prefixed(self):
+        assert sanitize_toolname("abc123") == "abc123"
+
+    def test_leading_underscore_not_prefixed(self):
+        assert sanitize_toolname("_abc123") == "_abc123"
+
+    def test_truncates_at_64_chars_after_leading_digit_prefix(self):
+        long_name = "1" + "a" * 70
+        assert sanitize_toolname(long_name) == "_1" + "a" * 62
