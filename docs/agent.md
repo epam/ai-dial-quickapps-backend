@@ -240,6 +240,7 @@ Quick Apps supports several tool types:
 - **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
   tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
   conditionally (see [Attachment Notification](#attachment-notification)).
+- **Subagent Tool** (`task`, preview): spawns a helper agent in-process (see [Subagents](#subagents)).
 
 ### Parallel Execution
 
@@ -319,6 +320,49 @@ open-init-call-teardown per call, which lost all session state and re-negotiated
   is no configuration flag.
 
 ---
+
+## Subagents
+
+Preview-gated (`ENABLE_PREVIEW_FEATURES=true`), owned by `subagent_tooling/`. A **subagent** is a
+helper agent the orchestrator spawns to carry out one scoped task; it runs its own orchestrator loop
+over its own conversation and returns a single result. Its intermediate work never enters the
+coordinator's context, which is the point: the token and attention cost of a sub-task is dropped
+when the spoke returns.
+
+There is exactly one subagent type, and `features.subagents.enabled` is the only switch. The
+coordinator's LLM gets one tool, `task(prompt, tool_sets)`, and **both arguments are required**:
+`prompt` is everything the spoke will see, and `tool_sets` names which of the app's tool sets it may
+use. A spoke inherits none of the coordinator's tools, so the scoping decision is made per call, by
+the model, at the moment it delegates — an allowlist a builder would have had to guess at authoring
+time instead fits the task actually being delegated. The enum is drawn from the app's own enabled
+tool sets, so a spoke can never reach a tool the coordinator does not already hold; `[]` is a
+deliberate reasoning-only spoke. `_SubagentTool` rejects an unknown name with
+`InvalidToolCallParameterException` rather than dropping it, since a spoke silently running with
+fewer tools than intended answers from the prompt alone and sounds confident doing it.
+
+**How a spawn runs.** `SubagentSpawner` compiles the call plus the coordinator's manifest into a
+full `ApplicationConfig` (`compile_subagent_manifest`) — filtering `tool_sets` down to the ones this
+call named, replacing the system prompt (`features.subagents.system_prompt` or the built-in
+general-purpose one), inheriting `contexts` / `skills` / `hooks` / other `features`, and clearing
+`features.subagents` so a spoke cannot spawn. It then enters a fresh DI request
+scope inside an `asyncio.Task` (the scope key is a `ContextVar`, and asyncio copies context per
+task, so parent and child scopes cannot leak into each other), runs the completion initializers,
+sets the task as the sole user message, and invokes a child `Orchestrator`.
+
+**Output.** The child scope's `Choice` is backed by `SubagentOutputSink`, an `asyncio.Queue`
+standing in for the SDK's `ChunkQueue`. Because `Choice` and `Stage` write nothing but typed chunks
+to that queue, the sink captures the spoke's whole output without the orchestrator being aware it is
+not writing to a user — its prose streams into the coordinator's `task` stage as live progress, its
+own stages render there as they close, its attachments come back on the `ToolCallResult`, and its
+state is dropped (spokes are stateless).
+
+**Bounds.** A spawn is capped by `SUBAGENT_TIMEOUT_SECONDS` (`features.subagents.timeout_seconds`
+may shorten it, never extend it) and concurrent spawns by `SUBAGENT_MAX_CONCURRENT_SPAWNS`, a
+process-wide singleton semaphore; excess spawns queue rather than fail. A spawn that produces no
+final assistant message, or that times out, raises `SubagentToolErrorException` — an answerless
+spoke must never reach the LLM as an empty *success*.
+
+See [`docs/designs/general_purpose_subagent.md`](designs/general_purpose_subagent.md) for the full design.
 
 ## Message Processing
 

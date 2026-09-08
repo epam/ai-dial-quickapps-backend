@@ -42,6 +42,7 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import CustomSystemPromptConfig
+from quickapp.config.subagent import SubagentsConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.web_fetch import WebFetchConfig
@@ -83,6 +84,10 @@ def build_dump_application_config() -> ApplicationConfig:
             dial_files=DialFilesConfig(),
             web_fetch=WebFetchConfig(enabled=True),
             representation_tooling=RepresentationToolingConfig(),
+            # Materializes the `task` tool. Its `tool_sets` enum is drawn from the
+            # app's own tool sets, so with none configured here the dumped schema shows
+            # the parameter unconstrained rather than with a fabricated enum.
+            subagents=SubagentsConfig(enabled=True),
         ),
     )
 
