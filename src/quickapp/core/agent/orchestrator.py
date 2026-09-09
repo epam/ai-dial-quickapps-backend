@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion.chunks import ArbitraryChunk
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 from openai import APIError, AsyncStream
@@ -34,6 +35,12 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent._annotation_propagation import (
+    PendingAnnotation,
+    anchor_ids_in_text,
+    keep_anchored,
+    resolve_pending,
+)
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.core.agent.tool_executor import ToolExecutor
@@ -105,6 +112,7 @@ class Orchestrator:
             request_async_close_registry
         )
         self.__propagated_attachment_urls: set[str] = set()
+        self.__pending_annotations: list[PendingAnnotation] = []
 
     @property
     def iteration_count(self) -> int:
@@ -222,6 +230,7 @@ class Orchestrator:
         _log_messages("Message from agent", self.__messages_context.messages)
 
         if not tool_calls:
+            self._emit_annotations(stream_result.content)
             self.__perf_timer.stop_period(period)
             self.__deferred_stage_close_registry.flush()
             return False
@@ -277,8 +286,40 @@ class Orchestrator:
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.annotations:
+                # Held until the final answer exists: an annotation anchors into that text.
+                self.__pending_annotations.extend(
+                    resolve_pending(tool_call_result.annotations, tool_call_result.content)
+                )
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
+
+    def _emit_annotations(self, final_content: str) -> None:
+        """Send citation annotations on the choice, after the answer text."""
+        pending = self.__pending_annotations
+        self.__pending_annotations = []
+        if not pending:
+            return
+
+        kept = keep_anchored(pending, anchor_ids_in_text(final_content))
+        logger.debug(
+            "Propagating annotations: kept=%d, dropped=%d", len(kept), len(pending) - len(kept)
+        )
+        if not kept:
+            return
+
+        self.__choice.send_chunk(
+            ArbitraryChunk(
+                {
+                    "choices": [
+                        {
+                            "index": self.__choice.index,
+                            "delta": {"custom_fields": {"annotations": kept}},
+                        }
+                    ]
+                }
+            )
+        )
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str

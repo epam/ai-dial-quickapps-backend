@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 
 import openai
 import pytest
+from aidial_sdk.chat_completion.chunks import ArbitraryChunk
 from aidial_sdk.chat_completion.request import (
     Attachment,
     CustomContent,
@@ -321,6 +322,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     # propagate_to_choice contains attachments with model_dump()
     attach = Mock()
     attach.model_dump = Mock(return_value={"id": "att1", "content": "data"})
+    tool_result.annotations = []
     tool_result.propagate_to_choice = [attach]
 
     # tool_result.usage is a list compatible with DeploymentUsage instances
@@ -885,6 +887,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     )
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -995,6 +998,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     )
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -1038,7 +1042,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     assert "attachments" in custom_content
 
 
-def _build_orchestrator_for_propagation(choice, tool_result):
+def _build_orchestrator_for_propagation(choice, tool_result, final_content="final"):
     """Build a minimal Orchestrator that runs one tool-calling iteration then stops."""
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
@@ -1050,7 +1054,7 @@ def _build_orchestrator_for_propagation(choice, tool_result):
         close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
-        content="final",
+        content=final_content,
         attachments=[],
         tool_calls=[],
         usage=None,
@@ -1089,6 +1093,7 @@ async def test_propagation_deduplicates_repeated_urls():
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
     tool_result.usage = None
+    tool_result.annotations = []
     tool_result.propagate_to_choice = [
         Attachment(url=same_url, type="text/csv"),
         Attachment(url=same_url, type="text/csv"),
@@ -1110,6 +1115,7 @@ async def test_propagation_keeps_urlless_attachments():
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
     tool_result.usage = None
+    tool_result.annotations = []
     tool_result.propagate_to_choice = [
         Attachment(data="abc", type="image/png"),
         Attachment(data="def", type="image/png"),
@@ -1120,3 +1126,80 @@ async def test_propagation_keeps_urlless_attachments():
 
     # Attachments without a URL have no stable dedup key, so both are streamed.
     assert len(choice.add_attachment_kwargs) == 2
+
+
+TOOL_ANSWER_WITH_ANCHOR = 'The tool says so <cit id="e37335">.'
+
+
+def _annotation(anchor_id: str) -> dict:
+    return {
+        "target": {"selector": {"type": "CssSelector", "value": f"cit#{anchor_id}"}},
+        "body": {"title": "Doc", "quote": "q", "source": {"url": "https://example/doc"}},
+    }
+
+
+def _tool_result_with_annotations(annotations, content="out"):
+    tool_result = Mock()
+    tool_result.content = content
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content=content, tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.propagate_to_choice = []
+    tool_result.annotations = annotations
+    return tool_result
+
+
+def _emitted_annotations(choice: SpyChoice):
+    payloads = [
+        chunk.to_dict() for chunk in choice.sent_chunks if isinstance(chunk, ArbitraryChunk)
+    ]
+    return payloads
+
+
+@pytest.mark.asyncio
+async def test_annotations_emitted_for_surviving_anchor():
+    choice = SpyChoice()
+    annotation = _annotation("e37335")
+    orchestrator = _build_orchestrator_for_propagation(
+        choice,
+        _tool_result_with_annotations([annotation], content=TOOL_ANSWER_WITH_ANCHOR),
+        final_content='The claim holds <cit id="e37335">.',
+    )
+
+    await orchestrator.invoke()
+
+    assert _emitted_annotations(choice) == [
+        {
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"custom_fields": {"annotations": [annotation]}},
+                }
+            ]
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_annotations_dropped_when_anchor_did_not_survive():
+    choice = SpyChoice()
+    orchestrator = _build_orchestrator_for_propagation(
+        choice,
+        _tool_result_with_annotations([_annotation("e37335")], content=TOOL_ANSWER_WITH_ANCHOR),
+        final_content="A paraphrase with no anchors.",
+    )
+
+    await orchestrator.invoke()
+
+    assert _emitted_annotations(choice) == []
+
+
+@pytest.mark.asyncio
+async def test_no_chunk_sent_when_tool_returns_no_annotations():
+    choice = SpyChoice()
+    orchestrator = _build_orchestrator_for_propagation(choice, _tool_result_with_annotations([]))
+
+    await orchestrator.invoke()
+
+    assert _emitted_annotations(choice) == []
