@@ -226,6 +226,7 @@ All tools inherit from a common base class that defines:
 - Parameter preprocessing via a chain of `ToolArgumentTransformer` instances (e.g. `file:` prefix resolution)
 - Attachment filtering based on `supported_types` configuration (single canonical filter point)
 - Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
+- Citation annotation propagation for deployment tools that opt in via `propagate_annotations_to_choice`
 - Performance timing
 
 ### Tool Types
@@ -274,6 +275,7 @@ Tool results are standardized into a common format containing:
 - Attachments (files, images, etc.)
 - Usage statistics (if the tool calls an LLM internally)
 - Propagation flags (which attachments should be shown in the UI)
+- Citation annotations (evidence pointing at `<cit id="...">` anchors in the tool's content)
 
 ### Error Handling
 
@@ -375,8 +377,14 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 - **Attachments**: Custom attachments from the LLM are extracted and added
 - **Tool Calls**: Tool call deltas are accumulated and assembled into complete calls
 - **Usage**: Token usage statistics are captured from the final chunk
+- **Annotations**: Citation annotations under `delta.custom_fields.annotations` are collected
 
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
+
+Annotations collected from a deployment tool are held until the orchestrator produces its final
+answer, then emitted on the choice as a raw `custom_fields.annotations` chunk (`aidial-sdk` cannot
+model `custom_fields`). Annotations whose `<cit id="...">` anchor did not survive into that answer
+are dropped, so no annotation ever points at text the user cannot see.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> ExtractToolCalls -> AddSystemPrompt -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
 ![Message Processing](content/svg/agent_message_processing.svg)
