@@ -29,6 +29,13 @@ from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
 
 
+def _make_app_config_mock() -> MagicMock:
+    """Return an app_config mock with tool discovery disabled."""
+    m = MagicMock()
+    m.orchestrator.tool_discovery.enabled = False
+    return m
+
+
 def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
     """Configure conn.open_init_session to yield (mock_session, mock_init_result)."""
     session = MagicMock()
@@ -227,6 +234,8 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # tool_config_service
             MagicMock(),  # login_service
             None,  # accept_language
+            _make_app_config_mock(),  # app_config
+            MagicMock(),  # deferred_context
         )
         return initializer, mcp_context
 
@@ -314,6 +323,8 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        _make_app_config_mock(),  # app_config
+        MagicMock(),  # deferred_context
     )
 
     await initializer.initialize()
@@ -403,6 +414,8 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        _make_app_config_mock(),  # app_config
+        MagicMock(),  # deferred_context
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -594,6 +607,8 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # tool_config_service
         MagicMock(),  # login_service
         None,  # accept_language
+        _make_app_config_mock(),  # app_config
+        MagicMock(),  # deferred_context
     )
 
     await initializer.initialize()

@@ -13,6 +13,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
+from quickapp.tool_discovery._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class _ChatCompletionConfigBuilder:
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
+        lazy_loaded_tools_holder: _LazyLoadedToolsHolder,
     ) -> None:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
@@ -36,17 +38,25 @@ class _ChatCompletionConfigBuilder:
         self.__pre_invocation_transformers = pre_invocation_transformers
         self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
+        self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
         prepared_messages = self._prepare_messages(messages)
+        eager_names: set[str] = {t.get("function", {}).get("name", "") for t in self.__tools}
+        lazy_tools = [
+            t
+            for t in self.__lazy_loaded_tools_holder.get_all()
+            if t.get("function", {}).get("name", "") not in eager_names
+        ]
+        all_tools = self.__tools + lazy_tools
         payload: dict[str, Any] = {
             "messages": prepared_messages,
             "stream": True,
             "model": self.__config.orchestrator.deployment.deployment_id,
-            "tools": self.__tools,
+            "tools": all_tools,
         }
 
         if self.__response_format:
@@ -75,11 +85,13 @@ class _ChatCompletionConfigBuilder:
         chat_completion_config.update(payload)
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
-                "Chat completion config: messages=%d, roles=%s, tools=%d, response_format=%s, "
+                "Chat completion config: messages=%d, roles=%s, tools=%d (eager=%d, lazy=%d), response_format=%s, "
                 "model=%s, forwarded_headers=%s",
                 len(prepared_messages),
                 summarize_roles(prepared_messages),
+                len(all_tools),
                 len(self.__tools),
+                len(lazy_tools),
                 "response_format" in chat_completion_config,
                 chat_completion_config.get("model"),
                 # Header NAMES only — forwarded X-* header values are never logged, even

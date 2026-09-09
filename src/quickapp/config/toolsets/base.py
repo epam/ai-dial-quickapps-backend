@@ -17,3 +17,11 @@ class BaseToolSet(BaseModel):
         default=None, description="The description of the tool set."
     )
     enabled: bool = Field(default=True, description="Whether the toolset is enabled.")
+    deferred: bool = Field(
+        default=True,
+        description=(
+            "When true, this toolset's tool schemas are withheld from the initial LLM payload. "
+            "Requires orchestrator.tool_discovery.enabled=true. "
+            "Tools are discovered on demand via the tool_search meta-tool."
+        ),
+    )

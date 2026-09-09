@@ -24,6 +24,7 @@ from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
+from quickapp.tool_discovery._tool_discovery_config import ToolDiscoveryConfig
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +95,10 @@ class OrchestratorConfig(BaseModel):
             "native path (legacy behaviour: USER `image/*` passes through, other "
             "MIMEs are surfaced as XML metadata only)."
         ),
+    )
+    tool_discovery: ToolDiscoveryConfig = Field(
+        default_factory=ToolDiscoveryConfig,
+        description="Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
     )
 
 

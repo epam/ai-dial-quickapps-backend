@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any
+from typing import Any, cast
 from urllib.parse import unquote
 
 import httpx
@@ -16,6 +16,7 @@ from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -32,6 +33,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
+from quickapp.tool_discovery._deferred_tools_context import _DeferredToolsContext
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -131,6 +133,8 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
         accept_language: ACCEPT_LANGUAGE,
+        app_config: ApplicationConfig,
+        deferred_context: _DeferredToolsContext,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -146,6 +150,8 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
         self.__accept_language: ACCEPT_LANGUAGE = accept_language
+        self.__app_config: ApplicationConfig = app_config
+        self.__deferred_context: _DeferredToolsContext = deferred_context
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -284,6 +290,40 @@ class _MCPToolInitializer(CompletionInitializer):
             )
             created_tools.append(mcp_tool)
         if created_tools:
+            discovery_cfg = self.__app_config.orchestrator.tool_discovery
+            deferred_effective = (
+                toolset_info.deferred
+                and discovery_cfg.enabled
+                and len(created_tools) >= discovery_cfg.min_tools_for_deferral
+            )
+            if deferred_effective:
+                named_tools: list[tuple[StagedBaseTool, str]] = [
+                    (t, cast(str, t.openai_function_name()))
+                    for t in created_tools
+                    if t.openai_function_name() is not None
+                ]
+                catalog: list[dict[str, str]] = [
+                    {
+                        "name": name,
+                        "description": cast(
+                            str,
+                            t.tool_config.open_ai_tool.function.description or "",  # type: ignore[union-attr]
+                        ),
+                    }
+                    for t, name in named_tools
+                ]
+                definitions: dict[str, dict[str, Any]] = {
+                    name: t.tool_config.open_ai_tool.model_dump(  # type: ignore[union-attr]
+                        mode="json", exclude_none=True
+                    )
+                    for t, name in named_tools
+                }
+                self.__deferred_context.register_deferred_tools(catalog, definitions)
+                logger.debug(
+                    "Deferred %d tools from MCP toolset '%s' into DeferredToolsContext",
+                    len(created_tools),
+                    resolve_localized(resolved_toolset.name),
+                )
             self.__mcp_context.extend_tools(created_tools)
 
     async def _load_resources(
