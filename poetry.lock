@@ -20,7 +20,7 @@ pydantic = ">=1.10,<3"
 type = "git"
 url = "https://github.com/epam/ai-dial-client-python.git"
 reference = "feat/skills-read"
-resolved_reference = "e8c17e39d55317951e5405b58071d4b2f8444ee4"
+resolved_reference = "49b31865a741e379ff1cd27d55a15a6f5cb20866"
 
 [[package]]
 name = "aidial-sdk"
