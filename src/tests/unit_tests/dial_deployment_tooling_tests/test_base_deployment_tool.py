@@ -361,6 +361,7 @@ def _make_tool_config(
     parameters: DialDeploymentParameters | None = None,
     configuration_param_names: set[str] | None = None,
     conversation_mode: ConversationMode | None = None,
+    propagate_annotations_to_choice: bool | None = None,
 ) -> DialDeploymentTool:
     """Build a real DialDeploymentTool for _pre_process_params tests."""
     deployment = DialDeploymentConfig(
@@ -372,6 +373,7 @@ def _make_tool_config(
     return DialDeploymentTool(
         deployment=deployment,
         conversation_mode=conversation_mode,
+        propagate_annotations_to_choice=propagate_annotations_to_choice,
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name="test_tool",
@@ -819,3 +821,36 @@ def test_enrich_no_propagation_is_noop():
     enriched = tool.enrich_openai_tool_schema(open_ai_tool)
 
     assert set(enriched.function.parameters.properties.keys()) == original_props
+
+
+def _tool_with_annotating_service(propagate_annotations_to_choice: bool | None):
+    """Build a tool whose completion service always returns one annotation."""
+    tool_config = _make_tool_config(propagate_annotations_to_choice=propagate_annotations_to_choice)
+    tool = _build_tool_with_config(tool_config)
+    tool._BaseDeploymentTool__dial_completion_service.complete_request_async = AsyncMock(
+        return_value=ToolCallResult(
+            content="answer",
+            content_type="text/markdown",
+            annotations=[{"target": {"selector": {"value": "cit#e37335"}}}],
+        )
+    )
+    return tool
+
+
+@pytest.mark.asyncio
+async def test_annotations_kept_when_flag_enabled():
+    tool = _tool_with_annotating_service(True)
+
+    result = await tool._run_in_stage_async(None, "tc-1", query="q")
+
+    assert result.annotations == [{"target": {"selector": {"value": "cit#e37335"}}}]
+
+
+@pytest.mark.parametrize("flag", [None, False])
+@pytest.mark.asyncio
+async def test_annotations_cleared_when_flag_disabled(flag):
+    tool = _tool_with_annotating_service(flag)
+
+    result = await tool._run_in_stage_async(None, "tc-1", query="q")
+
+    assert result.annotations == []
