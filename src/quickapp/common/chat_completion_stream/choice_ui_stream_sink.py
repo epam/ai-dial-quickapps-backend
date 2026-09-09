@@ -116,7 +116,7 @@ class ChoiceUiSink(ChatStreamSink):
     def _apply_custom(self, norm: NormalizedCustomContent) -> None:
         destination = self._destination
         assert destination is not None
-        if norm.attachments:
+        if norm.attachments and self._parent_stage is None:
             self._add_attachments(destination, norm.attachments)
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)
