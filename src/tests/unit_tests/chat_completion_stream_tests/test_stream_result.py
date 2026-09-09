@@ -73,3 +73,18 @@ def test_fix_sdk_attachment_copies_reference_url_to_url():
     att.reference_url = "files/ref"
     ensure_attachment_url_or_data(att)
     assert att.url == "files/ref"
+
+
+def test_extend_annotations_accumulates_in_order():
+    acc = ChatStreamAccumulator()
+    acc.extend_annotations([{"id": "a"}])
+    acc.extend_annotations([{"id": "b"}])
+    assert acc.annotations == [{"id": "a"}, {"id": "b"}]
+
+
+def test_annotations_or_none_empty_is_none():
+    acc = ChatStreamAccumulator()
+    assert acc.annotations == []
+    assert acc.annotations_or_none is None
+    acc.extend_annotations([{"id": "a"}])
+    assert acc.annotations_or_none == [{"id": "a"}]

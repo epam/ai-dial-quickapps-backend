@@ -70,3 +70,12 @@ def test_choice_ui_opens_tool_stage_stage_wrapper_does_not():
 
     StageWrapperUiSink(stage_wrapper=wrap).on_delta(tool_delta)
     wrap.stage_mock.create_stage.assert_not_called()
+
+
+def test_accumulation_sink_records_annotations():
+    acc = ChatStreamAccumulator()
+    annotation = {"target": {"selector": "cit#e37335"}}
+    AccumulationSink(acc).on_delta(
+        NormalizedChoiceDelta(content=None, tool_calls=[], annotations=(annotation,))
+    )
+    assert acc.annotations == [annotation]
