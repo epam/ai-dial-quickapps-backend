@@ -3188,6 +3188,20 @@
           "$ref": "#/$defs/StageDisplayLevel",
           "default": "info",
           "description": "Threshold for stage visibility. none=no stages at all; errors=failures only; info=user-facing (default); debug=all."
+        },
+        "propagate_sub_stages": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "When True (default when preview features are enabled), stages emitted by sub-apps called as tools are propagated as nested children of the 'Calling X' stage. Set to False to disable.",
+          "title": "Propagate Sub Stages",
+          "x-preview": true
         }
       },
       "title": "StageDisplayConfig",

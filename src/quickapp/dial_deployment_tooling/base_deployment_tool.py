@@ -20,6 +20,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_deployment import DialDeploymentParameters
 from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
@@ -50,6 +51,7 @@ class BaseDeploymentTool(StagedBaseTool):
         messages_mixin: MessagesMixin,
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        app_config: ApplicationConfig,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -65,6 +67,7 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__dial_completion_service: DialCompletionService = dial_completion_service
         self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
+        self.__app_config: ApplicationConfig = app_config
         if content_propagation and content_propagation.propagate_history:
             logger.warning(
                 "The 'propagate_history' parameter is deprecated and will be removed in a future release. "
@@ -123,6 +126,11 @@ class BaseDeploymentTool(StagedBaseTool):
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
         history = await self._resolve_history(tool_config, session_id)
+        stage_display = (
+            self.__app_config.features.stage_display if self.__app_config.features else None
+        )
+        propagate = stage_display.propagate_sub_stages is not False if stage_display else True
+        parent_stage = stage_wrapper.stage if (propagate and stage_wrapper is not None) else None
         result = await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
@@ -131,6 +139,7 @@ class BaseDeploymentTool(StagedBaseTool):
             attachment_urls,
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
+            parent_stage=parent_stage,
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"

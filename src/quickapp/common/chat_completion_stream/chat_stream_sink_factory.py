@@ -81,13 +81,14 @@ class ChatStreamSinkFactory:
         return ChatStreamPipeline(
             accumulator,
             [
-                AccumulationSink(accumulator, stream_content=config.stream_content),
+                AccumulationSink(accumulator),
                 ChoiceUiSink(
                     accumulator,
                     destination=config.destination,
                     stream_content=config.stream_content,
                     propagate_stages=config.propagate_stages,
                     tools_by_name=_tools_by_name(self._tools()),
+                    parent_stage=config.parent_stage,
                 ),
                 StageWrapperUiSink(
                     stage_wrapper=config.stage_wrapper,
