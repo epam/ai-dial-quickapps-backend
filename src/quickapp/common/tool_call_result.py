@@ -15,6 +15,7 @@ class ToolCallResult(BaseModel):
     usage: list[DeploymentUsage] | None = None
 
     propagate_to_choice: list[Attachment] = Field(default_factory=list)
+    annotations: list[dict[str, Any]] = Field(default_factory=list)
 
     def to_tool_message(self):
         if not self.tool_call_id:
