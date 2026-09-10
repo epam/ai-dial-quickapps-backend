@@ -95,6 +95,64 @@ Key fields:
 
 See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
 
+### Dynamic Tool Discovery `[Preview]`
+
+Dynamic tool discovery defers large toolsets from the initial LLM payload and surfaces them
+on demand via a `tool_search` meta-tool. The orchestrator calls `tool_search` with a natural-language
+query when it needs a tool it hasn't seen yet; a lightweight anonymous LLM routing call selects
+the relevant tool schemas and injects them into the next iteration.
+
+Enable with `ENABLE_PREVIEW_FEATURES=true`, then add `orchestrator.tool_discovery` to the app manifest:
+
+```json
+{
+  "orchestrator": {
+    "deployment": { "deployment_id": "gpt-4o" },
+    "tool_discovery": {
+      "enabled": true,
+      "service_model": "gpt-4o-mini",
+      "min_tools_for_deferral": 5
+    }
+  },
+  "tool_sets": [
+    {
+      "name": "my-mcp-server",
+      "type": "mcp",
+      "mcp_server_info": {
+        "url": "http://localhost:8003/mcp",
+        "protocol": "streamable_http"
+      }
+    }
+  ]
+}
+```
+
+Toolsets are deferred by default — omitting `deferred` or setting it to `true` both defer the
+toolset. To keep a specific toolset always eager, set `"deferred": false` on that toolset:
+
+```json
+{
+  "name": "always-eager-toolset",
+  "type": "rest_api",
+  "deferred": false,
+  "open_api": { "url": "https://api.example.com/openapi.json" }
+}
+```
+
+Key fields:
+
+| Field                                          | Default | Description                                                                                                                                                           |
+|------------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `orchestrator.tool_discovery.enabled`          | `false` | Activates dynamic discovery for this app. Must be `true` for deferral to take effect.                                                                                |
+| `orchestrator.tool_discovery.service_model`    | —       | DIAL deployment used for the anonymous routing call inside `tool_search`. Falls back to the orchestrator's own deployment when omitted.                               |
+| `orchestrator.tool_discovery.min_tools_for_deferral` | `5` | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`.           |
+| `<toolset>.deferred`                           | `true`  | Per-toolset opt-out. Set to `false` to force a specific toolset into the initial payload regardless of `tool_discovery.enabled`.                                     |
+
+The `MIN_TOOLS_FOR_DEFERRAL` environment variable sets the deployment-wide default for
+`min_tools_for_deferral`; individual apps can override it in their manifest.
+
+See [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) for the full reference.
+
 ### Forwarding headers
 
 Incoming request headers whose names start with `X-` (case-insensitive) are automatically forwarded to all outbound

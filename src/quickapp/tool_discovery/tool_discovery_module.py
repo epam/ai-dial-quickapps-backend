@@ -28,7 +28,7 @@ class ToolDiscoveryModule(Module):
         config: ApplicationConfig,
         tool_builder: AssistedBuilder[_ToolSearchTool],
     ) -> list[StagedBaseTool]:
-        if not config.orchestrator.tool_discovery.enabled:
+        if not config.orchestrator.tool_discovery or not config.orchestrator.tool_discovery.enabled:
             return []
 
         tool = tool_builder.build(

@@ -5,8 +5,8 @@ from aidial_sdk.chat_completion.request import FunctionChoice, ToolChoice
 from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
-from quickapp.tool_discovery._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 
 
 def _make_builder(

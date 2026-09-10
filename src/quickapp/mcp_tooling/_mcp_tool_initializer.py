@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, cast
+from typing import Any
 from urllib.parse import unquote
 
 import httpx
@@ -27,13 +27,16 @@ from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.core.agent._deferred_tools_context import (
+    _DeferredToolsContext,
+    register_tools_as_deferred,
+)
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
-from quickapp.tool_discovery._deferred_tools_context import _DeferredToolsContext
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -292,33 +295,13 @@ class _MCPToolInitializer(CompletionInitializer):
         if created_tools:
             discovery_cfg = self.__app_config.orchestrator.tool_discovery
             deferred_effective = (
-                toolset_info.deferred
+                toolset_info.deferred is not False
+                and discovery_cfg is not None
                 and discovery_cfg.enabled
                 and len(created_tools) >= discovery_cfg.min_tools_for_deferral
             )
             if deferred_effective:
-                named_tools: list[tuple[StagedBaseTool, str]] = [
-                    (t, cast(str, t.openai_function_name()))
-                    for t in created_tools
-                    if t.openai_function_name() is not None
-                ]
-                catalog: list[dict[str, str]] = [
-                    {
-                        "name": name,
-                        "description": cast(
-                            str,
-                            t.tool_config.open_ai_tool.function.description or "",  # type: ignore[union-attr]
-                        ),
-                    }
-                    for t, name in named_tools
-                ]
-                definitions: dict[str, dict[str, Any]] = {
-                    name: t.tool_config.open_ai_tool.model_dump(  # type: ignore[union-attr]
-                        mode="json", exclude_none=True
-                    )
-                    for t, name in named_tools
-                }
-                self.__deferred_context.register_deferred_tools(catalog, definitions)
+                register_tools_as_deferred(created_tools, self.__deferred_context)
                 logger.debug(
                     "Deferred %d tools from MCP toolset '%s' into DeferredToolsContext",
                     len(created_tools),

@@ -1,6 +1,7 @@
 import json
 import logging
 
+import openai
 from injector import inject
 
 from quickapp.common import ORCHESTRATOR_AZURE_CLIENT
@@ -39,10 +40,10 @@ class _AnonymousAgent:
         if not catalog:
             return []
 
+        discovery = self.__config.orchestrator.tool_discovery
         service_model = (
-            self.__config.orchestrator.tool_discovery.service_model
-            or self.__config.orchestrator.deployment.deployment_id
-        )
+            discovery.service_model if discovery is not None else None
+        ) or self.__config.orchestrator.deployment.deployment_id
 
         catalog_text = "\n".join(
             f"- {entry['name']}: {entry.get('description', '')}" for entry in catalog
@@ -58,7 +59,7 @@ class _AnonymousAgent:
                 ],
                 stream=False,
             )
-        except Exception:
+        except openai.OpenAIError:
             logger.exception("Anonymous agent routing call failed for query=%r", query)
             return []
 

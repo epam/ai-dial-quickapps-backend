@@ -117,7 +117,7 @@ JSON for any tool on demand.
 
 **Round-trip cost:** +1 before first use of any previously-unseen tool.
 
-**Config:** opt-in flag at `ApplicationConfig` (global) or per-toolset.
+**Config:** opt-out flag per-toolset (`deferred: false` to disable for a specific toolset).
 
 **Pros:**
 - Model always has full name-space visibility (all names + descriptions visible).
@@ -433,7 +433,7 @@ deferred_effective = toolset.deferred and len(tools) >= discovery.min_tools_for_
 }
 ```
 
-- `deferred: true` opts the toolset into `DeferredRequestContext`. Default: `false`.
+- `deferred: true` (or unset/`null`) opts the toolset into `DeferredRequestContext`. Default: `true` (omitting the field defers by default).
 - `service_model` names the DIAL deployment used for the `AnonymousAgent` chat completion.
   When omitted, falls back to the orchestrator's own deployment.
 - `min_tools_for_deferral` is the tool-count guard below which a deferred toolset is silently
@@ -472,8 +472,8 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
   not conversation length.
 - Native schema injection means the main LLM calls discovered tools with proper structured
   arguments from the iteration after discovery.
-- Non-breaking opt-in: `deferred: false` by default; threshold guard prevents regression for
-  small toolsets.
+- Opt-out: `deferred: true` by default; threshold guard prevents regression for small toolsets.
+  Set `deferred: false` on a toolset to keep it always-eager.
 - `AnonymousAgent` is a reusable module independent of tool discovery.
 - Search strategy is swappable (keyword, embedding, different model) without touching the
   orchestrator or injection logic.

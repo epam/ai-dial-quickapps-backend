@@ -1,11 +1,9 @@
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.fields import FieldInfo
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings
 
 
 class ToolDiscoverySettings(BaseSettings):
-    model_config = SettingsConfigDict()
-
     min_tools_for_deferral: int = Field(
         default=5,
         ge=1,

@@ -9,9 +9,9 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
+from quickapp.core.agent._deferred_tools_context import _DeferredToolsContext
+from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
-from quickapp.tool_discovery._deferred_tools_context import _DeferredToolsContext
-from quickapp.tool_discovery._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 
 logger = logging.getLogger(__name__)

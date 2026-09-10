@@ -47,6 +47,8 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
+from quickapp.core.agent._deferred_tools_context import _DeferredToolsContext
+from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -62,8 +64,6 @@ from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
 from quickapp.core.application._request_context import _RequestContext
-from quickapp.tool_discovery._deferred_tools_context import _DeferredToolsContext
-from quickapp.tool_discovery._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
