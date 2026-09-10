@@ -2,25 +2,21 @@
 
 [[package]]
 name = "aidial-client"
-version = "0.0.0"
+version = "0.17.0"
 description = "A Python client library for the AI DIAL API"
 optional = false
-python-versions = ">=3.10,<3.14"
+python-versions = "<3.14,>=3.10"
 groups = ["main"]
-files = []
-develop = false
+files = [
+    {file = "aidial_client-0.17.0-py3-none-any.whl", hash = "sha256:78755eeb64bc40b25336b602c26fe859e73194e7c7072bae0eca93aba8ae7bac"},
+    {file = "aidial_client-0.17.0.tar.gz", hash = "sha256:10aa1a615a64914c43d0ae0c4b075d3a5fb5cdee448552dba80c47740708d553"},
+]
 
 [package.dependencies]
 aiofiles = ">=0.5.0"
 httpx = ">=0.25.0,<1"
 openai = ">=1.1.0,<3"
 pydantic = ">=1.10,<3"
-
-[package.source]
-type = "git"
-url = "https://github.com/epam/ai-dial-client-python.git"
-reference = "feat/skills-read"
-resolved_reference = "49b31865a741e379ff1cd27d55a15a6f5cb20866"
 
 [[package]]
 name = "aidial-sdk"
@@ -5854,4 +5850,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "54a1d9c8922f4a7e38ef412ae2c04faf0e2ef09c4a9d40d602828586cb04b8f7"
+content-hash = "8c1732230ed3fda3e289db350086904a73320d0060a214843ee78f31f3ac500f"
