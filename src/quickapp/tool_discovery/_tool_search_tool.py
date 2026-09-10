@@ -6,12 +6,13 @@ from injector import AssistedBuilder, inject
 
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
+from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
-from quickapp.core.agent._deferred_tools_context import _DeferredToolsContext
-from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
+from quickapp.tool_discovery._deferred_tools_context import DeferredToolsContext
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
 
 logger = logging.getLogger(__name__)
@@ -26,8 +27,8 @@ class _ToolSearchTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_ToolSearchStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        deferred_context: _DeferredToolsContext,
-        lazy_holder: _LazyLoadedToolsHolder,
+        deferred_context: DeferredToolsContext,
+        lazy_holder: LazyLoadedToolsHolder,
         anonymous_agent: _AnonymousAgent,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
@@ -47,7 +48,7 @@ class _ToolSearchTool(StagedBaseTool):
 
     async def _run_in_stage_async(
         self,
-        stage_wrapper: Any = None,
+        stage_wrapper: BaseStageWrapper | None = None,
         tool_call_id: str | None = None,
         *args: Any,
         **kwargs: Any,

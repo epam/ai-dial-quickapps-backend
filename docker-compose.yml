@@ -71,7 +71,6 @@ services:
       - core
       - keycloak
     environment:
-      NEXTAUTH_SECRET: "secret"
       AUTH_SESSION_SECRET: "48c69bd559cffffb2cbee3951430f324e0cd0c79fd8a83de0a991648cae706c8"
       AUTH_CALLBACK_BASE_URL: "http://localhost:3012"
       AUTH_POST_LOGOUT_REDIRECT_URI: "http://localhost:3012"
@@ -82,7 +81,7 @@ services:
       THEMES_CONFIG_URL: "http://themes:8080"
       AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
       AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
-      AUTH_KEYCLOAK_HOST: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      AUTH_KEYCLOAK_HOST: "keycloak.localtest.me:8443/realms/dial-dev"
       AUTH_KEYCLOAK_ADMIN_ROLE_NAMES: "admin"
       AUTH_KEYCLOAK_DIAL_ROLES_FIELD: "realm_access.roles"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"

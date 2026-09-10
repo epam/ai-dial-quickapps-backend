@@ -47,8 +47,6 @@ from quickapp.config.tools.display.paramenter import (
 )
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
-from quickapp.core.agent._deferred_tools_context import _DeferredToolsContext
-from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.core.agent._messages_transformers import _AddSystemPromptTransformer
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -57,6 +55,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -64,6 +63,7 @@ from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
 from quickapp.core.application._request_context import _RequestContext
+from quickapp.tool_discovery._deferred_tools_context import DeferredToolsContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -105,8 +105,8 @@ class AgentModule(Module):
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
-        binder.bind(_DeferredToolsContext, to=_DeferredToolsContext, scope=request_scope)
-        binder.bind(_LazyLoadedToolsHolder, to=_LazyLoadedToolsHolder, scope=request_scope)
+        binder.bind(DeferredToolsContext, to=DeferredToolsContext, scope=request_scope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -171,7 +171,7 @@ class AgentModule(Module):
         self,
         tools: list[StagedBaseTool],
         static_tools: list[StaticTool],
-        deferred_context: _DeferredToolsContext,
+        deferred_context: DeferredToolsContext,
     ) -> list[OpenAiToolConfigDict]:
         deferred_names = deferred_context.deferred_names
         openai_functions = []

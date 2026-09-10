@@ -11,8 +11,8 @@ from quickapp.common.abstract.base_transformer import PreInvocationTransformer
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
-from quickapp.core.agent._lazy_loaded_tools_holder import _LazyLoadedToolsHolder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ class _ChatCompletionConfigBuilder:
         pre_invocation_transformers: list[PreInvocationTransformer],
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
-        lazy_loaded_tools_holder: _LazyLoadedToolsHolder,
+        lazy_loaded_tools_holder: LazyLoadedToolsHolder,
     ) -> None:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools

@@ -10,9 +10,9 @@ from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import RestApiToolSet
-from quickapp.core.agent._deferred_tools_context import (
-    _DeferredToolsContext,
-    register_tools_as_deferred,
+from quickapp.tool_discovery._deferred_tools_context import (
+    DeferredToolsContext,
+    is_toolset_deferred,
 )
 
 from ._request_detail_builder import _RequestDetailsBuilder
@@ -37,7 +37,7 @@ class RestApiToolingModule(Module):
         app_config: ApplicationConfig,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         accept_language: ACCEPT_LANGUAGE,
-        deferred_context: _DeferredToolsContext,
+        deferred_context: DeferredToolsContext,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
@@ -45,19 +45,14 @@ class RestApiToolingModule(Module):
                 toolset_stage_name = resolve_localized(toolset_info.name, accept_language)
                 tools = self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
                 discovery_cfg = app_config.orchestrator.tool_discovery
-                deferred_effective = (
-                    toolset_info.deferred is not False
-                    and discovery_cfg is not None
-                    and discovery_cfg.enabled
-                    and len(tools) >= discovery_cfg.min_tools_for_deferral
-                )
-                if deferred_effective:
-                    register_tools_as_deferred(tools, deferred_context)
-                    logger.debug(
-                        "Deferred %d tools from REST toolset '%s' into DeferredToolsContext",
-                        len(tools),
-                        toolset_stage_name,
-                    )
+                if is_toolset_deferred(toolset_info, discovery_cfg, len(tools)):
+                    deferred_context.register_staged_tools(tools)
+                    if logger.isEnabledFor(logging.DEBUG):
+                        logger.debug(
+                            "Deferred %d tools from REST toolset '%s' into DeferredToolsContext",
+                            len(tools),
+                            toolset_stage_name,
+                        )
                 result.extend(tools)
         return result
 

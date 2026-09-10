@@ -41,9 +41,10 @@ class _AnonymousAgent:
             return []
 
         discovery = self.__config.orchestrator.tool_discovery
+        assert discovery is not None  # only reachable when tool_discovery is enabled
         service_model = (
-            discovery.service_model if discovery is not None else None
-        ) or self.__config.orchestrator.deployment.deployment_id
+            discovery.service_model or self.__config.orchestrator.deployment.deployment_id
+        )
 
         catalog_text = "\n".join(
             f"- {entry['name']}: {entry.get('description', '')}" for entry in catalog
@@ -60,7 +61,7 @@ class _AnonymousAgent:
                 stream=False,
             )
         except openai.OpenAIError:
-            logger.exception("Anonymous agent routing call failed for query=%r", query)
+            logger.exception("Anonymous agent routing call failed")
             return []
 
         raw = (response.choices[0].message.content or "").strip()
@@ -69,5 +70,5 @@ class _AnonymousAgent:
             if isinstance(names, list):
                 return [n for n in names if isinstance(n, str)]
         except (json.JSONDecodeError, ValueError):
-            logger.warning("Anonymous agent returned non-JSON response: %r", raw)
+            logger.warning("Anonymous agent returned non-JSON response (length=%d)", len(raw))
         return []

@@ -4,7 +4,7 @@ from quickapp.core.agent.models import OpenAiToolConfigDict
 
 
 @inject
-class _LazyLoadedToolsHolder:
+class LazyLoadedToolsHolder:
     """Request-scoped accumulator for tool schemas discovered via tool_search.
 
     _ToolSearchTool writes to this holder during execution.
