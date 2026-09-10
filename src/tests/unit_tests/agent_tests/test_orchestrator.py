@@ -317,6 +317,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     tool_message = Message(role=Role.TOOL, content="tool output", tool_call_id="tc-1")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.attachments = None
 
     # propagate_to_choice contains attachments with model_dump()
     attach = Mock()
@@ -885,6 +886,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
     )
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.attachments = None
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -995,6 +997,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     )
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_message)
+    tool_result.attachments = None
     tool_result.propagate_to_choice = []
     tool_result.usage = []
 
@@ -1088,6 +1091,7 @@ async def test_propagation_deduplicates_repeated_urls():
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
+    tool_result.attachments = None
     tool_result.usage = None
     tool_result.propagate_to_choice = [
         Attachment(url=same_url, type="text/csv"),
@@ -1109,6 +1113,7 @@ async def test_propagation_keeps_urlless_attachments():
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
+    tool_result.attachments = None
     tool_result.usage = None
     tool_result.propagate_to_choice = [
         Attachment(data="abc", type="image/png"),

@@ -105,6 +105,7 @@ class Orchestrator:
             request_async_close_registry
         )
         self.__propagated_attachment_urls: set[str] = set()
+        self.__all_tool_attachment_urls: set[str] = set()
 
     @property
     def iteration_count(self) -> int:
@@ -267,6 +268,9 @@ class Orchestrator:
         for tool_call_result in tool_call_results:
             tool_call_result_message = tool_call_result.to_tool_message()
             self.__messages_context.append_message(tool_call_result_message)
+            for attachment in tool_call_result.attachments or []:
+                if attachment.url:
+                    self.__all_tool_attachment_urls.add(attachment.url)
             for attachment in tool_call_result.propagate_to_choice:
                 url = attachment.url
                 if url is not None:
@@ -313,6 +317,7 @@ class Orchestrator:
                     destination=self.__choice,
                     stream_content=True,
                     propagate_stages=self.__propagate_orchestrator_stages,
+                    excluded_attachment_urls=self.__all_tool_attachment_urls,
                 ),
             )
         except ChatStreamHandlerError:

@@ -5,7 +5,7 @@ from aidial_sdk.chat_completion import Choice
 from injector import inject
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
@@ -36,6 +36,7 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
+    excluded_attachment_urls: set[str] = Field(default_factory=set)
 
 
 class ChatCompletionStreamHandler:

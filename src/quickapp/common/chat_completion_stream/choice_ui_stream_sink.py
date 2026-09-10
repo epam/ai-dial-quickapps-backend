@@ -59,12 +59,14 @@ class ChoiceUiSink(ChatStreamSink):
         stream_content: bool = True,
         propagate_stages: bool = False,
         tools_by_name: dict[str, StagedBaseTool] | None = None,
+        excluded_attachment_urls: set[str] | None = None,
     ) -> None:
         self._accumulator = accumulator
         self._destination = destination
         self._stream_content = stream_content
         self._propagate_stages = propagate_stages
         self._tools_by_name = tools_by_name or {}
+        self._excluded_attachment_urls: set[str] = excluded_attachment_urls or set()
         self._stages_by_index: dict[int, Stage] = {}
         self._tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
         self._suppressed_tool_indexes: set[int] = set()
@@ -115,7 +117,9 @@ class ChoiceUiSink(ChatStreamSink):
         destination = self._destination
         assert destination is not None
         if norm.attachments:
-            self._add_attachments(destination, norm.attachments)
+            to_add = [a for a in norm.attachments if a.url not in self._excluded_attachment_urls]
+            if to_add:
+                self._add_attachments(destination, to_add)
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)
             if self._propagate_stages:

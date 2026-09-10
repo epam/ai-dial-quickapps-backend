@@ -1,10 +1,14 @@
 """Unit tests for chat-stream DI sinks."""
 
+from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall, ChoiceDeltaToolCallFunction
 
 from quickapp.common.chat_completion_stream.accumulation_stream_sink import AccumulationSink
 from quickapp.common.chat_completion_stream.choice_ui_stream_sink import ChoiceUiSink
-from quickapp.common.chat_completion_stream.models import NormalizedChoiceDelta
+from quickapp.common.chat_completion_stream.models import (
+    NormalizedChoiceDelta,
+    NormalizedCustomContent,
+)
 from quickapp.common.chat_completion_stream.stage_wrapper_ui_stream_sink import StageWrapperUiSink
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper, SpyChoice
@@ -70,3 +74,67 @@ def test_choice_ui_opens_tool_stage_stage_wrapper_does_not():
 
     StageWrapperUiSink(stage_wrapper=wrap).on_delta(tool_delta)
     wrap.stage_mock.create_stage.assert_not_called()
+
+
+def _custom_delta(url: str, mime_type: str = "image/png") -> NormalizedChoiceDelta:
+    return NormalizedChoiceDelta(
+        custom=NormalizedCustomContent(
+            attachments=[Attachment(url=url, type=mime_type)],
+            stage_entries=[],
+            state=None,
+        )
+    )
+
+
+def test_choice_ui_sink_filters_excluded_attachment_url_from_llm_echo():
+    choice = SpyChoice()
+    excluded_url = "https://dial-core/uploads/image.png"
+    sink = ChoiceUiSink(
+        ChatStreamAccumulator(),
+        destination=choice,
+        excluded_attachment_urls={excluded_url},
+    )
+    sink.on_delta(_custom_delta(excluded_url))
+    assert choice.add_attachment_kwargs == []
+
+
+def test_choice_ui_sink_allows_attachment_not_in_excluded_urls():
+    choice = SpyChoice()
+    excluded_url = "https://dial-core/uploads/image.png"
+    other_url = "https://dial-core/uploads/other.png"
+    sink = ChoiceUiSink(
+        ChatStreamAccumulator(),
+        destination=choice,
+        excluded_attachment_urls={excluded_url},
+    )
+    sink.on_delta(_custom_delta(other_url))
+    assert len(choice.add_attachment_kwargs) == 1
+    recorded = choice.add_attachment_kwargs[0]
+    actual_url = recorded.get("url") or recorded["args"][0].url
+    assert actual_url == other_url
+
+
+def test_choice_ui_sink_partial_exclusion_filters_only_matching_urls():
+    choice = SpyChoice()
+    excluded_url = "https://dial-core/uploads/excluded.png"
+    kept_url = "https://dial-core/uploads/kept.png"
+    sink = ChoiceUiSink(
+        ChatStreamAccumulator(),
+        destination=choice,
+        excluded_attachment_urls={excluded_url},
+    )
+    delta = NormalizedChoiceDelta(
+        custom=NormalizedCustomContent(
+            attachments=[
+                Attachment(url=excluded_url, type="image/png"),
+                Attachment(url=kept_url, type="image/png"),
+            ],
+            stage_entries=[],
+            state=None,
+        )
+    )
+    sink.on_delta(delta)
+    assert len(choice.add_attachment_kwargs) == 1
+    recorded = choice.add_attachment_kwargs[0]
+    actual_url = recorded.get("url") or recorded["args"][0].url
+    assert actual_url == kept_url
