@@ -88,6 +88,7 @@ class ChatStreamSinkFactory:
                     stream_content=config.stream_content,
                     propagate_stages=config.propagate_stages,
                     tools_by_name=_tools_by_name(self._tools()),
+                    excluded_attachment_urls=config.excluded_attachment_urls,
                 ),
                 StageWrapperUiSink(
                     stage_wrapper=config.stage_wrapper,
