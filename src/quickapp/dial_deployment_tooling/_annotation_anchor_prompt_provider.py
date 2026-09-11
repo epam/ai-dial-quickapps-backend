@@ -1,6 +1,6 @@
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 
-_CITATION_ANCHOR_RULE = """\
+_ANNOTATION_ANCHOR_RULE = """\
 ## Citation Anchors
 
 Some tool responses embed citation anchors written as `<cit id="...">` directly after the
@@ -14,7 +14,7 @@ they are part of the answer and must survive into your response.
 """
 
 
-class _CitationAnchorPromptProvider(PromptPartProvider):
+class _AnnotationAnchorPromptProvider(PromptPartProvider):
     """Tells the orchestrator to preserve `<cit id="...">` anchors from tool responses.
 
     Registered only when a deployment tool sets ``propagate_annotations_to_choice``:
@@ -22,4 +22,4 @@ class _CitationAnchorPromptProvider(PromptPartProvider):
     """
 
     async def get_prompt_part(self) -> str:
-        return _CITATION_ANCHOR_RULE
+        return _ANNOTATION_ANCHOR_RULE

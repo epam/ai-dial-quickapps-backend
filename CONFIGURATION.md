@@ -703,9 +703,9 @@ A DIAL application used as a deployment tool can return citation annotations und
 `choices[].delta.custom_fields.annotations`, with in-text `<cit id="...">` anchors in its answer
 text. Set `propagate_annotations_to_choice: true` on that tool to forward them to your app's answer.
 
-When any tool enables it, the orchestrator is additionally instructed to copy every
-`<cit id="...">` anchor verbatim from tool responses into its own answer. Annotations whose anchor
-did not survive into the final answer are dropped, so an annotation never points at missing text.
+Annotations are forwarded exactly as the deployment returned them. When any tool enables the flag,
+the orchestrator is additionally instructed to copy every `<cit id="...">` anchor verbatim from tool
+responses into its own answer, so the anchors the annotations point at stay in the text.
 
 This is a preview feature: it requires `ENABLE_PREVIEW_FEATURES=true`, and DIAL Chat does not
 render annotations yet.
