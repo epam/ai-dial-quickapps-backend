@@ -80,11 +80,3 @@ def test_extend_annotations_accumulates_in_order():
     acc.extend_annotations([{"id": "a"}])
     acc.extend_annotations([{"id": "b"}])
     assert acc.annotations == [{"id": "a"}, {"id": "b"}]
-
-
-def test_annotations_or_none_empty_is_none():
-    acc = ChatStreamAccumulator()
-    assert acc.annotations == []
-    assert acc.annotations_or_none is None
-    acc.extend_annotations([{"id": "a"}])
-    assert acc.annotations_or_none == [{"id": "a"}]

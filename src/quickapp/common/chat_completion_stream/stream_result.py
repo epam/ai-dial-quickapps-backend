@@ -177,7 +177,3 @@ class ChatStreamAccumulator:
     @property
     def attachments_or_none(self) -> list[Attachment] | None:
         return self.__attachments if self.__attachments else None
-
-    @property
-    def annotations_or_none(self) -> list[dict[str, Any]] | None:
-        return self.__annotations if self.__annotations else None
