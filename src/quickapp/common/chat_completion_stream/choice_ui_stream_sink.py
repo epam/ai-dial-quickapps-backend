@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from time import perf_counter
 
 from aidial_sdk.chat_completion import Attachment, Choice, Stage, Status
@@ -59,12 +60,14 @@ class ChoiceUiSink(ChatStreamSink):
         stream_content: bool = True,
         propagate_stages: bool = False,
         tools_by_name: dict[str, StagedBaseTool] | None = None,
+        attachment_filter: Callable[[Attachment], bool] | None = None,
     ) -> None:
         self._accumulator = accumulator
         self._destination = destination
         self._stream_content = stream_content
         self._propagate_stages = propagate_stages
         self._tools_by_name = tools_by_name or {}
+        self._attachment_filter = attachment_filter
         self._stages_by_index: dict[int, Stage] = {}
         self._tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
         self._suppressed_tool_indexes: set[int] = set()
@@ -121,11 +124,12 @@ class ChoiceUiSink(ChatStreamSink):
             if self._propagate_stages:
                 self._stream_stage_delta(stage_delta, position)
 
-    @staticmethod
-    def _add_attachments(destination: Choice, attachments: list[Attachment]) -> None:
+    def _add_attachments(self, destination: Choice, attachments: list[Attachment]) -> None:
         if not attachments:
             return
         for attachment in attachments:
+            if self._attachment_filter is not None and not self._attachment_filter(attachment):
+                continue
             ensure_attachment_url_or_data(attachment)
             try:
                 destination.add_attachment(attachment)

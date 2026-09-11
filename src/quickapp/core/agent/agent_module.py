@@ -53,6 +53,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorStaticToolsContext,
 )
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import OpenAiToolConfigDict
@@ -106,6 +107,9 @@ class AgentModule(Module):
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
+        binder.bind(
+            SuppressedAttachmentRegistry, to=SuppressedAttachmentRegistry, scope=request_scope
+        )
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
