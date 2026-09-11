@@ -2,8 +2,10 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion.chunks import ArbitraryChunk
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 from openai import APIError, AsyncStream
@@ -277,8 +279,26 @@ class Orchestrator:
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.annotations:
+                self._send_annotations(tool_call_result.annotations)
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
+
+    def _send_annotations(self, annotations: list[dict[str, Any]]) -> None:
+        """Pass a tool's citation annotations through to the choice unchanged."""
+        logger.debug("Propagating annotations: count=%d", len(annotations))
+        self.__choice.send_chunk(
+            ArbitraryChunk(
+                {
+                    "choices": [
+                        {
+                            "index": self.__choice.index,
+                            "delta": {"custom_fields": {"annotations": annotations}},
+                        }
+                    ]
+                }
+            )
+        )
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str

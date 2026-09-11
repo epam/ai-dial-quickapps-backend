@@ -27,6 +27,7 @@ def azure_client():
         chunk.choices[0].delta = MagicMock()
         chunk.choices[0].delta.content = "Test response"
         chunk.choices[0].delta.custom_content = None
+        chunk.choices[0].delta.custom_fields = None
         chunk.choices[0].delta.tool_calls = None
         chunk.usage = None
         chunk.model_extra = {}
@@ -333,3 +334,57 @@ async def test_custom_fields_configuration_routed_to_extra_body(
         "configuration": {"size": "1024x1024", "quality": "high"}
     }
     assert "query" not in extra_body
+
+
+@pytest.mark.asyncio
+async def test_annotations_from_custom_fields_land_on_tool_call_result(
+    attachment_resolver, mock_stage_wrapper
+):
+    """Citation annotations on the deployment stream reach the ToolCallResult."""
+    annotation = {
+        "target": {"selector": {"type": "CssSelector", "value": "cit#e37335"}},
+        "body": {"title": "Doc", "quote": "q", "source": {"url": "https://example/doc"}},
+    }
+
+    async def mock_stream():
+        chunk = MagicMock()
+        chunk.choices = [MagicMock()]
+        chunk.choices[0].delta = MagicMock()
+        chunk.choices[0].delta.content = "Answer"
+        chunk.choices[0].delta.custom_content = None
+        chunk.choices[0].delta.custom_fields = {"annotations": [annotation]}
+        chunk.choices[0].delta.tool_calls = None
+        chunk.usage = None
+        chunk.model_extra = {}
+        yield chunk
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=mock_stream())
+    service = DialCompletionService(
+        client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+    )
+
+    result = await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    assert result.annotations == [annotation]
+
+
+@pytest.mark.asyncio
+async def test_no_annotations_when_stream_carries_none(completion_service, mock_stage_wrapper):
+    result = await completion_service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    assert result.annotations == []
