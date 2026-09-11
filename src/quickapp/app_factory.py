@@ -31,6 +31,7 @@ from quickapp.shared import shared_module
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
+from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 from quickapp.web_tooling.web_tooling_module import WebToolingModule
 
 
@@ -59,6 +60,7 @@ class AppFactory:
             SkillsModule(),
             DialPromptSkillsModule(),
             TimestampModule(),
+            ToolDiscoveryModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),
             WebToolingModule(),

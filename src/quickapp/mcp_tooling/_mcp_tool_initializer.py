@@ -16,6 +16,7 @@ from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
+from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -32,6 +33,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
+from quickapp.shared.deferred_tools import DeferredToolsContext, is_toolset_deferred
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -131,6 +133,8 @@ class _MCPToolInitializer(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         login_service: InteractiveLoginService,
         accept_language: ACCEPT_LANGUAGE,
+        app_config: ApplicationConfig,
+        deferred_context: DeferredToolsContext,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -146,6 +150,8 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__login_service: InteractiveLoginService = login_service
         self.__accept_language: ACCEPT_LANGUAGE = accept_language
+        self.__app_config: ApplicationConfig = app_config
+        self.__deferred_context: DeferredToolsContext = deferred_context
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -284,6 +290,14 @@ class _MCPToolInitializer(CompletionInitializer):
             )
             created_tools.append(mcp_tool)
         if created_tools:
+            discovery_cfg = self.__app_config.orchestrator.tool_discovery
+            if is_toolset_deferred(toolset_info, discovery_cfg, len(created_tools)):
+                self.__deferred_context.register_staged_tools(created_tools)
+                logger.debug(
+                    "Deferred %d tools from MCP toolset '%s' into DeferredToolsContext",
+                    len(created_tools),
+                    resolve_localized(resolved_toolset.name),
+                )
             self.__mcp_context.extend_tools(created_tools)
 
     async def _load_resources(

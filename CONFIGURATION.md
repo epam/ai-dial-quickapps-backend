@@ -257,6 +257,7 @@ The project contains predefined configs of application and predefined tools
 | deployment     | Yes      | Object  | The DIAL deployment configuration. See [Deployment configuration](#deployment-configuration)             | -                | -             |
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
 | max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
+| tool_discovery | No       | Object  | `[Preview]` Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
 
 #### Deployment configuration
 
@@ -330,6 +331,38 @@ Custom system prompt:
 ```
 
 </details>
+
+#### Tool discovery configuration
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, toolsets withheld from the initial LLM payload
+(see the per-toolset `deferred` field in [Tool sets configuration](#tool-sets-configuration)) are surfaced on demand
+via a `tool_search` meta-tool, which routes the query to the matching tool schemas through an isolated LLM call.
+
+| Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
+|------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|
+| enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `tool_search` meta-tool. | -                 | `false`       |
+| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
+| min_tools_for_deferral | No       | Integer | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. Deployment-wide default set by `MIN_TOOLS_FOR_DEFERRAL`. | -    | `5`           |
+
+<details>
+<summary><b>Tool discovery configuration JSON sample</b></summary>
+
+```json
+{
+  "orchestrator": {
+    "deployment": { "name": "gpt-4o" },
+    "tool_discovery": {
+      "enabled": true,
+      "service_model": "gpt-4o-mini",
+      "min_tools_for_deferral": 5
+    }
+  }
+}
+```
+
+</details>
+
+See [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) for the full behavioral reference.
 
 ### Contexts configuration
 
@@ -470,6 +503,11 @@ See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL 
 SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
 
 ### Tool sets configuration
+
+Every toolset type also accepts a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
+[Tool discovery configuration](#tool-discovery-configuration) is enabled, the toolset's tool schemas are withheld
+from the initial LLM payload and discovered on demand via the `tool_search` meta-tool. Set to `false` to keep a
+specific toolset always eager.
 
 #### RestApiToolSet Configuration
 

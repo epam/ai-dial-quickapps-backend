@@ -6,6 +6,7 @@ from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 
 
 def _make_builder(
@@ -24,6 +25,7 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
+        lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
     )
 
 
@@ -70,6 +72,7 @@ class TestToolChoiceInPayload:
             pre_invocation_transformers=[],
             presentation_settings=MagicMock(show_usage_statistics=False),
             forwarded_headers=None,
+            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
         )
         first = builder.build([])
         assert first["tool_choice"] == "required"

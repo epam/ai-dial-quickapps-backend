@@ -10,6 +10,7 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.core.agent import AssistantInvoker
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 
 
 def _presentation_settings(show_usage: bool):
@@ -69,6 +70,7 @@ def _make_config_builder(
         pre_invocation_transformers=[mock_filter],
         presentation_settings=_presentation_settings(show_usage),
         forwarded_headers=forwarded_headers,
+        lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
     )
 
 

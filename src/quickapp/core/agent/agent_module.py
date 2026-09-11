@@ -55,6 +55,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -62,6 +63,7 @@ from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
 from quickapp.core.application._request_context import _RequestContext
+from quickapp.shared.deferred_tools import DeferredToolsContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -103,6 +105,7 @@ class AgentModule(Module):
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -164,12 +167,18 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_openai_tools(
-        self, tools: list[StagedBaseTool], static_tools: list[StaticTool]
+        self,
+        tools: list[StagedBaseTool],
+        static_tools: list[StaticTool],
+        deferred_context: DeferredToolsContext,
     ) -> list[OpenAiToolConfigDict]:
+        deferred_names = deferred_context.deferred_names
         openai_functions = []
         for tool in tools:
             if isinstance(tool.tool_config, BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
+                if open_ai_tool.function.name in deferred_names:
+                    continue
                 open_ai_tool = self._remove_const_params(open_ai_tool)
                 if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)

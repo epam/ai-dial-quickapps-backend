@@ -23,6 +23,9 @@ file_sets = {
     "integration_simple": ["test_tool_set_chat_hub"],
     "e2e": ["test_tool_set_chat_hub", "test_tool_set_py_interpreter"],
     "lazy_admin_context": [],
+    # Preview: MCP toolset with deferred=true for dynamic tool discovery tests.
+    # Requires ENABLE_PREVIEW_FEATURES=true and orchestrator.tool_discovery.enabled=true.
+    "tool_discovery": ["test_mcp_tool_deferred"],
 }
 
 

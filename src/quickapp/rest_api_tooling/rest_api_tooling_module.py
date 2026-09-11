@@ -10,6 +10,7 @@ from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import RestApiToolSet
+from quickapp.shared.deferred_tools import DeferredToolsContext, is_toolset_deferred
 
 from ._request_detail_builder import _RequestDetailsBuilder
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
@@ -33,14 +34,22 @@ class RestApiToolingModule(Module):
         app_config: ApplicationConfig,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         accept_language: ACCEPT_LANGUAGE,
+        deferred_context: DeferredToolsContext,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
             if isinstance(toolset_info, RestApiToolSet) and toolset_info.enabled:
                 toolset_stage_name = resolve_localized(toolset_info.name, accept_language)
-                result.extend(
-                    self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
-                )
+                tools = self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
+                discovery_cfg = app_config.orchestrator.tool_discovery
+                if is_toolset_deferred(toolset_info, discovery_cfg, len(tools)):
+                    deferred_context.register_staged_tools(tools)
+                    logger.debug(
+                        "Deferred %d tools from REST toolset '%s' into DeferredToolsContext",
+                        len(tools),
+                        toolset_stage_name,
+                    )
+                result.extend(tools)
         return result
 
     @staticmethod

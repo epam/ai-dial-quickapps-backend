@@ -1,6 +1,7 @@
 from injector import Module
 
 from quickapp.shared.config_resolvers.config_resolvers_module import ConfigResolversModule
+from quickapp.shared.deferred_tools.deferred_tools_module import DeferredToolsModule
 from quickapp.shared.external_fetch.external_fetch_module import ExternalFetchModule
 from quickapp.shared.home_path.home_path_module import HomePathModule
 
@@ -9,6 +10,7 @@ from quickapp.shared.home_path.home_path_module import HomePathModule
 # individually.
 shared_module: list[Module] = [
     ConfigResolversModule(),
+    DeferredToolsModule(),
     ExternalFetchModule(),
     HomePathModule(),
 ]
