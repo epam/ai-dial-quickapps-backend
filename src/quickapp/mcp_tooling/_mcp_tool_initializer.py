@@ -33,10 +33,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
-from quickapp.tool_discovery._deferred_tools_context import (
-    DeferredToolsContext,
-    is_toolset_deferred,
-)
+from quickapp.shared.deferred_tools import DeferredToolsContext, is_toolset_deferred
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -296,12 +293,11 @@ class _MCPToolInitializer(CompletionInitializer):
             discovery_cfg = self.__app_config.orchestrator.tool_discovery
             if is_toolset_deferred(toolset_info, discovery_cfg, len(created_tools)):
                 self.__deferred_context.register_staged_tools(created_tools)
-                if logger.isEnabledFor(logging.DEBUG):
-                    logger.debug(
-                        "Deferred %d tools from MCP toolset '%s' into DeferredToolsContext",
-                        len(created_tools),
-                        resolve_localized(resolved_toolset.name),
-                    )
+                logger.debug(
+                    "Deferred %d tools from MCP toolset '%s' into DeferredToolsContext",
+                    len(created_tools),
+                    resolve_localized(resolved_toolset.name),
+                )
             self.__mcp_context.extend_tools(created_tools)
 
     async def _load_resources(

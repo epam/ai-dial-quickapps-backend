@@ -1,10 +1,11 @@
+from typing import Any
+
 from injector import inject
 
 from quickapp.common import StagedBaseTool
+from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import BaseOpenAITool
 from quickapp.config.toolsets.base import BaseToolSet
-from quickapp.core.agent.models import OpenAiToolConfigDict
-from quickapp.tool_discovery._tool_discovery_config import ToolDiscoveryConfig
 
 
 @inject
@@ -13,7 +14,7 @@ class DeferredToolsContext:
 
     def __init__(self) -> None:
         self._catalog: list[dict[str, str]] = []
-        self._definitions: dict[str, OpenAiToolConfigDict] = {}
+        self._definitions: dict[str, dict[str, Any]] = {}
 
     def register_staged_tools(self, tools: list[StagedBaseTool]) -> None:
         entries: list[tuple[BaseOpenAITool, str]] = [
@@ -44,7 +45,7 @@ class DeferredToolsContext:
     def catalog(self) -> list[dict[str, str]]:
         return list(self._catalog)
 
-    def get_definition(self, name: str) -> OpenAiToolConfigDict | None:
+    def get_definition(self, name: str) -> dict[str, Any] | None:
         return self._definitions.get(name)
 
 

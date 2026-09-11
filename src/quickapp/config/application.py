@@ -22,9 +22,9 @@ from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptCo
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
+from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
-from quickapp.tool_discovery import ToolDiscoveryConfig
 
 logger = logging.getLogger(__name__)
 

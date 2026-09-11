@@ -41,7 +41,12 @@ class _AnonymousAgent:
             return []
 
         discovery = self.__config.orchestrator.tool_discovery
-        assert discovery is not None  # only reachable when tool_discovery is enabled
+        if discovery is None:
+            logger.warning(
+                "Anonymous agent routing call invoked while tool_discovery is disabled — "
+                "returning no matches"
+            )
+            return []
         service_model = (
             discovery.service_model or self.__config.orchestrator.deployment.deployment_id
         )

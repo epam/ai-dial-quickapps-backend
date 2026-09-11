@@ -63,7 +63,7 @@ from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
 from quickapp.core.application._request_context import _RequestContext
-from quickapp.tool_discovery._deferred_tools_context import DeferredToolsContext
+from quickapp.shared.deferred_tools import DeferredToolsContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -105,7 +105,6 @@ class AgentModule(Module):
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
-        binder.bind(DeferredToolsContext, to=DeferredToolsContext, scope=request_scope)
         binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)

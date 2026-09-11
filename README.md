@@ -40,8 +40,7 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
 - [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
-- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at
-  orchestrator seams
+- [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
 - [Technical Documentation](./docs/README.md) - Internal architecture and design documents
 
 ## Quick start (general)
@@ -60,8 +59,7 @@ file:
 
 ### Hooks `[Preview]`
 
-Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code.
-Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
+Hooks let you pre-populate the agent's message history with synthetic tool call results — without writing Python code. Each hook fires at a named orchestrator seam and injects a `(ASSISTANT/tool_calls, TOOL)` message pair.
 
 Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app manifest:
 
@@ -73,9 +71,7 @@ Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app 
       "event": "on_request_start",
       "toolset_name": "memory_server",
       "tool_name": "get_memories",
-      "arguments": {
-        "user_id": "123"
-      },
+      "arguments": { "user_id": "123" },
       "frequency": "always"
     }
   ]
@@ -84,23 +80,20 @@ Enable with `ENABLE_PREVIEW_FEATURES=true`, then add a `hooks` array to the app 
 
 Key fields:
 
-| Field          | Description                                                                                                                          |
-|----------------|--------------------------------------------------------------------------------------------------------------------------------------|
-| `kind`         | Hook type. Only `"tool_call"` is supported today.                                                                                    |
-| `event`        | Orchestrator seam. Only `"on_request_start"` is wired today.                                                                         |
-| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools.                                                |
-| `tool_name`    | Tool name within the toolset, or the exact function name when `toolset_name` is omitted.                                             |
-| `arguments`    | Arguments forwarded to the tool call.                                                                                                |
-| `frequency`    | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
+| Field | Description |
+|---|---|
+| `kind` | Hook type. Only `"tool_call"` is supported today. |
+| `event` | Orchestrator seam. Only `"on_request_start"` is wired today. |
+| `toolset_name` | Toolset prefix for REST API / MCP tools. Omit for DIAL Deployment and Internal tools. |
+| `tool_name` | Tool name within the toolset, or the exact function name when `toolset_name` is omitted. |
+| `arguments` | Arguments forwarded to the tool call. |
+| `frequency` | `"always"` — inject on every request. `"append_if_changed"` (default) — inject only when the result differs from the last injection. |
 
 See [Config-Driven Hooks design doc](docs/designs/config_driven_hooks.md) for the full reference.
 
 ### Dynamic Tool Discovery `[Preview]`
 
-Dynamic tool discovery defers large toolsets from the initial LLM payload and surfaces them
-on demand via a `tool_search` meta-tool. The orchestrator calls `tool_search` with a natural-language
-query when it needs a tool it hasn't seen yet; a lightweight anonymous LLM routing call selects
-the relevant tool schemas and injects them into the next iteration.
+Dynamic tool discovery defers large toolsets from the initial LLM payload and surfaces them on demand via a `tool_search` meta-tool. The orchestrator calls `tool_search` with a natural-language query when it needs a tool it hasn't seen yet; a lightweight anonymous LLM routing call selects the relevant tool schemas and injects them into the next iteration.
 
 Enable with `ENABLE_PREVIEW_FEATURES=true`, then add `orchestrator.tool_discovery` to the app manifest:
 
@@ -127,8 +120,7 @@ Enable with `ENABLE_PREVIEW_FEATURES=true`, then add `orchestrator.tool_discover
 }
 ```
 
-Toolsets are deferred by default — omitting `deferred` or setting it to `true` both defer the
-toolset. To keep a specific toolset always eager, set `"deferred": false` on that toolset:
+Toolsets are deferred by default — omitting `deferred` or setting it to `true` both defer the toolset. To keep a specific toolset always eager, set `"deferred": false` on that toolset:
 
 ```json
 {
@@ -141,17 +133,16 @@ toolset. To keep a specific toolset always eager, set `"deferred": false` on tha
 
 Key fields:
 
-| Field                                          | Default | Description                                                                                                                                                           |
-|------------------------------------------------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `orchestrator.tool_discovery.enabled`          | `false` | Activates dynamic discovery for this app. Must be `true` for deferral to take effect.                                                                                |
-| `orchestrator.tool_discovery.service_model`    | —       | DIAL deployment used for the anonymous routing call inside `tool_search`. Falls back to the orchestrator's own deployment when omitted.                               |
-| `orchestrator.tool_discovery.min_tools_for_deferral` | `5` | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`.           |
-| `<toolset>.deferred`                           | `true`  | Per-toolset opt-out. Set to `false` to force a specific toolset into the initial payload regardless of `tool_discovery.enabled`.                                     |
+| Field | Default | Description |
+|---|---|---|
+| `orchestrator.tool_discovery.enabled` | `false` | Activates dynamic discovery for this app. Must be `true` for deferral to take effect. |
+| `orchestrator.tool_discovery.service_model` | — | DIAL deployment used for the anonymous routing call inside `tool_search`. Falls back to the orchestrator's own deployment when omitted. |
+| `orchestrator.tool_discovery.min_tools_for_deferral` | `5` | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. |
+| `<toolset>.deferred` | `true` | Per-toolset opt-out. Set to `false` to force a specific toolset into the initial payload regardless of `tool_discovery.enabled`. |
 
-The `MIN_TOOLS_FOR_DEFERRAL` environment variable sets the deployment-wide default for
-`min_tools_for_deferral`; individual apps can override it in their manifest.
+The `MIN_TOOLS_FOR_DEFERRAL` environment variable sets the deployment-wide default for `min_tools_for_deferral`; individual apps can override it in their manifest.
 
-See [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) for the full reference.
+See [Tool discovery configuration](./CONFIGURATION.md#tool-discovery-configuration) for the full field reference and the [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) for the behavioral design.
 
 ### Forwarding headers
 
@@ -168,14 +159,13 @@ your gateways or downstream services expect.
 
 ### Stage display level
 
-Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the
-app manifest:
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
 
-| Value   | Behavior                                                       |
-|---------|----------------------------------------------------------------|
-| `none`  | No stages shown at all, not even for errors                    |
-| `error` | Show stages only for failed tool calls                         |
-| `info`  | Show stages for regular tool calls and errors (default)        |
+| Value | Behavior |
+|---|---|
+| `none` | No stages shown at all, not even for errors |
+| `error` | Show stages only for failed tool calls |
+| `info` | Show stages for regular tool calls and errors (default) |
 | `debug` | Show stages for all tool calls, including internal/system ones |
 
 ```json
@@ -190,77 +180,77 @@ app manifest:
 
 ### Environment Variables
 
-| Variable                                       | Default                                                         | Required | Description                                                                                                                                                                                                                                                                                                                                     |
-|------------------------------------------------|-----------------------------------------------------------------|----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **DIAL Core**                                  |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `DIAL_URL`                                     | —                                                               | Yes      | URL of the DIAL Core API                                                                                                                                                                                                                                                                                                                        |
-| `DIAL_API_VERSION`                             | `2025-01-01-preview`                                            | No       | API version for DIAL Core API                                                                                                                                                                                                                                                                                                                   |
-| `APP_SCHEMA_ID`                                | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No       | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used.                                                                                                                                                                                                                               |
-| **Proxy**                                      |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `PROXY_LANGUAGE_HEADER`                        | `accept-language`                                               | No       | Name of the incoming HTTP request header that carries the locale for UI display (stage name localization). Override when a reverse proxy rewrites the standard `Accept-Language` header before forwarding the request.                                                                                                                          |
-| **Logging**                                    |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `DIAL_SDK_LOG_FORMAT`                          | `text`                                                          | No       | Console log output format: `text` (human-readable) or `json` (escape-safe, one record per line). See [docs/logging.md](docs/logging.md).                                                                                                                                                                                                        |
-| `DIAL_SDK_TEXT_LOG_FORMAT`                     | [see docs/logging.md](docs/logging.md)                          | No       | Custom `%`-style format string for `text` output. Unset (default) keeps the built-in format with the conditional OTEL trace block.                                                                                                                                                                                                              |
-| `DIAL_SDK_JSON_LOG_FORMAT`                     | [see docs/logging.md](docs/logging.md)                          | No       | Custom template for `json` output — a JSON document whose string leaves are `%`-style format strings, values escaped via `json.dumps`.                                                                                                                                                                                                          |
-| `LOG_LEVEL`                                    | `INFO`                                                          | No       | Root logger level (all loggers except quickapp)                                                                                                                                                                                                                                                                                                 |
-| `QUICKAPP_LOG_LEVEL`                           | `INFO`                                                          | No       | Log level for quickapp loggers                                                                                                                                                                                                                                                                                                                  |
-| `LOG_PAYLOADS`                                 | `false`                                                         | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging).                  |
-| `LOG_PAYLOADS_MAX_LENGTH`                      | `2000`                                                          | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`.                                                                                                                                                                                                   |
-| **Agent**                                      |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `DEFAULT_AGENT_MAX_ITERATIONS`                 | `15`                                                            | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                                                                                                                                                                                                                                                   |
-| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`           | —                                                               | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app.                                                                                               |
-| `SHOW_USAGE_STATISTICS`                        | `false`                                                         | No       | Include usage statistics in chat completion stream                                                                                                                                                                                                                                                                                              |
-| `SHOW_EXECUTION_TIME_STAGE`                    | `false`                                                         | No       | Show execution time stage in the UI                                                                                                                                                                                                                                                                                                             |
-| **Python Interpreter**                         |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `PY_INTERPRETER_LOCAL_RUN`                     | `false`                                                         | No       | Run PyInterpreter locally instead of via DIAL Core API                                                                                                                                                                                                                                                                                          |
-| `PY_INTERPRETER_URL`                           | *(falls back to DIAL_URL)*                                      | No       | URL of the PyInterpreter service                                                                                                                                                                                                                                                                                                                |
-| `PY_INTERPRETER_API_KEY`                       | —                                                               | No       | API key for local-run PyInterpreter                                                                                                                                                                                                                                                                                                             |
-| `PY_INTERPRETER_DEFAULT_SESSION_ID`            | —                                                               | No       | Default session ID for the PyInterpreter                                                                                                                                                                                                                                                                                                        |
-| `PY_INTERPRETER_CLIENT_MAX_RETRIES`            | `3`                                                             | No       | Max retries for PyInterpreter client requests                                                                                                                                                                                                                                                                                                   |
-| **Tool Timeouts**                              |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `DEFAULT_TOOL_TIMEOUT_SECONDS`                 | `300.0`                                                         | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`.                                                                                                                                            |
-| `DEFAULT_FILE_LOADING_SIZE_LIMIT`              | `10485760`                                                      | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`.                                                                                                                                                                                                |
-| **Stage Display**                              |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `DEFAULT_STAGE_DISPLAY_LEVEL`                  | —                                                               | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`.                                                                                           |
-| **DIAL Files — Tool-Response Offload**         |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app.                                                                                                                                                                    |
-| `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD`     | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`.                                                                                                                                                                   |
-| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS`     | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`.        |
-| **External URL Egress**                        |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `EXTERNAL_URL_FETCH_ENABLED`                   | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows.              |
-| `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`            | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
-| `EXTERNAL_URL_FETCH_MAX_REDIRECTS`             | `5`                                                             | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                                                                                                                                                                                                                                                      |
-| `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS`   | `5.0`                                                           | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout.                                                                                                                                                                                                                                 |
-| **Dynamic Tool Discovery** `[Preview]`         |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `MIN_TOOLS_FOR_DEFERRAL`                       | `5`                                                             | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. Requires `ENABLE_PREVIEW_FEATURES=true`.                                                     |
-| **Feature Gating**                             |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `ENABLE_PREVIEW_FEATURES`                      | `false`                                                         | No       | Enable preview features across the deployment (schema visibility + runtime activation)                                                                                                                                                                                                                                                          |
-| **Templates**                                  |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `PREDEFINED_EXTRA_PATHS`                       | —                                                               | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones)                                                                                                                                                                                                                                    |
-| `CONFIG_PROMPT_MAPPING`                        | *(built-in mapping)*                                            | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                                                                                                                                                                                                                                                              |
-| **Observability**                              |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `OTEL_SERVICE_NAME`                            | `quickapps`                                                     | No       | Service name stamped on all exported telemetry (traces, metrics, logs)                                                                                                                                                                                                                                                                          |
-| `OTEL_TRACES_EXPORTER`                         | —                                                               | No       | Set to `otlp` to enable tracing and export spans over OTLP/gRPC. Instruments the FastAPI server and outgoing HTTP clients (`httpx`, `requests`, `aiohttp`, `urllib`) and stamps trace context onto log records — see [docs/logging.md](docs/logging.md).                                                                                        |
-| `OTEL_METRICS_EXPORTER`                        | —                                                               | No       | Comma-separated metric exporters: `otlp` (push over OTLP/gRPC) and/or `prometheus` (serve a scrape endpoint). Enables FastAPI and system/process metrics.                                                                                                                                                                                       |
-| `OTEL_LOGS_EXPORTER`                           | —                                                               | No       | Set to `otlp` to export log records (INFO and above) over OTLP/gRPC alongside console output — see [docs/logging.md](docs/logging.md).                                                                                                                                                                                                          |
-| `OTEL_EXPORTER_OTLP_ENDPOINT`                  | `http://localhost:4317`                                         | No       | OTLP/gRPC collector endpoint shared by trace, metric, and log export. One of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/), which the underlying exporters honor as usual (per-signal endpoints, headers, timeouts, resource attributes, …).                    |
-| `OTEL_EXPORTER_PROMETHEUS_PORT`                | `9464`                                                          | No       | Port of the Prometheus scrape endpoint (effective only with `prometheus` in `OTEL_METRICS_EXPORTER`)                                                                                                                                                                                                                                            |
-| **Scripts & Tests**                            |                                                                 |          |                                                                                                                                                                                                                                                                                                                                                 |
-| `REMOTE_DIAL_URL`                              | —                                                               | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                                                                                                                                                                                                                               |
-| `REMOTE_DIAL_API_KEY`                          | —                                                               | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests                                                                                                                                                                                                                                           |
+| Variable                                   | Default                    | Required | Description                                                                                                  |
+|--------------------------------------------|----------------------------|----------|----------------------------------------------------------------------------------------------------------------|
+| **DIAL Core**                              |                            |          |                                                                                                              |
+| `DIAL_URL`                                 | —                          | Yes      | URL of the DIAL Core API                                                                                     |
+| `DIAL_API_VERSION`                         | `2025-01-01-preview`       | No       | API version for DIAL Core API                                                                                |
+| `APP_SCHEMA_ID`                            | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used. |
+| **Proxy**                                  |                            |          |                                                                                                              |
+| `PROXY_LANGUAGE_HEADER`                    | `accept-language`          | No       | Name of the incoming HTTP request header that carries the locale for UI display (stage name localization). Override when a reverse proxy rewrites the standard `Accept-Language` header before forwarding the request. |
+| **Logging**                                |                            |          |                                                                                                              |
+| `DIAL_SDK_LOG_FORMAT`                      | `text`                     | No       | Console log output format: `text` (human-readable) or `json` (escape-safe, one record per line). See [docs/logging.md](docs/logging.md). |
+| `DIAL_SDK_TEXT_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom `%`-style format string for `text` output. Unset (default) keeps the built-in format with the conditional OTEL trace block. |
+| `DIAL_SDK_JSON_LOG_FORMAT`                 | [see docs/logging.md](docs/logging.md) | No | Custom template for `json` output — a JSON document whose string leaves are `%`-style format strings, values escaped via `json.dumps`. |
+| `LOG_LEVEL`                                | `INFO`                     | No       | Root logger level (all loggers except quickapp)                                                              |
+| `QUICKAPP_LOG_LEVEL`                       | `INFO`                     | No       | Log level for quickapp loggers                                                                               |
+| `LOG_PAYLOADS`                             | `false`                    | No       | Emit payload content (message bodies, tool-call arguments, tool/LLM response bodies) at DEBUG. When `false`, no payload content is logged at **any** level and the payload-capable third-party loggers (`openai`/`httpx`/`httpcore`) are capped at INFO. **Local development only** — see [Payload Logging](#payload-logging). |
+| `LOG_PAYLOADS_MAX_LENGTH`                  | `2000`                     | No       | Per-field character cap applied to each payload value when `LOG_PAYLOADS=true`; longer values are truncated. Inert when `LOG_PAYLOADS=false`. |
+| **Agent**                                  |                            |          |                                                                                                              |
+| `DEFAULT_AGENT_MAX_ITERATIONS`             | `15`                       | No       | Maximum number of orchestrator iterations (`-1` for infinite)                                                |
+| `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                          | No       | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
+| `SHOW_USAGE_STATISTICS`                    | `false`                    | No       | Include usage statistics in chat completion stream                                                           |
+| `SHOW_EXECUTION_TIME_STAGE`                | `false`                    | No       | Show execution time stage in the UI                                                                          |
+| **Python Interpreter**                     |                            |          |                                                                                                              |
+| `PY_INTERPRETER_LOCAL_RUN`                 | `false`                    | No       | Run PyInterpreter locally instead of via DIAL Core API                                                       |
+| `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)* | No       | URL of the PyInterpreter service                                                                             |
+| `PY_INTERPRETER_API_KEY`                   | —                          | No       | API key for local-run PyInterpreter                                                                          |
+| `PY_INTERPRETER_DEFAULT_SESSION_ID`        | —                          | No       | Default session ID for the PyInterpreter                                                                     |
+| `PY_INTERPRETER_CLIENT_MAX_RETRIES`        | `3`                        | No       | Max retries for PyInterpreter client requests                                                                |
+| **Tool Timeouts**                          |                            |          |                                                                                                              |
+| `DEFAULT_TOOL_TIMEOUT_SECONDS`             | `300.0`                    | No       | Deployment-wide default timeout (seconds, `0 < x ≤ 3600`) applied to every tool call (deployment, REST API, MCP, Python interpreter). Apps can override per-app via `tool_defaults.timeout_seconds`. |
+| `DEFAULT_FILE_LOADING_SIZE_LIMIT`          | `10485760`                 | No       | Deployment-wide default maximum size (in bytes) for files the agent downloads. Apps can override per-app via `features.file_loading.size_limit`. |
+| **Stage Display**                          |                            |          |                                                                                                              |
+| `DEFAULT_STAGE_DISPLAY_LEVEL`              | —                          | No       | Deployment-wide override for stage visibility threshold (`none`, `error`, `info`, `debug`; case-insensitive). When set, wins over every app's `features.stage_display.level`. Unset (default) defers to the per-app config, which defaults to `info`. |
+| **DIAL Files — Tool-Response Offload**     |                            |          |                                                                                                              |
+| `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                 | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
+| `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                    | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
+| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                       | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
+| **External URL Egress**                    |                            |          |                                                                                                              |
+| `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                    | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
+| `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                          | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
+| `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                        | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
+| `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                    | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
+| **Dynamic Tool Discovery** `[Preview]`     |                            |          |                                                                                                              |
+| `MIN_TOOLS_FOR_DEFERRAL`                   | `5`                        | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. Requires `ENABLE_PREVIEW_FEATURES=true`. |
+| **Feature Gating**                         |                            |          |                                                                                                              |
+| `ENABLE_PREVIEW_FEATURES`                  | `false`                    | No       | Enable preview features across the deployment (schema visibility + runtime activation)                       |
+| **Templates**                              |                            |          |                                                                                                              |
+| `PREDEFINED_EXTRA_PATHS`                   | —                          | No       | JSON list of directories layered on top of built-in predefined content (later entries override earlier ones) |
+| `CONFIG_PROMPT_MAPPING`                    | *(built-in mapping)*       | No       | JSON mapping of predefined system prompts to DIAL Core deployments                                           |
+| **Observability**                          |                            |          |                                                                                                              |
+| `OTEL_SERVICE_NAME`                        | `quickapps`                | No       | Service name stamped on all exported telemetry (traces, metrics, logs)                                       |
+| `OTEL_TRACES_EXPORTER`                     | —                          | No       | Set to `otlp` to enable tracing and export spans over OTLP/gRPC. Instruments the FastAPI server and outgoing HTTP clients (`httpx`, `requests`, `aiohttp`, `urllib`) and stamps trace context onto log records — see [docs/logging.md](docs/logging.md). |
+| `OTEL_METRICS_EXPORTER`                    | —                          | No       | Comma-separated metric exporters: `otlp` (push over OTLP/gRPC) and/or `prometheus` (serve a scrape endpoint). Enables FastAPI and system/process metrics.  |
+| `OTEL_LOGS_EXPORTER`                       | —                          | No       | Set to `otlp` to export log records (INFO and above) over OTLP/gRPC alongside console output — see [docs/logging.md](docs/logging.md). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT`              | `http://localhost:4317`    | No       | OTLP/gRPC collector endpoint shared by trace, metric, and log export. One of the [standard OpenTelemetry SDK variables](https://opentelemetry.io/docs/specs/otel/configuration/sdk-environment-variables/), which the underlying exporters honor as usual (per-signal endpoints, headers, timeouts, resource attributes, …). |
+| `OTEL_EXPORTER_PROMETHEUS_PORT`            | `9464`                     | No       | Port of the Prometheus scrape endpoint (effective only with `prometheus` in `OTEL_METRICS_EXPORTER`)         |
+| **Scripts & Tests**                        |                            |          |                                                                                                              |
+| `REMOTE_DIAL_URL`                          | —                          | No       | URL of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests            |
+| `REMOTE_DIAL_API_KEY`                      | —                          | No       | API key of the remote DIAL Core, used only by `generate_dial_config` script and e2e/integration tests        |
 
 #### Deprecated Environment Variables
 
 > [!CAUTION]
 > These variables still work but will be removed in a future major version.
 
-| Variable                        | Replacement                                                       | Description                                                                                                                                                                                                                                                                                                                                    |
-|---------------------------------|-------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                          | If set alone, treated as a single extra layer on top of the built-in content                                                                                                                                                                                                                                                                   |
-| `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds` | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred.                                                                                                                                                                                                      |
-| `LOG_FORMAT`                    | `DIAL_SDK_TEXT_LOG_FORMAT` or `DIAL_SDK_LOG_FORMAT=json`          | When set, still controls the `text` output format (and wins over the replacements); a warning is emitted at startup. See [docs/logging.md](docs/logging.md).                                                                                                                                                                                   |
-| `LOG_DATE_FORMAT`               | —                                                                 | Still honored alongside `LOG_FORMAT`; going forward the timestamp format is fixed to `%Y-%m-%d %H:%M:%S` (the previous default).                                                                                                                                                                                                               |
-| `OTEL_PYTHON_LOG_CORRELATION`   | — *(automatic)*                                                   | Deprecated by aidial-sdk; a warning is emitted at startup. Trace fields are stamped onto log records whenever tracing is enabled, so the switch is redundant — and setting it installs OTel's legacy root-logger format, which double-logs SDK records and bypasses this service's console formatting. See [docs/logging.md](docs/logging.md). |
+| Variable                        | Replacement                                                        | Description                                                                                                                  |
+|---------------------------------|--------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
+| `PREDEFINED_BASE_PATH`          | `PREDEFINED_EXTRA_PATHS`                                           | If set alone, treated as a single extra layer on top of the built-in content                                                 |
+| `PY_INTERPRETER_CLIENT_TIMEOUT` | `DEFAULT_TOOL_TIMEOUT_SECONDS` or `tool_defaults.timeout_seconds`  | When set, still controls the PyInterpreter client timeout (seconds, default `60.0`), but the unified tool-timeout settings are preferred. |
+| `LOG_FORMAT`                    | `DIAL_SDK_TEXT_LOG_FORMAT` or `DIAL_SDK_LOG_FORMAT=json`           | When set, still controls the `text` output format (and wins over the replacements); a warning is emitted at startup. See [docs/logging.md](docs/logging.md). |
+| `LOG_DATE_FORMAT`               | —                                                                  | Still honored alongside `LOG_FORMAT`; going forward the timestamp format is fixed to `%Y-%m-%d %H:%M:%S` (the previous default). |
+| `OTEL_PYTHON_LOG_CORRELATION`   | — *(automatic)*                                                    | Deprecated by aidial-sdk; a warning is emitted at startup. Trace fields are stamped onto log records whenever tracing is enabled, so the switch is redundant — and setting it installs OTel's legacy root-logger format, which double-logs SDK records and bypasses this service's console formatting. See [docs/logging.md](docs/logging.md). |
 
 **Notes:**
 
@@ -288,8 +278,7 @@ content into the logs.
 `LOG_PAYLOADS=true` is the single, explicit exception: it re-enables the payload-bearing DEBUG records (message
 context, tool-call arguments, raw responses), each field truncated to `LOG_PAYLOADS_MAX_LENGTH`, and lifts the
 INFO cap on the wire-level third-party loggers (`openai`, `httpx`, `httpcore`). Every payload record is prefixed
-with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values**
-are
+with a `[payload]` marker so these lines can be found — or excluded — with a single filter. Forwarded header **values** are
 never logged, even with the switch on. The switch is additive to the level — content appears only when
 `QUICKAPP_LOG_LEVEL=DEBUG` **and** `LOG_PAYLOADS=true`.
 
@@ -431,8 +420,7 @@ never logged, even with the switch on. The switch is additive to the level — c
 
     - Notes:
         - If you want to run Quick Apps in Docker instead of on the host, update
-          [application-schemas.json](docker_compose_files/core/configuration/application-schemas.json) and change the
-          Quick
+          [application-schemas.json](docker_compose_files/core/configuration/application-schemas.json) and change the Quick
           Apps host from `host.docker.internal:5000` to `quick-apps:5000`.
         - When running via docker-compose the compose files set service hostnames (for example DIAL URL inside
           containers is http://core:8080). Those container-internal hostnames are not valid from your host machine — use
@@ -513,8 +501,7 @@ never logged, even with the switch on. The switch is additive to the level — c
 
 ## E2E & Integration tests
 
-Refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running
-tests.
+Refer to [Testing Guide](./src/tests/integration_tests/README.md) for detailed instructions on setting up and running tests.
 
 ## More
 
