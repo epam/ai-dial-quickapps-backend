@@ -381,10 +381,10 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
 
-Annotations collected from a deployment tool are held until the orchestrator produces its final
-answer, then emitted on the choice as a raw `custom_fields.annotations` chunk (`aidial-sdk` cannot
-model `custom_fields`). Annotations whose `<cit id="...">` anchor did not survive into that answer
-are dropped, so no annotation ever points at text the user cannot see.
+Annotations collected from a deployment tool are relayed onto the choice as a raw
+`custom_fields.annotations` chunk (`aidial-sdk` cannot model `custom_fields`), verbatim and
+unfiltered. Keeping the matching `<cit id="...">` anchors in the answer is left to the orchestrator
+model, steered by a prompt rule registered when any tool enables the flag.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> ExtractToolCalls -> AddSystemPrompt -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
 ![Message Processing](content/svg/agent_message_processing.svg)

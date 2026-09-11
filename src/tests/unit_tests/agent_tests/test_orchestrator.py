@@ -1042,7 +1042,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     assert "attachments" in custom_content
 
 
-def _build_orchestrator_for_propagation(choice, tool_result, final_content="final"):
+def _build_orchestrator_for_propagation(choice, tool_result):
     """Build a minimal Orchestrator that runs one tool-calling iteration then stops."""
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
@@ -1054,7 +1054,7 @@ def _build_orchestrator_for_propagation(choice, tool_result, final_content="fina
         close_remaining_adopted_tool_stages=Mock(),
     )
     assistant_result_no_tools = SimpleNamespace(
-        content=final_content,
+        content="final",
         attachments=[],
         tool_calls=[],
         usage=None,
@@ -1128,9 +1128,8 @@ async def test_propagation_keeps_urlless_attachments():
     assert len(choice.add_attachment_kwargs) == 2
 
 
-TOOL_ANSWER_WITH_ANCHOR = 'The tool says so <cit id="e37335">.'
-
-
+# The annotation payload is opaque to Quick Apps: it is relayed byte for byte, so the
+# shape below is only illustrative of what dial-document emits.
 def _annotation(anchor_id: str) -> dict:
     return {
         "target": {"selector": {"type": "CssSelector", "value": f"cit#{anchor_id}"}},
@@ -1150,49 +1149,33 @@ def _tool_result_with_annotations(annotations, content="out"):
     return tool_result
 
 
-def _emitted_annotations(choice: SpyChoice):
-    payloads = [
-        chunk.to_dict() for chunk in choice.sent_chunks if isinstance(chunk, ArbitraryChunk)
-    ]
-    return payloads
+def _emitted_annotation_chunks(choice: SpyChoice) -> list[dict]:
+    return [chunk.to_dict() for chunk in choice.sent_chunks if isinstance(chunk, ArbitraryChunk)]
 
 
 @pytest.mark.asyncio
-async def test_annotations_emitted_for_surviving_anchor():
+async def test_tool_annotations_are_relayed_to_the_choice():
     choice = SpyChoice()
-    annotation = _annotation("e37335")
+    annotations = [_annotation("e37335"), _annotation("a91c02")]
     orchestrator = _build_orchestrator_for_propagation(
         choice,
-        _tool_result_with_annotations([annotation], content=TOOL_ANSWER_WITH_ANCHOR),
-        final_content='The claim holds <cit id="e37335">.',
+        _tool_result_with_annotations(annotations, content='The tool says so <cit id="e37335">.'),
     )
 
     await orchestrator.invoke()
 
-    assert _emitted_annotations(choice) == [
+    # Relayed verbatim, in one chunk, even though the final answer ("final") kept no
+    # anchor: anchor survival is the model's job, not the orchestrator's.
+    assert _emitted_annotation_chunks(choice) == [
         {
             "choices": [
                 {
                     "index": 0,
-                    "delta": {"custom_fields": {"annotations": [annotation]}},
+                    "delta": {"custom_fields": {"annotations": annotations}},
                 }
             ]
         }
     ]
-
-
-@pytest.mark.asyncio
-async def test_annotations_dropped_when_anchor_did_not_survive():
-    choice = SpyChoice()
-    orchestrator = _build_orchestrator_for_propagation(
-        choice,
-        _tool_result_with_annotations([_annotation("e37335")], content=TOOL_ANSWER_WITH_ANCHOR),
-        final_content="A paraphrase with no anchors.",
-    )
-
-    await orchestrator.invoke()
-
-    assert _emitted_annotations(choice) == []
 
 
 @pytest.mark.asyncio
@@ -1202,4 +1185,4 @@ async def test_no_chunk_sent_when_tool_returns_no_annotations():
 
     await orchestrator.invoke()
 
-    assert _emitted_annotations(choice) == []
+    assert _emitted_annotation_chunks(choice) == []
