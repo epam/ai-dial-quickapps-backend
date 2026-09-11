@@ -21,6 +21,7 @@ class NormalizedChoiceDelta(BaseModel):
     content: str | None = None
     custom: NormalizedCustomContent | None = None
     tool_calls: tuple[ChoiceDeltaToolCall, ...] = Field(default_factory=tuple)
+    annotations: tuple[dict[str, Any], ...] = Field(default_factory=tuple)
 
 
 class ChunkUsageFootprint(BaseModel):

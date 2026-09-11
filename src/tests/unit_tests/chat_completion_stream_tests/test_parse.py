@@ -153,3 +153,47 @@ def test_parse_chunk_falsy_custom_content_string_returns_no_custom():
     _, deltas = parse_chat_completion_chunk(chunk)
 
     assert deltas[0].custom is None
+
+
+def _annotation_chunk(custom_fields):
+    delta = SimpleNamespace(
+        content=None, custom_content=None, tool_calls=None, custom_fields=custom_fields
+    )
+    return SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=delta)])
+
+
+def test_parse_chunk_reads_custom_fields_annotations():
+    annotation = {
+        "target": {"selector": {"type": "CssSelector", "value": "cit#e37335"}},
+        "body": {"title": "Doc", "quote": "the quote", "source": {"url": "https://x/y"}},
+    }
+    _, deltas = parse_chat_completion_chunk(_annotation_chunk({"annotations": [annotation]}))
+
+    assert deltas[0].annotations == (annotation,)
+
+
+def test_parse_chunk_annotations_skips_non_dict_entries():
+    _, deltas = parse_chat_completion_chunk(
+        _annotation_chunk({"annotations": [{"target": {}}, "not-a-dict", None]})
+    )
+
+    assert deltas[0].annotations == ({"target": {}},)
+
+
+@pytest.mark.parametrize(
+    "custom_fields",
+    [None, "not-a-dict", {}, {"annotations": None}, {"annotations": "not-a-list"}],
+)
+def test_parse_chunk_annotations_absent_or_malformed(custom_fields):
+    _, deltas = parse_chat_completion_chunk(_annotation_chunk(custom_fields))
+
+    assert deltas[0].annotations == ()
+
+
+def test_parse_chunk_without_custom_fields_attribute():
+    delta = SimpleNamespace(content="hi", custom_content=None, tool_calls=None)
+    chunk = SimpleNamespace(usage=None, choices=[SimpleNamespace(delta=delta)])
+
+    _, deltas = parse_chat_completion_chunk(chunk)
+
+    assert deltas[0].annotations == ()

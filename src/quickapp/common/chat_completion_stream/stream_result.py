@@ -1,7 +1,7 @@
 """Mutable accumulator for OpenAI-style chat completion streams (orchestrator + deployment)."""
 
 import logging
-from typing import Any
+from typing import Any, Sequence
 
 from aidial_sdk.chat_completion import Attachment, Status
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
@@ -73,6 +73,7 @@ class ChatStreamAccumulator:
     def __init__(self) -> None:
         self.__content = ""
         self.__attachments: list[Attachment] = []
+        self.__annotations: list[dict[str, Any]] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
         self.__usage: Usage | None = None
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
@@ -96,6 +97,13 @@ class ChatStreamAccumulator:
     def extend_attachments(self, attachments: list[Attachment]) -> None:
         """Append SDK ``Attachment`` instances (parser normalizes to SDK type upstream)."""
         self.__attachments.extend(attachments)
+
+    @property
+    def annotations(self) -> list[dict[str, Any]]:
+        return self.__annotations
+
+    def extend_annotations(self, annotations: Sequence[dict[str, Any]]) -> None:
+        self.__annotations.extend(annotations)
 
     @property
     def tool_calls(self) -> list[AccumulatedToolCall] | None:
