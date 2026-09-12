@@ -10,7 +10,7 @@ from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.dial_prompt_skills import _DialPromptSkillsContext
 from quickapp.dial_prompt_skills._dial_prompt_skill_initializer import _DialPromptSkillInitializer
 from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import DialPromptSkillResolverOutput
-from tests.unit_tests.common.common import make_resolved_dial_prompt_skill as _resolved
+from tests.unit_tests.common.common import make_resolved_skill as _resolved
 
 
 def _make_config_provider(skills: list[DialPromptSkillConfig] | None = None) -> MagicMock:

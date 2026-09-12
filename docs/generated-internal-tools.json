@@ -357,6 +357,18 @@
         },
         "type": "string",
         "description": "The name of the skill to read. This should match the name from the available_skills list."
+      },
+      "file_path": {
+        "display": {
+          "stage": {
+            "ignore": true,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": false,
+            "order": 0
+          }
+        },
+        "type": "string",
+        "description": "Optional. Path of a file bundled with the skill, relative to the skill root, written exactly as listed in that skill's <skill_files> block (e.g. references/api-schema.md). Omit it to read the skill's instructions."
       }
     },
     "required": [

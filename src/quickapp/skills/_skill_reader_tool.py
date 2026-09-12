@@ -44,6 +44,7 @@ class _SkillReaderTool(StagedBaseTool):
         stage_wrapper: BaseStageWrapper | None = None,
         tool_call_id: str | None = None,
         skill_name: str | None = None,
+        file_path: str | None = None,
         *args: Any,
         **kwargs: Any,
     ) -> ToolCallResult:
@@ -57,7 +58,10 @@ class _SkillReaderTool(StagedBaseTool):
             return result
 
         try:
-            content = self.__skills_registry.get_skill_content(skill_name)
+            if file_path:
+                content = await self.__skills_registry.read_skill_file(skill_name, file_path)
+            else:
+                content = self.__skills_registry.get_skill_content(skill_name)
             result = ToolCallResult(content=content, content_type="text/markdown")
             if stage_wrapper:
                 stage_wrapper.add_result(result)
