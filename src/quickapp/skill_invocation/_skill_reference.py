@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from aidial_sdk.chat_completion import Message, Role
+from pydantic import BaseModel, ConfigDict, Field
 
 from quickapp.skills import SKILL_CHIPS_FIELD
 
@@ -11,10 +12,9 @@ logger = logging.getLogger(__name__)
 def message_skill_urls(message: Message) -> list[str]:
     """Canonical skill URLs picked on one user message, in chip order, deduplicated.
 
-    ``custom_content.skills`` on a non-user message is ignored. A malformed entry
-    is dropped with a debug log — Core answers such a request with ``400``, so
-    reaching here means something upstream changed, and refusing the turn over it
-    would be worse.
+    ``custom_content.skills`` on a non-user message is ignored. A malformed entry is
+    dropped with a debug log — Core answers such a request with ``400``, so reaching
+    here means something upstream changed, and refusing the turn over it would be worse.
     """
     if message.role != Role.USER or message.custom_content is None:
         return []
@@ -35,19 +35,54 @@ def message_skill_urls(message: Message) -> list[str]:
     return urls
 
 
-def collect_skill_urls(messages: list[Message], max_skills: int) -> list[str]:
-    """Every skill URL picked in the conversation, oldest first, capped.
+class ConversationPicks(BaseModel):
+    """What the chips of a whole conversation add up to."""
 
-    A URL keeps the position of its *latest* occurrence, so the cap drops the
-    oldest picks and the chips of the message being answered survive it.
+    model_config = ConfigDict(frozen=True)
+
+    by_ordinal: dict[int, str] = Field(default_factory=dict)
+    """Picked URL, keyed by the ordinal of the user message that picked it."""
+
+    ignored_by_ordinal: dict[int, list[str]] = Field(default_factory=dict)
+    """Extra URLs dropped because only one skill may be invoked per message."""
+
+
+def collect_picks(messages: list[Message]) -> ConversationPicks:
+    """Every skill pick in the conversation, keyed by the **ordinal** of the user
+    message that made it (0 for the first user message, 1 for the second, ...).
+
+    The ordinal is the anchor rather than a list index because the injector sees a
+    different list from the one parsed here: ``extract_tool_calls`` has expanded the
+    stored tool history and the scrub transformer has copied the chipped messages.
+    User messages survive both, in order, so counting them is stable.
+
+    One skill per turn: a message carrying more than one chip keeps the first and
+    reports the rest, rather than dropping them silently. A URL picked again on a
+    later turn keeps its first pick, so the skill is loaded once, ahead of the
+    message that first asked for it.
     """
-    ordered: list[str] = []
+    by_ordinal: dict[int, str] = {}
+    ignored_by_ordinal: dict[int, list[str]] = {}
+    seen: set[str] = set()
+    ordinal = -1
+
     for message in messages:
-        for url in message_skill_urls(message):
-            if url in ordered:
-                ordered.remove(url)
-            ordered.append(url)
-    return ordered[-max_skills:]
+        if message.role != Role.USER:
+            continue
+        ordinal += 1
+        urls = message_skill_urls(message)
+        if not urls:
+            continue
+        if len(urls) > 1:
+            ignored_by_ordinal[ordinal] = urls[1:]
+            logger.warning(
+                "A user message carries %d skill chips; only the first is loaded", len(urls)
+            )
+        if urls[0] not in seen:
+            seen.add(urls[0])
+            by_ordinal[ordinal] = urls[0]
+
+    return ConversationPicks(by_ordinal=by_ordinal, ignored_by_ordinal=ignored_by_ordinal)
 
 
 def skill_name_from_url(url: str) -> str:

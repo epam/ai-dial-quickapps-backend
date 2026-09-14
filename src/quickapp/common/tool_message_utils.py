@@ -9,14 +9,6 @@ def after_first_user_idx(messages: list[Message]) -> int:
     )
 
 
-def after_last_user_idx(messages: list[Message]) -> int | None:
-    """Return the index immediately after the last USER message, or None if there is none."""
-    return next(
-        (i + 1 for i in range(len(messages) - 1, -1, -1) if messages[i].role == Role.USER),
-        None,
-    )
-
-
 def tool_function_name_for_tool_message(messages: list[Message], index: int) -> str | None:
     """Resolve OpenAI function name for a TOOL message from the preceding assistant tool_calls."""
     if index < 0 or index >= len(messages):

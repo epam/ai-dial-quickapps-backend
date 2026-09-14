@@ -317,6 +317,8 @@ the rest of the conversation. The model does not get to choose — a picked skil
 - The field is **per message**, not per request: it stays on the turn it was picked on, which is what
   lets Core re-share the skill on every later turn and keeps the bundled files readable.
 - `content` is opaque. QuickApps never parses it, so the `/name` token is just text.
+- **One skill per message.** The field is an array, but only the first entry is loaded; any others
+  are ignored and reported as a warning in the initialization issues stage.
 - `custom_content.skills` on a non-user message is ignored.
 - DIAL Core auto-shares each referenced skill to the application's per-request key, and rejects the
   whole request with `400` for a malformed entry or a non-`skills/` URL, and with `403` for a skill
@@ -326,11 +328,15 @@ the rest of the conversation. The model does not get to choose — a picked skil
 
 - Each picked skill is resolved like a `dial-skill` and registered under **its own manifest name**,
   so `<available_skills>`, `read_skill` and bundled-file reads all work unchanged.
-- A synthetic `read_skill` call and result pair is inserted directly after the message that picked
-  the skill, and the user sees the normal "Reading Skill: `<name>`" stage.
-- On later turns the pair comes back from the assistant state like any other tool result: the model
-  keeps the manifest it saw when the skill was picked, even if the user edits the skill afterwards.
-  A later read of a **bundled file** returns the current file.
+- A synthetic `read_skill` call and result pair is inserted at the head of the conversation, right
+  after the first user message — the same place the built-in file-transfer skill goes — so the
+  instructions read ahead of the turns they apply to. The user sees the normal
+  "Reading Skill: `<name>`" stage — the invocation is something they did explicitly, so unlike
+  other synthetic injections it is not hidden.
+- The injection runs only on the turn the pick is made. On later turns the pair comes back from
+  the assistant state like any other tool result, so `read_skill` is never re-run for it.
+- The model therefore keeps the manifest it saw when the skill was picked, even if the user edits
+  the skill afterwards. A later read of a **bundled file** returns the current file.
 - A picked skill **wins** a name collision with one of the agent's skills, which is then dropped and
   reported in the initialization issues stage. Picked skills are expected to have names that do not
   clash with the agent's; nothing enforces it yet.

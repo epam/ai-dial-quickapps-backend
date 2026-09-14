@@ -1,4 +1,4 @@
-"""``_SkillInvocationInitializer`` — collect chips, cap, delegate, report this turn."""
+"""``_SkillInvocationInitializer`` — collect picks, cap, delegate, report this turn."""
 
 from unittest.mock import AsyncMock, MagicMock
 
@@ -24,7 +24,9 @@ def _user(*urls: str) -> Message:
 
 
 def _make(
-    messages: list[Message], output: DialSkillResolverOutput | None = None, max_skills: int = 10
+    messages: list[Message],
+    output: DialSkillResolverOutput | None = None,
+    max_skills: int = 10,
 ):
     resolver = MagicMock(spec=DialSkillResolver)
     resolver.resolve = AsyncMock(
@@ -35,17 +37,20 @@ def _make(
     return _SkillInvocationInitializer(messages, resolver, context, settings), resolver, context
 
 
+def _reasons(context: _InvokedSkillsContext) -> list[str]:
+    return [getattr(exc, "reason", str(exc)) for exc in context.exceptions]
+
+
 class TestInitialize:
 
     @pytest.mark.asyncio
-    async def test_no_chips_skips_resolution_entirely(self):
+    async def test_no_picks_skips_resolution_entirely(self):
         initializer, resolver, context = _make([Message(role=Role.USER, content="hi")])
 
         await initializer.initialize()
 
         resolver.resolve.assert_not_awaited()
-        assert context.resolved_skills == []
-        assert context.current_turn_urls == []
+        assert context.current_pick_url is None
 
     @pytest.mark.asyncio
     async def test_resolves_every_pick_in_the_conversation_oldest_first(self):
@@ -53,8 +58,10 @@ class TestInitialize:
 
         await initializer.initialize()
 
-        configs = resolver.resolve.await_args.args[0]
-        assert [cfg.url for cfg in configs] == ["skills/b/a", "skills/b/z"]
+        assert [cfg.url for cfg in resolver.resolve.await_args.args[0]] == [
+            "skills/b/a",
+            "skills/b/z",
+        ]
 
     @pytest.mark.asyncio
     async def test_the_cap_drops_the_oldest_picks(self):
@@ -65,21 +72,26 @@ class TestInitialize:
         assert [cfg.url for cfg in resolver.resolve.await_args.args[0]] == ["skills/b/z"]
 
     @pytest.mark.asyncio
-    async def test_records_the_chips_of_the_message_being_answered(self):
-        initializer, _, context = _make(
-            [_user("skills/b/a"), Message(role=Role.ASSISTANT, content="ok"), _user("skills/b/z")]
-        )
+    async def test_the_pick_of_the_message_being_answered_is_singled_out(self):
+        initializer, _, context = _make([_user("skills/b/a"), _user("skills/b/z")])
 
         await initializer.initialize()
 
-        assert context.current_turn_urls == ["skills/b/z"]
+        assert context.current_pick_url == "skills/b/z"
+
+    @pytest.mark.asyncio
+    async def test_no_current_pick_when_the_last_message_carries_no_chip(self):
+        initializer, _, context = _make([_user("skills/b/a"), Message(role=Role.USER, content="?")])
+
+        await initializer.initialize()
+
+        assert context.current_pick_url is None
 
     @pytest.mark.asyncio
     async def test_registers_what_resolved(self):
-        skill = _skill("skills/b/a", "a")
         initializer, _, context = _make(
             [_user("skills/b/a")],
-            DialSkillResolverOutput(resolved=[skill], exceptions=[]),
+            DialSkillResolverOutput(resolved=[_skill("skills/b/a", "a")], exceptions=[]),
         )
 
         await initializer.initialize()
@@ -95,6 +107,39 @@ class TestInitialize:
 
         assert len(context.exceptions) == 1
         assert "Failed to resolve user skills" in str(context.exceptions[0])
+
+
+class TestOneSkillPerMessage:
+
+    @pytest.mark.asyncio
+    async def test_extra_chips_on_this_turn_are_reported_as_a_warning(self):
+        initializer, _, context = _make([_user("skills/b/a", "skills/b/z", "skills/b/k")])
+
+        await initializer.initialize()
+
+        assert context.exceptions[0].severity == "warning"
+        assert _reasons(context) == [
+            "Only one skill can be invoked per message;"
+            " the first one was loaded and these were ignored: z, k"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_only_the_first_chip_is_resolved(self):
+        initializer, resolver, _ = _make([_user("skills/b/a", "skills/b/z")])
+
+        await initializer.initialize()
+
+        assert [cfg.url for cfg in resolver.resolve.await_args.args[0]] == ["skills/b/a"]
+
+    @pytest.mark.asyncio
+    async def test_extra_chips_on_an_earlier_turn_are_not_repeated_to_the_user(self):
+        initializer, _, context = _make(
+            [_user("skills/b/a", "skills/b/z"), Message(role=Role.USER, content="?")]
+        )
+
+        await initializer.initialize()
+
+        assert context.exceptions == []
 
 
 class TestReporting:
@@ -114,7 +159,7 @@ class TestReporting:
 
         await initializer.initialize()
 
-        assert [exc.reason for exc in context.exceptions] == ["fresh"]
+        assert _reasons(context) == ["fresh"]
 
     @pytest.mark.asyncio
     async def test_an_exception_without_a_url_is_always_reported(self):
@@ -127,4 +172,4 @@ class TestReporting:
 
         await initializer.initialize()
 
-        assert [exc.reason for exc in context.exceptions] == ["global"]
+        assert _reasons(context) == ["global"]

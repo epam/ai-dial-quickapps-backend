@@ -18,11 +18,9 @@ from quickapp.common.tool_message_utils import after_first_user_idx
 
 logger = logging.getLogger(__name__)
 
-SYNTHETIC_CALL_ID_PREFIX = "synth_"
-
 
 class SyntheticToolCallInjector(MessagesTransformer, ABC):
-    call_id_prefix: str = SYNTHETIC_CALL_ID_PREFIX
+    call_id_prefix: str = "synth_"
 
     def __init__(
         self,
@@ -52,7 +50,9 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     def _make_call_id_prefix(self, tool_name: str, arguments: dict) -> str:
         """Return the stable prefix for a tool+args pair (no content, no TTL)."""
-        return make_synthetic_call_id_prefix(tool_name, arguments, self.call_id_prefix)
+        tool_hash = _hash6(tool_name)
+        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+        return f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_"
 
     def make_call_id(
         self,
@@ -61,10 +61,18 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         content: str,
         ttl_expiry_seconds: int | None = None,
     ) -> str:
-        """Build a structured call_id for the given tool+args+content."""
-        return make_synthetic_call_id(
-            tool_name, arguments, content, ttl_expiry_seconds, self.call_id_prefix
-        )
+        """Build a structured call_id for the given tool+args+content.
+
+        Format: {prefix}t_{tool_hash6}_a_{args_hash6}_c_{content_hash6}[_ttl_{expiry:08x}]
+        Maximum length: prefix + 2+6+3+6+3+6+5+8 = prefix + 39 chars (≤ 64 for any prefix ≤ 25).
+        """
+        tool_hash = _hash6(tool_name)
+        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+        content_hash = _hash6(content)
+        base = f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_c_{content_hash}"
+        if ttl_expiry_seconds is not None:
+            return f"{base}_ttl_{ttl_expiry_seconds:08x}"
+        return base
 
     @staticmethod
     def _parse_call_id_ttl_expiry(call_id: str) -> int | None:
@@ -119,10 +127,10 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
             pair_idx, _ = pair
             # Replace in place (re-stamps TTL when expiry changed, no-op when identical)
             state = self._enrich_state(call_id, content)
-            new_pair = build_synthetic_pair(tool_name, call_id, arguments, content, state)
+            new_pair = _build_pair(tool_name, call_id, arguments, content, state)
             return messages[:pair_idx] + list(new_pair) + messages[pair_idx + 2 :]
 
-        has_prior_args = has_synthetic_pair_with_prefix(messages, args_prefix)
+        has_prior_args = _has_any_pair_with_prefix(messages, args_prefix)
         idx = len(messages) if has_prior_args else after_first_user_idx(messages)
         return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
 
@@ -136,7 +144,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         content: str,
     ) -> list[Message]:
         state = self._enrich_state(call_id, content)
-        pair = build_synthetic_pair(tool_name, call_id, arguments, content, state)
+        pair = _build_pair(tool_name, call_id, arguments, content, state)
         return messages[:idx] + list(pair) + messages[idx:]
 
     def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
@@ -164,37 +172,7 @@ def _hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
 
 
-def make_synthetic_call_id_prefix(
-    tool_name: str,
-    arguments: dict,
-    call_id_prefix: str = SYNTHETIC_CALL_ID_PREFIX,
-) -> str:
-    """Return the stable call-id prefix for a tool+args pair (no content, no TTL)."""
-    tool_hash = _hash6(tool_name)
-    args_hash = _hash6(json.dumps(arguments, sort_keys=True))
-    return f"{call_id_prefix}t_{tool_hash}_a_{args_hash}_"
-
-
-def make_synthetic_call_id(
-    tool_name: str,
-    arguments: dict,
-    content: str,
-    ttl_expiry_seconds: int | None = None,
-    call_id_prefix: str = SYNTHETIC_CALL_ID_PREFIX,
-) -> str:
-    """Build a structured call_id for the given tool+args+content.
-
-    Format: {prefix}t_{tool_hash6}_a_{args_hash6}_c_{content_hash6}[_ttl_{expiry:08x}]
-    Maximum length: prefix + 2+6+3+6+3+6+5+8 = prefix + 39 chars (≤ 64 for any prefix ≤ 25).
-    """
-    content_hash = _hash6(content)
-    base = f"{make_synthetic_call_id_prefix(tool_name, arguments, call_id_prefix)}c_{content_hash}"
-    if ttl_expiry_seconds is not None:
-        return f"{base}_ttl_{ttl_expiry_seconds:08x}"
-    return base
-
-
-def has_synthetic_pair_with_prefix(messages: list[Message], id_prefix: str) -> bool:
+def _has_any_pair_with_prefix(messages: list[Message], id_prefix: str) -> bool:
     return any(
         m.role == Role.TOOL and m.tool_call_id is not None and m.tool_call_id.startswith(id_prefix)
         for m in messages
@@ -215,7 +193,7 @@ def _find_pair_with_args_and_content(
     return None
 
 
-def build_synthetic_pair(
+def _build_pair(
     tool_name: str,
     call_id: str,
     arguments: dict,

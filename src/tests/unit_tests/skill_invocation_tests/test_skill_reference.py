@@ -3,7 +3,7 @@
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.skill_invocation._skill_reference import (
-    collect_skill_urls,
+    collect_picks,
     message_skill_urls,
     skill_name_from_url,
 )
@@ -65,26 +65,37 @@ class TestMessageSkillUrls:
         assert message_skill_urls(message) == ["skills/b/a"]
 
 
-class TestCollectSkillUrls:
+class TestCollectPicks:
 
-    def test_returns_conversation_picks_oldest_first(self):
+    def test_keys_picks_by_the_ordinal_of_the_user_message(self):
         messages = [
             _user("skills/b/a"),
             Message(role=Role.ASSISTANT, content="ok"),
+            Message(role=Role.USER, content="plain"),
             _user("skills/b/z"),
         ]
-        assert collect_skill_urls(messages, 10) == ["skills/b/a", "skills/b/z"]
+        assert collect_picks(messages).by_ordinal == {0: "skills/b/a", 2: "skills/b/z"}
 
-    def test_a_repicked_url_moves_to_the_end(self):
-        messages = [_user("skills/b/a"), _user("skills/b/z"), _user("skills/b/a")]
-        assert collect_skill_urls(messages, 10) == ["skills/b/z", "skills/b/a"]
+    def test_only_the_first_chip_of_a_message_is_loaded(self):
+        collected = collect_picks([_user("skills/b/a", "skills/b/z")])
 
-    def test_the_cap_drops_the_oldest_picks(self):
-        messages = [_user("skills/b/a"), _user("skills/b/z"), _user("skills/b/k")]
-        assert collect_skill_urls(messages, 2) == ["skills/b/z", "skills/b/k"]
+        assert collected.by_ordinal == {0: "skills/b/a"}
+
+    def test_the_extra_chips_of_a_message_are_reported_not_dropped_silently(self):
+        collected = collect_picks([_user("skills/b/a", "skills/b/z", "skills/b/k")])
+
+        assert collected.ignored_by_ordinal == {0: ["skills/b/z", "skills/b/k"]}
+
+    def test_a_single_chip_reports_nothing(self):
+        assert collect_picks([_user("skills/b/a")]).ignored_by_ordinal == {}
+
+    def test_a_repicked_url_keeps_its_first_pick(self):
+        collected = collect_picks([_user("skills/b/a"), _user("skills/b/a")])
+
+        assert collected.by_ordinal == {0: "skills/b/a"}
 
     def test_no_chips_anywhere_yields_nothing(self):
-        assert collect_skill_urls([Message(role=Role.USER, content="hi")], 10) == []
+        assert collect_picks([Message(role=Role.USER, content="hi")]).by_ordinal == {}
 
 
 class TestSkillNameFromUrl:

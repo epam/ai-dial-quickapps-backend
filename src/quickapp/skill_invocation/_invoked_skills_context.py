@@ -20,18 +20,18 @@ class _InvokedSkillsContext(SkillsProvider):
     files and reader — so everything downstream (the merge, ``generate_skills_xml``,
     ``read_skill``, bundled files) works unchanged.
 
-    ``order`` runs ahead of every agent source (agent/predefined ``0``,
-    dial-prompt ``10``, dial-skill ``20``), so a picked skill wins a name collision
-    and the agent's same-named skill is dropped by the registry's collision path.
+    ``order`` runs ahead of every agent source (agent/predefined ``0``, dial-prompt
+    ``10``, dial-skill ``20``), so a picked skill wins a name collision and the
+    agent's same-named skill is dropped by the registry's collision path.
     """
 
     order = -10
     display_name = "user skills"
 
     def __init__(self) -> None:
+        self._current_pick_url: str | None = None
         self._skills_by_url: dict[str, ResolvedSkill] = {}
         self._exceptions: list[InitializationException] = []
-        self._current_turn_urls: list[str] = []
 
     @property
     def resolved_skills(self) -> list[ResolvedSkill]:
@@ -42,16 +42,16 @@ class _InvokedSkillsContext(SkillsProvider):
         return self._exceptions
 
     @property
-    def current_turn_urls(self) -> list[str]:
-        """Canonical URLs of the chips on the message being answered, in chip order.
+    def current_pick_url(self) -> str | None:
+        """The pick on the message being answered, if this turn made one.
 
         Recorded here rather than re-parsed from the messages later, so the injector
         does not care whether the scrub transformer has already run.
         """
-        return self._current_turn_urls
+        return self._current_pick_url
 
-    def set_current_turn_urls(self, urls: list[str]) -> None:
-        self._current_turn_urls = urls
+    def set_current_pick_url(self, url: str | None) -> None:
+        self._current_pick_url = url
 
     def set_resolved_skills(self, skills: list[ResolvedSkill]) -> None:
         self._skills_by_url = {skill.url: _mark_user_selected(skill) for skill in skills}

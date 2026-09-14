@@ -18,11 +18,13 @@ class TestOrdering:
         assert _InvokedSkillsContext.display_name == "user skills"
 
 
-class TestResolvedSkills:
+class TestState:
 
     def test_starts_empty(self):
-        assert _InvokedSkillsContext().resolved_skills == []
-        assert _InvokedSkillsContext().current_turn_urls == []
+        context = _InvokedSkillsContext()
+
+        assert context.resolved_skills == []
+        assert context.current_pick_url is None
 
     def test_content_is_prefixed_with_a_user_selected_header(self):
         context = _InvokedSkillsContext()
@@ -30,8 +32,7 @@ class TestResolvedSkills:
             [_skill("skills/b/sql-style", "sql-style", content="---\nbody")]
         )
 
-        entry = context.resolved_skills[0]
-        assert entry.content == (
+        assert context.resolved_skills[0].content == (
             "Skill `sql-style`, selected by the user for this conversation.\n---\nbody"
         )
 

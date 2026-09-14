@@ -20,6 +20,11 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
     """Provides `get_content` by locating a `StagedBaseTool` by its sanitized
     OpenAI function name and calling `tool.arun()` with the declared arguments."""
 
+    stage_level: StageDisplayLevel = StageDisplayLevel.DEBUG
+    """How visible the injected call's stage is. Defaults to DEBUG, which hides it:
+    an injection the user did not ask for should not look like work they requested.
+    A subclass acting on an explicit user action overrides it with INFO."""
+
     @inject
     def __init__(
         self,
@@ -41,7 +46,5 @@ class StagedToolSyntheticInjector(SyntheticToolCallInjector, ABC):
             )
             return None
         arguments = await self.get_arguments()
-        result = await tool.arun(
-            _ARUN_SYNTHETIC_CALL_ID, stage_level=StageDisplayLevel.DEBUG, **arguments
-        )
+        result = await tool.arun(_ARUN_SYNTHETIC_CALL_ID, stage_level=self.stage_level, **arguments)
         return result.content
