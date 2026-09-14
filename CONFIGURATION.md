@@ -375,6 +375,7 @@ fields fall back to the deployment-wide defaults configured via environment vari
 |----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
 | `timestamp`          | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
 | `external_url_fetch` | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `subagents`          | No       | Object or null | Delegation: the agent can hand a scoped sub-task to a subagent that works in its own context. Preview. See [Subagents configuration](#subagents-configuration).              | `null`                                 |
 
 #### Timestamp configuration
 
@@ -468,6 +469,95 @@ this app only allows `example.com`):
 
 See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL classification,
 SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
+
+### Subagents configuration
+
+> Requires `ENABLE_PREVIEW_FEATURES=true` on the backend. When preview features are off, this
+> section is ignored and no `task` tool is offered.
+
+A **subagent** is a helper agent your app spawns to carry out one scoped task. It runs its own
+orchestrator loop over its own conversation, then returns a single result. Its intermediate work —
+tool calls, fetched documents, retries — never enters the main agent's context, so a long sub-task
+costs the main conversation only the length of its answer.
+
+There is nothing to declare and nothing to deploy. Set `features.subagents.enabled` to `true` and
+your agent gets one extra tool:
+
+```
+task(prompt, tool_sets)
+```
+
+Your agent writes both arguments every time it delegates:
+
+- **`prompt`** — the entire task. The subagent sees nothing else: not the user's message, not your
+  agent's history, not another subagent's work.
+- **`tool_sets`** — the names of the tool sets that subagent may use, chosen from this app's own.
+  A subagent inherits **none** of your agent's tools, so anything the task needs has to be named
+  here. An empty list is valid and means a subagent that only reasons over the text in `prompt`.
+
+Scoping the tools per call is what keeps a subagent on task: a helper asked to research something
+and handed only web search cannot wander into your other integrations. Your agent picks from the
+tool sets you already configured, so a subagent can never reach a tool your app does not have.
+
+#### `features.subagents`
+
+| Field             | Required | Type    | Description                                                                                                  | Default Value |
+|-------------------|----------|---------|--------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`         | No       | Boolean | Offer the `task` tool.                                                                                       | `false`       |
+| `system_prompt`   | No       | String  | The subagent's instructions. **Replaces** the built-in general-purpose prompt; it is not appended to it.      | `null`        |
+| `deployment_id`   | No       | String  | Model subagents run on. Omit to use the app's orchestrator model.                                            | `null`        |
+| `max_iterations`  | No       | Integer | Iteration budget for one spawn. Omit to use the app's.                                                       | `null`        |
+| `timeout_seconds` | No       | Number  | Wall-clock budget for one spawn. Narrows the admin ceiling (`SUBAGENT_TIMEOUT_SECONDS`) but never extends it. | `null`        |
+
+Give your tool sets clear `name` and `description` values: both are shown to your agent when it
+picks the tools for a spawn, and a set with no description is listed by name alone.
+
+**What a subagent inherits.** Your `contexts` (attached files), `skills`, `hooks`, and other
+`features` are passed on as-is. Note that attached files are inherited too, so each spawn re-pays
+their token cost — keep that in mind before attaching large files to an app that spawns often.
+Tools are the exception: those come from the `task` call, not from the manifest. A subagent can
+never spawn another subagent.
+
+**Errors your agent will see.** Naming a tool set this app does not define fails the call with the
+list of valid names, so the agent can retry. A subagent that runs out of iterations or wall-clock
+time fails the call too, rather than returning a half-finished answer.
+
+<details>
+<summary><b>Subagents configuration JSON sample</b></summary>
+
+Zero configuration — turn it on and your agent handles the rest:
+
+```json
+{
+  "features": {
+    "subagents": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Tuned: a cheaper model for helpers, a shorter leash, and instructions of your own:
+
+```json
+{
+  "features": {
+    "subagents": {
+      "enabled": true,
+      "system_prompt": "You are a research assistant. Reply with the answer and at most five supporting bullets, each with a source.",
+      "deployment_id": "gpt-4o-mini-2024-07-18",
+      "max_iterations": 12,
+      "timeout_seconds": 120
+    }
+  }
+}
+```
+
+</details>
+
+Operators cap subagents with `SUBAGENT_TIMEOUT_SECONDS` and `SUBAGENT_MAX_CONCURRENT_SPAWNS`; see
+[README.md](./README.md#environment-variables).
+
 
 ### Tool sets configuration
 
