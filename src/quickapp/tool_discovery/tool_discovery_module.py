@@ -23,7 +23,7 @@ class ToolDiscoveryModule(Module):
         binder.bind(_ToolSearchStageWrapper, to=_ToolSearchStageWrapper)
 
     @multiprovider
-    def _provide_tool_search_tool(
+    def _provide_tool_search_tools(
         self,
         config: ApplicationConfig,
         tool_builder: AssistedBuilder[_ToolSearchTool],

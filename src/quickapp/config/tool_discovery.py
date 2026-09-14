@@ -1,9 +1,11 @@
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.fields import FieldInfo
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ToolDiscoverySettings(BaseSettings):
+    model_config = SettingsConfigDict()
+
     min_tools_for_deferral: int = Field(
         default=5,
         ge=1,
@@ -32,12 +34,12 @@ class ToolDiscoveryConfig(BaseModel):
 
     enabled: bool = Field(
         default=False,
-        description="Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the tool_search meta-tool.",
+        description="Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the internal_tool_search meta-tool.",
     )
     service_model: str | None = Field(
         default=None,
         description=(
-            "DIAL deployment used for the anonymous routing call inside tool_search. "
+            "DIAL deployment used for the anonymous routing call inside internal_tool_search. "
             "When omitted, falls back to the orchestrator's own deployment."
         ),
     )

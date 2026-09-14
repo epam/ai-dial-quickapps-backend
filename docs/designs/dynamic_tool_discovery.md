@@ -278,37 +278,57 @@ registry, connect only when the model requests a server's capabilities. Requires
 
 ---
 
-### Option 6 — `DeferredRequestContext` + anonymous agent search + orchestrator injection (Recommended)
+### Option 6 — `DeferredToolsContext` + anonymous agent search + lazy schema injection (Recommended, chosen)
 
 **Mechanism:**
-At request time, MCP and REST initializers split their output between the normal `RequestContext`
-(eager tools) and a new `DeferredRequestContext` (deferred tools). A single `tool_search` meta-tool
-is injected; when triggered it fires an isolated "anonymous agent" chat completion that consults
-only the deferred catalog. The orchestrator intercepts the result and injects full schemas natively
-into the next round. No Anthropic-specific API features are required.
+At request time, toolset initializers (MCP, REST, and internal) split their output between the
+normal `list[StagedBaseTool]` (eager tools) and a shared `DeferredToolsContext` (deferred tools).
+A single `tool_search` meta-tool is injected; when triggered it fires an isolated "anonymous agent"
+chat completion that consults only the deferred catalog, then stores the matched tools' full
+schemas in a request-scoped `LazyLoadedToolsHolder`, which `_ChatCompletionConfigBuilder` merges
+into `payload["tools"]` on the next build. No Anthropic-specific API features are required, and
+**no orchestrator changes were needed** — the mechanism is entirely local to the `tool_search`
+tool's own execution and the request-scoped holder it writes to.
+
+> **As built:** the sections below describe the mechanism as originally proposed. Where the
+> landed implementation differs, an **As built** note calls it out. See the
+> [Changes required](#changes-required) table for the final shape.
 
 #### Step 1 — Request initialisation
 
-When a new chat completion request arrives, MCP and REST toolset initializers run as today and
-build full `OpenAiToolConfig` definitions. They then apply the deferral decision:
+When a new chat completion request arrives, toolset initializers run as today and build full
+`OpenAiToolConfig` definitions. They then apply the deferral decision per toolset (the real
+predicate, `is_toolset_deferred` — note the tri-state `deferred` field, see
+[Deferral threshold](#deferral-threshold)):
 
 ```
-if toolset.deferred and len(tools) >= discovery.min_tools_for_deferral:
-    → push {name, description} entries + full definitions to DeferredRequestContext
+if is_toolset_deferred(toolset, discovery_cfg, len(tools)):
+    → register {name, description} entries + full definitions with DeferredToolsContext
+    → the same tools are still appended to the module's own list[StagedBaseTool]
+      (they exist as StagedBaseTool instances throughout — deferral only withholds
+      their *schema* from the initial LLM payload, in AgentModule.provide_openai_tools)
 else:
-    → push full definitions to RequestContext  (eager, as today)
+    → nothing extra happens; the tool is eager as today
 ```
 
-`DeferredRequestContext` holds two structures per toolset:
-- **catalog**: `list[{name, description}]` — compact, never forwarded to the main LLM
-- **definitions**: `dict[str, OpenAiToolConfigDict]` — full schemas, used by the lazy-initializer
+**As built:** REST API and MCP toolsets support deferral (`rest_api_tooling_module.py`,
+`_mcp_tool_initializer.py`). Internal toolsets also support it. `dial-deployment` and `dial-app`
+toolsets do not yet call `is_toolset_deferred` — setting `deferred` on those has no effect today
+(tracked as a follow-up).
 
-Toolsets with `deferred: false`, or that fall below the tool-count threshold, go straight into
-`RequestContext` unchanged.
+`DeferredToolsContext` holds two structures across all deferred toolsets in the request (not
+one instance per toolset — a single request-scoped context aggregates all of them):
+- **catalog**: `list[{name, description}]` — compact, never forwarded to the main LLM
+- **definitions**: `dict[str, OpenAiToolConfigDict]` — full schemas (transformed the same way
+  as eager tools — const params stripped, `enrich_openai_tool_schema` applied), looked up by
+  `_ToolSearchTool` when the anonymous agent returns matches
+
+Toolsets with `deferred: false`, or that fall below the tool-count threshold, stay eager —
+`AgentModule.provide_openai_tools` includes them in `payload["tools"]` directly.
 
 #### Step 2 — Main orchestrator call
 
-`payload["tools"]` is built from `RequestContext` (eager tools) plus the single `tool_search`
+`payload["tools"]` is built from the eager `list[StagedBaseTool]` plus the single `tool_search`
 meta-tool injected by `AgentModule`. Deferred tools are **absent**.
 
 ```
@@ -329,7 +349,7 @@ history and no system prompt from the main request:
 model:   service_model (config: defaults to orchestrator deployment)
 system:  "You are a tool routing assistant. Given a user query, return the names of
           the tools from the following catalog that are most relevant.
-          Catalog: [{name, description}, ...]"   ← injected from DeferredRequestContext
+          Catalog: [{name, description}, ...]"   ← injected from DeferredToolsContext
 messages:[{"role": "user", "content": <query>}]
 tools:   none
 ```
@@ -340,36 +360,40 @@ history and no application system prompt, its token cost is bounded by the catal
 **Result returned to the main LLM:** `[{name, description}]` of matched tools, confirming what
 is now available to load.
 
-#### Step 4 — Lazy-initializer builds OpenAI definitions
+#### Step 4 — `_ToolSearchTool` builds OpenAI definitions
 
-The `tool_search` handler passes the matched tool names to an internal **lazy-initializer**,
-which looks up each name in `DeferredRequestContext.definitions` and returns the corresponding
-`OpenAiToolConfigDict` objects. No LLM call is made at this step.
+Rather than a separate lazy-initializer module, `_ToolSearchTool` (a `StagedBaseTool`) itself
+looks up each matched name in `DeferredToolsContext.get_definition(...)` and passes the
+corresponding `OpenAiToolConfigDict` objects to `LazyLoadedToolsHolder.add(...)`. No LLM call is
+made at this step.
 
-#### Step 5 — Orchestrator injection (Path A)
+#### Step 5 — Lazy schema injection (no orchestrator involvement)
 
-The orchestrator intercepts the `tool_search` result and:
-1. Reads the list of matched tool names from the result.
-2. Calls the lazy-initializer to retrieve their full `OpenAiToolConfigDict`s.
-3. Accumulates them in `_lazy_loaded_tools: dict[str, OpenAiToolConfigDict]` (persists across
-   iterations within the turn).
-4. On the **next** `_ChatCompletionConfigBuilder.build()` call, `_lazy_loaded_tools` is merged
-   into `payload["tools"]`.
+**As built, this differs from the original proposal:** there is no orchestrator-side interception
+or `_lazy_loaded_tools` state inside `orchestrator.py`. Instead:
+1. `LazyLoadedToolsHolder` is a request-scoped holder (`core/agent/lazy_loaded_tools_holder.py`)
+   that `_ToolSearchTool` writes into directly during its own tool-call execution.
+2. On every subsequent `_ChatCompletionConfigBuilder.build()` call within the same request,
+   the builder reads `lazy_loaded_tools_holder.get_all()` and merges those definitions into
+   `payload["tools"]`, de-duplicated by function name against the eager tools.
+3. The orchestrator loop is completely unaware of tool discovery — it just re-builds the payload
+   each iteration as it always did, and the holder's contents are picked up automatically.
 
 The main LLM now sees the discovered tools natively alongside `tool_search` and the eager tools,
 and calls them with proper schema-based argument generation.
 
-Optionally, discovered tool names are serialised into `custom_content.state["lazy_loaded_tools"]`
-so they survive across conversation turns, avoiding rediscovery on the next user message.
+Cross-turn persistence (serialising discovered tool names into
+`custom_content.state["lazy_loaded_tools"]` so rediscovery is skipped on the next user message)
+was **not implemented** — see [Out of Scope](#out-of-scope-mvp).
 
 #### Flow diagram
 
 ```
 New request arrives
   │
-  ├─ MCP initializer:  len(tools) >= threshold → DeferredRequestContext
-  │                                            (catalog + definitions)
-  ├─ REST initializer: len(tools) < threshold  → RequestContext (eager)
+  ├─ MCP/REST/internal initializers: len(tools) >= threshold → DeferredToolsContext
+  │                                                           (catalog + definitions)
+  │                                  len(tools) < threshold  → eager list[StagedBaseTool]
   │
   ▼
 Orchestrator — iteration 1
@@ -378,16 +402,17 @@ Orchestrator — iteration 1
   │
   └─ Main LLM calls tool_search("I need to query Salesforce contacts")
         │
-        └─ AnonymousAgent (isolated chat completion):
+        └─ _ToolSearchTool → _AnonymousAgent (isolated chat completion):
               model   = service_model
-              system  = routing prompt + catalog from DeferredRequestContext
+              system  = routing prompt + catalog from DeferredToolsContext
               message = "I need to query Salesforce contacts"
               → ["sf_query_contacts", "sf_list_contacts"]
-           Lazy-initializer: names → full OpenAiToolConfigDicts
-           Orchestrator stores in _lazy_loaded_tools
+           _ToolSearchTool: names → full OpenAiToolConfigDicts, written into
+           LazyLoadedToolsHolder (request-scoped; orchestrator is not involved)
            Result returned to main LLM: [{name, description}, ...]
 
 Orchestrator — iteration 2
+  _ChatCompletionConfigBuilder reads LazyLoadedToolsHolder.get_all() and merges:
   payload["tools"] = [tool_search, ...eager tools,
                       sf_query_contacts ←injected,
                       sf_list_contacts  ←injected]
@@ -397,14 +422,22 @@ Orchestrator — iteration 2
 
 #### Deferral threshold
 
-A toolset with `deferred: true` is only placed into `DeferredRequestContext` if its tool count
-meets the minimum. Below the threshold it is loaded eagerly — no discovery overhead:
+A toolset is only placed into `DeferredToolsContext` if `is_toolset_deferred` returns true.
+`deferred` is a tri-state field (`bool | None`, default `None`/unset) — unset **or** `true`
+both defer; only an explicit `false` forces eager regardless of count:
 
-```
-deferred_effective = toolset.deferred and len(tools) >= discovery.min_tools_for_deferral
+```python
+def is_toolset_deferred(toolset, discovery_cfg, tool_count) -> bool:
+    return (
+        toolset.deferred is not False
+        and discovery_cfg is not None
+        and discovery_cfg.enabled
+        and tool_count >= discovery_cfg.min_tools_for_deferral
+    )
 ```
 
-`deferred: false` always means eager, regardless of count.
+Below the threshold — or when `tool_discovery` is disabled/unset entirely — a toolset is loaded
+eagerly, no discovery overhead.
 
 #### Configuration
 
@@ -433,27 +466,26 @@ deferred_effective = toolset.deferred and len(tools) >= discovery.min_tools_for_
 }
 ```
 
-- `deferred: true` (or unset/`null`) opts the toolset into `DeferredRequestContext`. Default: `true` (omitting the field defers by default).
+- `deferred: true` (or unset/`null`) opts the toolset into `DeferredToolsContext`. Default: `true` (omitting the field defers by default).
 - `service_model` names the DIAL deployment used for the `AnonymousAgent` chat completion.
   When omitted, falls back to the orchestrator's own deployment.
 - `min_tools_for_deferral` is the tool-count guard below which a deferred toolset is silently
   promoted to eager. Default: `5`.
 - Non-deferred and below-threshold toolsets populate `RequestContext` immediately, as today.
 
-#### Changes required
+#### Changes required (as built)
 
 | Area | Change |
 |---|---|
-| `BaseToolSet` | Add `deferred: bool = False` field |
-| `OrchestratorConfig` | Add `tool_discovery: ToolDiscoveryConfig` sub-config (`enabled`, `service_model`, `min_tools_for_deferral`) |
-| `DeferredRequestContext` | New DI-scoped object: holds per-toolset `catalog` list and `definitions` dict; populated by initializers during request setup |
-| MCP & REST initializer modules | After building tool definitions, evaluate `deferred_effective`; route to `DeferredRequestContext` or `RequestContext` accordingly |
-| `AnonymousAgent` | New module: fires a single isolated `chat.completions.create` call (no history, no app system prompt); takes `service_model`, a system prompt with the catalog, and a user query; returns matched tool names |
-| `tool_search` (`StagedBaseTool`) | New internal tool injected via `AgentModule @multiprovider`; calls `AnonymousAgent`, passes results to the lazy-initializer, returns `[{name, description}]` to the main LLM |
-| Lazy-initializer | Thin helper: given a list of tool names, looks up `DeferredRequestContext.definitions` and returns `list[OpenAiToolConfigDict]` |
-| `orchestrator.py` | After each iteration, detect `tool_search` results; call lazy-initializer; accumulate in `_lazy_loaded_tools`; pass to `_ChatCompletionConfigBuilder` on next call |
-| `_ChatCompletionConfigBuilder` | Accept `lazy_tool_dicts: list[OpenAiToolConfigDict]`; merge into `payload["tools"]` |
-| State serialisation (optional) | Persist `_lazy_loaded_tools` names in `custom_content.state["lazy_loaded_tools"]` for cross-turn reuse |
+| `BaseToolSet` (`config/toolsets/base.py`) | Add `deferred: bool \| None` field (tri-state, default `None`/unset — unset behaves as deferred, see [Deferral threshold](#deferral-threshold)) |
+| `config/tool_discovery.py` | New `ToolDiscoveryConfig` (`enabled`, `service_model`, `min_tools_for_deferral`), referenced by `OrchestratorConfig.tool_discovery` |
+| `shared/deferred_tools/` (`DeferredToolsContext`, `is_toolset_deferred`) | Request-scoped shared object aggregating `catalog`/`definitions` across all deferred toolsets in the request; `is_toolset_deferred` is the pure threshold predicate. Bound via its own `DeferredToolsModule`, spliced into `shared_module` |
+| REST, MCP, internal toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. **`dial-deployment`/`dial-app` toolsets do not yet do this** — follow-up |
+| `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`) | Fires a single isolated `chat.completions.create` call (no history, no app system prompt); takes the catalog and a user query; returns matched tool names |
+| `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (preview-gated); calls `_AnonymousAgent`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns `[{name, description}]` to the main LLM |
+| `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
+| `_chat_completion_config_builder.py` | Reads `LazyLoadedToolsHolder.get_all()` on every build and merges into `payload["tools"]`, de-duplicated against eager tool names — **`orchestrator.py` itself was not changed** |
+| Cross-turn state persistence | **Not implemented** — see [Out of Scope](#out-of-scope-mvp) |
 
 **Round-trip cost:** +1 turn before first native tool use (search + inject → tool call).
 The anonymous agent call happens inside the `tool_search` tool execution, not as a separate
@@ -466,7 +498,7 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 
 **Pros:**
 - Fully model-agnostic: works with any DIAL deployment as orchestrator.
-- `DeferredRequestContext` cleanly separates eager and deferred tool state at the DI layer —
+- `DeferredToolsContext` cleanly separates eager and deferred tool state at the DI layer —
   no orchestrator logic needed to decide what to defer.
 - Anonymous agent isolates search cost from main conversation tokens; scales with catalog size,
   not conversation length.
@@ -481,8 +513,8 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 **Cons:**
 - +1 orchestrator iteration before first native use of a deferred tool.
 - `AnonymousAgent` introduces a new code path for isolated completions.
-- `_lazy_loaded_tools` state in the orchestrator; optional cross-turn persistence requires
-  state serialisation.
+- Discovered tools only live for the current turn (`LazyLoadedToolsHolder` is request-scoped);
+  cross-turn persistence would require state serialisation (not implemented, see Out of Scope).
 - Search quality depends on service model and catalog description quality.
 
 ---
@@ -492,7 +524,7 @@ with ~20-token descriptions each, this is ~4 K tokens regardless of how long the
 | | Option 1 | Option 2 | Option 3 | Option 4 | Option 5 | **Option 6** |
 |---|---|---|---|---|---|---|
 | Model-agnostic | Yes | Yes | Yes | No (Anthropic 4.5+) | Yes | **Yes** |
-| Orchestrator changes | None | None | Significant | Medium | Medium | **Medium** |
+| Orchestrator changes | None | None | Significant | Medium | Medium | **None** (as built) |
 | Native schema on discovered tool call | No | No | Yes | Yes | Depends | **Yes** |
 | Full name-space visible upfront | No | Yes | No | No | No | **No** |
 | Prompt cache preserved | — | — | — | Yes (by design) | — | **Partial** ¹ |
@@ -526,23 +558,22 @@ top of Option 6 incrementally.
 
 1. **Granularity:** `deferred` on `BaseToolSet` (per-toolset) or also settable per-tool within
    a toolset? Per-toolset covers MCP servers and REST API groups cleanly; per-tool is needed
-   only for mixed toolsets where some tools are always-on.
+   only for mixed toolsets where some tools are always-on. **Still open** — per-toolset is what
+   shipped; per-tool granularity remains a possible future extension.
 
-2. **`service_model` default:** Should it fall back to the orchestrator deployment, or require
-   explicit configuration? Defaulting to the orchestrator deployment is the simplest path but
-   misses the cost-saving opportunity of routing to a cheaper model.
+2. ~~**`service_model` default**~~ — **Resolved, as built:** falls back to the orchestrator's
+   own deployment when omitted (`_AnonymousAgent.route`).
 
-3. **Search implementation in MVP:** Pure LLM routing via `AnonymousAgent` from the start, or
-   offer a keyword-only fallback that skips the anonymous agent call entirely? Keyword match
-   has zero latency and no model dependency; LLM routing handles synonyms and fuzzy intent.
+3. ~~**Search implementation in MVP**~~ — **Resolved, as built:** pure LLM routing via
+   `_AnonymousAgent`, no keyword-only fallback. Not currently planned.
 
-4. **Multi-turn persistence:** Serialise `_lazy_loaded_tools` names into
-   `custom_content.state["lazy_loaded_tools"]` so rediscovery is skipped on subsequent turns,
-   or always rediscover? Persistence saves round-trips but grows state size.
+4. ~~**Multi-turn persistence**~~ — **Resolved, as built: not implemented.** Discovered tools
+   are always rediscovered each turn; see [Out of Scope](#out-of-scope-mvp).
 
 5. **Always-on threshold:** Should there be a heuristic that automatically promotes a
    frequently-discovered tool to eager loading (e.g. seen in last N turns), or is that always
-   explicit config?
+   explicit config? **Still open** — not implemented; today it's always explicit config
+   (`deferred: false` per toolset).
 
 ---
 
@@ -550,10 +581,12 @@ top of Option 6 incrementally.
 
 | Item | Reason |
 |---|---|
-| Embedding-based search in `AnonymousAgent` | Swap-in strategy; `AnonymousAgent` interface is the extension point |
+| Embedding-based search in `_AnonymousAgent` | Swap-in strategy; `_AnonymousAgent` interface is the extension point |
 | Dynamic MCP server connection/disconnection | Significant lifecycle change; Option 5 follow-on |
 | Per-tool granularity within a toolset | Per-toolset is sufficient for the initial use case |
 | Automatic threshold based on token count | Tool-count threshold is simpler and good enough for MVP |
+| Cross-turn discovery persistence (`custom_content.state["lazy_loaded_tools"]`) | Not implemented — `LazyLoadedToolsHolder` is request-scoped only; discovered tools are rediscovered every turn |
+| `dial-deployment` / `dial-app` toolset deferral | REST, MCP, and internal toolsets support `deferred`; deployment/app toolsets do not yet call `is_toolset_deferred` — tracked as a follow-up |
 
 ---
 

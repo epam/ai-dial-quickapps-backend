@@ -1,5 +1,3 @@
-import copy
-
 from aidial_sdk.chat_completion.request import StaticTool
 from aidial_sdk.exceptions import InvalidRequestError
 from fastapi_injector import request_scope
@@ -35,10 +33,10 @@ from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,
     ConfigurableSchemaSimpleType,
-    JsonSchemaConst,
     JsonSchemaSimpleType,
     JsonTypeEnum,
     OpenAiToolConfig,
+    remove_const_schema_params,
 )
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.display.paramenter import (
@@ -179,7 +177,7 @@ class AgentModule(Module):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
                 if open_ai_tool.function.name in deferred_names:
                     continue
-                open_ai_tool = self._remove_const_params(open_ai_tool)
+                open_ai_tool = remove_const_schema_params(open_ai_tool)
                 if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
@@ -226,17 +224,6 @@ class AgentModule(Module):
         return frozenset(
             t.function.name for t in context.extra_tools if t.function and t.function.name
         )
-
-    @staticmethod
-    def _remove_const_params(open_ai_tool):
-        tool_copy = copy.deepcopy(open_ai_tool)
-        props = tool_copy.function.parameters.properties
-
-        for prop_name in list(props.keys()):
-            if issubclass(type(props[prop_name]), JsonSchemaConst):
-                del props[prop_name]
-
-        return tool_copy
 
     @staticmethod
     def _append_default_props(converted_open_ai_tool: OpenAiToolConfig):

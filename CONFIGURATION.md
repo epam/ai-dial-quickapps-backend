@@ -336,12 +336,13 @@ Custom system prompt:
 
 `[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, toolsets withheld from the initial LLM payload
 (see the per-toolset `deferred` field in [Tool sets configuration](#tool-sets-configuration)) are surfaced on demand
-via a `tool_search` meta-tool, which routes the query to the matching tool schemas through an isolated LLM call.
+via the `internal_tool_search` meta-tool (referred to as "tool search" below), which routes the query to the matching
+tool schemas through an isolated LLM call.
 
 | Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
 |------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|
-| enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `tool_search` meta-tool. | -                 | `false`       |
-| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
+| enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `internal_tool_search` meta-tool. | -                 | `false`       |
+| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
 | min_tools_for_deferral | No       | Integer | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. Deployment-wide default set by `MIN_TOOLS_FOR_DEFERRAL`. | -    | `5`           |
 
 <details>
@@ -504,10 +505,11 @@ SSRF envelope, deployment dispatch table, error messages and agent retry behavio
 
 ### Tool sets configuration
 
-Every toolset type also accepts a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
+Most toolset types also accept a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
 [Tool discovery configuration](#tool-discovery-configuration) is enabled, the toolset's tool schemas are withheld
-from the initial LLM payload and discovered on demand via the `tool_search` meta-tool. Set to `false` to keep a
-specific toolset always eager.
+from the initial LLM payload and discovered on demand via the `internal_tool_search` meta-tool. Set to `false` to
+keep a specific toolset always eager. Currently honored by REST API, MCP, and Internal toolsets; DIAL deployment and
+DIAL app toolsets accept the field but do not yet act on it.
 
 #### RestApiToolSet Configuration
 

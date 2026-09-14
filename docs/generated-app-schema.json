@@ -3494,7 +3494,7 @@
       "properties": {
         "enabled": {
           "default": false,
-          "description": "Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the tool_search meta-tool.",
+          "description": "Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the internal_tool_search meta-tool.",
           "title": "Enabled",
           "type": "boolean"
         },
@@ -3508,7 +3508,7 @@
             }
           ],
           "default": null,
-          "description": "DIAL deployment used for the anonymous routing call inside tool_search. When omitted, falls back to the orchestrator's own deployment.",
+          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. When omitted, falls back to the orchestrator's own deployment.",
           "title": "Service Model"
         },
         "min_tools_for_deferral": {

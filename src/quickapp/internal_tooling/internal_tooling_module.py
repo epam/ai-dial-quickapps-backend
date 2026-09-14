@@ -5,6 +5,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, provider, s
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.tool_names import INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
@@ -25,6 +26,7 @@ from quickapp.internal_tooling.py_interpreter_tooling.handlers.input_file_handle
 )
 from quickapp.internal_tooling.py_interpreter_tooling.handlers.session_manager import SessionManager
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
+from quickapp.shared.deferred_tools import DeferredToolsContext, is_toolset_deferred
 
 logger = logging.getLogger(__name__)
 
@@ -43,11 +45,13 @@ class InternalToolModule(Module):
         self,
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
+        deferred_context: DeferredToolsContext,
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
 
         for tool_set in app_config.tool_sets:
             if isinstance(tool_set, InternalToolSet):
+                toolset_tools: list[StagedBaseTool] = []
                 for tool_config in tool_set.tools:
                     if tool_config.enabled:
                         if isinstance(tool_config, PredefinedTool):
@@ -58,13 +62,23 @@ class InternalToolModule(Module):
                             INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME
                         ):
                             # TODO: remove this filtering by name, the user may configure any name of the tool.
-                            tools.append(
+                            toolset_tools.append(
                                 py_builder.build(
                                     tool_config=tool_config,
                                     name=tool_config.open_ai_tool.function.name,
                                     description=tool_config.open_ai_tool.function.description,
                                 )
                             )
+
+                discovery_cfg = app_config.orchestrator.tool_discovery
+                if is_toolset_deferred(tool_set, discovery_cfg, len(toolset_tools)):
+                    deferred_context.register_staged_tools(toolset_tools)
+                    logger.debug(
+                        "Deferred %d tools from internal toolset '%s' into DeferredToolsContext",
+                        len(toolset_tools),
+                        resolve_localized(tool_set.name),
+                    )
+                tools.extend(toolset_tools)
 
         return tools
 

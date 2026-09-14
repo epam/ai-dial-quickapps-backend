@@ -386,6 +386,19 @@
     }
   },
   {
+    "name": "internal_tool_search",
+    "description": "Search for additional tools available to this assistant. Use this when you need a capability that is not listed in the current tool list. Returns the names and descriptions of matching tools; those tools will be available to call immediately after.",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "A natural-language description of the capability you need."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
     "name": "internal_web_fetch",
     "description": "Fetch a resource from an external http(s) URL (e.g. a README, a source file, a documentation page). Without save_path it returns the text inline in a single call — text only: binary content (images, PDFs, archives) is rejected, re-call with a save_path instead. Text larger than the inline cap is returned truncated to its head with a notice stating the total size; the head is often enough, otherwise re-call with a save_path. With save_path it persists the resource (any content type) at that workspace-relative path under the agent home and returns the saved path (+ a short preview for text), so other available tools can process the full content. DIAL file paths (files/...) are not fetched here.",
     "properties": {
