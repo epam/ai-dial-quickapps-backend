@@ -1,6 +1,6 @@
 # Design: Invoking a Skill from a Message
 
-- **Status:** Approved
+- **Status:** Implemented
 - **Approved:** 2026-09-14
 - **Issue:** [epam/ai-dial-quickapps-backend#549](https://github.com/epam/ai-dial-quickapps-backend/issues/549), a
   sub-issue of [#421](https://github.com/epam/ai-dial-quickapps-backend/issues/421) ([EPIC] Advanced Agent Skills
