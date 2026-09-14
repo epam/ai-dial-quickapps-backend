@@ -73,7 +73,7 @@ does for `custom_content.attachments[*]`. This design specifies how QuickApps co
 **Trigger:** The user picks their own `skills/<user-bucket>/sql-style` from the palette.
 **Behavior:** Chat sends `content: "/sql-style …"` with `custom_content.skills: [{url: "skills/<user-bucket>/sql-style"}]`.
 Core auto-shares the skill to the per-request key. QuickApps resolves it through `DialSkillResolver`, registers it as
-`sql-style`, and inserts a synthetic `read_skill` call and result for that name after the user message.
+`sql-style`, and inserts a synthetic `read_skill` call and result for that name after the first user message.
 **Outcome:** The model starts its turn with the skill's manifest and its `<skill_files>` inventory already in context.
 The response shows the normal "Reading Skill: sql-style" stage.
 
@@ -126,9 +126,9 @@ sequenceDiagram
     Chat->>Core: user msg with content and optional custom_content.skills[].url
     Core->>Core: validate and auto-share every skills[].url to the per-request key
     Core->>QA: chat/completions
-    QA->>QA: initializer: collect chips from all user messages and resolve them
+    QA->>QA: initializer: collect one pick per user message, dedupe, cap, resolve
     QA->>QA: user skills provider (order -10) joins the SkillsRegistry merge
-    QA->>QA: injector: chips of the last user msg become synthetic read_skill pairs
+    QA->>QA: injector: this turn's pick becomes one synthetic read_skill pair, after the first user msg
     QA->>QA: strip custom_content.skills from the working copy
     QA->>LLM: system prompt with available_skills + history + synthetic pairs
     LLM-->>QA: answer
@@ -164,6 +164,10 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     - a public skill → nothing to share, since any key can read it;
     - a skill the user can read → shared read-only with the per-request key;
     - a skill the user can't read → `403` for the whole request.
+  - **One skill per message.** The field is an array, but QuickApps loads only its **first** entry. Any others are
+    ignored: on the message being answered they are reported as a warning-severity initialization issue naming them,
+    and on earlier turns they are only logged, so the stage does not repeat an issue the user can no longer act on.
+    Identical entries on one message count once.
   - `url` is the only field QuickApps reads. Anything else (`title`, say) passes Core and is ignored, so the client
     may carry display data.
   - The URL has **no trailing slash**: `skills/<bucket>/<path>`. Core shares exactly that URL and authorises every
@@ -185,22 +189,29 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
   `_InvokedSkillsContext` (concern 3).
 - **Owner.** `quickapp/skill_invocation/`.
 - **Semantics.**
-  1. Walk the user messages **newest to oldest** and collect the `url`s of their `custom_content.skills`, each
-     canonicalised by stripping a trailing `/`. Identical chips on one message count once. A malformed entry is
-     dropped with a debug log — Core answers such a request with `400`, so reaching here means something upstream
-     changed, and refusing the turn over it would be worse.
-  2. Deduplicate, keeping each URL's **latest** occurrence: that is what decides its position. The chips of the last
-     message are therefore the newest picks and are never dropped by the cap in step 3.
-  3. Keep the newest `SKILL_INVOCATION_MAX_SKILLS` distinct URLs, walking newest-first so the cap drops the **oldest**
-     picks. A dropped pick's manifest is still in history, but it is no longer registered, so its name stops resolving
-     and its files stop being readable.
-  4. Wrap each URL in a `DialSkillConfig` and hand the list to the existing `DialSkillResolver`, unchanged. Manifest
-     parsing, the `<skill_files>` inventory, byte caps, per-URL failure isolation and warning severities all come for
-     free.
-  5. Store the resolved skills by position, oldest first, the set of URLs that resolved, and **the chips of the
-     message being answered**. The injector reads all three back: the first two to choose between a real result and
-     the error sentence, the third to know which chips belong to this turn. Recording "this turn's chips" here rather
-     than re-parsing the messages later means the injector does not care whether the scrub has already run.
+  1. Walk the user messages in order and collect **one** `url` per message — the first entry of its
+     `custom_content.skills`, canonicalised by stripping a trailing `/` — keyed by the **ordinal** of that user
+     message (`0` for the first, `1` for the second, …). Extra entries are recorded as ignored (concern 1). A
+     malformed entry is dropped with a debug log — Core answers such a request with `400`, so reaching here means
+     something upstream changed, and refusing the turn over it would be worse.
+
+     The ordinal is the anchor rather than a list index because the injector sees a different list from the one
+     parsed here: `extract_tool_calls` has expanded the stored tool history and the scrub transformer has copied the
+     messages that carried the field. User messages survive both, in order, so counting them is stable.
+  2. Deduplicate, keeping each URL's **first** occurrence: a skill is loaded once, ahead of the message that first
+     asked for it, and picking it again later changes nothing. A re-pick therefore neither refreshes the skill's
+     position under the cap nor injects a second pair.
+  3. Keep the picks of the newest `SKILL_INVOCATION_MAX_SKILLS` ordinals, so the cap drops the **oldest** picks and
+     never the pick made on the message being answered. A dropped pick's manifest is still in history, but it is no
+     longer registered, so its name stops resolving and its files stop being readable.
+  4. Wrap each URL in a `DialSkillConfig` and hand the list, **oldest first**, to the existing `DialSkillResolver`,
+     unchanged. Manifest parsing, the `<skill_files>` inventory, byte caps, per-URL failure isolation and warning
+     severities all come for free.
+  5. Store the resolved skills **keyed by URL**, and separately **the URL picked on the message being answered**
+     (`None` when this turn picked nothing — a re-pick of an already-loaded URL included). The injector reads both
+     back: the lookup to choose between a real result and the error sentence, the current pick to know whether this
+     turn injects at all. Recording "this turn's pick" here rather than re-parsing the messages later means the
+     injector does not care whether the scrub has already run.
 - **Every historical pick is re-resolved on every turn.** That is what keeps a turn-1 skill registered on turn 4 so
   its files stay readable (goal 4, UC-2). The cost is one Core fetch per picked skill per turn, bounded by the cap.
   Resolving lazily on a `read_skill` miss would remove it but needs an async path through the registry merge; see
@@ -239,7 +250,7 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     | Clash | Settled by | Winner |
     |---|---|---|
     | A pick vs. an agent's skill | `SkillsRegistry._get_merged`, by provider `order` | The pick (`order = -10`) |
-    | A pick vs. another pick | `DialSkillResolver.resolve`'s name dedup, **before** the provider is populated | The **oldest** pick — the resolver keeps the first occurrence, and step 5 hands it the list oldest-first |
+    | A pick vs. another pick | `DialSkillResolver.resolve`'s name dedup, **before** the provider is populated | The **oldest** pick — the resolver keeps the first occurrence, and step 4 hands it the list oldest-first |
 
     The second row is the one worth reading twice: two picks live in the *same* provider, so the registry never sees
     the loser. `DialSkillResolver` drops it and emits `Duplicate skill name '<name>'; keeping first occurrence`, which
@@ -253,9 +264,10 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
       resolve* and the model is told it could not be loaded. That is misleading about the cause but correct about the
       outcome: the skill genuinely is not available to the model.
     - A user who re-picks a same-named skill from a different URL keeps the **older** one.
-    - That re-pick produces **nothing at all** — no pair, no stage, no error. Its chip derives the same
-      `{"skill_name": "<name>"}` arguments as the first pick, so the skip check in concern 4 matches the earlier
-      pair and skips it before anything is reported.
+    - That re-pick still produces a pair, and it is an **error** pair: the loser's URL never reaches the context, so
+      the injector classifies it as failed and writes the fixed "could not be loaded" sentence, naming its URL's last
+      segment. The model is told the second pick failed while the first one, carrying the same manifest name, sits in
+      the same conversation.
 
     **All three are unreachable under the assumption this phase rests on: picked skills have names that don't clash.**
     It is the user's to keep, nothing enforces it, and 1b removes the need for it. Reporting the duplicate distinctly
@@ -270,37 +282,39 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
 
 ### 4. Injection — `_SkillInvocationInjector`
 
-- **What.** A `MessagesTransformer` in `quickapp/skill_invocation/`. It inserts one synthetic `read_skill` call and
-  result per distinct chip on the last user message.
+- **What.** A `StagedToolSyntheticInjector` in `quickapp/skill_invocation/`. It inserts one synthetic `read_skill`
+  call and result for the skill picked on the message being answered.
 - **Owner.** `quickapp/skill_invocation/`.
 - **Semantics.**
-  - **When.** When `_InvokedSkillsContext` recorded chips for this turn (concern 2, step 5) — **not** by re-reading
-    the messages. The scrub transformer belongs to `SkillsModule`, which `app_factory` registers ahead of this
-    module, so by the time the injector runs the messages no longer carry `custom_content.skills` at all. The
-    insertion point is still taken from the messages: the index after the last `USER` message.
+  - **When.** Only when `_InvokedSkillsContext` recorded a pick for this turn (concern 2, step 5) — `should_inject`
+    returns `False` otherwise. It is read from the context, **not** by re-reading the messages: the scrub transformer
+    belongs to `SkillsModule`, which `app_factory` registers ahead of this module, so by the time the injector runs
+    the messages no longer carry `custom_content.skills` at all.
 
-    Earlier invocations need nothing: the pair was inserted after the user message of its turn, `Orchestrator`
-    persists everything after the last user message into `state.tool_execution_history`, and
-    `_MessagesSetup.extract_tool_calls` restores it. Acting on every historical chip would duplicate them.
-  - **A pair already in history is not injected again.** A chip is skipped when the conversation already holds a pair
-    for the same tool and arguments, matched on the call-id prefix that `make_synthetic_call_id_prefix` builds from
-    the tool name and arguments. It needs no content, so `read_skill` is not run for a re-pick at all: no stage is
-    shown for a result that would be thrown away, and a request never carries two pairs sharing a `tool_call_id`.
+    Earlier invocations need nothing: `Orchestrator` persists everything after the last user message into
+    `state.tool_execution_history`, and `_MessagesSetup.extract_tool_calls` restores it. Acting on every historical
+    pick would duplicate them.
+  - **Where.** `InjectionFrequency.APPEND_IF_CHANGED`, which puts the pair at `after_first_user_idx` — directly after
+    the **first** user message, the same slot the built-in file-transfer skill uses. The instructions therefore read
+    ahead of the turns they apply to, and the explicit index keeps the pair ahead of any transformer that appends to
+    the end (`_TimestampInjectionTransformer`, `_AttachmentNotificationInjector`), whatever the module order.
 
-    The manifest the model reads therefore stays the one from the turn that first picked the skill, even if the user
-    edits the skill afterwards. That is how every other tool result behaves, and it keeps history consistent with what
-    the model has already seen (goal 3).
-  - **Where.** Directly after that user message, in chip order. The explicit index keeps the pairs ahead of any
-    transformer that appends to the end (`_TimestampInjectionTransformer`, `_AttachmentNotificationInjector`),
-    whatever the module order.
-  - **What.** For each chip:
+    The frequency carries its own dedup as well: a pair already in the conversation for the same tool, arguments and
+    content is replaced in place rather than added, so a request can never carry two pairs sharing a `tool_call_id`.
+    With `should_inject` already limited to the turn the pick is made, that is a second line of defence rather than
+    the mechanism.
+
+    The manifest the model reads therefore stays the one from the turn that picked the skill, even if the user edits
+    the skill afterwards. That is how every other tool result behaves, and it keeps history consistent with what the
+    model has already seen (goal 3).
+  - **What.**
 
     | Case | Tool call | Tool result |
     |---|---|---|
     | The skill resolved | `read_skill({"skill_name": "<name>"})` | The result of actually running `read_skill`: the header line, the manifest and `<skill_files>` |
     | Failed to resolve, or over the cap | `read_skill({"skill_name": "<name>"})` | ``Error: the user's skill `<name>` could not be loaded. The reason is shown to the user.`` |
 
-    For a resolved chip `<name>` is the manifest's name. For a failed one the skill has no manifest, so the URL's last
+    For a resolved pick `<name>` is the manifest's name. For a failed one the skill has no manifest, so the URL's last
     segment is used — it is what the name would almost certainly have been, and it gives the model something to name
     in its apology.
 
@@ -308,16 +322,21 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     `Skill validation failed for 'skills/<bucket>/…'` from `parse_frontmatter` — which belongs in the "Initialization
     issues" stage and the logs, where the user can act on it. Feeding a varying, internals-shaped string to the model
     gives it something to improvise on; a fixed sentence keeps its reaction predictable.
-  - **How.** For a resolved chip the injector looks up the `read_skill` `StagedBaseTool` by its function name — the
-    **lookup only** follows `StagedToolSyntheticInjector` — and runs it through `arun`. Because the skill is
-    registered (concern 3), the result is byte-identical to a model-initiated call, `<skill_files>` included.
+  - **How.** `StagedToolSyntheticInjector` already looks the `read_skill` `StagedBaseTool` up by its function name and
+    runs it through `arun`, so the subclass supplies little more than `should_inject`, `get_tool_name`,
+    `get_frequency` and `get_arguments`. Because the skill is registered (concern 3), the result is byte-identical to
+    a model-initiated call, `<skill_files>` included.
 
-    > `StagedToolSyntheticInjector.get_content` forces `stage_level=StageDisplayLevel.DEBUG`, which suppresses the
-    > stage for a normal app. Copying that call verbatim would make UC-1's "Reading Skill" stage silently never
-    > appear. `arun` must be called **without** `stage_level`, so it defaults to `INFO` as it does in
-    > `tool_executor.py` — the invocation is something the user did, so its stage belongs in the response.
+    Two things do change:
 
-    For a failed chip the injector writes the pair itself, and there is no stage.
+    - `StagedToolSyntheticInjector.stage_level` becomes an **overridable class attribute**, defaulting to the
+      `StageDisplayLevel.DEBUG` it hardcoded before — so every existing subclass keeps its hidden stage — and this
+      injector raises it to `INFO`. The invocation is something the user did explicitly, so the ordinary
+      "Reading Skill: `<name>`" stage belongs in the response, and forcing `DEBUG` would make UC-1's stage silently
+      never appear.
+    - `get_content` is overridden for the one case the base class handles badly: a pick that never reached the
+      registry. Running `read_skill` for it would only produce the tool's own "not found", so the fixed sentence is
+      returned directly instead — and because the tool never runs, a failed pick shows no stage.
   - **Scrubbing lives elsewhere.** Removing `custom_content.skills` from the working copy is **not** this
     transformer's job: it belongs to a small transformer in `SkillsModule`, which is never preview-gated. The
     orchestrator LLM and any DIAL deployment tool that forwards the conversation don't need the field, and forwarding
@@ -325,15 +344,16 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     the preview flag is on. Messages carrying the field are copied, not edited: the working list shares objects with
     the request's own messages.
 
-    The two transformers need no ordering between them, because the injector takes this turn's chips from the context
+    The two transformers need no ordering between them, because the injector takes this turn's pick from the context
     (concern 2, step 5) rather than re-reading the messages.
-  - **Reporting.** Every historical pick is resolved again on every turn, so reporting everything every turn would
-    repeat the same issues until the conversation ends. Only problems with the chips of the **last** user message are
-    recorded as `SkillInitializationException` and shown in "Initialization issues"; problems with older picks are
-    logged. The model learns about a failed chip from its error result. **No path fails the request.**
-- **Change.** A new transformer. `build_synthetic_pair`, `make_synthetic_call_id` and `make_synthetic_call_id_prefix`
-  in `common/synthetic_injection/` become public module-level helpers, so a multi-call injector can reuse them without
-  subclassing `SyntheticToolCallInjector` — that base class assumes one tool call per transformer.
+  - **Reporting** (done by the initializer, concern 2). Every historical pick is resolved again on every turn, so
+    reporting everything every turn would repeat the same issues until the conversation ends. Only problems with the
+    **message being answered** — its pick failing to resolve, or extra entries dropped by the one-per-message rule —
+    are recorded as `SkillInitializationException` and shown in "Initialization issues"; problems with older picks
+    are logged. The model learns about a failed pick from its error result. **No path fails the request.**
+- **Change.** A new transformer, plus the `stage_level` class attribute on `StagedToolSyntheticInjector`.
+  `synthetic_tool_call_injector.py` is untouched: one pair per turn is exactly what `SyntheticToolCallInjector`
+  already assumes.
 
 ---
 
@@ -345,8 +365,9 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
   reference can't go in that array.
 - **Picking `prompts/` URLs.** Core accepts only `skills/` resources in the field. Declared `prompts/` skills are used
   by the model as today.
-- **A per-message cap.** One cap is enough: the conversation cap already bounds how many skills are fetched and
-  listed, and it is spent newest-first, so the current turn's chips are never dropped in favour of older ones.
+- **A configurable per-message limit.** A message invokes at most one skill, fixed. Only the conversation cap is
+  tunable: it already bounds how many skills are fetched and listed, and it is spent newest-first, so the current
+  turn's pick is never dropped in favour of older ones.
 - **A per-app switch to disable invocation.** Access is capped by the user's own reach. A `features.skill_invocation`
   toggle can be added if an app author asks for one.
 - **Autoloading the user's skills.** Implicit, every-turn skill loading has its own access and prompt-budget story.
@@ -397,7 +418,9 @@ The user sees the stage "Reading Skill: code-review", and an "Initialization iss
 
 The client resends turn 1, with `custom_content.skills` still on the first user message, then the new user message.
 QuickApps restores the turn-1 pair from assistant state, resolves and registers the picked skill again under the same
-name so its files stay readable, and injects nothing new unless the new message carries its own chips.
+name so its files stay readable, and injects nothing new unless the new message picks a URL it has not seen before.
+When it does, that pair is inserted right after the **first** user message too — ahead of turn 1's answer and ahead of
+the turn-1 pair — so the manifests sit together at the head of the conversation, most recent pick first.
 
 ### Limits
 
@@ -418,11 +441,11 @@ name so its files stay readable, and injects nothing new unless the new message 
 | Invalid or over-cap `SKILL.md` | Fixed error result for the model; the reason in "Initialization issues"; not registered |
 | Picked skill has the same `name` as an agent skill | The user's wins and the agent's is dropped and reported (UC-5) |
 | Two picked skills share a `name` | Decided by `DialSkillResolver`'s name dedup, not the registry — the **oldest** pick wins, the other is dropped with `Duplicate skill name …`, reported every turn |
-| The same manifest `name` picked from two different URLs | The older pick stays. The newer chip derives identical `read_skill` arguments, so the skip check matches the older pair and the re-pick produces no pair, no stage and no error. Accepted: unreachable under the non-clashing-names assumption (concern 3) |
+| The same manifest `name` picked from two different URLs | The older pick stays registered. The newer is dropped by the resolver's name dedup, so it never reaches the context and gets an error pair naming its URL's last segment — the model is told the second pick failed while the first, under the same name, is present. Accepted: unreachable under the non-clashing-names assumption (concern 3) |
 | Picked URL the app also declares | Same content, one entry; the user's copy wins by order |
-| The same skill picked again later | Moves to the end of the user skills in the list; never dropped by the cap on the message that picks it; no new pair is injected and no stage is shown |
+| The same URL picked again later | The first pick stands: no new pair, no stage, and its position under the cap is **not** refreshed, so a re-picked old skill can still age out |
 | The user edits a picked skill mid-conversation | The model keeps the manifest from the turn that first picked it; a later `read_skill` of a bundled file returns the current file |
-| Identical chips on one message | Counted once: one pair, one entry |
+| More than one entry on one message | Only the first is loaded. The rest are ignored — reported as a warning on the message being answered, logged on earlier turns. Identical entries count once |
 | Over `SKILL_INVOCATION_MAX_SKILLS` in the conversation | The oldest picks stop being registered; their manifests stay in history; their names return "not found" |
 | A dropped pick's files are read later | Its turn-1 manifest is still in history advertising `<skill_files>`, but its name no longer resolves, so `read_skill(name, path)` answers "not found" with no explanation of why. A rough edge of the cap, not engineered around |
 | DIAL Core outage | Every picked skill gets an error result or drops out; the agent's own skills are unaffected; request served |
@@ -478,7 +501,7 @@ then the user's only way out is to start a new conversation.
 | **Register the skill for reads but keep it out of `<available_skills>`** | Keeps user-controlled text out of the system prompt, but `SkillsRegistry` builds the XML and the lookup table in one pass, so it needs a new `listed` flag on `SkillsProvider` — a special case for one provider, against goal 7. The model also can't see that it has the skill |
 | **A separate `read_user_skill` tool** | Sidesteps naming entirely and allows lazy resolution, but adds a second skill-reading tool to every preview app's tool list and two mental models for "read a skill" |
 | **Only list the picked skill, without injecting it** | Not deterministic (goal 1): the model decides whether to read it |
-| **Report a duplicate-name pick distinctly** (a field separating "dropped as a duplicate" from "failed to load") | Does not actually surface it: both picks derive the same `{"skill_name": "<name>"}` arguments, so the skip check still matches the earlier pair. Bypassing the skip would write a "could not be loaded" pair directly after one that loaded the same name fine — contradictory history for the model, for a case the non-clashing-names assumption rules out |
+| **Report a duplicate-name pick distinctly** (a field separating "dropped as a duplicate" from "failed to load") | The user is already told: the resolver's `Duplicate skill name …` reaches "Initialization issues" verbatim. Splitting the model-facing result too would replace one fixed sentence with two, for a case the non-clashing-names assumption rules out |
 | **`unique_names=False` on the resolver, letting the registry settle pick-vs-pick** | Would make clash behaviour coherent and is only ~9 lines, but reopens `dial_skills/` — the one thing that keeps this phase to "add a provider". Deferred to 1b, which needs the flag anyway |
 | **Only inject, without registering** | The manifest reaches the model, but bundled files are unreadable and the model can't see it has the skill (goals 4 and 7) |
 | **Persist name/description/files in choice state and skip the per-turn fetch** | Would remove the re-resolution, but `ResolvedSkill.content` is an eager `str`, so `get_skill_content` would need a lazy path — a change to the skills contract, against goal 7. The fetches are already parallel (`asyncio.gather` in `DialSkillResolver`), so the saving is Core load, not latency |
@@ -528,15 +551,18 @@ preview-gated.
 
 ### `quickapp/skill_invocation/` (new)
 
-- `_skill_reference.py` — `SkillReference(url)`; parses `custom_content.model_extra["skills"]` from user messages,
-  canonicalises the URL, dedupes keeping the latest occurrence, applies the conversation cap.
+- `_skill_reference.py` — `message_skill_urls`, `collect_picks` and the `ConversationPicks` it returns: parse
+  `custom_content.model_extra["skills"]` on user messages, canonicalise each URL, keep one pick per message keyed by
+  user-message ordinal, dedupe across the conversation keeping the **first** occurrence, and record the entries the
+  one-per-message rule ignored. Plus `skill_name_from_url`, for a pick with no manifest to ask.
 - `_invoked_skills_context.py` — `_InvokedSkillsContext(SkillsProvider)`, `order = -10`,
-  `display_name = "user skills"`. Holds the resolved skills as resolved, with one header line prepended to `content`,
-  the set of URLs that resolved, this turn's chips, and the exceptions for them.
-- `_skill_invocation_initializer.py` — `_SkillInvocationInitializer(CompletionInitializer)`: collect newest first,
-  dedupe, cap, delegate to `DialSkillResolver`.
-- `_skill_invocation_injector.py` — `_SkillInvocationInjector(MessagesTransformer)`: synthetic `read_skill` pairs for
-  this turn's chips via the real tool, a fixed error result for failed ones, failure reporting. No scrubbing.
+  `display_name = "user skills"`. Holds the resolved skills as resolved, keyed by URL, with one header line prepended
+  to `content`; the URL picked on the message being answered; and the exceptions to report.
+- `_skill_invocation_initializer.py` — `_SkillInvocationInitializer(CompletionInitializer)`: collect, dedupe, cap
+  newest-first, delegate to `DialSkillResolver`, report this turn's problems.
+- `_skill_invocation_injector.py` — `_SkillInvocationInjector(StagedToolSyntheticInjector)`: one synthetic
+  `read_skill` pair for this turn's pick via the real tool, `stage_level = INFO`, and a fixed error result for a pick
+  that never reached the registry. No scrubbing, no reporting.
 - `_settings.py` — `SkillInvocationSettings` (`SKILL_INVOCATION_MAX_SKILLS`).
 - `skill_invocation_module.py` — `@preview_module`; multiproviders for `CompletionInitializer`, `SkillsProvider`,
   `MessagesTransformer`, `InitializationException`. Registered in `app_factory.py` after `DialSkillsModule`.
@@ -544,8 +570,9 @@ preview-gated.
 ### `quickapp/common/`
 
 - `_di_types.py` — `REQUEST_MESSAGES`.
-- `synthetic_injection/synthetic_tool_call_injector.py` — `build_synthetic_pair`, `make_synthetic_call_id` and
-  `make_synthetic_call_id_prefix` as public module-level helpers; the class keeps using them.
+- `synthetic_injection/staged_tool_synthetic_injector.py` — `stage_level` becomes an overridable class attribute,
+  defaulting to the `DEBUG` it hardcoded before, so existing subclasses are unaffected.
+- `synthetic_injection/synthetic_tool_call_injector.py` — unchanged.
 
 ### `quickapp/core/application/`
 
