@@ -10,7 +10,7 @@
   ([Follow-up](#follow-up-phase-1b--collision-free-names)).
 - **Dependencies:**
   - [`skills_as_dial_resource.md`](skills_as_dial_resource.md) — `DialSkillResolver`, `DialSkillReader`, the
-    `<skill_files>` inventory. Branch `feat/418-skills-as-dial-resource`, not yet on `development`.
+    `<skill_files>` inventory. Landed on `development` in #524 (`cb67eb25`).
   - `ai-dial-core` — `CollectRequestSkillsFn` collects `messages[*].custom_content.skills[*]` and auto-shares each skill
     to the per-request key; the field is in the OpenAPI message schemas as `RequestSkill`. **Done:**
     [epam/ai-dial-core#1956](https://github.com/epam/ai-dial-core/pull/1956) (issue #1955), on `development`. It
@@ -422,6 +422,9 @@ name so its files stay readable, and injects nothing new unless the new message 
 When it does, that pair is inserted right after the **first** user message too — ahead of turn 1's answer and ahead of
 the turn-1 pair — so the manifests sit together at the head of the conversation, most recent pick first.
 
+This walkthrough is the case where the pick is on the **first** user message. A pick made on any later message behaves
+differently — see [Known Gaps](#known-gaps).
+
 ### Limits
 
 | Variable | Default | Purpose |
@@ -449,10 +452,30 @@ the turn-1 pair — so the manifests sit together at the head of the conversatio
 | Over `SKILL_INVOCATION_MAX_SKILLS` in the conversation | The oldest picks stop being registered; their manifests stay in history; their names return "not found" |
 | A dropped pick's files are read later | Its turn-1 manifest is still in history advertising `<skill_files>`, but its name no longer resolves, so `read_skill(name, path)` answers "not found" with no explanation of why. A rough edge of the cap, not engineered around |
 | DIAL Core outage | Every picked skill gets an error result or drops out; the agent's own skills are unaffected; request served |
+| Picked on a user message that isn't the first | The pair is still inserted at `after_first_user_idx`, ahead of the conversation's first turn — but `Orchestrator` only persists messages after the **last** user message into `state.tool_execution_history`. On the next turn the pair sits before that boundary, so it isn't restored and nothing re-injects it (`should_inject` is `False` — no new pick). The manifest silently drops out of context even though the skill stays registered and its files stay readable via `read_skill`. See [Known Gaps](#known-gaps) |
 
 ---
 
 ## Known Gaps
+
+### A pick on a later message doesn't survive the next turn
+
+The injector always places its synthetic pair at `after_first_user_idx` — the slot after the conversation's **first**
+user message, regardless of which message the pick was made on (concern 4, *Where*). `Orchestrator` persists into
+`state.tool_execution_history` only the messages after the **last** user message. Those two boundaries coincide only
+when the pick was made on the first user message.
+
+For a pick made on any later message, the pair sits before the persistence boundary on the very turn it is injected,
+so the next turn does not restore it, and `should_inject` finds no new pick to inject in its place. The manifest is
+gone from context from the following turn on, even though the skill is still registered and `read_skill` still serves
+its bundled files.
+
+**Accepted for 1a.** The Turn-2 walkthrough above shows the case that works — a pick on the first message — because
+that is also the case every use case in this design happens to use. Fixing it means either persisting from
+`after_first_user_idx` instead of the last user message (a change to `Orchestrator`, shared with every other injector)
+or moving the pair's insertion point to track the picking message instead of the first one (a change to
+`InjectionFrequency.APPEND_IF_CHANGED`'s fixed slot). Both are out of scope for a phase whose goal is one new provider
+and one new injector, not changes to shared orchestration. `docs/skills.md` documents this as a known gap for phase 1a.
 
 ### A picked skill shadows the agent's same-named skill
 
