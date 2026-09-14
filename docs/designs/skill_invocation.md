@@ -1,6 +1,7 @@
 # Design: Invoking a Skill from a Message
 
-- **Status:** Draft
+- **Status:** Approved
+- **Approved:** 2026-09-14
 - **Issue:** [epam/ai-dial-quickapps-backend#549](https://github.com/epam/ai-dial-quickapps-backend/issues/549), a
   sub-issue of [#421](https://github.com/epam/ai-dial-quickapps-backend/issues/421) ([EPIC] Advanced Agent Skills
   support)
@@ -233,12 +234,32 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     same-named skill is dropped and reported by the existing `SkillsRegistry` collision path. See
     [UC-5](#uc-5-the-users-skill-has-the-same-name-as-one-of-the-agents) and [Known Gaps](#known-gaps).
   - **There is no uniqueness scheme in 1a, and no new collision logic.** A picked skill is named by its own manifest,
-    like every other skill. Every clash — with an agent's skill or between two picks — goes through the merge that
-    `SkillsRegistry` already performs: the first entry it meets wins, the rest are reported as collisions. This
-    design adds no rule of its own about which one that should be, and none of it is new code.
+    like every other skill, and the two kinds of clash are settled in two different places that both already exist:
 
-    **The assumption this rests on: picked skills have names that don't clash.** It is the user's to keep, and 1b
-    removes the need for it.
+    | Clash | Settled by | Winner |
+    |---|---|---|
+    | A pick vs. an agent's skill | `SkillsRegistry._get_merged`, by provider `order` | The pick (`order = -10`) |
+    | A pick vs. another pick | `DialSkillResolver.resolve`'s name dedup, **before** the provider is populated | The **oldest** pick — the resolver keeps the first occurrence, and step 5 hands it the list oldest-first |
+
+    The second row is the one worth reading twice: two picks live in the *same* provider, so the registry never sees
+    the loser. `DialSkillResolver` drops it and emits `Duplicate skill name '<name>'; keeping first occurrence`, which
+    reaches "Initialization issues" with the resolver's wording rather than the registry's, and does so on **every**
+    turn — the *Reporting* rule below cannot suppress it, because the exception is produced inside the resolver and
+    flows straight into the context's exception list.
+
+    Three further consequences follow, all **accepted** for 1a:
+
+    - The dropped pick's URL is not among the URLs that resolved, so the injector's table classifies it as *failed to
+      resolve* and the model is told it could not be loaded. That is misleading about the cause but correct about the
+      outcome: the skill genuinely is not available to the model.
+    - A user who re-picks a same-named skill from a different URL keeps the **older** one.
+    - That re-pick produces **nothing at all** — no pair, no stage, no error. Its chip derives the same
+      `{"skill_name": "<name>"}` arguments as the first pick, so the skip check in concern 4 matches the earlier
+      pair and skips it before anything is reported.
+
+    **All three are unreachable under the assumption this phase rests on: picked skills have names that don't clash.**
+    It is the user's to keep, nothing enforces it, and 1b removes the need for it. Reporting the duplicate distinctly
+    was considered and rejected — see [Alternatives](#alternatives-considered).
   - Everything downstream then works unchanged, which is the point of registering rather than special-casing:
     - the `SkillsRegistry` merge sees one more provider;
     - `generate_skills_xml` renders the skill like any other;
@@ -253,10 +274,14 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
   result per distinct chip on the last user message.
 - **Owner.** `quickapp/skill_invocation/`.
 - **Semantics.**
-  - **When.** Only when the **last** message is a user message carrying chips. Earlier invocations are already in
-    history: the pair was inserted after the user message of its turn, `Orchestrator` persists everything after the
-    last user message into `state.tool_execution_history`, and `_MessagesSetup.extract_tool_calls` restores it.
-    Acting on every historical chip would duplicate them.
+  - **When.** When `_InvokedSkillsContext` recorded chips for this turn (concern 2, step 5) — **not** by re-reading
+    the messages. The scrub transformer belongs to `SkillsModule`, which `app_factory` registers ahead of this
+    module, so by the time the injector runs the messages no longer carry `custom_content.skills` at all. The
+    insertion point is still taken from the messages: the index after the last `USER` message.
+
+    Earlier invocations need nothing: the pair was inserted after the user message of its turn, `Orchestrator`
+    persists everything after the last user message into `state.tool_execution_history`, and
+    `_MessagesSetup.extract_tool_calls` restores it. Acting on every historical chip would duplicate them.
   - **A pair already in history is not injected again.** A chip is skipped when the conversation already holds a pair
     for the same tool and arguments, matched on the call-id prefix that `make_synthetic_call_id_prefix` builds from
     the tool name and arguments. It needs no content, so `read_skill` is not run for a re-pick at all: no stage is
@@ -283,11 +308,16 @@ which is what makes bundled files and later turns work for free (goals 4 and 7).
     `Skill validation failed for 'skills/<bucket>/…'` from `parse_frontmatter` — which belongs in the "Initialization
     issues" stage and the logs, where the user can act on it. Feeding a varying, internals-shaped string to the model
     gives it something to improvise on; a fixed sentence keeps its reaction predictable.
-  - **How.** For a resolved chip the injector looks up the `read_skill` `StagedBaseTool` by its function name, the
-    same way `StagedToolSyntheticInjector` does, and runs it through `arun`. Because the skill is registered
-    (concern 3), the result is byte-identical to a model-initiated call, `<skill_files>` included, and the user sees
-    the tool's normal stage at the app's `stage_display_level` — the invocation is something the user did, so its
-    stage belongs in the response. For a failed chip the injector writes the pair itself, and there is no stage.
+  - **How.** For a resolved chip the injector looks up the `read_skill` `StagedBaseTool` by its function name — the
+    **lookup only** follows `StagedToolSyntheticInjector` — and runs it through `arun`. Because the skill is
+    registered (concern 3), the result is byte-identical to a model-initiated call, `<skill_files>` included.
+
+    > `StagedToolSyntheticInjector.get_content` forces `stage_level=StageDisplayLevel.DEBUG`, which suppresses the
+    > stage for a normal app. Copying that call verbatim would make UC-1's "Reading Skill" stage silently never
+    > appear. `arun` must be called **without** `stage_level`, so it defaults to `INFO` as it does in
+    > `tool_executor.py` — the invocation is something the user did, so its stage belongs in the response.
+
+    For a failed chip the injector writes the pair itself, and there is no stage.
   - **Scrubbing lives elsewhere.** Removing `custom_content.skills` from the working copy is **not** this
     transformer's job: it belongs to a small transformer in `SkillsModule`, which is never preview-gated. The
     orchestrator LLM and any DIAL deployment tool that forwards the conversation don't need the field, and forwarding
@@ -387,7 +417,8 @@ name so its files stay readable, and injects nothing new unless the new message 
 | Picked skill shared with the user, share later revoked | Core rejects the request with `403`, on every later turn of that conversation (Known Gaps) |
 | Invalid or over-cap `SKILL.md` | Fixed error result for the model; the reason in "Initialization issues"; not registered |
 | Picked skill has the same `name` as an agent skill | The user's wins and the agent's is dropped and reported (UC-5) |
-| Two picked skills share a `name` | Decided by the existing `SkillsRegistry` merge — the first entry it meets wins, the other is reported as a collision. This design adds no rule of its own |
+| Two picked skills share a `name` | Decided by `DialSkillResolver`'s name dedup, not the registry — the **oldest** pick wins, the other is dropped with `Duplicate skill name …`, reported every turn |
+| The same manifest `name` picked from two different URLs | The older pick stays. The newer chip derives identical `read_skill` arguments, so the skip check matches the older pair and the re-pick produces no pair, no stage and no error. Accepted: unreachable under the non-clashing-names assumption (concern 3) |
 | Picked URL the app also declares | Same content, one entry; the user's copy wins by order |
 | The same skill picked again later | Moves to the end of the user skills in the list; never dropped by the cap on the message that picks it; no new pair is injected and no stage is shown |
 | The user edits a picked skill mid-conversation | The model keeps the manifest from the turn that first picked it; a later `read_skill` of a bundled file returns the current file |
@@ -447,6 +478,8 @@ then the user's only way out is to start a new conversation.
 | **Register the skill for reads but keep it out of `<available_skills>`** | Keeps user-controlled text out of the system prompt, but `SkillsRegistry` builds the XML and the lookup table in one pass, so it needs a new `listed` flag on `SkillsProvider` — a special case for one provider, against goal 7. The model also can't see that it has the skill |
 | **A separate `read_user_skill` tool** | Sidesteps naming entirely and allows lazy resolution, but adds a second skill-reading tool to every preview app's tool list and two mental models for "read a skill" |
 | **Only list the picked skill, without injecting it** | Not deterministic (goal 1): the model decides whether to read it |
+| **Report a duplicate-name pick distinctly** (a field separating "dropped as a duplicate" from "failed to load") | Does not actually surface it: both picks derive the same `{"skill_name": "<name>"}` arguments, so the skip check still matches the earlier pair. Bypassing the skip would write a "could not be loaded" pair directly after one that loaded the same name fine — contradictory history for the model, for a case the non-clashing-names assumption rules out |
+| **`unique_names=False` on the resolver, letting the registry settle pick-vs-pick** | Would make clash behaviour coherent and is only ~9 lines, but reopens `dial_skills/` — the one thing that keeps this phase to "add a provider". Deferred to 1b, which needs the flag anyway |
 | **Only inject, without registering** | The manifest reaches the model, but bundled files are unreadable and the model can't see it has the skill (goals 4 and 7) |
 | **Persist name/description/files in choice state and skip the per-turn fetch** | Would remove the re-resolution, but `ResolvedSkill.content` is an eager `str`, so `get_skill_content` would need a lazy path — a change to the skills contract, against goal 7. The fetches are already parallel (`asyncio.gather` in `DialSkillResolver`), so the saving is Core load, not latency |
 | **Inline the manifest into the user message every turn** | Re-fetches and re-inlines on every turn. If the skill is edited, earlier turns silently change, so history stops matching what the model saw. The synthetic pair freezes the manifest as it was when invoked |
