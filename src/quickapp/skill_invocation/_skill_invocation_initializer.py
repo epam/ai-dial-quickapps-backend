@@ -105,4 +105,7 @@ class _SkillInvocationInitializer(CompletionInitializer):
             if exception.url is None or exception.url == current:
                 self._context.append_exception(exception)
             else:
-                logger.info("A skill picked on an earlier turn could not be loaded")
+                logger.debug(
+                    "Skipping a skill picked on an earlier turn that could not be loaded: %s",
+                    skill_name_from_url(exception.url),
+                )

@@ -75,7 +75,9 @@ def collect_picks(messages: list[Message]) -> ConversationPicks:
             continue
         if len(urls) > 1:
             ignored_by_ordinal[ordinal] = urls[1:]
-            logger.warning(
+            # Debug, not warning: every turn re-parses the whole conversation, so a
+            # warning here would repeat for every historical message that carried extras.
+            logger.debug(
                 "A user message carries %d skill chips; only the first is loaded", len(urls)
             )
         if urls[0] not in seen:

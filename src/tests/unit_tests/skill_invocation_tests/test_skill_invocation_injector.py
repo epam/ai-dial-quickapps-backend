@@ -8,10 +8,10 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
 from quickapp.skill_invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skill_invocation._skill_invocation_injector import _SkillInvocationInjector
-from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 from tests.unit_tests.common.common import make_resolved_skill as _skill
 
 _URL = "skills/b/code-review"
@@ -20,7 +20,7 @@ _URL = "skills/b/code-review"
 def _skill_reader_tool(content: str = "the manifest") -> MagicMock:
     tool = MagicMock(spec=StagedBaseTool)
     tool.tool_config = MagicMock()
-    tool.tool_config.open_ai_tool.function.name = SKILL_READER_TOOL_NAME
+    tool.tool_config.open_ai_tool.function.name = INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
     tool.arun = AsyncMock(
         return_value=ToolCallResult(content=content, content_type="text/markdown")
     )

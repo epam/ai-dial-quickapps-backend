@@ -333,8 +333,14 @@ the rest of the conversation. The model does not get to choose — a picked skil
   instructions read ahead of the turns they apply to. The user sees the normal
   "Reading Skill: `<name>`" stage — the invocation is something they did explicitly, so unlike
   other synthetic injections it is not hidden.
-- The injection runs only on the turn the pick is made. On later turns the pair comes back from
-  the assistant state like any other tool result, so `read_skill` is never re-run for it.
+- The injection runs only on the turn the pick is made. A pick made on the **first** user message
+  of a conversation is persisted with the rest of that turn's tool history, so on later turns the
+  pair comes back from the assistant state like any other tool result and `read_skill` is never
+  re-run for it.
+- A pick made on a **later** message is not persisted: only what follows the last user message is
+  stored, and the pair is inserted ahead of that point. The manifest is in context for that turn
+  only. The skill stays listed in `<available_skills>` and its files stay readable, but the model
+  has to call `read_skill` itself to see the manifest again. Known gap for phase 1a.
 - The model therefore keeps the manifest it saw when the skill was picked, even if the user edits
   the skill afterwards. A later read of a **bundled file** returns the current file.
 - A picked skill **wins** a name collision with one of the agent's skills, which is then dropped and

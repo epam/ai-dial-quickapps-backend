@@ -1,3 +1,5 @@
+import threading
+
 from quickapp.common.exceptions import InitializationException, SkillInitializationException
 from quickapp.skills import ResolvedSkill, SkillsProvider
 
@@ -32,6 +34,7 @@ class _InvokedSkillsContext(SkillsProvider):
         self._current_pick_url: str | None = None
         self._skills_by_url: dict[str, ResolvedSkill] = {}
         self._exceptions: list[InitializationException] = []
+        self._lock = threading.Lock()
 
     @property
     def resolved_skills(self) -> list[ResolvedSkill]:
@@ -54,11 +57,13 @@ class _InvokedSkillsContext(SkillsProvider):
         self._current_pick_url = url
 
     def set_resolved_skills(self, skills: list[ResolvedSkill]) -> None:
-        self._skills_by_url = {skill.url: _mark_user_selected(skill) for skill in skills}
+        with self._lock:
+            self._skills_by_url = {skill.url: _mark_user_selected(skill) for skill in skills}
 
     def find_skill(self, url: str) -> ResolvedSkill | None:
         """The skill resolved for *url*, or ``None`` if it failed or was over the cap."""
         return self._skills_by_url.get(url)
 
     def append_exception(self, exception: SkillInitializationException) -> None:
-        self._exceptions.append(exception)
+        with self._lock:
+            self._exceptions.append(exception)

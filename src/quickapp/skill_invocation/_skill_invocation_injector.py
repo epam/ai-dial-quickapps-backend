@@ -9,11 +9,11 @@ from quickapp.common.synthetic_injection.injection_enums import InjectionFrequen
 from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
     StagedToolSyntheticInjector,
 )
+from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
 from quickapp.skill_invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skill_invocation._skill_reference import skill_name_from_url
 from quickapp.skills import ResolvedSkill
-from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,19 @@ class _SkillInvocationInjector(StagedToolSyntheticInjector):
     "Reading Skill: <name>" stage belongs in the response.
 
     ``APPEND_IF_CHANGED`` puts the pair after the first user message, the same slot the
-    built-in file-transfer skill uses. It runs only on the turn the pick is made
-    (``should_inject``); afterwards the pair is restored from
-    ``state.tool_execution_history`` like any other tool result, so the model keeps the
-    manifest it first saw and ``read_skill`` is never re-run for it.
+    built-in file-transfer skill uses, and it runs only on the turn the pick is made
+    (``should_inject``).
+
+    How long the pair survives depends on *which* turn made the pick.
+    ``Orchestrator._build_tool_execution_history`` persists only what follows the
+    **last** user message, so a pick made on the first user message is stored and comes
+    back from ``state.tool_execution_history`` on every later turn, like any other tool
+    result. A pick made on any later message lands ahead of that boundary, is never
+    persisted, and is therefore in context for its own turn only — the skill stays
+    listed in ``<available_skills>`` and readable through ``read_skill``, but the model
+    is no longer handed the manifest unprompted. Accepted for phase 1a; the file-transfer
+    injector does not hit this because it re-injects on every turn instead of relying on
+    persistence.
     """
 
     stage_level = StageDisplayLevel.INFO
@@ -57,7 +66,7 @@ class _SkillInvocationInjector(StagedToolSyntheticInjector):
         return self.__context.current_pick_url is not None
 
     async def get_tool_name(self) -> str:
-        return SKILL_READER_TOOL_NAME
+        return INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return InjectionFrequency.APPEND_IF_CHANGED

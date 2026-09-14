@@ -490,6 +490,23 @@ QuickApps can't work around this, because the request never reaches it. The fix 
 skill reference instead of failing the request, and let QuickApps report it like any other skill it can't load. Until
 then the user's only way out is to start a new conversation.
 
+### An edited skill can leave two manifests in context
+
+`SyntheticToolCallInjector._inject_append_if_changed` matches an existing pair on tool, arguments **and** content.
+When a pair for the same skill is already in the history but its content has changed — the user edited the skill in
+Core between turns — the match fails and the injector appends a second pair instead of replacing the first. The
+conversation then carries two manifests under one skill name: the frozen one from the turn that first picked it, and
+the current one. The model sees both, with no marker saying which is current.
+
+The flaw is in the shared injector rather than in this feature. `_InjectFileTransferInstructionTransformer` re-injects
+on every turn and has the same exposure, but only a redeploy changes the built-in skill's content mid-conversation.
+What skill invocation adds is an ordinary user action that reaches it: edit your own skill, then invoke it again.
+
+**Accepted for 1a.** The blast radius is one skill and two versions of it, and the later pair wins in practice by
+sitting closer to the end of the context. Both fixes — replacing a prior pair on an arguments match regardless of
+content, or dropping the stale pair outright — change `SyntheticToolCallInjector` for every injector that uses it,
+and reopening the shared injector is the one thing this phase set out not to do (goal 7).
+
 ---
 
 ## Alternatives Considered
