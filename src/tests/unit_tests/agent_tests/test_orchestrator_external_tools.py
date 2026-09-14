@@ -183,6 +183,7 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
     tool_msg = Message(role=Role.TOOL, content="server result", tool_call_id="id-i")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_msg)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = None
 
@@ -243,6 +244,7 @@ async def test_all_internal_tools_loop_continues():
     tool_msg = Message(role=Role.TOOL, content="ok", tool_call_id="id-1")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_msg)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = None
     tool_executor = Mock(
@@ -304,6 +306,7 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
     tool_msg = Message(role=Role.TOOL, content="ok", tool_call_id="id-1")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_msg)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = None
     tool_executor = Mock(
@@ -363,6 +366,7 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
     tool_msg = Message(role=Role.TOOL, content="server result", tool_call_id="id-i")
     tool_result = Mock()
     tool_result.to_tool_message = Mock(return_value=tool_msg)
+    tool_result.annotations = []
     tool_result.propagate_to_choice = []
     tool_result.usage = None
     tool_executor = Mock(

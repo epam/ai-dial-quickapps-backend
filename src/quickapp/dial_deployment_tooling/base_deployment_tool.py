@@ -134,6 +134,8 @@ class BaseDeploymentTool(StagedBaseTool):
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"
+        if not tool_config.propagate_annotations_to_choice:
+            result.annotations = []
         return result
 
     _SESSION_ID_PARAM = ConfigurableSchemaSimpleType(

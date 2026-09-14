@@ -97,10 +97,11 @@ class ChatCompletionStreamHandler:
         tool_calls = result.tool_calls  # property rebuilds a list on each access
         logger.debug(
             "LLM response accumulated: content_length=%d, tool_calls=%s, attachments=%d, "
-            "stages=%d, state_keys=%s, usage=%s",
+            "annotations=%d, stages=%d, state_keys=%s, usage=%s",
             len(result.content),
             [tool.name for tool in tool_calls] if tool_calls else [],
             len(result.attachments),
+            len(result.annotations),
             len(result.stages),
             list(result.state) if result.state else [],
             (
@@ -115,6 +116,8 @@ class ChatCompletionStreamHandler:
             log_payload(logger, "LLM tool call args (%s): %s", tool.name, tool.arguments)
         if result.attachments:
             log_payload(logger, "LLM response attachments: %s", result.attachments)
+        if result.annotations:
+            log_payload(logger, "LLM response annotations: %s", result.annotations)
         if result.stages:
             log_payload(logger, "LLM response stages: %s", result.stages)
         if result.state:

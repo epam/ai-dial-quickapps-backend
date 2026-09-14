@@ -105,8 +105,9 @@ class OrchestratorConfig(BaseModel):
 def nullify_preview_fields(model: BaseModel) -> None:
     """Recursively nullify preview fields on a config model tree.
 
-    Recurses into nested BaseModel instances. Preview-marked model instances
-    inside lists are removed (with a warning).
+    Recurses into nested BaseModel instances, including those held in lists (tool
+    configs live in ``toolsets[].tools[]``). Preview-marked model instances inside
+    lists are removed (with a warning).
     """
     for field_name, field_info in type(model).model_fields.items():
         value = getattr(model, field_name)
@@ -121,9 +122,11 @@ def nullify_preview_fields(model: BaseModel) -> None:
             kept: list[Any] = []
             removed = 0
             for item in value:
-                if isinstance(item, BaseModel) and is_preview_model(type(item)):
-                    removed += 1
-                    continue
+                if isinstance(item, BaseModel):
+                    if is_preview_model(type(item)):
+                        removed += 1
+                        continue
+                    nullify_preview_fields(item)
                 kept.append(item)
             if removed:
                 entry_noun = "entry" if removed == 1 else "entries"

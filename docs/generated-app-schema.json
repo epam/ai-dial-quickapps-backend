@@ -1043,6 +1043,20 @@
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
         },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1148,6 +1162,20 @@
           ],
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
+        },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
         },
         "supports_url_attachments": {
           "default": false,
@@ -1370,6 +1398,29 @@
       ],
       "title": "DialPromptSkillConfig",
       "type": "object"
+    },
+    "DialSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-skill",
+          "default": "dial-skill",
+          "description": "Skill sourced from a DIAL skill resource (folder with SKILL.md).",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialSkillConfig",
+      "type": "object",
+      "x-preview": true
     },
     "DialSystemPromptConfig": {
       "properties": {
@@ -3872,13 +3923,17 @@
           "items": {
             "discriminator": {
               "mapping": {
-                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+                "dial-prompt": "#/$defs/DialPromptSkillConfig",
+                "dial-skill": "#/$defs/DialSkillConfig"
               },
               "propertyName": "type"
             },
             "oneOf": [
               {
                 "$ref": "#/$defs/DialPromptSkillConfig"
+              },
+              {
+                "$ref": "#/$defs/DialSkillConfig"
               }
             ]
           },
