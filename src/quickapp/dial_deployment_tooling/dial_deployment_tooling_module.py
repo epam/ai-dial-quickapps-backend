@@ -11,6 +11,7 @@ from quickapp.common import (
     ForwardedHeaders,
     StagedBaseTool,
 )
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
@@ -22,6 +23,7 @@ from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
+from ._annotation_anchor_prompt_provider import _AnnotationAnchorPromptProvider
 from ._attachment_resolver import AttachmentResolver
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
@@ -39,6 +41,9 @@ class DialDeploymentToolingModule(Module):
         binder.bind(DeploymentStageWrapper, to=DeploymentStageWrapper)
         binder.bind(_DeploymentToolInitializer, to=_DeploymentToolInitializer)
         binder.bind(_DeploymentToolingContext, to=_DeploymentToolingContext, scope=request_scope)
+        binder.bind(
+            _AnnotationAnchorPromptProvider, to=_AnnotationAnchorPromptProvider, scope=singleton
+        )
         binder.bind(
             DialDeploymentToolCacheService, to=DialDeploymentToolCacheService, scope=singleton
         )
@@ -96,6 +101,24 @@ class DialDeploymentToolingModule(Module):
             for tool in ts.tools
             if isinstance(tool, DialDeploymentTool) and tool.enabled
         ]
+
+    @staticmethod
+    def _propagates_annotations(app_config: ApplicationConfig) -> bool:
+        return any(
+            bool(getattr(tool, "propagate_annotations_to_choice", None))
+            for ts in (app_config.tool_sets or [])
+            if isinstance(ts, DeploymentToolSet) and ts.enabled
+            for tool in ts.tools
+            if getattr(tool, "enabled", False)
+        )
+
+    @multiprovider
+    def _provide_prompt_parts(
+        self, app_config: ApplicationConfig, anchor_provider: _AnnotationAnchorPromptProvider
+    ) -> list[PromptPartProvider]:
+        if not self._propagates_annotations(app_config):
+            return []
+        return [anchor_provider]
 
     @multiprovider
     def __provide_dial_deployment_simple_tools(

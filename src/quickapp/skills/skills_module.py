@@ -6,6 +6,7 @@ from injector import AssistedBuilder, Binder, Module, multiprovider, singleton
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.exceptions import InitializationException
 from quickapp.skills._inject_file_transfer_instruction_transformer import (
     _InjectFileTransferInstructionTransformer,
 )
@@ -13,6 +14,7 @@ from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
 from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.skills_provider import SkillsProvider
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,16 @@ class SkillsModule(Module):
         skills_registry: SkillsRegistry,
     ) -> list[PromptPartProvider]:
         return [skills_registry]
+
+    @multiprovider
+    def _provide_skill_providers(self, provider: AgentSkillsProvider) -> list[SkillsProvider]:
+        return [provider]
+
+    @multiprovider
+    def _provide_initialization_exceptions(
+        self, registry: SkillsRegistry
+    ) -> list[InitializationException]:
+        return registry.collision_exceptions
 
     @multiprovider
     def _provide_message_transformers(
