@@ -16,6 +16,7 @@ from quickapp.dial_core_services.dial_core_services_module import DialCoreServic
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
 from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
+from quickapp.dial_skills.dial_skills_module import DialSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
@@ -58,6 +59,7 @@ class AppFactory:
             LazyOnDemandStrategyModule(),
             SkillsModule(),
             DialPromptSkillsModule(),
+            DialSkillsModule(),
             TimestampModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),
