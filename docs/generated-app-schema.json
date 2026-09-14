@@ -1015,6 +1015,20 @@
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
         },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1120,6 +1134,20 @@
           ],
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
+        },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
         },
         "supports_url_attachments": {
           "default": false,
