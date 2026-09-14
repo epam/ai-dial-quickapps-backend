@@ -294,6 +294,73 @@ For design details, see [the design doc](designs/skills_as_dial_resource.md).
 
 ---
 
+## Invoking a Skill from a Message (preview)
+
+A user can bring **their own** skill into a conversation with an agent they do not own. The client
+puts the picked skill on the user message; QuickApps loads it for that turn and keeps it readable for
+the rest of the conversation. The model does not get to choose — a picked skill is always loaded.
+
+### Wire Contract
+
+```jsonc
+{
+  "role": "user",
+  "content": "/code-review focus on auth",
+  "custom_content": {
+    "skills": [{ "url": "skills/<bucket>/code-review" }]
+  }
+}
+```
+
+- `url` is the only field QuickApps reads; anything else the client adds (a title, say) is ignored.
+- The URL carries **no trailing slash** — DIAL Core shares exactly the URL it is given.
+- The field is **per message**, not per request: it stays on the turn it was picked on, which is what
+  lets Core re-share the skill on every later turn and keeps the bundled files readable.
+- `content` is opaque. QuickApps never parses it, so the `/name` token is just text.
+- `custom_content.skills` on a non-user message is ignored.
+- DIAL Core auto-shares each referenced skill to the application's per-request key, and rejects the
+  whole request with `400` for a malformed entry or a non-`skills/` URL, and with `403` for a skill
+  the user cannot read.
+
+### Behavior
+
+- Each picked skill is resolved like a `dial-skill` and registered under **its own manifest name**,
+  so `<available_skills>`, `read_skill` and bundled-file reads all work unchanged.
+- A synthetic `read_skill` call and result pair is inserted directly after the message that picked
+  the skill, and the user sees the normal "Reading Skill: `<name>`" stage.
+- On later turns the pair comes back from the assistant state like any other tool result: the model
+  keeps the manifest it saw when the skill was picked, even if the user edits the skill afterwards.
+  A later read of a **bundled file** returns the current file.
+- A picked skill **wins** a name collision with one of the agent's skills, which is then dropped and
+  reported in the initialization issues stage. Picked skills are expected to have names that do not
+  clash with the agent's; nothing enforces it yet.
+- A chip that cannot be loaded gets an error result naming the skill, so the model can say so, and
+  the reason is reported to the user. The request is still served.
+- The field is stripped from the working messages before they reach the orchestrator or any DIAL
+  deployment tool, whether or not preview features are enabled.
+
+### Limits
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `SKILL_INVOCATION_MAX_SKILLS` | `10` | Distinct picked skills resolved and listed per request across the conversation, newest first. Each one adds a `<skill>` block to the system prompt and one DIAL Core fetch per turn. |
+| `DIAL_SKILLS_FILE_MAX_BYTES` | `262144` | Reused unchanged for the manifest and each bundled file. |
+
+Beyond the cap the **oldest** picks stop being registered: their manifests stay in the history, but
+their names no longer resolve.
+
+### Limitations
+
+- Preview-gated: with `ENABLE_PREVIEW_FEATURES=false` a chip is neither resolved nor injected.
+- The user can only pick skills from their own catalog — the agent's own skills are not offered.
+- Only `skills/` resources can be picked; a declared `prompts/` skill is used by the model as today.
+- A skill that was shared with the user and later unshared makes every later turn of that
+  conversation fail with `403` in DIAL Core, before the request reaches QuickApps.
+
+For design details, see [the design doc](designs/skill_invocation.md).
+
+---
+
 ## Migrating from Agent Instructions
 
 The `config/predefined/instructions/` directory convention and `AgentInstructionsProvider` have been removed. The skills
