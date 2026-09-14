@@ -12,6 +12,7 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
     INTERNAL_FILE_SEARCH_TOOL_NAME,
     INTERNAL_FILE_TOOL_NAME_PREFIX,
+    INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
 )
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.dial_files import DialFilesConfig
@@ -75,8 +76,17 @@ class DialFilesToolingModule(Module):
     # from offload, regardless of config: a large read-back slice must never be
     # re-offloaded (infinite recursion). This guard cannot be removed via the
     # per-app / env-var `excluded_tools`, which is additive on top of it.
+    #
+    # `read_skill` joins them for a different reason: its result can carry the
+    # manifest's `<skill_files>` inventory, which progressive disclosure depends
+    # on. Offloading it into a DIAL-file pointer would strip that inventory from
+    # the tool result the model actually sees.
     _MANDATORY_EXCLUDED_TOOLS = frozenset(
-        {INTERNAL_FILE_READ_LINES_TOOL_NAME, INTERNAL_FILE_SEARCH_TOOL_NAME}
+        {
+            INTERNAL_FILE_READ_LINES_TOOL_NAME,
+            INTERNAL_FILE_SEARCH_TOOL_NAME,
+            INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
+        }
     )
 
     @request_scope

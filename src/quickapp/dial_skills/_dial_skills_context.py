@@ -4,17 +4,16 @@ from quickapp.common.exceptions import InitializationException, SkillInitializat
 from quickapp.skills import ResolvedSkill, SkillsProvider
 
 
-class _DialPromptSkillsContext(SkillsProvider):
-    """Request-scoped bag of state populated by ``_DialPromptSkillInitializer``
-    and the ``SkillsProvider`` ``SkillsRegistry`` consumes for it.
+class _DialSkillsContext(SkillsProvider):
+    """Request-scoped bag of state populated by ``_DialSkillInitializer`` and
+    the ``SkillsProvider`` ``SkillsRegistry`` consumes for it.
 
-    Mirrors ``_MCPToolingContext`` in spirit but is a standalone class — the
-    ``ToolingContextBase._tools`` field name does not fit the skills domain.
-    Prompt skills are single-document, so their skills carry no ``reader``.
+    Mirrors ``_DialPromptSkillsContext`` in shape. It does no I/O — each
+    skill already carries the reader it needs.
     """
 
-    order = 10
-    display_name = "DIAL prompt skills"
+    order = 20
+    display_name = "DIAL skill resources"
 
     def __init__(self) -> None:
         self._resolved_skills: list[ResolvedSkill] = []
