@@ -3512,8 +3512,8 @@
           "title": "Service Model"
         },
         "min_tools_for_deferral": {
-          "default": 5,
-          "description": "Minimum number of tools in a toolset for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when deferred=true, avoiding discovery overhead for small toolsets. Default: 5 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)",
+          "default": 10,
+          "description": "Minimum number of tools in a toolset for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when deferred=true, avoiding discovery overhead for small toolsets. Default: 10 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)",
           "minimum": 1,
           "title": "Min Tools For Deferral",
           "type": "integer"

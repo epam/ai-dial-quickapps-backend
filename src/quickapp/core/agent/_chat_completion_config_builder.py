@@ -45,13 +45,7 @@ class _ChatCompletionConfigBuilder:
             exclude_none=True
         )
         prepared_messages = self._prepare_messages(messages)
-        eager_names: set[str] = {t.get("function", {}).get("name", "") for t in self.__tools}
-        lazy_tools = [
-            t
-            for t in self.__lazy_loaded_tools_holder.get_all()
-            if t.get("function", {}).get("name", "") not in eager_names
-        ]
-        all_tools = self.__tools + lazy_tools
+        all_tools = self._merge_tools()
         payload: dict[str, Any] = {
             "messages": prepared_messages,
             "stream": True,
@@ -59,21 +53,7 @@ class _ChatCompletionConfigBuilder:
             "tools": all_tools,
         }
 
-        if self.__response_format:
-            logger.debug("Setting response format (type=%s)", type(self.__response_format).__name__)
-            log_payload(logger, "Response format: %s", self.__response_format)
-            if hasattr(self.__response_format, "model_dump"):
-                payload["response_format"] = self.__response_format.model_dump(
-                    exclude_none=True, mode="json"
-                )
-            elif isinstance(self.__response_format, dict):
-                payload["response_format"] = self.__response_format
-            else:
-                logger.error(
-                    "Unsupported response format type: %s. The response format will not be applied.",
-                    type(self.__response_format),
-                )
-
+        self._apply_response_format(payload)
         self._apply_tool_choice(payload)
 
         if self.__presentation_settings.show_usage_statistics:
@@ -83,6 +63,41 @@ class _ChatCompletionConfigBuilder:
             payload["extra_headers"] = self.__forwarded_headers
 
         chat_completion_config.update(payload)
+        self._log_result(chat_completion_config, prepared_messages, all_tools)
+        return chat_completion_config
+
+    def _merge_tools(self) -> list[OpenAiToolConfigDict]:
+        eager_names: set[str] = {t.get("function", {}).get("name", "") for t in self.__tools}
+        lazy_tools = [
+            t
+            for t in self.__lazy_loaded_tools_holder.get_all()
+            if t.get("function", {}).get("name", "") not in eager_names
+        ]
+        return self.__tools + lazy_tools
+
+    def _apply_response_format(self, payload: dict[str, Any]) -> None:
+        if not self.__response_format:
+            return
+        logger.debug("Setting response format (type=%s)", type(self.__response_format).__name__)
+        log_payload(logger, "Response format: %s", self.__response_format)
+        if hasattr(self.__response_format, "model_dump"):
+            payload["response_format"] = self.__response_format.model_dump(
+                exclude_none=True, mode="json"
+            )
+        elif isinstance(self.__response_format, dict):
+            payload["response_format"] = self.__response_format
+        else:
+            logger.error(
+                "Unsupported response format type: %s. The response format will not be applied.",
+                type(self.__response_format),
+            )
+
+    def _log_result(
+        self,
+        chat_completion_config: dict[str, Any],
+        prepared_messages: list[dict[str, Any]],
+        all_tools: list[OpenAiToolConfigDict],
+    ) -> None:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(
                 "Chat completion config: messages=%d, roles=%s, tools=%d (eager=%d, lazy=%d), response_format=%s, "
@@ -91,7 +106,7 @@ class _ChatCompletionConfigBuilder:
                 summarize_roles(prepared_messages),
                 len(all_tools),
                 len(self.__tools),
-                len(lazy_tools),
+                len(all_tools) - len(self.__tools),
                 "response_format" in chat_completion_config,
                 chat_completion_config.get("model"),
                 # Header NAMES only — forwarded X-* header values are never logged, even
@@ -106,7 +121,6 @@ class _ChatCompletionConfigBuilder:
             log_payload(
                 logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
-        return chat_completion_config
 
     def _apply_tool_choice(self, payload: dict[str, Any]) -> None:
         tool_choice = self.__tool_choice_holder.consume()
