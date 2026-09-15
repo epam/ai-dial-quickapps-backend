@@ -257,6 +257,7 @@ The project contains predefined configs of application and predefined tools
 | deployment     | Yes      | Object  | The DIAL deployment configuration. See [Deployment configuration](#deployment-configuration)             | -                | -             |
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
 | max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
+| tool_discovery | No       | Object  | `[Preview]` Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
 
 #### Deployment configuration
 
@@ -330,6 +331,39 @@ Custom system prompt:
 ```
 
 </details>
+
+#### Tool discovery configuration
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, toolsets withheld from the initial LLM payload
+(see the per-toolset `deferred` field in [Tool sets configuration](#tool-sets-configuration)) are surfaced on demand
+via the `internal_tool_search` meta-tool (referred to as "tool search" below), which routes the query to the matching
+tool schemas through an isolated LLM call.
+
+| Field                  | Required | Type    | Description                                                                                                                                                | Available Values | Default Value |
+|------------------------|----------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------|---------------|
+| enabled                | No       | Boolean | Enable dynamic tool discovery. When `true`, toolsets with `deferred: true` are withheld from the initial LLM payload and surfaced via the `internal_tool_search` meta-tool. | -                 | `false`       |
+| service_model          | No       | String  | DIAL deployment used for the anonymous routing call inside `internal_tool_search`. Falls back to the orchestrator's own deployment when omitted.                      | -                 | -             |
+| min_tools_for_deferral | No       | Integer | Minimum number of tools in a toolset for deferral to apply. Toolsets smaller than this threshold are promoted to eager loading even when `deferred: true`. Deployment-wide default set by `MIN_TOOLS_FOR_DEFERRAL`. | -    | `10`          |
+
+<details>
+<summary><b>Tool discovery configuration JSON sample</b></summary>
+
+```json
+{
+  "orchestrator": {
+    "deployment": { "name": "gpt-4o" },
+    "tool_discovery": {
+      "enabled": true,
+      "service_model": "gpt-4o-mini",
+      "min_tools_for_deferral": 5
+    }
+  }
+}
+```
+
+</details>
+
+See [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) for the full behavioral reference.
 
 ### Contexts configuration
 
@@ -470,6 +504,12 @@ See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL 
 SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
 
 ### Tool sets configuration
+
+Most toolset types also accept a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
+[Tool discovery configuration](#tool-discovery-configuration) is enabled, the toolset's tool schemas are withheld
+from the initial LLM payload and discovered on demand via the `internal_tool_search` meta-tool. Set to `false` to
+keep a specific toolset always eager. Currently honored by REST API, MCP, and Internal toolsets; DIAL deployment and
+DIAL app toolsets accept the field but do not yet act on it.
 
 #### RestApiToolSet Configuration
 
@@ -695,6 +735,28 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | rest_api_method_info   | Yes (if `type` is `rest-api`)        | Object | REST API method information configuration. See [REST API method information configuration](#rest-api-method-information-configuration)                                                    | -                | -             |
 | display                | No                                   | Object | Representation (display) configuration for tool execution results. See [Display configuration](#display-configuration), See [Tool stage configuration](#Display-tool-stage-configuration) | -                | `null`        |
 | fallback_configuration | No                                   | Object | Tools fallback configuration. If not present will always raise Error. See [Tool fallback configuration](#tool-fallback-configuration)                                                     | -                | `null`        |
+| propagate_annotations_to_choice | No                          | Boolean | **Preview.** Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
+
+#### Citation annotations
+
+A DIAL application used as a deployment tool can return citation annotations under
+`choices[].delta.custom_fields.annotations`, with in-text `<cit id="...">` anchors in its answer
+text. Set `propagate_annotations_to_choice: true` on that tool to forward them to your app's answer.
+
+Annotations are forwarded exactly as the deployment returned them. When any tool enables the flag,
+the orchestrator is additionally instructed to copy every `<cit id="...">` anchor verbatim from tool
+responses into its own answer, so the anchors the annotations point at stay in the text.
+
+This is a preview feature: it requires `ENABLE_PREVIEW_FEATURES=true`, and DIAL Chat does not
+render annotations yet.
+
+```json
+{
+  "type": "dial-deployment-simple",
+  "deployment_id": "dial-document",
+  "propagate_annotations_to_choice": true
+}
+```
 
 #### REST API method information configuration
 

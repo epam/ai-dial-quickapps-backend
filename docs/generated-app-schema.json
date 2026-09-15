@@ -684,6 +684,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-deployment",
           "default": "dial-deployment",
@@ -758,6 +772,20 @@
           "description": "Whether the toolset is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
         },
         "type": {
           "const": "dial-app",
@@ -1015,6 +1043,20 @@
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
         },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-deployment-simple",
           "default": "dial-deployment-simple",
@@ -1120,6 +1162,20 @@
           ],
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
+        },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
         },
         "supports_url_attachments": {
           "default": false,
@@ -1239,6 +1295,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-mcp",
           "default": "dial-mcp",
@@ -1328,6 +1398,29 @@
       ],
       "title": "DialPromptSkillConfig",
       "type": "object"
+    },
+    "DialSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-skill",
+          "default": "dial-skill",
+          "description": "Skill sourced from a DIAL skill resource (folder with SKILL.md).",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialSkillConfig",
+      "type": "object",
+      "x-preview": true
     },
     "DialSystemPromptConfig": {
       "properties": {
@@ -1821,6 +1914,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "internal",
           "default": "internal",
@@ -2214,6 +2321,20 @@
           "description": "Whether the toolset is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
         },
         "type": {
           "const": "mcp",
@@ -3063,6 +3184,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "rest-api",
           "default": "rest-api",
@@ -3355,6 +3490,38 @@
       "title": "ToolCallTimestampConfig",
       "type": "object"
     },
+    "ToolDiscoveryConfig": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the internal_tool_search meta-tool.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "service_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. When omitted, falls back to the orchestrator's own deployment.",
+          "title": "Service Model"
+        },
+        "min_tools_for_deferral": {
+          "default": 10,
+          "description": "Minimum number of tools in a toolset for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when deferred=true, avoiding discovery overhead for small toolsets. Default: 10 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)",
+          "minimum": 1,
+          "title": "Min Tools For Deferral",
+          "type": "integer"
+        }
+      },
+      "title": "ToolDiscoveryConfig",
+      "type": "object"
+    },
     "ToolDisplayConfig": {
       "properties": {
         "stage": {
@@ -3611,6 +3778,19 @@
           ],
           "default": null,
           "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only)."
+        },
+        "tool_discovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolDiscoveryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
+          "x-preview": true
         }
       },
       "required": [
@@ -3743,13 +3923,17 @@
           "items": {
             "discriminator": {
               "mapping": {
-                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+                "dial-prompt": "#/$defs/DialPromptSkillConfig",
+                "dial-skill": "#/$defs/DialSkillConfig"
               },
               "propertyName": "type"
             },
             "oneOf": [
               {
                 "$ref": "#/$defs/DialPromptSkillConfig"
+              },
+              {
+                "$ref": "#/$defs/DialSkillConfig"
               }
             ]
           },

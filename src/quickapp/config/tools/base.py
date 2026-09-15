@@ -1,5 +1,6 @@
+import copy
 from enum import Enum
-from typing import Annotated, Any, Generic, Literal, TypeVar, Union
+from typing import Annotated, Any, Generic, Literal, TypeAlias, TypeVar, Union
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -194,6 +195,21 @@ class OpenAiToolConfig(
         TConfigurableSchemaSimpleType,
         TConfigurableSchemaConst,
     ]
+
+
+OpenAiToolConfigDict: TypeAlias = dict[str, Any]
+
+
+def remove_const_schema_params(open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
+    """Strip const-valued parameters (fixed values hidden from the LLM) from a tool's JSON schema."""
+    tool_copy = copy.deepcopy(open_ai_tool)
+    props = tool_copy.function.parameters.properties
+
+    for prop_name in list(props.keys()):
+        if issubclass(type(props[prop_name]), JsonSchemaConst):
+            del props[prop_name]
+
+    return tool_copy
 
 
 class BaseTool(BaseModel):

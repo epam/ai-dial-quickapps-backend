@@ -84,6 +84,7 @@ class DialCompletionService:
             content_type="text/markdown",
             # check if result.attachments: would return false for empty array
             attachments=result.attachments_or_none,
+            annotations=result.annotations,
             state=result.state,
             usage=self.__get_deployment_usage(result.usage, deployment_id, deployment_name),
         )

@@ -90,6 +90,18 @@ class TestStagedToolSyntheticInjector:
         assert kwargs.get("stage_level") == StageDisplayLevel.DEBUG
 
     @pytest.mark.asyncio
+    async def test_a_subclass_can_raise_the_stage_level(self):
+        """A subclass acting on an explicit user action shows its stage."""
+        tool = _make_staged_tool("my_tool", "result")
+        injector = _ConcreteInjector([tool], "my_tool")
+        injector.stage_level = StageDisplayLevel.INFO
+
+        await injector.transform([Message(role=Role.USER, content="hi")])
+
+        _, kwargs = tool.arun.call_args
+        assert kwargs.get("stage_level") == StageDisplayLevel.INFO
+
+    @pytest.mark.asyncio
     async def test_multiple_tools_correct_one_selected(self):
         tool_a = _make_staged_tool("tool_a", "from a")
         tool_b = _make_staged_tool("tool_b", "from b")

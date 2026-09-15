@@ -96,6 +96,17 @@ def _delta_tool_calls_tuple(delta: Any) -> tuple[Any, ...]:
     return tuple(raw)
 
 
+def _delta_annotations(delta: Any) -> tuple[dict[str, Any], ...]:
+    """Read ``delta.custom_fields.annotations``."""
+    custom_fields = getattr(delta, "custom_fields", None)
+    if not isinstance(custom_fields, dict):
+        return ()
+    raw = custom_fields.get("annotations")
+    if not isinstance(raw, list):
+        return ()
+    return tuple(item for item in raw if isinstance(item, dict))
+
+
 def _normalized_choice_delta(choice: Any) -> NormalizedChoiceDelta | None:
     delta = getattr(choice, "delta", None)
     if not delta:
@@ -106,6 +117,7 @@ def _normalized_choice_delta(choice: Any) -> NormalizedChoiceDelta | None:
         content=content,
         custom=_custom_content_from_delta(custom_raw),
         tool_calls=_delta_tool_calls_tuple(delta),
+        annotations=_delta_annotations(delta),
     )
 
 

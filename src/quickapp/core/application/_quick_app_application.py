@@ -38,6 +38,7 @@ class _QuickAppApplication(DIALApp):
             dial_url=dial_settings.url,
             propagate_auth_headers=True,
             add_healthcheck=True,
+            allow_extra_request_fields=True,
             telemetry_config=TelemetryConfig(service_name=otel_settings.service_name),
             lifespan=lifespan,
         )

@@ -1,5 +1,3 @@
-import copy
-
 from aidial_sdk.chat_completion.request import StaticTool
 from aidial_sdk.exceptions import InvalidRequestError
 from fastapi_injector import request_scope
@@ -25,6 +23,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
+from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -35,10 +34,10 @@ from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,
     ConfigurableSchemaSimpleType,
-    JsonSchemaConst,
     JsonSchemaSimpleType,
     JsonTypeEnum,
     OpenAiToolConfig,
+    remove_const_schema_params,
 )
 from quickapp.config.tools.deployment import DialDeploymentTool
 from quickapp.config.tools.display.paramenter import (
@@ -56,6 +55,7 @@ from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import OpenAiToolConfigDict
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
@@ -104,6 +104,7 @@ class AgentModule(Module):
         )
         binder.bind(AssistantInvoker, to=AssistantInvoker, scope=NoScope)
         binder.bind(_ChatCompletionConfigBuilder, to=_ChatCompletionConfigBuilder, scope=NoScope)
+        binder.bind(LazyLoadedToolsHolder, to=LazyLoadedToolsHolder, scope=request_scope)
         binder.bind(ChatStreamSinkFactory, to=ChatStreamSinkFactory, scope=NoScope)
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
@@ -168,13 +169,19 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_openai_tools(
-        self, tools: list[StagedBaseTool], static_tools: list[StaticTool]
+        self,
+        tools: list[StagedBaseTool],
+        static_tools: list[StaticTool],
+        deferred_tool_names: list[DeferredToolName],
     ) -> list[OpenAiToolConfigDict]:
+        deferred_names = frozenset(deferred_tool_names)
         openai_functions = []
         for tool in tools:
             if isinstance(tool.tool_config, BaseOpenAITool):
                 open_ai_tool: OpenAiToolConfig = tool.tool_config.open_ai_tool
-                open_ai_tool = self._remove_const_params(open_ai_tool)
+                if open_ai_tool.function.name in deferred_names:
+                    continue
+                open_ai_tool = remove_const_schema_params(open_ai_tool)
                 if isinstance(tool.tool_config, DialDeploymentTool):
                     open_ai_tool = self._append_default_props(open_ai_tool)
                 open_ai_tool = tool.enrich_openai_tool_schema(open_ai_tool)
@@ -221,17 +228,6 @@ class AgentModule(Module):
         return frozenset(
             t.function.name for t in context.extra_tools if t.function and t.function.name
         )
-
-    @staticmethod
-    def _remove_const_params(open_ai_tool):
-        tool_copy = copy.deepcopy(open_ai_tool)
-        props = tool_copy.function.parameters.properties
-
-        for prop_name in list(props.keys()):
-            if issubclass(type(props[prop_name]), JsonSchemaConst):
-                del props[prop_name]
-
-        return tool_copy
 
     @staticmethod
     def _append_default_props(converted_open_ai_tool: OpenAiToolConfig):

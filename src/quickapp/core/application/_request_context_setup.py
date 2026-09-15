@@ -64,6 +64,7 @@ class _RequestContextSetup:
         )
         log_customised_catch_all_strategies(context.application_config)
         if isinstance(request, Request):
+            context.request_messages = request.messages
             context.forwarded_headers = extract_x_headers_from_request(request)
             context.client_channel_id = _extract_client_channel_id(context.forwarded_headers)
             context.accept_language = request.headers.get(self.__proxy_settings.language_header)

@@ -65,7 +65,7 @@ async def sum_integers(incoming: list[int]):
 
 @mcp.tool(description="Returns a predefined small picture")
 async def get_small_picture() -> Image:
-    return Image(path="auto.jpg")
+    return Image(path="./auto.jpg")
 
 
 def __get_file_data(file_path: str) -> str:
@@ -87,7 +87,7 @@ async def get_test_pdf() -> EmbeddedResource:
     return EmbeddedResource(
         type="resource",
         resource=BlobResourceContents(
-            blob=__get_file_data("mcp_pdf.pdf"),
+            blob=__get_file_data("./mcp_pdf.pdf"),
             uri=AnyUrl("file://test/test.pdf"),
             mimeType="application/pdf",
         ),
@@ -99,7 +99,7 @@ async def get_test_plotly() -> EmbeddedResource:
     return EmbeddedResource(
         type="resource",
         resource=BlobResourceContents(
-            blob=__get_file_data("plotly.json"),
+            blob=__get_file_data("./plotly.json"),
             uri=AnyUrl("file://test/plotly.json"),
             mimeType="application/vnd.plotly.v1+json",
         ),
@@ -124,4 +124,6 @@ def get_config() -> dict:
 
 
 if __name__ == "__main__":
+    # result = asyncio.run(get_small_picture())
+    # print(result)
     mcp.run(transport="streamable-http", host="0.0.0.0", port=8003, log_level="debug")
