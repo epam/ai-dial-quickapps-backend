@@ -339,6 +339,14 @@ payload["messages"] = full conversation history
 The description of `tool_search` explicitly states that additional tools are available and can
 be discovered on demand, so the model knows to search before assuming a capability is missing.
 
+**As built:** the description also carries a dynamic, per-request section listing every currently
+deferred toolset by name, its tool count, and its own `description` (when set) — e.g. "Additional
+toolsets available for discovery: - salesforce. Available tools: 12. Query and update Salesforce
+records". This is built in `_ToolSearchTool.enrich_openai_tool_schema` from
+`DeferredToolsContext.toolset_summaries`, giving the model a hint about *what* (and how much) is
+hidden, not just that *something* is discoverable — without the per-tool schema cost that listing
+every tool upfront would incur.
+
 #### Step 3 — `tool_search` execution: anonymous agent
 
 When the orchestrator calls `tool_search(query)`, its handler delegates to a new
@@ -482,8 +490,9 @@ eagerly, no discovery overhead.
 | `shared/deferred_tools/` (`DeferredToolsContext`, `is_toolset_deferred`) | Request-scoped shared object aggregating `catalog`/`definitions` across all deferred toolsets in the request; `is_toolset_deferred` is the pure threshold predicate. Bound via its own `DeferredToolsModule`, spliced into `shared_module` |
 | REST, MCP, internal toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. **`dial-deployment`/`dial-app` toolsets do not yet do this** — follow-up |
 | `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`) | Fires a single isolated `chat.completions.create` call (no history, no app system prompt); takes the catalog and a user query; returns matched tool names |
-| `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (preview-gated); calls `_AnonymousAgent`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns `[{name, description}]` to the main LLM |
+| `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (preview-gated); calls `_AnonymousAgent`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns `[{name, description}]` to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
 | `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
+| `tool_discovery/_tool_search_hint_prompt_provider.py` (`_ToolSearchHintPromptProvider`) | System-prompt-level reminder to call `internal_tool_search` before declaring a limitation, plus the same deferred-toolset summary list (name, tool count, description — via the shared `_toolset_summary_format.format_toolset_summaries`) that `_ToolSearchTool.enrich_openai_tool_schema` appends to the tool's own description. Contributed by `ToolDiscoveryModule`'s own `_provide_prompt_parts` (preview-gated, same condition as the tool itself). `ToolDiscoveryModule` is registered in `app_factory.py` **before** `SkillsModule` specifically so this hint lands immediately ahead of the `<available_skills>` block in the aggregated system prompt |
 | `_chat_completion_config_builder.py` | Reads `LazyLoadedToolsHolder.get_all()` on every build and merges into `payload["tools"]`, de-duplicated against eager tool names — **`orchestrator.py` itself was not changed** |
 | Cross-turn state persistence | **Not implemented** — see [Out of Scope](#out-of-scope-mvp) |
 

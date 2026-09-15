@@ -387,7 +387,7 @@
   },
   {
     "name": "internal_tool_search",
-    "description": "Search for additional tools available to this assistant. Use this when you need a capability that is not listed in the current tool list. Returns the names and descriptions of matching tools; those tools will be available to call immediately after.",
+    "description": "\nPurpose: Discover additional tools and capabilities.\n\nYou MUST call this tool before stating any limitation or saying you cannot fulfill a user request.\n\nIn addition, you MUST call this tool whenever:\n- The user’s request is open-ended or underspecified.\n- The request might involve capabilities beyond your currently listed tools.\n- The request could plausibly be served by a specialized tool or by returning a resource, even if you believe you can respond text-only.\n\nIf a user request might involve capabilities beyond your current listed tools, you are REQUIRED to:\n1) Call internal_tool_search with a brief description of the needed capability.\n2) Inspect any returned tools.\n\nYou may NOT:\n- Assume that the initially listed tools are exhaustive.\n- Say \"I can't\", \"I don't have access\", or express similar limitations until you have called internal_tool_search in this conversation turn.\n\nOnly if internal_tool_search returns no suitable tools, or all relevant tools fail, may you tell the user you cannot do it.\n\nThis tool dynamically discovers additional toolsets (including hidden or MCP tools) that may provide additional capabilities:\n",
     "properties": {
       "query": {
         "type": "string",

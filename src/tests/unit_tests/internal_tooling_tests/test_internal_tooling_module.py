@@ -9,8 +9,8 @@ from quickapp.config.tools.base import (
 )
 from quickapp.config.tools.internal import InternalTool
 from quickapp.config.toolsets.internal import InternalToolSet
+from quickapp.internal_tooling._internal_deferred_tools_context import _InternalDeferredToolsContext
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
-from quickapp.shared.deferred_tools import DeferredToolsContext
 
 
 def _make_internal_tool_config(
@@ -51,13 +51,13 @@ class TestProvideInternalTools:
         discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=1)
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=DeferredToolsContext)
+        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
 
         assert result == [staged_tool]
-        deferred_context.register_staged_tools.assert_called_once_with([staged_tool])
+        deferred_context.register_deferred_tools.assert_called_once_with(toolset, [staged_tool])
 
     def test_does_not_defer_below_threshold(self):
         tool_config = _make_internal_tool_config()
@@ -65,23 +65,23 @@ class TestProvideInternalTools:
         discovery_cfg = ToolDiscoveryConfig(enabled=True, min_tools_for_deferral=5)
         app_config = _make_app_config(toolset, discovery_cfg)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=DeferredToolsContext)
+        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
 
         assert result == [staged_tool]
-        deferred_context.register_staged_tools.assert_not_called()
+        deferred_context.register_deferred_tools.assert_not_called()
 
     def test_does_not_defer_when_discovery_disabled(self):
         tool_config = _make_internal_tool_config()
         toolset = InternalToolSet(name="internal", deferred=True, tools=[tool_config])
         app_config = _make_app_config(toolset, discovery_cfg=None)
         staged_tool, py_builder = _make_py_builder(tool_config)
-        deferred_context = MagicMock(spec=DeferredToolsContext)
+        deferred_context = MagicMock(spec=_InternalDeferredToolsContext)
 
         module = InternalToolModule()
         result = module._provide_internal_tools(app_config, py_builder, deferred_context)
 
         assert result == [staged_tool]
-        deferred_context.register_staged_tools.assert_not_called()
+        deferred_context.register_deferred_tools.assert_not_called()

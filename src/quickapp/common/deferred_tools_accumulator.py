@@ -1,6 +1,5 @@
-from injector import inject
-
-from quickapp.common import StagedBaseTool
+from quickapp.common.localized_string import resolve_localized
+from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import (
     BaseOpenAITool,
@@ -10,15 +9,19 @@ from quickapp.config.tools.base import (
 from quickapp.config.toolsets.base import BaseToolSet
 
 
-@inject
-class DeferredToolsContext:
-    """Request-scoped holder for tool catalog and full definitions of deferred toolsets."""
+class DeferredToolsAccumulator:
+    """Base contract for a tooling module's own deferred-tool registry.
+
+    Concrete subclasses are bound request-scoped by their owning module (mirrors
+    `ToolingContextBase`), not by a Module of their own.
+    """
 
     def __init__(self) -> None:
         self._catalog: list[dict[str, str]] = []
         self._definitions: dict[str, OpenAiToolConfigDict] = {}
+        self._toolset_summaries: list[dict[str, str | int | None]] = []
 
-    def register_staged_tools(self, tools: list[StagedBaseTool]) -> None:
+    def register_deferred_tools(self, toolset: BaseToolSet, tools: list[StagedBaseTool]) -> None:
         entries: list[tuple[StagedBaseTool, BaseOpenAITool, str]] = [
             (t, t.tool_config, name)
             for t in tools
@@ -42,6 +45,15 @@ class DeferredToolsContext:
                 for tool, tool_config, name in entries
             }
         )
+        self._toolset_summaries.append(
+            {
+                "name": resolve_localized(toolset.name),
+                "description": (
+                    resolve_localized(toolset.description) if toolset.description else None
+                ),
+                "tool_count": len(entries),
+            }
+        )
 
     @property
     def deferred_names(self) -> frozenset[str]:
@@ -50,6 +62,10 @@ class DeferredToolsContext:
     @property
     def catalog(self) -> list[dict[str, str]]:
         return list(self._catalog)
+
+    @property
+    def toolset_summaries(self) -> list[dict[str, str | int | None]]:
+        return list(self._toolset_summaries)
 
     def get_definition(self, name: str) -> OpenAiToolConfigDict | None:
         return self._definitions.get(name)

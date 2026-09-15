@@ -4,15 +4,22 @@ from fastapi_injector import request_scope
 from injector import Binder, ClassAssistedBuilder, Module, multiprovider
 
 from quickapp.common import ACCEPT_LANGUAGE, StagedBaseTool
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolName,
+    DeferredToolsetSummary,
+)
+from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
 from quickapp.common.utils import sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.rest_api import RestApiTool
 from quickapp.config.toolsets.rest_api import RestApiToolSet
-from quickapp.shared.deferred_tools import DeferredToolsContext, is_toolset_deferred
 
 from ._request_detail_builder import _RequestDetailsBuilder
+from ._rest_api_deferred_tools_context import _RestApiDeferredToolsContext
 from ._rest_api_stage_wrapper import _RestApiStageWrapper
 from ._rest_api_tool import _RestApiTool
 
@@ -26,6 +33,9 @@ class RestApiToolingModule(Module):
         binder.bind(_RestApiTool, to=_RestApiTool, scope=request_scope)
         binder.bind(_RequestDetailsBuilder, to=_RequestDetailsBuilder)
         binder.bind(OAuthTokenFetcher, to=OAuthTokenFetcher)
+        binder.bind(
+            _RestApiDeferredToolsContext, to=_RestApiDeferredToolsContext, scope=request_scope
+        )
         logger.debug("RestApiTooling module configuration completed")
 
     @multiprovider
@@ -34,7 +44,7 @@ class RestApiToolingModule(Module):
         app_config: ApplicationConfig,
         tool_builder: ClassAssistedBuilder[_RestApiTool],
         accept_language: ACCEPT_LANGUAGE,
-        deferred_context: DeferredToolsContext,
+        deferred_context: _RestApiDeferredToolsContext,
     ) -> list[StagedBaseTool]:
         result: list[StagedBaseTool] = []
         for toolset_info in app_config.tool_sets:
@@ -43,14 +53,42 @@ class RestApiToolingModule(Module):
                 tools = self.__create_rest_api_tools(toolset_info, tool_builder, toolset_stage_name)
                 discovery_cfg = app_config.orchestrator.tool_discovery
                 if is_toolset_deferred(toolset_info, discovery_cfg, len(tools)):
-                    deferred_context.register_staged_tools(tools)
+                    deferred_context.register_deferred_tools(toolset_info, tools)
                     logger.debug(
-                        "Deferred %d tools from REST toolset '%s' into DeferredToolsContext",
+                        "Deferred %d tools from REST toolset '%s' into the deferred tools registry",
                         len(tools),
                         toolset_stage_name,
                     )
                 result.extend(tools)
         return result
+
+    @multiprovider
+    def _provide_deferred_tool_names(
+        self, deferred_context: _RestApiDeferredToolsContext
+    ) -> list[DeferredToolName]:
+        return list(deferred_context.deferred_names)
+
+    @multiprovider
+    def _provide_deferred_catalog_entries(
+        self, deferred_context: _RestApiDeferredToolsContext
+    ) -> list[DeferredToolCatalogEntry]:
+        return deferred_context.catalog
+
+    @multiprovider
+    def _provide_deferred_tool_definitions(
+        self, deferred_context: _RestApiDeferredToolsContext
+    ) -> list[DeferredToolDefinition]:
+        return [
+            DeferredToolDefinition(name=name, definition=definition)
+            for name in deferred_context.deferred_names
+            if (definition := deferred_context.get_definition(name)) is not None
+        ]
+
+    @multiprovider
+    def _provide_deferred_toolset_summaries(
+        self, deferred_context: _RestApiDeferredToolsContext
+    ) -> list[DeferredToolsetSummary]:
+        return deferred_context.toolset_summaries
 
     @staticmethod
     def __create_rest_api_tools(

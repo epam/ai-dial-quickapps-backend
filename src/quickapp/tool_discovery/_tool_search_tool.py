@@ -7,13 +7,19 @@ from injector import AssistedBuilder, inject
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolsetSummary,
+)
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
+from quickapp.config.tools.base import OpenAiToolConfig, OpenAiToolConfigDict
 from quickapp.config.tools.internal import InternalTool
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
-from quickapp.shared.deferred_tools import DeferredToolsContext
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 from quickapp.tool_discovery._tool_search_stage_wrapper import _ToolSearchStageWrapper
+from quickapp.tool_discovery._toolset_summary_format import format_toolset_summaries
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +33,9 @@ class _ToolSearchTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_ToolSearchStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        deferred_context: DeferredToolsContext,
+        catalog: list[DeferredToolCatalogEntry],
+        definitions: list[DeferredToolDefinition],
+        toolset_summaries: list[DeferredToolsetSummary],
         lazy_holder: LazyLoadedToolsHolder,
         anonymous_agent: _AnonymousAgent,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
@@ -42,9 +50,25 @@ class _ToolSearchTool(StagedBaseTool):
             argument_transformers=argument_transformers,
             **kwargs,
         )
-        self.__deferred_context = deferred_context
+        self.__catalog = catalog
+        self.__toolset_summaries = toolset_summaries
+        self.__definitions_by_name: dict[str, OpenAiToolConfigDict] = {
+            definition.name: definition.definition for definition in definitions
+        }
         self.__lazy_holder = lazy_holder
         self.__anonymous_agent = anonymous_agent
+
+    def enrich_openai_tool_schema(self, open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
+        summaries = self.__toolset_summaries
+        if not summaries:
+            return open_ai_tool
+
+        open_ai_tool.function.description = (
+            open_ai_tool.function.description
+            + "\n\nAdditional toolsets available for discovery:\n"
+            + format_toolset_summaries(summaries)
+        )
+        return open_ai_tool
 
     async def _run_in_stage_async(
         self,
@@ -54,7 +78,7 @@ class _ToolSearchTool(StagedBaseTool):
         **kwargs: Any,
     ) -> ToolCallResult:
         query: str = kwargs.get("query", "")
-        catalog = self.__deferred_context.catalog
+        catalog = self.__catalog
 
         if not catalog:
             result = ToolCallResult(
@@ -70,7 +94,7 @@ class _ToolSearchTool(StagedBaseTool):
         discovered: list[dict[str, str]] = []
         new_definitions = []
         for name in matched_names:
-            definition = self.__deferred_context.get_definition(name)
+            definition = self.__definitions_by_name.get(name)
             if definition is None:
                 logger.warning("tool_search matched unknown tool name %r — skipping", name)
                 continue

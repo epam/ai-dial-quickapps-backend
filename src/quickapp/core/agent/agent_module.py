@@ -23,6 +23,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.chat_completion_recovery import ChatCompletionRecoveryService
 from quickapp.common.chat_completion_stream.chat_stream_sink_factory import ChatStreamSinkFactory
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
+from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
@@ -61,7 +62,6 @@ from quickapp.core.agent.orchestrator_deployment_cache_service import (
     OrchestratorDeploymentCacheService,
 )
 from quickapp.core.application._request_context import _RequestContext
-from quickapp.shared.deferred_tools import DeferredToolsContext
 
 DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
     type=JsonTypeEnum.string,
@@ -168,9 +168,9 @@ class AgentModule(Module):
         self,
         tools: list[StagedBaseTool],
         static_tools: list[StaticTool],
-        deferred_context: DeferredToolsContext,
+        deferred_tool_names: list[DeferredToolName],
     ) -> list[OpenAiToolConfigDict]:
-        deferred_names = deferred_context.deferred_names
+        deferred_names = frozenset(deferred_tool_names)
         openai_functions = []
         for tool in tools:
             if isinstance(tool.tool_config, BaseOpenAITool):

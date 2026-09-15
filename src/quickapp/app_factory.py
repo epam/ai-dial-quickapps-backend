@@ -58,11 +58,14 @@ class AppFactory:
             FileTransferModule(),
             AttachmentProcessingModule(),
             LazyOnDemandStrategyModule(),
+            # ToolDiscoveryModule is registered before SkillsModule so its tool_search prompt
+            # hint (when active) lands immediately ahead of the <available_skills> block in the
+            # aggregated system prompt (list[PromptPartProvider] preserves module registration order).
+            ToolDiscoveryModule(),
             SkillsModule(),
             DialPromptSkillsModule(),
             DialSkillsModule(),
             TimestampModule(),
-            ToolDiscoveryModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),
             WebToolingModule(),
