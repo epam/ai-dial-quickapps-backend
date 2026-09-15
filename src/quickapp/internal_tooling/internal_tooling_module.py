@@ -4,11 +4,20 @@ from fastapi_injector import request_scope
 from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import DIAL_API_KEY, StagedBaseTool
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolName,
+    DeferredToolsetSummary,
+)
+from quickapp.common.deferred_tools_accumulator import is_toolset_deferred
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.localized_string import resolve_localized
 from quickapp.common.tool_names import INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.predefined import PredefinedTool
 from quickapp.config.toolsets.internal import InternalToolSet
+from quickapp.internal_tooling._internal_deferred_tools_context import _InternalDeferredToolsContext
 from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_client import (
     _PyInterpreterClient,
 )
@@ -36,6 +45,9 @@ class InternalToolModule(Module):
         binder.bind(SessionManager, to=SessionManager, scope=request_scope)
         binder.bind(_PyInterpreterTool, to=_PyInterpreterTool, scope=request_scope)
         binder.bind(InputFileHandler, to=InputFileHandler, scope=request_scope)
+        binder.bind(
+            _InternalDeferredToolsContext, to=_InternalDeferredToolsContext, scope=request_scope
+        )
         logger.debug("InternalTooling module configuration completed")
 
     @multiprovider
@@ -43,11 +55,13 @@ class InternalToolModule(Module):
         self,
         app_config: ApplicationConfig,
         py_builder: AssistedBuilder[_PyInterpreterTool],
+        deferred_context: _InternalDeferredToolsContext,
     ) -> list[StagedBaseTool]:
         tools: list[StagedBaseTool] = []
 
         for tool_set in app_config.tool_sets:
             if isinstance(tool_set, InternalToolSet):
+                toolset_tools: list[StagedBaseTool] = []
                 for tool_config in tool_set.tools:
                     if tool_config.enabled:
                         if isinstance(tool_config, PredefinedTool):
@@ -58,7 +72,7 @@ class InternalToolModule(Module):
                             INTERNAL_CODE_EXECUTION_PYTHON_INTERPRETER_TOOL_NAME
                         ):
                             # TODO: remove this filtering by name, the user may configure any name of the tool.
-                            tools.append(
+                            toolset_tools.append(
                                 py_builder.build(
                                     tool_config=tool_config,
                                     name=tool_config.open_ai_tool.function.name,
@@ -66,7 +80,45 @@ class InternalToolModule(Module):
                                 )
                             )
 
+                discovery_cfg = app_config.orchestrator.tool_discovery
+                if is_toolset_deferred(tool_set, discovery_cfg, len(toolset_tools)):
+                    deferred_context.register_deferred_tools(tool_set, toolset_tools)
+                    logger.debug(
+                        "Deferred %d tools from internal toolset '%s' into the deferred tools registry",
+                        len(toolset_tools),
+                        resolve_localized(tool_set.name),
+                    )
+                tools.extend(toolset_tools)
+
         return tools
+
+    @multiprovider
+    def _provide_deferred_tool_names(
+        self, deferred_context: _InternalDeferredToolsContext
+    ) -> list[DeferredToolName]:
+        return list(deferred_context.deferred_names)
+
+    @multiprovider
+    def _provide_deferred_catalog_entries(
+        self, deferred_context: _InternalDeferredToolsContext
+    ) -> list[DeferredToolCatalogEntry]:
+        return deferred_context.catalog
+
+    @multiprovider
+    def _provide_deferred_tool_definitions(
+        self, deferred_context: _InternalDeferredToolsContext
+    ) -> list[DeferredToolDefinition]:
+        return [
+            DeferredToolDefinition(name=name, definition=definition)
+            for name in deferred_context.deferred_names
+            if (definition := deferred_context.get_definition(name)) is not None
+        ]
+
+    @multiprovider
+    def _provide_deferred_toolset_summaries(
+        self, deferred_context: _InternalDeferredToolsContext
+    ) -> list[DeferredToolsetSummary]:
+        return deferred_context.toolset_summaries
 
     @singleton
     @provider

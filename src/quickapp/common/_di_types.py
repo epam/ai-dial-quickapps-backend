@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from aidial_sdk.chat_completion import ResponseFormat
+from aidial_sdk.chat_completion import Message, ResponseFormat
 from aidial_sdk.chat_completion.request import ToolChoice
 from openai.lib.azure import AsyncAzureOpenAI
 from pydantic import SecretStr
@@ -16,3 +16,6 @@ CLIENT_CHANNEL_HEADER = "X-DIAL-CLIENT-CHANNEL-ID"
 ORCHESTRATOR_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "ORCHESTRATOR_AZURE_CLIENT"]
 DEPLOYMENT_AZURE_CLIENT = Annotated[AsyncAzureOpenAI, "DEPLOYMENT_AZURE_CLIENT"]
 ACCEPT_LANGUAGE = Annotated[str | None, "ACCEPT_LANGUAGE"]
+# Raw request messages, as they arrived. Available to initializers, which run
+# before `_RequestContextSetup.setup_messages` populates `context.messages`.
+REQUEST_MESSAGES = Annotated[list[Message], "REQUEST_MESSAGES"]

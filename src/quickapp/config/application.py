@@ -22,6 +22,7 @@ from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptCo
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
+from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
 
@@ -94,6 +95,10 @@ class OrchestratorConfig(BaseModel):
             "native path (legacy behaviour: USER `image/*` passes through, other "
             "MIMEs are surfaced as XML metadata only)."
         ),
+    )
+    tool_discovery: ToolDiscoveryConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description="Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
     )
 
 

@@ -56,9 +56,7 @@
             },
             "required": [
               "latitude",
-              "longitude",
-              "current",
-              "format"
+              "longitude"
             ]
           }
         }

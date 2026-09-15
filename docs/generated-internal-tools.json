@@ -386,6 +386,19 @@
     }
   },
   {
+    "name": "internal_tool_search",
+    "description": "\nPurpose: Discover additional tools and capabilities.\n\nYou MUST call this tool before stating any limitation or saying you cannot fulfill a user request.\n\nIn addition, you MUST call this tool whenever:\n- The user’s request is open-ended or underspecified.\n- The request might involve capabilities beyond your currently listed tools.\n- The request could plausibly be served by a specialized tool or by returning a resource, even if you believe you can respond text-only.\n\nIf a user request might involve capabilities beyond your current listed tools, you are REQUIRED to:\n1) Call internal_tool_search with a brief description of the needed capability.\n2) Inspect any returned tools.\n\nYou may NOT:\n- Assume that the initially listed tools are exhaustive.\n- Say \"I can't\", \"I don't have access\", or express similar limitations until you have called internal_tool_search in this conversation turn.\n\nOnly if internal_tool_search returns no suitable tools, or all relevant tools fail, may you tell the user you cannot do it.\n\nThis tool dynamically discovers additional toolsets (including hidden or MCP tools) that may provide additional capabilities:\n",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "A natural-language description of the capability you need."
+      }
+    },
+    "required": [
+      "query"
+    ]
+  },
+  {
     "name": "internal_web_fetch",
     "description": "Fetch a resource from an external http(s) URL (e.g. a README, a source file, a documentation page). Without save_path it returns the text inline in a single call — text only: binary content (images, PDFs, archives) is rejected, re-call with a save_path instead. Text larger than the inline cap is returned truncated to its head with a notice stating the total size; the head is often enough, otherwise re-call with a save_path. With save_path it persists the resource (any content type) at that workspace-relative path under the agent home and returns the saved path (+ a short preview for text), so other available tools can process the full content. DIAL file paths (files/...) are not fetched here.",
     "properties": {

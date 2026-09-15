@@ -1,3 +1,4 @@
+from quickapp.common.deferred_tools_accumulator import DeferredToolsAccumulator
 from quickapp.common.tooling_context_base import ToolingContextBase
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
@@ -5,9 +6,10 @@ from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
 
 
-class _MCPToolingContext(ToolingContextBase):
+class _MCPToolingContext(ToolingContextBase, DeferredToolsAccumulator):
     def __init__(self) -> None:
-        super().__init__()
+        ToolingContextBase.__init__(self)
+        DeferredToolsAccumulator.__init__(self)
         self._resource_metas: list[MCPResourceMeta] = []
         self._eager_resources: list[MCPEagerResource] = []
         self._server_capabilities: list[MCPServerCapabilities] = []
