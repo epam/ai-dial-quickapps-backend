@@ -25,6 +25,7 @@ from quickapp.common.chat_completion_stream.chat_stream_sink_factory import Chat
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
 from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions import InitializationException
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
@@ -52,6 +53,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorStaticToolsContext,
 )
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
@@ -108,6 +110,9 @@ class AgentModule(Module):
         binder.bind(ChatCompletionStreamHandler, to=ChatCompletionStreamHandler, scope=NoScope)
         binder.bind(_AttachmentFilter, to=_AttachmentFilter, scope=request_scope)
         binder.bind(
+            SuppressedAttachmentRegistry, to=SuppressedAttachmentRegistry, scope=request_scope
+        )
+        binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
@@ -133,6 +138,14 @@ class AgentModule(Module):
         self, initializer_provider: ProviderOf[_OrchestratorDeploymentInitializer]
     ) -> list[CompletionInitializer]:
         return [initializer_provider.get()]
+
+    @multiprovider
+    def _provide_initialization_exceptions(
+        self, initializer: _OrchestratorDeploymentInitializer
+    ) -> list[InitializationException]:
+        # Resolved by _InitializationErrorHandler after the initializers have run, so the
+        # list already holds whatever initialize() recorded.
+        return initializer.initialization_exceptions
 
     @provider
     def provide_orchestrator_capabilities(

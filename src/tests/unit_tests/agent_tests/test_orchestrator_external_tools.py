@@ -10,6 +10,7 @@ from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.core.agent import Orchestrator
+from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.models import TOOL_EXECUTION_HISTORY
 from tests.unit_tests.stream_test_doubles import SpyChoice
 
@@ -63,6 +64,7 @@ def _make_orchestrator(
         tool_execution_history_policies=[],
         tool_names=tool_names,
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
     return orch, choice
 
@@ -145,6 +147,7 @@ async def test_all_external_tool_calls_surfaced_with_correct_id_name_args():
         tool_execution_history_policies=[],
         tool_names=frozenset({"ext_a", "ext_b"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orch.invoke()
@@ -182,6 +185,7 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
 
     tool_msg = Message(role=Role.TOOL, content="server result", tool_call_id="id-i")
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -213,6 +217,7 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
         tool_execution_history_policies=[],
         tool_names=frozenset({"ext_tool"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orch.invoke()
@@ -243,6 +248,7 @@ async def test_all_internal_tools_loop_continues():
 
     tool_msg = Message(role=Role.TOOL, content="ok", tool_call_id="id-1")
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -285,6 +291,7 @@ async def test_all_internal_tools_loop_continues():
         tool_execution_history_policies=[],
         tool_names=frozenset({"some_ext_tool"}),  # server_tool is NOT external
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orch.invoke()
@@ -305,6 +312,7 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
 
     tool_msg = Message(role=Role.TOOL, content="ok", tool_call_id="id-1")
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -347,6 +355,7 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orch.invoke()
@@ -365,6 +374,7 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
 
     tool_msg = Message(role=Role.TOOL, content="server result", tool_call_id="id-i")
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_msg)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -409,6 +419,7 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
         tool_execution_history_policies=[],
         tool_names=frozenset({"ext_tool"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orch.invoke()

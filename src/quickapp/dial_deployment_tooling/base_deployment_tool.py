@@ -20,7 +20,7 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.utils import to_plain_dict
-from quickapp.config.dial_deployment import DialDeploymentParameters
+from quickapp.config.dial_deployment import DialDeploymentParameters, DialDeploymentToolParameters
 from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
@@ -28,6 +28,7 @@ from quickapp.dial_deployment_tooling.constants import (
     ATTACHMENT_PARAM,
     CONFIGURATION,
     CONTENT_PARAM,
+    TOOLS_PARAM,
 )
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
@@ -305,6 +306,10 @@ class BaseDeploymentTool(StagedBaseTool):
         # Standard params override defaults as flat keys
         prepared.update(other_kwargs)
 
+        # Applied after the model's own arguments: which tools the deployment may run is the
+        # app's decision, so a `tools` argument the model invents cannot replace configured ones.
+        self._apply_static_tools(params, prepared)
+
         logger.debug("Pre-processed tool parameters: keys=%s", list(prepared))
         log_payload(logger, "Pre-processed tool parameters: %s", prepared)
 
@@ -319,3 +324,17 @@ class BaseDeploymentTool(StagedBaseTool):
                 if value is None or value == {}:
                     continue
                 prepared[key] = value
+
+    @staticmethod
+    def _apply_static_tools(params: DialDeploymentToolParameters, prepared: dict[str, Any]) -> None:
+        """Put the configured static tools into the params, dumped verbatim.
+
+        Not part of the `_merge_to_prepared_params` dump because `to_plain_dict` drops entries
+        whose value is an empty dict, which would mangle a spec such as
+        `static_function.configuration: {}`.
+        """
+        if not params.tools:
+            return
+        prepared[TOOLS_PARAM] = [
+            tool.model_dump(mode="json", exclude_none=True) for tool in params.tools
+        ]

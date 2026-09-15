@@ -8,6 +8,7 @@ from quickapp.common.exceptions import (
     HookInitializationException,
     OffloadConfigurationException,
     SkillInitializationException,
+    UnsupportedReasoningEffortException,
 )
 from quickapp.core.application import _InitializationErrorHandler
 
@@ -183,4 +184,20 @@ class TestOffloadConfigurationRendering:
         assert "Large tool-response offload" in rendered
         assert "read_lines/search" in rendered
         # is_hard=False — a lone offload issue keeps the stage COMPLETED.
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+
+class TestUnsupportedReasoningEffortRendering:
+    def test_renders_under_deployment_parameters_as_a_warning(self):
+        stage = MagicMock(spec=Stage)
+        exc = UnsupportedReasoningEffortException(requested="high", supported=["low", "medium"])
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "#### Deployment parameters" in rendered
+        assert "`reasoning_effort=high`" in rendered
+        assert "`low`, `medium`" in rendered
+        # Soft issue: the request still produced an answer.
         stage.close.assert_called_once_with(Status.COMPLETED)
