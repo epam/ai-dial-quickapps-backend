@@ -29,6 +29,7 @@ from quickapp.representation_tooling.representation_tooling_module import (
 )
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
+from quickapp.skill_invocation import SkillInvocationModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
@@ -60,6 +61,7 @@ class AppFactory:
             SkillsModule(),
             DialPromptSkillsModule(),
             DialSkillsModule(),
+            SkillInvocationModule(),
             TimestampModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),

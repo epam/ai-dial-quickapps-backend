@@ -7,6 +7,7 @@ from quickapp.common import (
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
+    REQUEST_MESSAGES,
     TOOL_CHOICE,
     ForwardedHeaders,
 )
@@ -57,6 +58,19 @@ class _RequestContext(MessagesMixin):
     _tool_choice: TOOL_CHOICE = None
     _extra_tools: list[Tool] | None = None
     _accept_language: ACCEPT_LANGUAGE = None
+    _request_messages: REQUEST_MESSAGES | None = None
+
+    @property
+    def request_messages(self) -> REQUEST_MESSAGES:
+        """Raw request messages, readable by initializers before
+        ``setup_messages`` populates the transformed ``messages``."""
+        return self._request_messages if self._request_messages is not None else []
+
+    @request_messages.setter
+    def request_messages(self, value: REQUEST_MESSAGES) -> None:
+        if self._request_messages is not None:
+            raise RuntimeError("Request messages are already set")
+        self._request_messages = value
 
     @property
     def bearer(self) -> DIAL_BEARER:
