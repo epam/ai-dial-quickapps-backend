@@ -7,6 +7,12 @@ from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolName,
+    DeferredToolsetSummary,
+)
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
@@ -73,6 +79,34 @@ class MCPToolingModule(Module):
     @multiprovider
     def _provide_mcp_tools(self, mcp_context: _MCPToolingContext) -> list[StagedBaseTool]:
         return mcp_context.tools
+
+    @multiprovider
+    def _provide_deferred_tool_names(
+        self, mcp_context: _MCPToolingContext
+    ) -> list[DeferredToolName]:
+        return list(mcp_context.deferred_names)
+
+    @multiprovider
+    def _provide_deferred_catalog_entries(
+        self, mcp_context: _MCPToolingContext
+    ) -> list[DeferredToolCatalogEntry]:
+        return mcp_context.catalog
+
+    @multiprovider
+    def _provide_deferred_tool_definitions(
+        self, mcp_context: _MCPToolingContext
+    ) -> list[DeferredToolDefinition]:
+        return [
+            DeferredToolDefinition(name=name, definition=definition)
+            for name in mcp_context.deferred_names
+            if (definition := mcp_context.get_definition(name)) is not None
+        ]
+
+    @multiprovider
+    def _provide_deferred_toolset_summaries(
+        self, mcp_context: _MCPToolingContext
+    ) -> list[DeferredToolsetSummary]:
+        return mcp_context.toolset_summaries
 
     @multiprovider
     def __provide_initialization_exceptions(

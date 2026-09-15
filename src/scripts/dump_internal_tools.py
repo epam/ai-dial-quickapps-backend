@@ -43,6 +43,7 @@ from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.timestamp import ToolCallTimestampConfig
+from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.const import ALL_MIME_TYPES
 from quickapp.config.web_fetch import WebFetchConfig
 from quickapp.core.agent import OrchestratorCapabilities
@@ -71,6 +72,7 @@ def build_dump_application_config() -> ApplicationConfig:
                 variables={},
             ),
             attachment_strategy=LazyOnDemandAttachmentStrategy(),
+            tool_discovery=ToolDiscoveryConfig(enabled=True),
         ),
         contexts=[
             FileContextConfig(

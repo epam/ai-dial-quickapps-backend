@@ -33,6 +33,7 @@ from quickapp.skill_invocation import SkillInvocationModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
+from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 from quickapp.web_tooling.web_tooling_module import WebToolingModule
 
 
@@ -58,6 +59,10 @@ class AppFactory:
             FileTransferModule(),
             AttachmentProcessingModule(),
             LazyOnDemandStrategyModule(),
+            # ToolDiscoveryModule is registered before SkillsModule so its tool_search prompt
+            # hint (when active) lands immediately ahead of the <available_skills> block in the
+            # aggregated system prompt (list[PromptPartProvider] preserves module registration order).
+            ToolDiscoveryModule(),
             SkillsModule(),
             DialPromptSkillsModule(),
             DialSkillsModule(),

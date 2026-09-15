@@ -6,7 +6,7 @@ from aidial_client import AsyncDial
 from aidial_sdk.chat_completion import Attachment, Stage
 from fastapi_injector import Injected
 from httpx import QueryParams
-from injector import Binder, Injector, InstanceProvider
+from injector import Binder, InstanceProvider
 from pydantic import SecretStr
 from starlette.testclient import TestClient
 
@@ -434,12 +434,18 @@ def test_openai_tools_names():
         binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
         binder.multibind(list[ToolArgumentTransformer], to=[])
 
-    injector = Injector(modules=[RestApiToolingModule, configure])
-    tools = injector.get(list[StagedBaseTool])
+    app = create_test_app([RestApiToolingModule, configure])
 
-    assert len(tools) == 1
-    tool_config: BaseOpenAITool = tools[0].tool_config
-    assert tool_config.open_ai_tool.function.name == f"{toolset_name}_{tool_name}"
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert len(tools) == 1
+        tool_config: BaseOpenAITool = tools[0].tool_config
+        assert tool_config.open_ai_tool.function.name == f"{toolset_name}_{tool_name}"
+        return {}
+
+    client = TestClient(app)
+    response = client.get("/")
+    assert response.status_code == 200
 
 
 @pytest.mark.asyncio
