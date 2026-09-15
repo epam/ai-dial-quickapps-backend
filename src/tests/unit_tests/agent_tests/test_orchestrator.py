@@ -1162,6 +1162,7 @@ def _annotation(anchor_id: str) -> dict:
 
 def _tool_result_with_annotations(annotations, content="out"):
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.content = content
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content=content, tool_call_id="tc-1")
@@ -1222,6 +1223,7 @@ async def test_non_propagated_tool_attachment_is_registered_as_suppressed():
     tool_result.usage = None
     tool_result.attachments = [Attachment(url=hidden_url, type="application/json")]
     tool_result.propagate_to_choice = []
+    tool_result.annotations = []
 
     registry = SuppressedAttachmentRegistry()
     orchestrator = _build_orchestrator_for_propagation(
@@ -1244,6 +1246,7 @@ async def test_propagated_tool_attachment_is_not_registered_as_suppressed():
     tool_result.usage = None
     tool_result.attachments = [attachment]
     tool_result.propagate_to_choice = [attachment]
+    tool_result.annotations = []
 
     registry = SuppressedAttachmentRegistry()
     orchestrator = _build_orchestrator_for_propagation(
