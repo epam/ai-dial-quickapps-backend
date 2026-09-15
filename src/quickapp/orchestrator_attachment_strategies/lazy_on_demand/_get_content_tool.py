@@ -97,7 +97,9 @@ class _GetContentTool(StagedBaseTool):
     def _error_result(self, message: str) -> ToolCallResult:
         response = GetContentToolResponse.fail(
             message=message,
-            accepted_types=list(self.__orchestrator_capabilities.input_attachment_types or []),
+            accepted_types=list(
+                self.__orchestrator_capabilities.advertised_input_attachment_types or []
+            ),
         )
         content, state = response.tool_parts()
         return ToolCallResult(content=content, content_type="text/plain", state=state)

@@ -6,6 +6,7 @@ must always emit an ``accepted_types`` JSON array so the model learns the live
 ``docs/designs/pass_attachments_to_orchestrator.md``).
 """
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -37,11 +38,10 @@ def _make_tool(
     messages: list[Message] | None = None,
     promoter: DialFilePromoter | None = None,
 ) -> _GetContentTool:
-    caps = MagicMock(spec=OrchestratorCapabilities)
-    caps.input_attachment_types = input_attachment_types
-    caps.deployment_id = "test-orchestrator"
-    caps.orchestrator_accepts_mime_type = lambda mime: bool(
-        mime and input_attachment_types and any(mime == t for t in input_attachment_types)
+    caps = OrchestratorCapabilities(
+        deployment=SimpleNamespace(  # type: ignore[arg-type]
+            id="test-orchestrator", input_attachment_types=input_attachment_types
+        )
     )
     messages_mixin = MagicMock(spec=MessagesMixin)
     messages_mixin.messages = messages or []

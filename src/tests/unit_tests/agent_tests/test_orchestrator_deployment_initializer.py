@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.common.exceptions import OrchestratorInitializationException
+from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorDeploymentInitializer,
@@ -26,9 +27,11 @@ def _make_initializer(
     *,
     deployment_id: str = "gpt-4",
     fetch_metadata: AsyncMock | None = None,
+    attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
 ) -> tuple[_OrchestratorDeploymentInitializer, AsyncMock, AsyncMock]:
     app_config = MagicMock()
     app_config.orchestrator.deployment.deployment_id = deployment_id
+    app_config.orchestrator.attachment_strategy = attachment_strategy
 
     resolver = AsyncMock()
     tool_config_service = MagicMock()
@@ -84,6 +87,23 @@ def test_capabilities_property_raises_before_initialize():
 
     with pytest.raises(RuntimeError, match="accessed before"):
         _ = initializer.capabilities
+
+
+@pytest.mark.asyncio
+async def test_initialize_passes_app_accepted_types_from_lazy_on_demand_strategy():
+    deployment = _make_deployment(
+        deployment_id="gpt-4",
+        input_attachment_types=["*/*"],
+    )
+    initializer, _resolver, _fetch_metadata = _make_initializer(
+        fetch_metadata=AsyncMock(return_value=deployment),
+        attachment_strategy=LazyOnDemandAttachmentStrategy(accepted_types=["image/*"]),
+    )
+
+    await initializer.initialize()
+
+    assert initializer.capabilities.orchestrator_accepts_mime_type("application/pdf") is False
+    assert initializer.capabilities.orchestrator_accepts_mime_type("image/png") is True
 
 
 @pytest.mark.asyncio

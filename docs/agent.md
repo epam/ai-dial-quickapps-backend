@@ -492,6 +492,14 @@ no-op unless both gates pass. When active it contributes:
   (an attachment url may then arrive through any channel — system prompt, skill, user message, tool result —
   so it can't be predicted from request-visible files) **or** at least one admin context / expanded folder
   file / user attachment passes the `input_attachment_types` MIME gate (`should_enable_get_content_tool`).
+  When `LazyOnDemandAttachmentStrategy.accepted_types` is set, every MIME check in the strategy (tool
+  registration, the synthetic injector, the explicit tool call, the keep policy) requires a match against
+  **both** the deployment's `input_attachment_types` **and** the app's `accepted_types` — a conjunction, not
+  an intersected pattern set, enforced at the single choke point `OrchestratorCapabilities.orchestrator_accepts_mime_type`.
+  This lets an app narrow below its deployment (for example scoping a `*/*`-declared deployment down to
+  `image/*`); the deployment's declared list remains a hard cap the app can only narrow, never widen. The
+  rendered tool description advertises the narrowed list (`OrchestratorCapabilities.advertised_input_attachment_types`)
+  instead of the deployment's raw list when `accepted_types` is set.
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
 - `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL

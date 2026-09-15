@@ -81,13 +81,13 @@ class LazyOnDemandStrategyModule(Module):
         if not should_enable_get_content_tool(
             app_config.contexts,
             messages,
-            orchestrator_capabilities.input_attachment_types,
+            orchestrator_capabilities,
             expanded_file_urls.urls,
             external_fetch_enabled=external_fetch_policy.is_enabled(),
         ):
             return []
         rendered_tool_config = render_get_content_tool_config(
-            list(orchestrator_capabilities.input_attachment_types or [])
+            list(orchestrator_capabilities.advertised_input_attachment_types or [])
         )
         return [
             get_content_builder.build(
