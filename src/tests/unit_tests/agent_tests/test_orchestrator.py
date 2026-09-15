@@ -22,6 +22,7 @@ from quickapp.common.request_async_close_registry import RequestAsyncCloseRegist
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import Orchestrator
+from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_history_policy import (
     _GetContentHistoryPolicy,
@@ -117,6 +118,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orchestrator.invoke()
@@ -197,6 +199,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orchestrator.invoke()
@@ -256,6 +259,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     with pytest.raises(openai.APIError):
@@ -317,6 +321,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
     # Prepare tool executor result — tool message must be a real Message for the helper
     tool_message = Message(role=Role.TOOL, content="tool output", tool_call_id="tc-1")
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
 
     # propagate_to_choice contains attachments with model_dump()
@@ -357,6 +362,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orchestrator.invoke()
@@ -440,6 +446,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orchestrator.invoke()
@@ -528,6 +535,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         tool_execution_history_policies=[],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -560,6 +568,7 @@ def _make_orchestrator(
     stream_handler: object | None = None,
     assistant_invoker_provider: object | None = None,
     tool_names: frozenset[str] = frozenset(),
+    suppressed_attachment_registry: SuppressedAttachmentRegistry | None = None,
 ) -> Orchestrator:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
@@ -587,6 +596,9 @@ def _make_orchestrator(
         tool_execution_history_policies=[],
         tool_names=tool_names,
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=(
+            suppressed_attachment_registry or SuppressedAttachmentRegistry()
+        ),
     )
 
 
@@ -886,6 +898,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         ),
     )
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -916,6 +929,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     await orchestrator.invoke()
@@ -997,6 +1011,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         ),
     )
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(return_value=tool_message)
     tool_result.annotations = []
     tool_result.propagate_to_choice = []
@@ -1027,6 +1042,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         tool_execution_history_policies=[_GetContentHistoryPolicy()],
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
+        suppressed_attachment_registry=SuppressedAttachmentRegistry(),
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):
@@ -1042,7 +1058,11 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
     assert "attachments" in custom_content
 
 
-def _build_orchestrator_for_propagation(choice, tool_result):
+def _build_orchestrator_for_propagation(
+    choice,
+    tool_result,
+    suppressed_attachment_registry: SuppressedAttachmentRegistry | None = None,
+):
     """Build a minimal Orchestrator that runs one tool-calling iteration then stops."""
     assistant_result_with_tools = SimpleNamespace(
         content="call tool",
@@ -1081,6 +1101,7 @@ def _build_orchestrator_for_propagation(choice, tool_result):
         tool_executor=tool_executor,
         stream_handler=stream_handler,
         assistant_invoker_provider=assistant_invoker_provider,
+        suppressed_attachment_registry=suppressed_attachment_registry,
     )
 
 
@@ -1089,6 +1110,7 @@ async def test_propagation_deduplicates_repeated_urls():
     choice = SpyChoice()
     same_url = "files/bucket/report.csv"
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
@@ -1111,6 +1133,7 @@ async def test_propagation_deduplicates_repeated_urls():
 async def test_propagation_keeps_urlless_attachments():
     choice = SpyChoice()
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
     )
@@ -1139,6 +1162,7 @@ def _annotation(anchor_id: str) -> dict:
 
 def _tool_result_with_annotations(annotations, content="out"):
     tool_result = Mock()
+    tool_result.attachments = None
     tool_result.content = content
     tool_result.to_tool_message = Mock(
         return_value=Message(role=Role.TOOL, content=content, tool_call_id="tc-1")
@@ -1186,3 +1210,79 @@ async def test_no_chunk_sent_when_tool_returns_no_annotations():
     await orchestrator.invoke()
 
     assert _emitted_annotation_chunks(choice) == []
+
+
+@pytest.mark.asyncio
+async def test_non_propagated_tool_attachment_is_registered_as_suppressed():
+    choice = SpyChoice()
+    hidden_url = "files/bucket/internal-only.json"
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.attachments = [Attachment(url=hidden_url, type="application/json")]
+    tool_result.propagate_to_choice = []
+    tool_result.annotations = []
+
+    registry = SuppressedAttachmentRegistry()
+    orchestrator = _build_orchestrator_for_propagation(
+        choice, tool_result, suppressed_attachment_registry=registry
+    )
+    await orchestrator.invoke()
+
+    assert registry.is_suppressed(hidden_url) is True
+
+
+@pytest.mark.asyncio
+async def test_propagated_tool_attachment_is_not_registered_as_suppressed():
+    choice = SpyChoice()
+    shown_url = "files/bucket/chart.png"
+    attachment = Attachment(url=shown_url, type="image/png")
+    tool_result = Mock()
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.attachments = [attachment]
+    tool_result.propagate_to_choice = [attachment]
+    tool_result.annotations = []
+
+    registry = SuppressedAttachmentRegistry()
+    orchestrator = _build_orchestrator_for_propagation(
+        choice, tool_result, suppressed_attachment_registry=registry
+    )
+    await orchestrator.invoke()
+
+    assert registry.is_suppressed(shown_url) is False
+
+
+@pytest.mark.asyncio
+async def test_accumulate_stream_filters_suppressed_attachment_urls():
+    choice = SpyChoice()
+    suppressed_url = "files/bucket/hidden.json"
+    registry = SuppressedAttachmentRegistry()
+    registry.suppress(suppressed_url)
+
+    captured_config = {}
+
+    async def fake_process_stream(chunks, config):
+        captured_config["config"] = config
+        return Mock()
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(side_effect=fake_process_stream)
+
+    orchestrator = _make_orchestrator(
+        [Message(role=Role.USER, content="hello")],
+        choice=choice,
+        stream_handler=stream_handler,
+        suppressed_attachment_registry=registry,
+    )
+
+    await orchestrator.accumulate_stream(Mock())
+
+    attachment_filter = captured_config["config"].attachment_filter
+    assert attachment_filter is not None
+    assert attachment_filter(Attachment(url=suppressed_url, type="application/json")) is False
+    assert attachment_filter(Attachment(url="files/bucket/other.json", type="application/json"))
