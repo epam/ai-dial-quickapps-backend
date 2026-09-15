@@ -9,6 +9,7 @@ from quickapp.common import (
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
+    REQUEST_MESSAGES,
     RESPONSE_FORMAT,
     TOOL_CHOICE,
     ForwardedHeaders,
@@ -82,6 +83,10 @@ class AppModule(Module):
     @provider
     def __provide_response_format(self, context: _RequestContext) -> RESPONSE_FORMAT:
         return context.response_format
+
+    @multiprovider
+    def __provide_request_messages(self, context: _RequestContext) -> REQUEST_MESSAGES:
+        return context.request_messages
 
     @provider
     def __provide_tool_choice(self, context: _RequestContext) -> TOOL_CHOICE:

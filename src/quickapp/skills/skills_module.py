@@ -10,6 +10,7 @@ from quickapp.common.exceptions import InitializationException
 from quickapp.skills._inject_file_transfer_instruction_transformer import (
     _InjectFileTransferInstructionTransformer,
 )
+from quickapp.skills._scrub_skill_chips_transformer import _ScrubSkillChipsTransformer
 from quickapp.skills._skill_reader_tool import _SkillReaderTool
 from quickapp.skills._skills_registry import SkillsRegistry
 from quickapp.skills._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
@@ -28,6 +29,11 @@ class SkillsModule(Module):
         binder.bind(
             _InjectFileTransferInstructionTransformer,
             to=_InjectFileTransferInstructionTransformer,
+            scope=request_scope,
+        )
+        binder.bind(
+            _ScrubSkillChipsTransformer,
+            to=_ScrubSkillChipsTransformer,
             scope=request_scope,
         )
 
@@ -65,5 +71,6 @@ class SkillsModule(Module):
     def _provide_message_transformers(
         self,
         file_transfer_transformer: _InjectFileTransferInstructionTransformer,
+        scrub_skill_chips_transformer: _ScrubSkillChipsTransformer,
     ) -> list[MessagesTransformer]:
-        return [file_transfer_transformer]
+        return [file_transfer_transformer, scrub_skill_chips_transformer]

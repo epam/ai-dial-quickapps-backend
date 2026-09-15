@@ -74,8 +74,10 @@ class _InitializationErrorHandler:
                     tool_lines.append(fenced_code_block(exc.details))
             elif isinstance(exc, SkillCatastrophicInitializationException):
                 catastrophic_lines.append(f"- {exc.reason}")
-            elif isinstance(exc, SkillInitializationException) and exc.url is not None:
-                line = f"- **{exc.url}**: {exc.reason}"
+            elif isinstance(exc, SkillInitializationException):
+                # A skill issue that belongs to the message rather than to one URL
+                # (e.g. more skills invoked than a message may carry) has no url.
+                line = f"- {exc.reason}" if exc.url is None else f"- **{exc.url}**: {exc.reason}"
                 if exc.severity == "warning":
                     per_url_warning_lines.append(line)
                 else:
