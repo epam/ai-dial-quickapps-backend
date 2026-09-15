@@ -7,7 +7,7 @@ class ToolDiscoverySettings(BaseSettings):
     model_config = SettingsConfigDict()
 
     min_tools_for_deferral: int = Field(
-        default=5,
+        default=10,
         ge=1,
         description="Minimum toolset size for deferral to apply deployment-wide.",
         alias="MIN_TOOLS_FOR_DEFERRAL",
@@ -19,11 +19,11 @@ def _min_tools_for_deferral_field() -> FieldInfo:
         "Minimum number of tools in a toolset for deferral to apply. "
         "Toolsets with fewer tools than this threshold are promoted to eager loading "
         "even when deferred=true, avoiding discovery overhead for small toolsets. "
-        "Default: 5 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)"
+        "Default: 10 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)"
     )
     return Field(  # type: ignore[return-value]
         default_factory=lambda: ToolDiscoverySettings().min_tools_for_deferral,
-        json_schema_extra={"default": 5},
+        json_schema_extra={"default": 10},
         ge=1,
         description=description,
     )
