@@ -279,6 +279,7 @@ class Orchestrator:
                 url = attachment.url
                 if url is not None:
                     propagated_urls.add(url)
+                    self.__suppressed_attachment_registry.unsuppress(url)
                     if url in self.__propagated_attachment_urls:
                         logger.debug(
                             "Skipping duplicate attachment URL %s", sanitize_url_for_log(url)

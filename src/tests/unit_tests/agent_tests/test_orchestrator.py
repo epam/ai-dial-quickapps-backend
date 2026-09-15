@@ -1258,6 +1258,51 @@ async def test_propagated_tool_attachment_is_not_registered_as_suppressed():
 
 
 @pytest.mark.asyncio
+async def test_later_propagation_lifts_suppression_from_earlier_round():
+    """A URL suppressed in one tool-calling round must not stay suppressed once a
+    later round in the same request legitimately propagates it to the choice."""
+    choice = SpyChoice()
+    url = "files/bucket/on-demand.json"
+    registry = SuppressedAttachmentRegistry()
+
+    hiding_result = Mock()
+    hiding_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    hiding_result.attachments = [Attachment(url=url, type="application/json")]
+    hiding_result.propagate_to_choice = []
+    hiding_result.annotations = []
+    hiding_result.usage = None
+
+    showing_result = Mock()
+    showing_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-2")
+    )
+    showing_result.attachments = [Attachment(url=url, type="application/json")]
+    showing_result.propagate_to_choice = [Attachment(url=url, type="application/json")]
+    showing_result.annotations = []
+    showing_result.usage = None
+
+    tool_executor = _mock_tool_executor()
+    tool_executor.execute = AsyncMock(side_effect=[[hiding_result], [showing_result]])
+
+    orchestrator = _make_orchestrator(
+        [Message(role=Role.USER, content="hello")],
+        choice=choice,
+        tool_executor=tool_executor,
+        suppressed_attachment_registry=registry,
+    )
+
+    tool_calls = [_make_accumulated_tool_call(id="tc-1", name="tool_a")]
+
+    await orchestrator._execute_internal_tool_calls(tool_calls, adopted_tool_stages={})
+    assert registry.is_suppressed(url) is True
+
+    await orchestrator._execute_internal_tool_calls(tool_calls, adopted_tool_stages={})
+    assert registry.is_suppressed(url) is False
+
+
+@pytest.mark.asyncio
 async def test_accumulate_stream_filters_suppressed_attachment_urls():
     choice = SpyChoice()
     suppressed_url = "files/bucket/hidden.json"
