@@ -1001,6 +1001,26 @@
           "description": "A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency in the preceding text, thereby reducing the model's propensity to repeat the exact same line.",
           "title": "Frequency Penalty"
         },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How much reasoning the model should spend before answering. Supported values differ per deployment (see its `features.reasoningEfforts`).",
+          "title": "Reasoning Effort"
+        },
         "custom_fields": {
           "anyOf": [
             {
@@ -1109,7 +1129,7 @@
           "type": "string"
         },
         "deployment": {
-          "$ref": "#/$defs/DialDeploymentConfig",
+          "$ref": "#/$defs/DialDeploymentToolConfig",
           "description": "The configuration for the DIAL deployment tool."
         },
         "system_prompt": {
@@ -1189,6 +1209,205 @@
         "deployment"
       ],
       "title": "DialDeploymentTool",
+      "type": "object"
+    },
+    "DialDeploymentToolConfig": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ],
+      "properties": {
+        "deployment_id": {
+          "description": "The id of the DIAL deployment.",
+          "dial:resource": true,
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/DialDeploymentToolParameters",
+          "description": "The predefined parameters for the DIAL deployment."
+        },
+        "name": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
+          "type": "string"
+        }
+      },
+      "title": "DialDeploymentToolConfig",
+      "type": "object"
+    },
+    "DialDeploymentToolParameters": {
+      "description": "Parameters of the deployment a `deployment-tool` calls.",
+      "properties": {
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The temperature for the model. A higher temperature means the model will take more risks.",
+          "title": "Temperature"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The number of top tokens to sample from. A higher value means more randomness.",
+          "title": "Top P"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The seed for the model. Can be used for enhancing reproducibility of models' responses.",
+          "title": "Seed"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Up to 4 sequences where the Assistant will stop generating further tokens.",
+          "title": "Stop"
+        },
+        "n": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How many chat completion choices to generate for each input message.",
+          "title": "N"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The maximum number of tokens to generate by the Assistant.",
+          "title": "Max Tokens"
+        },
+        "presence_penalty": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A number between -2.0 and 2.0. Positive values impose a penalty on new tokens based on their appearance in the current text, thereby increasing the model's tendency to introduce new topics in its responses.",
+          "title": "Presence Penalty"
+        },
+        "frequency_penalty": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency in the preceding text, thereby reducing the model's propensity to repeat the exact same line.",
+          "title": "Frequency Penalty"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How much reasoning the model should spend before answering. Supported values differ per deployment (see its `features.reasoningEfforts`).",
+          "title": "Reasoning Effort"
+        },
+        "custom_fields": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CustomFieldsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint"
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StaticFunctionTool"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static tools the target deployment runs on its side, e.g. web search. They are forwarded to the deployment and never executed by the app.",
+          "title": "Tools"
+        }
+      },
+      "title": "DialDeploymentToolParameters",
       "type": "object"
     },
     "DialFilesConfig": {
@@ -3337,6 +3556,70 @@
       ],
       "title": "StageDisplayLevel",
       "type": "string"
+    },
+    "StaticFunctionSpec": {
+      "additionalProperties": true,
+      "description": "The `static_function` payload of a static tool.",
+      "properties": {
+        "name": {
+          "description": "The name of the static function, e.g. `web_search`.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the static function.",
+          "title": "Description"
+        },
+        "configuration": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider-specific configuration for the static function.",
+          "title": "Configuration"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "StaticFunctionSpec",
+      "type": "object"
+    },
+    "StaticFunctionTool": {
+      "additionalProperties": true,
+      "description": "A tool the target deployment executes on its own side, e.g. a web search.",
+      "properties": {
+        "type": {
+          "const": "static_function",
+          "default": "static_function",
+          "title": "Type",
+          "type": "string"
+        },
+        "static_function": {
+          "$ref": "#/$defs/StaticFunctionSpec",
+          "description": "The static function the deployment executes on its side."
+        }
+      },
+      "required": [
+        "static_function"
+      ],
+      "title": "StaticFunctionTool",
+      "type": "object"
     },
     "StopStrategyModel": {
       "properties": {

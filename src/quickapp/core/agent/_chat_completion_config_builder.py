@@ -14,8 +14,11 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, OpenAiToolConfigDict
+from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 
 logger = logging.getLogger(__name__)
+
+REASONING_EFFORT_PARAM = "reasoning_effort"
 
 
 @inject
@@ -30,6 +33,7 @@ class _ChatCompletionConfigBuilder:
         presentation_settings: PresentationSettings,
         forwarded_headers: ForwardedHeaders,
         lazy_loaded_tools_holder: LazyLoadedToolsHolder,
+        capabilities: OrchestratorCapabilities,
     ) -> None:
         self.__config: ApplicationConfig = config
         self.__tools: list[OpenAiToolConfigDict] = tools
@@ -39,11 +43,13 @@ class _ChatCompletionConfigBuilder:
         self.__presentation_settings = presentation_settings
         self.__forwarded_headers = forwarded_headers
         self.__lazy_loaded_tools_holder = lazy_loaded_tools_holder
+        self.__capabilities: OrchestratorCapabilities = capabilities
 
     def build(self, messages: list[Message]) -> dict[str, Any]:
         chat_completion_config = self.__config.orchestrator.deployment.parameters.model_dump(
             exclude_none=True
         )
+        self._drop_unsupported_reasoning_effort(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
         payload: dict[str, Any] = {
@@ -121,6 +127,20 @@ class _ChatCompletionConfigBuilder:
             log_payload(
                 logger, "Chat completion config: %s", json.dumps(loggable, ensure_ascii=False)
             )
+
+    def _drop_unsupported_reasoning_effort(self, chat_completion_config: dict[str, Any]) -> None:
+        """Remove a `reasoning_effort` the deployment does not advertise.
+
+        Sending it anyway is rejected upstream with an opaque `400` that reaches the user as a
+        generic "request was rejected as invalid". `_OrchestratorDeploymentInitializer` reports
+        the same condition in the Initialization issues stage, so the drop is not silent.
+        """
+        reasoning_effort = chat_completion_config.get(REASONING_EFFORT_PARAM)
+        if reasoning_effort is None or self.__capabilities.supports_reasoning_effort(
+            reasoning_effort
+        ):
+            return
+        del chat_completion_config[REASONING_EFFORT_PARAM]
 
     def _apply_tool_choice(self, payload: dict[str, Any]) -> None:
         tool_choice = self.__tool_choice_holder.consume()

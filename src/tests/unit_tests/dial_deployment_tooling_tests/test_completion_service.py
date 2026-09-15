@@ -388,3 +388,21 @@ async def test_no_annotations_when_stream_carries_none(completion_service, mock_
     )
 
     assert result.annotations == []
+
+
+@pytest.mark.asyncio
+async def test_static_tools_and_reasoning_effort_reach_extra_body(
+    completion_service, azure_client, mock_stage_wrapper
+):
+    """Static tools and reasoning_effort are forwarded to the deployment in extra_body."""
+    tools = [{"type": "static_function", "static_function": {"name": "web_search"}}]
+    await completion_service.complete_request_async(
+        params={"query": "who won?", "tools": tools, "reasoning_effort": "high"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    extra_body = azure_client.chat.completions.create.call_args[1][EXTRA_BODY]
+    assert extra_body["tools"] == tools
+    assert extra_body["reasoning_effort"] == "high"

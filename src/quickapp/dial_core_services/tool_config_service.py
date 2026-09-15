@@ -12,7 +12,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.localized_string import resolve_localized
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.common.utils import sanitize_toolname
-from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.dial_deployment import DialDeploymentToolConfig
 from quickapp.config.tools.base import (
     ConfigurableSchemaArray,
     ConfigurableSchemaSimpleType,
@@ -170,7 +170,7 @@ class ToolConfigCoreService:
 
         output_tool = DialDeploymentTool(
             display=ToolDisplayConfig(stage=ToolStageConfig(name=f"Call {deployment_name}: ")),
-            deployment=DialDeploymentConfig(deployment_id=deployment.id),
+            deployment=DialDeploymentToolConfig(deployment_id=deployment.id),
             fallback_configuration=ToolFallbackConfig(strategies=[ContinueStrategyModel()]),
             open_ai_tool=OpenAiToolConfig(
                 function=OpenAiToolFunction(
