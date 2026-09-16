@@ -38,7 +38,7 @@ class SpyChoice(Choice):
         return super().set_state(state)
 
     def create_stage(self, name: str | None = None, *, parent: Stage | None = None) -> Stage:
-        stage = super().create_stage(name)
+        stage = super().create_stage(name, parent=parent)
         self.created_stages.append(stage)
         return stage
 
