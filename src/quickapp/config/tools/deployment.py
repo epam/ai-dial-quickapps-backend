@@ -2,7 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.common.base_config import PreviewField
+from quickapp.config.dial_deployment import DialDeploymentToolConfig
 from quickapp.config.prompt import ToolSystemPromptConfig
 from quickapp.config.tools.base import BaseOpenAITool
 
@@ -41,7 +42,7 @@ class ContentPropagation(BaseModel):
 
 class DialDeploymentTool(BaseOpenAITool):
     type: Literal["deployment-tool"] = Field(default="deployment-tool")
-    deployment: DialDeploymentConfig = Field(
+    deployment: DialDeploymentToolConfig = Field(
         description="The configuration for the DIAL deployment tool."
     )
     system_prompt: ToolSystemPromptConfig | None = Field(
@@ -54,6 +55,16 @@ class DialDeploymentTool(BaseOpenAITool):
     conversation_mode: ConversationMode | None = Field(
         default=None,
         description="Conversation session behavior for the DIAL deployment tool.",
+    )
+    propagate_annotations_to_choice: bool | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Propagate citation annotations returned by the deployment "
+            "(`choices[].delta.custom_fields.annotations`) onto the app's choice. "
+            "The orchestrator is instructed to copy the matching `<cit id=\"...\">` "
+            "anchors verbatim; annotations whose anchor did not survive into the final "
+            "answer are dropped."
+        ),
     )
     supports_url_attachments: bool = Field(
         default=False,

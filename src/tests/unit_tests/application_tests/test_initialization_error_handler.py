@@ -8,6 +8,7 @@ from quickapp.common.exceptions import (
     HookInitializationException,
     OffloadConfigurationException,
     SkillInitializationException,
+    UnsupportedReasoningEffortException,
 )
 from quickapp.core.application import _InitializationErrorHandler
 
@@ -122,6 +123,35 @@ class TestSkillInitializationWarningRendering:
         assert "Errors:" not in rendered
         stage.close.assert_called_once_with(Status.COMPLETED)
 
+    def test_a_url_less_warning_is_rendered_rather_than_leaving_an_empty_stage(self):
+        """A skill issue that belongs to the message, not to one URL — e.g. more skills
+        invoked than a message may carry — used to fall through to the unhandled branch,
+        opening the stage with no content in it."""
+        stage = MagicMock(spec=Stage)
+        warning = SkillInitializationException(
+            reason="Only one skill can be invoked per message; these were ignored: b, c",
+            severity="warning",
+        )
+        handler = _make_handler(stage, [warning])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "Warnings:" in rendered
+        assert "Only one skill can be invoked per message" in rendered
+        assert rendered.strip()
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+    def test_a_url_less_error_is_rendered_under_errors(self):
+        stage = MagicMock(spec=Stage)
+        handler = _make_handler(stage, [SkillInitializationException(reason="boom")])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "Errors:" in rendered
+        assert "boom" in rendered
+
     def test_error_and_warning_render_in_separate_subheaders(self):
         stage = MagicMock(spec=Stage)
         error = SkillInitializationException(reason="boom", url="prompts/bucket/broken")
@@ -154,4 +184,20 @@ class TestOffloadConfigurationRendering:
         assert "Large tool-response offload" in rendered
         assert "read_lines/search" in rendered
         # is_hard=False — a lone offload issue keeps the stage COMPLETED.
+        stage.close.assert_called_once_with(Status.COMPLETED)
+
+
+class TestUnsupportedReasoningEffortRendering:
+    def test_renders_under_deployment_parameters_as_a_warning(self):
+        stage = MagicMock(spec=Stage)
+        exc = UnsupportedReasoningEffortException(requested="high", supported=["low", "medium"])
+        handler = _make_handler(stage, [exc])
+
+        handler.handle_initialization_issues()
+
+        rendered = _stage_content(stage)
+        assert "#### Deployment parameters" in rendered
+        assert "`reasoning_effort=high`" in rendered
+        assert "`low`, `medium`" in rendered
+        # Soft issue: the request still produced an answer.
         stage.close.assert_called_once_with(Status.COMPLETED)

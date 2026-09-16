@@ -210,6 +210,25 @@ This runs in the completion-initializer phase **before** message preprocessing a
 
 `AssistantInvoker` receives this merged list via DI and sends it unchanged on every orchestrator iteration as `tools` in the streaming `chat.completions.create` payload. Static tools are **not** registered in the tool executor; if the model invokes them, handling stays on the deployment side.
 
+### Deployment tools
+
+A `deployment-tool` does not inherit its target deployment's `defaults.tools`; it declares them explicitly under `deployment.parameters.tools`, alongside the other parameters it forwards (`temperature`, `reasoning_effort`, `custom_fields`, …):
+
+```json
+{
+  "type": "deployment-tool",
+  "deployment": {
+    "name": "gemini-3.5-flash",
+    "parameters": {
+      "reasoning_effort": "high",
+      "tools": [{"type": "static_function", "static_function": {"name": "web_search"}}]
+    }
+  }
+}
+```
+
+Only `static_function` entries are accepted — a `function` tool would make the deployment answer with tool calls that nothing on this side executes. `BaseDeploymentTool._pre_process_params` applies the configured tools last, so a `tools` argument hallucinated by the model cannot replace them, and `DialCompletionService` forwards them in `extra_body`. Execution again stays on the deployment side; the app only consumes the resulting content and attachments. Note that stages the target deployment emits (e.g. a grounding search step) are accumulated but not rendered inside the tool stage.
+
 ---
 
 ## Tool System
@@ -226,6 +245,7 @@ All tools inherit from a common base class that defines:
 - Parameter preprocessing via a chain of `ToolArgumentTransformer` instances (e.g. `file:` prefix resolution)
 - Attachment filtering based on `supported_types` configuration (single canonical filter point)
 - Choice propagation for UI rendering based on `propagate_types_to_choice` (subset of surviving attachments)
+- Citation annotation propagation for deployment tools that opt in via `propagate_annotations_to_choice`
 - Performance timing
 
 ### Tool Types
@@ -274,6 +294,7 @@ Tool results are standardized into a common format containing:
 - Attachments (files, images, etc.)
 - Usage statistics (if the tool calls an LLM internally)
 - Propagation flags (which attachments should be shown in the UI)
+- Citation annotations (evidence pointing at `<cit id="...">` anchors in the tool's content)
 
 ### Error Handling
 
@@ -375,8 +396,14 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 - **Attachments**: Custom attachments from the LLM are extracted and added
 - **Tool Calls**: Tool call deltas are accumulated and assembled into complete calls
 - **Usage**: Token usage statistics are captured from the final chunk
+- **Annotations**: Citation annotations under `delta.custom_fields.annotations` are collected
 
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
+
+Annotations collected from a deployment tool are relayed onto the choice as a raw
+`custom_fields.annotations` chunk (`aidial-sdk` cannot model `custom_fields`), verbatim and
+unfiltered. Keeping the matching `<cit id="...">` anchors in the answer is left to the orchestrator
+model, steered by a prompt rule registered when any tool enables the flag.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> ExtractToolCalls -> AddSystemPrompt -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
 ![Message Processing](content/svg/agent_message_processing.svg)

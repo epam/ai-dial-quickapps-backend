@@ -58,10 +58,19 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 self.__tool_config_service.get_basic_tool_config,
                 tool_info.deployment_id,
             )
-            if tool_info.conversation_mode is not None:
-                tool_config = tool_config.model_copy(
-                    update={"conversation_mode": tool_info.conversation_mode}
+            overrides = {
+                name: value
+                for name, value in (
+                    ("conversation_mode", tool_info.conversation_mode),
+                    (
+                        "propagate_annotations_to_choice",
+                        tool_info.propagate_annotations_to_choice,
+                    ),
                 )
+                if value is not None
+            }
+            if overrides:
+                tool_config = tool_config.model_copy(update=overrides)
             self.__init_deployment_tool(tool_config)
 
         except ToolInitializationException as e:

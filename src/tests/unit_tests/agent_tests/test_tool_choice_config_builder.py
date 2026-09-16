@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -6,6 +7,16 @@ from aidial_sdk.exceptions import InvalidRequestError
 
 from quickapp.core.agent._chat_completion_config_builder import _ChatCompletionConfigBuilder
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
+from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
+
+
+def _capabilities() -> OrchestratorCapabilities:
+    return OrchestratorCapabilities(
+        deployment=SimpleNamespace(  # type: ignore[arg-type]
+            id="test-model", features=SimpleNamespace(reasoning_efforts=[])
+        )
+    )
 
 
 def _make_builder(
@@ -24,6 +35,8 @@ def _make_builder(
         pre_invocation_transformers=[],
         presentation_settings=MagicMock(show_usage_statistics=False),
         forwarded_headers=None,
+        lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+        capabilities=_capabilities(),
     )
 
 
@@ -70,6 +83,8 @@ class TestToolChoiceInPayload:
             pre_invocation_transformers=[],
             presentation_settings=MagicMock(show_usage_statistics=False),
             forwarded_headers=None,
+            lazy_loaded_tools_holder=LazyLoadedToolsHolder(),
+            capabilities=_capabilities(),
         )
         first = builder.build([])
         assert first["tool_choice"] == "required"

@@ -7,6 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from aidial_sdk.chat_completion import Choice, Stage
+from aidial_sdk.chat_completion.chunks import BaseChunk
 
 from quickapp.common import ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
@@ -17,11 +18,16 @@ class SpyChoice(Choice):
 
     def __init__(self) -> None:
         super().__init__(asyncio.Queue(), 0)
-        self.open()
         self.append_content_calls: list[str] = []
         self.add_attachment_kwargs: list[dict[str, Any]] = []
         self.set_state_calls: list[Any] = []
         self.created_stages: list[Stage] = []
+        self.sent_chunks: list[BaseChunk] = []
+        self.open()
+
+    def send_chunk(self, chunk: BaseChunk) -> None:
+        self.sent_chunks.append(chunk)
+        return super().send_chunk(chunk)
 
     def append_content(self, content: str) -> None:
         self.append_content_calls.append(content)

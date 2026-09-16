@@ -2,8 +2,10 @@ import logging
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Any
 
 from aidial_sdk.chat_completion import Choice
+from aidial_sdk.chat_completion.chunks import ArbitraryChunk
 from aidial_sdk.chat_completion.request import CustomContent, Message, Role
 from injector import ProviderOf, inject
 from openai import APIError, AsyncStream
@@ -34,6 +36,7 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.url_sanitization import sanitize_url_for_log
 from quickapp.config.application import ApplicationConfig
+from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.models import STATE_KEY_ORCHESTRATOR, TOOL_EXECUTION_HISTORY
 from quickapp.core.agent.tool_executor import ToolExecutor
@@ -75,6 +78,7 @@ class Orchestrator:
         tool_execution_history_policies: list[ToolExecutionHistoryPolicy],
         tool_names: EXTERNAL_TOOL_NAMES,
         request_async_close_registry: RequestAsyncCloseRegistry,
+        suppressed_attachment_registry: SuppressedAttachmentRegistry,
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -103,6 +107,9 @@ class Orchestrator:
         self.__tool_names: frozenset[str] = tool_names
         self.__request_async_close_registry: RequestAsyncCloseRegistry = (
             request_async_close_registry
+        )
+        self.__suppressed_attachment_registry: SuppressedAttachmentRegistry = (
+            suppressed_attachment_registry
         )
         self.__propagated_attachment_urls: set[str] = set()
 
@@ -267,9 +274,11 @@ class Orchestrator:
         for tool_call_result in tool_call_results:
             tool_call_result_message = tool_call_result.to_tool_message()
             self.__messages_context.append_message(tool_call_result_message)
+            propagated_urls: set[str] = set()
             for attachment in tool_call_result.propagate_to_choice:
                 url = attachment.url
                 if url is not None:
+                    propagated_urls.add(url)
                     if url in self.__propagated_attachment_urls:
                         logger.debug(
                             "Skipping duplicate attachment URL %s", sanitize_url_for_log(url)
@@ -277,8 +286,30 @@ class Orchestrator:
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))
+            if tool_call_result.attachments:
+                for attachment in tool_call_result.attachments:
+                    if attachment.url and attachment.url not in propagated_urls:
+                        self.__suppressed_attachment_registry.suppress(attachment.url)
+            if tool_call_result.annotations:
+                self._send_annotations(tool_call_result.annotations)
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
+
+    def _send_annotations(self, annotations: list[dict[str, Any]]) -> None:
+        """Pass a tool's citation annotations through to the choice unchanged."""
+        logger.debug("Propagating annotations: count=%d", len(annotations))
+        self.__choice.send_chunk(
+            ArbitraryChunk(
+                {
+                    "choices": [
+                        {
+                            "index": self.__choice.index,
+                            "delta": {"custom_fields": {"annotations": annotations}},
+                        }
+                    ]
+                }
+            )
+        )
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str
@@ -306,6 +337,7 @@ class Orchestrator:
     async def accumulate_stream(
         self, chat_completion_stream: AsyncStream[ChatCompletionChunk]
     ) -> ChatStreamAccumulator:
+        registry = self.__suppressed_attachment_registry
         try:
             return await self.__stream_handler.process_stream(
                 chunks=chat_completion_stream,
@@ -313,6 +345,7 @@ class Orchestrator:
                     destination=self.__choice,
                     stream_content=True,
                     propagate_stages=self.__propagate_orchestrator_stages,
+                    attachment_filter=lambda a: not registry.is_suppressed(a.url),
                 ),
             )
         except ChatStreamHandlerError:

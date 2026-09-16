@@ -14,8 +14,10 @@ from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
-    DialDeploymentConfig,
-    DialDeploymentParameters,
+    DialDeploymentToolConfig,
+    DialDeploymentToolParameters,
+    StaticFunctionSpec,
+    StaticFunctionTool,
 )
 from quickapp.config.tools.base import (
     ConfigurableSchemaSimpleType,
@@ -359,20 +361,22 @@ async def test_extract_resolves_request_attachments():
 
 
 def _make_tool_config(
-    parameters: DialDeploymentParameters | None = None,
+    parameters: DialDeploymentToolParameters | None = None,
     configuration_param_names: set[str] | None = None,
     conversation_mode: ConversationMode | None = None,
+    propagate_annotations_to_choice: bool | None = None,
 ) -> DialDeploymentTool:
     """Build a real DialDeploymentTool for _pre_process_params tests."""
-    deployment = DialDeploymentConfig(
+    deployment = DialDeploymentToolConfig(
         deployment_id="test-deployment",
-        parameters=parameters or DialDeploymentParameters(),
+        parameters=parameters or DialDeploymentToolParameters(),
     )
     if configuration_param_names:
         deployment._configuration_param_names = configuration_param_names
     return DialDeploymentTool(
         deployment=deployment,
         conversation_mode=conversation_mode,
+        propagate_annotations_to_choice=propagate_annotations_to_choice,
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name="test_tool",
@@ -429,7 +433,7 @@ async def test_pre_process_params_wraps_config_params():
 @pytest.mark.asyncio
 async def test_pre_process_params_merges_defaults_with_llm_config():
     """LLM config params override defaults; unset defaults are preserved."""
-    params = DialDeploymentParameters(
+    params = DialDeploymentToolParameters(
         custom_fields=CustomFieldsConfig(configuration={"size": "512x512", "style": "natural"})
     )
     tool_config = _make_tool_config(
@@ -823,3 +827,81 @@ def test_enrich_no_propagation_is_noop():
     enriched = tool.enrich_openai_tool_schema(open_ai_tool)
 
     assert set(enriched.function.parameters.properties.keys()) == original_props
+
+
+def _tool_with_annotating_service(propagate_annotations_to_choice: bool | None):
+    """Build a tool whose completion service always returns one annotation."""
+    tool_config = _make_tool_config(propagate_annotations_to_choice=propagate_annotations_to_choice)
+    tool = _build_tool_with_config(tool_config)
+    tool._BaseDeploymentTool__dial_completion_service.complete_request_async = AsyncMock(
+        return_value=ToolCallResult(
+            content="answer",
+            content_type="text/markdown",
+            annotations=[{"target": {"selector": {"value": "cit#e37335"}}}],
+        )
+    )
+    return tool
+
+
+@pytest.mark.asyncio
+async def test_annotations_kept_when_flag_enabled():
+    tool = _tool_with_annotating_service(True)
+
+    result = await tool._run_in_stage_async(None, "tc-1", query="q")
+
+    assert result.annotations == [{"target": {"selector": {"value": "cit#e37335"}}}]
+
+
+@pytest.mark.parametrize("flag", [None, False])
+@pytest.mark.asyncio
+async def test_annotations_cleared_when_flag_disabled(flag):
+    tool = _tool_with_annotating_service(flag)
+
+    result = await tool._run_in_stage_async(None, "tc-1", query="q")
+
+    assert result.annotations == []
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_forwards_static_tools_verbatim():
+    """Static tools are forwarded as-is, including an empty `configuration` object."""
+    params = DialDeploymentToolParameters(
+        tools=[
+            StaticFunctionTool(
+                static_function=StaticFunctionSpec(name="web_search", configuration={})
+            )
+        ]
+    )
+    tool = _build_tool_with_config(_make_tool_config(parameters=params))
+
+    result = await tool._pre_process_params(query="who won?")
+
+    assert result["tools"] == [
+        {"type": "static_function", "static_function": {"name": "web_search", "configuration": {}}}
+    ]
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_forwards_reasoning_effort():
+    """reasoning_effort is merged into the params sent to the deployment."""
+    params = DialDeploymentToolParameters(reasoning_effort="high")
+    tool = _build_tool_with_config(_make_tool_config(parameters=params))
+
+    result = await tool._pre_process_params(query="think")
+
+    assert result["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_llm_kwargs_do_not_replace_static_tools():
+    """A `tools` kwarg from the model cannot override the configured static tools."""
+    params = DialDeploymentToolParameters(
+        tools=[StaticFunctionTool(static_function=StaticFunctionSpec(name="web_search"))]
+    )
+    tool = _build_tool_with_config(_make_tool_config(parameters=params))
+
+    result = await tool._pre_process_params(query="draw", tools=[{"type": "function"}])
+
+    assert result["tools"] == [
+        {"type": "static_function", "static_function": {"name": "web_search"}}
+    ]

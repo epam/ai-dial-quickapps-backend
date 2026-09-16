@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -18,8 +18,8 @@ from tests.unit_tests.common.common import make_provider
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
     return DialDeploymentTool(
-        deployment=DialDeploymentConfig(
-            deployment_id="my-app", parameters=DialDeploymentParameters()
+        deployment=DialDeploymentToolConfig(
+            deployment_id="my-app", parameters=DialDeploymentToolParameters()
         ),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
@@ -121,3 +121,47 @@ async def test_simple_tool_without_conversation_mode_leaves_synthetic_default():
     await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
 
     assert builder.build.call_args.kwargs["tool_config"].conversation_mode is None
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config():
+    simple_tool = DialDeploymentSimpleTool(
+        deployment_id="my-app",
+        propagate_annotations_to_choice=True,
+    )
+    builder = MagicMock()
+    cached_config = _make_deployment_tool("my_app_tool")
+
+    await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
+
+    built_config = builder.build.call_args.kwargs["tool_config"]
+    assert built_config.propagate_annotations_to_choice is True
+    assert cached_config.propagate_annotations_to_choice is None
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_threads_both_overrides_together():
+    simple_tool = DialDeploymentSimpleTool(
+        deployment_id="my-app",
+        conversation_mode=ConversationMode(resumable=True),
+        propagate_annotations_to_choice=True,
+    )
+    builder = MagicMock()
+    cached_config = _make_deployment_tool("my_app_tool")
+
+    await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
+
+    built_config = builder.build.call_args.kwargs["tool_config"]
+    assert built_config.conversation_mode.resumable is True
+    assert built_config.propagate_annotations_to_choice is True
+
+
+@pytest.mark.asyncio
+async def test_simple_tool_without_propagate_annotations_leaves_synthetic_default():
+    simple_tool = DialDeploymentSimpleTool(deployment_id="my-app")
+    builder = MagicMock()
+    cached_config = _make_deployment_tool("my_app_tool")
+
+    await _make_simple_initializer(simple_tool, builder, cached_config).initialize()
+
+    assert builder.build.call_args.kwargs["tool_config"].propagate_annotations_to_choice is None

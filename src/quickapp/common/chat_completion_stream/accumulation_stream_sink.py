@@ -24,6 +24,9 @@ class AccumulationSink(ChatStreamSink):
             if norm.state is not None:
                 self._accumulator.merge_state(norm.state)
 
+        if delta.annotations:
+            self._accumulator.extend_annotations(delta.annotations)
+
         if delta.content:
             self._accumulator.append_content(delta.content)
 

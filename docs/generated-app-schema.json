@@ -684,6 +684,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-deployment",
           "default": "dial-deployment",
@@ -758,6 +772,20 @@
           "description": "Whether the toolset is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
         },
         "type": {
           "const": "dial-app",
@@ -973,6 +1001,26 @@
           "description": "A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency in the preceding text, thereby reducing the model's propensity to repeat the exact same line.",
           "title": "Frequency Penalty"
         },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How much reasoning the model should spend before answering. Supported values differ per deployment (see its `features.reasoningEfforts`).",
+          "title": "Reasoning Effort"
+        },
         "custom_fields": {
           "anyOf": [
             {
@@ -1014,6 +1062,20 @@
           ],
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
+        },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
         },
         "type": {
           "const": "dial-deployment-simple",
@@ -1067,7 +1129,7 @@
           "type": "string"
         },
         "deployment": {
-          "$ref": "#/$defs/DialDeploymentConfig",
+          "$ref": "#/$defs/DialDeploymentToolConfig",
           "description": "The configuration for the DIAL deployment tool."
         },
         "system_prompt": {
@@ -1121,6 +1183,20 @@
           "default": null,
           "description": "Conversation session behavior for the DIAL deployment tool."
         },
+        "propagate_annotations_to_choice": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Propagate citation annotations returned by the deployment (`choices[].delta.custom_fields.annotations`) onto the app's choice. The orchestrator is instructed to copy the matching `<cit id=\"...\">` anchors verbatim; annotations whose anchor did not survive into the final answer are dropped.",
+          "title": "Propagate Annotations To Choice",
+          "x-preview": true
+        },
         "supports_url_attachments": {
           "default": false,
           "description": "Whether the underlying DIAL deployment advertises `features.url_attachments`. Snapshotted at tool-config build time. When true, external URLs are forwarded as `reference_url` attachments; when false, they are materialised into DIAL files first.",
@@ -1133,6 +1209,205 @@
         "deployment"
       ],
       "title": "DialDeploymentTool",
+      "type": "object"
+    },
+    "DialDeploymentToolConfig": {
+      "anyOf": [
+        {
+          "required": [
+            "deployment_id"
+          ]
+        },
+        {
+          "required": [
+            "name"
+          ]
+        }
+      ],
+      "properties": {
+        "deployment_id": {
+          "description": "The id of the DIAL deployment.",
+          "dial:resource": true,
+          "title": "Deployment Id",
+          "type": "string"
+        },
+        "parameters": {
+          "$ref": "#/$defs/DialDeploymentToolParameters",
+          "description": "The predefined parameters for the DIAL deployment."
+        },
+        "name": {
+          "deprecated": true,
+          "description": "DEPRECATED. Legacy alias for `deployment_id`.",
+          "dial:resource": true,
+          "type": "string"
+        }
+      },
+      "title": "DialDeploymentToolConfig",
+      "type": "object"
+    },
+    "DialDeploymentToolParameters": {
+      "description": "Parameters of the deployment a `deployment-tool` calls.",
+      "properties": {
+        "temperature": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The temperature for the model. A higher temperature means the model will take more risks.",
+          "title": "Temperature"
+        },
+        "top_p": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The number of top tokens to sample from. A higher value means more randomness.",
+          "title": "Top P"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The seed for the model. Can be used for enhancing reproducibility of models' responses.",
+          "title": "Seed"
+        },
+        "stop": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Up to 4 sequences where the Assistant will stop generating further tokens.",
+          "title": "Stop"
+        },
+        "n": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How many chat completion choices to generate for each input message.",
+          "title": "N"
+        },
+        "max_tokens": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The maximum number of tokens to generate by the Assistant.",
+          "title": "Max Tokens"
+        },
+        "presence_penalty": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A number between -2.0 and 2.0. Positive values impose a penalty on new tokens based on their appearance in the current text, thereby increasing the model's tendency to introduce new topics in its responses.",
+          "title": "Presence Penalty"
+        },
+        "frequency_penalty": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "A number between -2.0 and 2.0. Positive values apply a penalty to new tokens according to their existing frequency in the preceding text, thereby reducing the model's propensity to repeat the exact same line.",
+          "title": "Frequency Penalty"
+        },
+        "reasoning_effort": {
+          "anyOf": [
+            {
+              "enum": [
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How much reasoning the model should spend before answering. Supported values differ per deployment (see its `features.reasoningEfforts`).",
+          "title": "Reasoning Effort"
+        },
+        "custom_fields": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CustomFieldsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint"
+        },
+        "tools": {
+          "anyOf": [
+            {
+              "items": {
+                "$ref": "#/$defs/StaticFunctionTool"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Static tools the target deployment runs on its side, e.g. web search. They are forwarded to the deployment and never executed by the app.",
+          "title": "Tools"
+        }
+      },
+      "title": "DialDeploymentToolParameters",
       "type": "object"
     },
     "DialFilesConfig": {
@@ -1239,6 +1514,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "dial-mcp",
           "default": "dial-mcp",
@@ -1328,6 +1617,29 @@
       ],
       "title": "DialPromptSkillConfig",
       "type": "object"
+    },
+    "DialSkillConfig": {
+      "properties": {
+        "type": {
+          "const": "dial-skill",
+          "default": "dial-skill",
+          "description": "Skill sourced from a DIAL skill resource (folder with SKILL.md).",
+          "title": "Type",
+          "type": "string"
+        },
+        "url": {
+          "description": "Relative skill resource URL in DIAL (e.g. skills/<bucket>/<path>)",
+          "dial:resource": true,
+          "title": "Url",
+          "type": "string"
+        }
+      },
+      "required": [
+        "url"
+      ],
+      "title": "DialSkillConfig",
+      "type": "object",
+      "x-preview": true
     },
     "DialSystemPromptConfig": {
       "properties": {
@@ -1821,6 +2133,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "internal",
           "default": "internal",
@@ -2214,6 +2540,20 @@
           "description": "Whether the toolset is enabled.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
         },
         "type": {
           "const": "mcp",
@@ -3063,6 +3403,20 @@
           "title": "Enabled",
           "type": "boolean"
         },
+        "deferred": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": true,
+          "description": "When true or unset, this toolset's tool schemas are withheld from the initial LLM payload. Requires orchestrator.tool_discovery.enabled=true. Tools are discovered on demand via the tool_search meta-tool. Set to false to keep this toolset always eager.",
+          "title": "Deferred",
+          "x-preview": true
+        },
         "type": {
           "const": "rest-api",
           "default": "rest-api",
@@ -3217,6 +3571,70 @@
       "title": "StageDisplayLevel",
       "type": "string"
     },
+    "StaticFunctionSpec": {
+      "additionalProperties": true,
+      "description": "The `static_function` payload of a static tool.",
+      "properties": {
+        "name": {
+          "description": "The name of the static function, e.g. `web_search`.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The description of the static function.",
+          "title": "Description"
+        },
+        "configuration": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Provider-specific configuration for the static function.",
+          "title": "Configuration"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "StaticFunctionSpec",
+      "type": "object"
+    },
+    "StaticFunctionTool": {
+      "additionalProperties": true,
+      "description": "A tool the target deployment executes on its own side, e.g. a web search.",
+      "properties": {
+        "type": {
+          "const": "static_function",
+          "default": "static_function",
+          "title": "Type",
+          "type": "string"
+        },
+        "static_function": {
+          "$ref": "#/$defs/StaticFunctionSpec",
+          "description": "The static function the deployment executes on its side."
+        }
+      },
+      "required": [
+        "static_function"
+      ],
+      "title": "StaticFunctionTool",
+      "type": "object"
+    },
     "StopStrategyModel": {
       "properties": {
         "trigger_on": {
@@ -3367,6 +3785,38 @@
         }
       },
       "title": "ToolCallTimestampConfig",
+      "type": "object"
+    },
+    "ToolDiscoveryConfig": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Enable dynamic tool discovery. When true, toolsets with deferred=true are withheld from the initial LLM payload and surfaced via the internal_tool_search meta-tool.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "service_model": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "DIAL deployment used for the anonymous routing call inside internal_tool_search. When omitted, falls back to the orchestrator's own deployment.",
+          "title": "Service Model"
+        },
+        "min_tools_for_deferral": {
+          "default": 10,
+          "description": "Minimum number of tools in a toolset for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when deferred=true, avoiding discovery overhead for small toolsets. Default: 10 (or the value of MIN_TOOLS_FOR_DEFERRAL env var)",
+          "minimum": 1,
+          "title": "Min Tools For Deferral",
+          "type": "integer"
+        }
+      },
+      "title": "ToolDiscoveryConfig",
       "type": "object"
     },
     "ToolDisplayConfig": {
@@ -3625,6 +4075,19 @@
           ],
           "default": null,
           "description": "How the orchestrator receives request-scoped attachments. When unset, the orchestrator gets no admin/user attachments on the native path (legacy behaviour: USER `image/*` passes through, other MIMEs are surfaced as XML metadata only)."
+        },
+        "tool_discovery": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ToolDiscoveryConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Dynamic tool discovery configuration. When enabled, toolsets with deferred=true are withheld from the initial LLM payload and discovered on demand via the tool_search meta-tool.",
+          "x-preview": true
         }
       },
       "required": [
@@ -3757,13 +4220,17 @@
           "items": {
             "discriminator": {
               "mapping": {
-                "dial-prompt": "#/$defs/DialPromptSkillConfig"
+                "dial-prompt": "#/$defs/DialPromptSkillConfig",
+                "dial-skill": "#/$defs/DialSkillConfig"
               },
               "propertyName": "type"
             },
             "oneOf": [
               {
                 "$ref": "#/$defs/DialPromptSkillConfig"
+              },
+              {
+                "$ref": "#/$defs/DialSkillConfig"
               }
             ]
           },
