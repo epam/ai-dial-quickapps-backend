@@ -514,11 +514,15 @@ no-op unless both gates pass. When active it contributes:
   When `LazyOnDemandAttachmentStrategy.accepted_types` is set, every MIME check in the strategy (tool
   registration, the synthetic injector, the explicit tool call, the keep policy) requires a match against
   **both** the deployment's `input_attachment_types` **and** the app's `accepted_types` — a conjunction, not
-  an intersected pattern set, enforced at the single choke point `OrchestratorCapabilities.orchestrator_accepts_mime_type`.
-  This lets an app narrow below its deployment (for example scoping a `*/*`-declared deployment down to
-  `image/*`); the deployment's declared list remains a hard cap the app can only narrow, never widen. The
-  rendered tool description advertises the narrowed list (`OrchestratorCapabilities.advertised_input_attachment_types`)
-  instead of the deployment's raw list when `accepted_types` is set.
+  an intersected pattern set, enforced at the single choke point `_AttachmentAcceptance.accepts_mime_type`
+  (`orchestrator_attachment_strategies/lazy_on_demand/_attachment_acceptance.py`). This app-level narrowing is
+  deliberately kept out of `OrchestratorCapabilities` — that class exposes only Core-sourced deployment facts;
+  `_AttachmentAcceptance` wraps it and layers the strategy's `accepted_types` on top, request-scoped via a
+  `LazyOnDemandStrategyModule` provider. This lets an app narrow below its deployment (for example scoping a
+  `*/*`-declared deployment down to `image/*`); the deployment's declared list remains a hard cap the app can
+  only narrow, never widen. The rendered tool description advertises the narrowed list
+  (`_AttachmentAcceptance.advertised_input_attachment_types`) instead of the deployment's raw list when
+  `accepted_types` is set.
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
 - `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL
