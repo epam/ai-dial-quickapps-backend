@@ -4,9 +4,10 @@ from typing import Any
 from aidial_sdk.chat_completion import Message, Role
 from pydantic import BaseModel, ConfigDict, Field
 
-from quickapp.skills import SKILL_CHIPS_FIELD
-
 logger = logging.getLogger(__name__)
+
+SKILL_CHIPS_FIELD = "skills"
+"""Name of the ``custom_content`` field a client uses to invoke a skill."""
 
 
 def message_skill_urls(message: Message) -> list[str]:

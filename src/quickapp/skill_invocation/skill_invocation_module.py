@@ -22,7 +22,7 @@ class SkillInvocationModule(Module):
 
     Preview-gated, matching ``DialSkillsModule``, whose ``DialSkillResolver`` it
     reuses. Scrubbing the field off the working messages deliberately lives in the
-    never-gated ``SkillsModule`` instead.
+    never-gated ``AgentModule`` (``_ScrubExtraFieldsTransformer``) instead.
     """
 
     def configure(self, binder: Binder) -> None:
