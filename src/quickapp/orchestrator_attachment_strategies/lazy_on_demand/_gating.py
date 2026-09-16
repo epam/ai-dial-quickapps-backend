@@ -9,12 +9,16 @@ from quickapp.common.attachment_processing_utils import (
 )
 from quickapp.config.context import Context, FileContextConfig
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 
 
 def should_enable_get_content_tool(
     contexts: Sequence[Context],
     messages: Sequence[Message],
     orchestrator_capabilities: OrchestratorCapabilities,
+    attachment_acceptance: _AttachmentAcceptance,
     expanded_folder_file_urls: set[str] | None = None,
     external_fetch_enabled: bool = False,
 ) -> bool:
@@ -24,8 +28,8 @@ def should_enable_get_content_tool(
     request-visible file — admin context, expanded folder file, or user attachment —
     has an inferred MIME the orchestrator accepts (deployment declared list, narrowed
     by the app's own ``accepted_types`` when configured — see
-    :meth:`OrchestratorCapabilities.orchestrator_accepts_mime_type`, the single choke
-    point every MIME gate in this strategy routes through).
+    :meth:`_AttachmentAcceptance.accepts_mime_type`, the single choke point every MIME
+    gate in this strategy routes through).
 
     MIME inference is filename-based (matching ``build_context_entries_async``).
     """
@@ -37,15 +41,15 @@ def should_enable_get_content_tool(
         if not isinstance(ctx, FileContextConfig):
             continue
         mime = inferred_mime_type_for_file_context_url(ctx.url)
-        if orchestrator_capabilities.orchestrator_accepts_mime_type(mime):
+        if attachment_acceptance.accepts_mime_type(mime):
             return True
     if expanded_folder_file_urls:
         for url in expanded_folder_file_urls:
             mime = inferred_mime_type_for_file_context_url(url)
-            if orchestrator_capabilities.orchestrator_accepts_mime_type(mime):
+            if attachment_acceptance.accepts_mime_type(mime):
                 return True
     for attachment in user_attachments_from_messages(messages):
         mime = attachment_mime_type(attachment)
-        if orchestrator_capabilities.orchestrator_accepts_mime_type(mime):
+        if attachment_acceptance.accepts_mime_type(mime):
             return True
     return False

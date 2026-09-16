@@ -9,6 +9,9 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
@@ -62,10 +65,10 @@ def _injector(
 ) -> _AttachmentGetContentInjector:
     caps = OrchestratorCapabilities(
         deployment=SimpleNamespace(id="gpt-4", input_attachment_types=input_attachment_types),  # type: ignore[arg-type]
-        app_accepted_types=app_accepted_types,
     )
+    acceptance = _AttachmentAcceptance(caps, accepted_types=app_accepted_types)
     return _AttachmentGetContentInjector(
-        orchestrator_capabilities=caps,
+        attachment_acceptance=acceptance,
         materializer=materializer if materializer is not None else _materializer(),
     )
 

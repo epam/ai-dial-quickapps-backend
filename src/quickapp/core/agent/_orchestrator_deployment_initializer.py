@@ -7,7 +7,6 @@ from injector import inject
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import InitializationException, UnsupportedReasoningEffortException
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.core.agent._orchestrator_static_tools_context import _OrchestratorStaticToolsContext
 from quickapp.core.agent.orchestrator_capabilities import OrchestratorCapabilities
 from quickapp.core.agent.orchestrator_deployment_cache_service import (
@@ -42,15 +41,7 @@ class _OrchestratorDeploymentInitializer(CompletionInitializer):
             self.__tool_config_service.get_deployment_metadata,
             deployment,
         )
-        strategy = self.__app_config.orchestrator.attachment_strategy
-        app_accepted_types = (
-            strategy.accepted_types
-            if isinstance(strategy, LazyOnDemandAttachmentStrategy)
-            else None
-        )
-        self._capabilities = OrchestratorCapabilities(
-            deployment=model, app_accepted_types=app_accepted_types
-        )
+        self._capabilities = OrchestratorCapabilities(deployment=model)
         self._validate_reasoning_effort()
         self._static_tools_context.extend_static_tools(
             ToolConfigCoreService.parse_static_tools_from_info(model)

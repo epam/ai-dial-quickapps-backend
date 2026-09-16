@@ -7,6 +7,9 @@ from quickapp.attachment_processing._legacy_user_image_keep_policy import _Legac
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
 )
@@ -19,9 +22,9 @@ def _make_filter(
     patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
     caps = OrchestratorCapabilities(
         deployment=MagicMock(id="orch", input_attachment_types=patterns),
-        app_accepted_types=app_accepted_types,
     )
-    keep_policy = _GetContentKeepPolicy(orchestrator_capabilities=caps)
+    acceptance = _AttachmentAcceptance(caps, accepted_types=app_accepted_types)
+    keep_policy = _GetContentKeepPolicy(attachment_acceptance=acceptance)
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 

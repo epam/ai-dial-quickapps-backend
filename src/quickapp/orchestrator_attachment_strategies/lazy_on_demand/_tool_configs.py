@@ -1,5 +1,6 @@
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.config.tools.base import (
+    AttachmentConfig,
     ConfigurableSchemaSimpleType,
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -40,6 +41,7 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
     display=ToolDisplayConfig(
         stage=ToolStageConfig(name="Get context content", show=True, defer_close=True),
     ),
+    attachment=AttachmentConfig(propagate_types_to_choice=[]),
 )
 
 

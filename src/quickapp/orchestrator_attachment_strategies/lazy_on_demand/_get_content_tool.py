@@ -32,7 +32,9 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.url_classification import UrlScheme
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
-from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
@@ -71,7 +73,7 @@ class _GetContentTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_GetContentStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        orchestrator_capabilities: OrchestratorCapabilities,
+        attachment_acceptance: _AttachmentAcceptance,
         messages_mixin: MessagesMixin,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         materializer: _AttachmentMaterializer,
@@ -89,7 +91,7 @@ class _GetContentTool(StagedBaseTool):
             **kwargs,
         )
         self.__messages_mixin: MessagesMixin = messages_mixin
-        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__attachment_acceptance: _AttachmentAcceptance = attachment_acceptance
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__materializer: _AttachmentMaterializer = materializer
         self.__home_resolver: HomePathResolver = home_resolver
@@ -98,7 +100,7 @@ class _GetContentTool(StagedBaseTool):
         response = GetContentToolResponse.fail(
             message=message,
             accepted_types=list(
-                self.__orchestrator_capabilities.advertised_input_attachment_types or []
+                self.__attachment_acceptance.advertised_input_attachment_types or []
             ),
         )
         content, state = response.tool_parts()
@@ -145,11 +147,11 @@ class _GetContentTool(StagedBaseTool):
             logger.debug("get_content tool rejected: unsupported url scheme")
             return self._error_result(_UNSUPPORTED_REFERENCE_MESSAGE)
 
-        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(resolved.mime):
+        if not self.__attachment_acceptance.accepts_mime_type(resolved.mime):
             logger.debug(
                 "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
                 resolved.mime,
-                self.__orchestrator_capabilities.deployment_id,
+                self.__attachment_acceptance.deployment_id,
             )
             return self._error_result("Orchestrator deployment does not accept this file type.")
 
@@ -219,7 +221,7 @@ class _GetContentTool(StagedBaseTool):
         )
         logger.debug(
             "get_content tool allowed: deployment_id=%s url_basename=%s type=%s",
-            self.__orchestrator_capabilities.deployment_id,
+            self.__attachment_acceptance.deployment_id,
             resolved.title,
             attachment.type,
         )

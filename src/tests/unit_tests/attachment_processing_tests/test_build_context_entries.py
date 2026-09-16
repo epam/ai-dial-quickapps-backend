@@ -21,6 +21,9 @@ from quickapp.config.context import (
     UserDefinedContextConfig,
 )
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._gating import (
     should_enable_get_content_tool,
 )
@@ -30,16 +33,19 @@ from tests.unit_tests.attachment_processing_tests._folder_context_helpers import
 )
 
 
-def _caps(
-    input_attachment_types: list[str] | None,
-    app_accepted_types: list[str] | None = None,
-) -> OrchestratorCapabilities:
+def _caps(input_attachment_types: list[str] | None) -> OrchestratorCapabilities:
     return OrchestratorCapabilities(
         deployment=SimpleNamespace(  # type: ignore[arg-type]
             id="gpt-4", input_attachment_types=input_attachment_types
         ),
-        app_accepted_types=app_accepted_types,
     )
+
+
+def _acceptance(
+    input_attachment_types: list[str] | None,
+    app_accepted_types: list[str] | None = None,
+) -> _AttachmentAcceptance:
+    return _AttachmentAcceptance(_caps(input_attachment_types), accepted_types=app_accepted_types)
 
 
 class TestBuildContextEntries:
@@ -210,34 +216,49 @@ class TestBuildContextEntries:
 class TestShouldGetContentTool:
     def test_true_when_pdf_context_and_deployment_accepts_pdf(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_get_content_tool(contexts, [], _caps(["application/pdf"])) is True
+        caps = _caps(["application/pdf"])
+        assert (
+            should_enable_get_content_tool(contexts, [], caps, _acceptance(["application/pdf"]))
+            is True
+        )
 
     def test_true_when_non_pdf_inferred_and_deployment_accepts_that_mime(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
-        assert should_enable_get_content_tool(contexts, [], _caps(["text/plain"])) is True
+        caps = _caps(["text/plain"])
+        assert (
+            should_enable_get_content_tool(contexts, [], caps, _acceptance(["text/plain"])) is True
+        )
 
     def test_false_when_inferred_mime_not_accepted_by_deployment(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/readme.txt")]
-        assert should_enable_get_content_tool(contexts, [], _caps(["application/pdf"])) is False
+        caps = _caps(["application/pdf"])
+        assert (
+            should_enable_get_content_tool(contexts, [], caps, _acceptance(["application/pdf"]))
+            is False
+        )
 
     def test_false_when_deployment_excludes_file_mime(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_get_content_tool(contexts, [], _caps(["image/*"])) is False
+        caps = _caps(["image/*"])
+        assert should_enable_get_content_tool(contexts, [], caps, _acceptance(["image/*"])) is False
 
     def test_false_when_input_attachment_types_none(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_get_content_tool(contexts, [], _caps(None)) is False
+        caps = _caps(None)
+        assert should_enable_get_content_tool(contexts, [], caps, _acceptance(None)) is False
 
     def test_false_when_input_attachment_types_empty(self):
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
-        assert should_enable_get_content_tool(contexts, [], _caps([])) is False
+        caps = _caps([])
+        assert should_enable_get_content_tool(contexts, [], caps, _acceptance([])) is False
 
     def test_true_when_external_fetch_enabled_and_no_request_visible_files(self):
         # No admin contexts, no user attachments — the url may still arrive via the
         # system prompt, a skill, or a tool result, so the tool must be offered.
+        caps = _caps(["application/pdf"])
         assert (
             should_enable_get_content_tool(
-                [], [], _caps(["application/pdf"]), external_fetch_enabled=True
+                [], [], caps, _acceptance(["application/pdf"]), external_fetch_enabled=True
             )
             is True
         )
@@ -246,17 +267,26 @@ class TestShouldGetContentTool:
         # External fetch on, but the orchestrator accepts no input attachments → the
         # tool could deliver nothing, so it stays unregistered.
         assert (
-            should_enable_get_content_tool([], [], _caps(None), external_fetch_enabled=True)
+            should_enable_get_content_tool(
+                [], [], _caps(None), _acceptance(None), external_fetch_enabled=True
+            )
             is False
         )
         assert (
-            should_enable_get_content_tool([], [], _caps([]), external_fetch_enabled=True) is False
+            should_enable_get_content_tool(
+                [], [], _caps([]), _acceptance([]), external_fetch_enabled=True
+            )
+            is False
         )
 
     def test_false_when_external_fetch_disabled_and_no_request_visible_files(self):
         assert (
             should_enable_get_content_tool(
-                [], [], _caps(["application/pdf"]), external_fetch_enabled=False
+                [],
+                [],
+                _caps(["application/pdf"]),
+                _acceptance(["application/pdf"]),
+                external_fetch_enabled=False,
             )
             is False
         )
@@ -265,7 +295,7 @@ class TestShouldGetContentTool:
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.png")]
         assert (
             should_enable_get_content_tool(
-                contexts, [], _caps(["*/*"], app_accepted_types=["image/*"])
+                contexts, [], _caps(["*/*"]), _acceptance(["*/*"], app_accepted_types=["image/*"])
             )
             is True
         )
@@ -276,7 +306,7 @@ class TestShouldGetContentTool:
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.pdf")]
         assert (
             should_enable_get_content_tool(
-                contexts, [], _caps(["*/*"], app_accepted_types=["image/*"])
+                contexts, [], _caps(["*/*"]), _acceptance(["*/*"], app_accepted_types=["image/*"])
             )
             is False
         )
@@ -287,7 +317,10 @@ class TestShouldGetContentTool:
         contexts: list[Context] = [FileContextConfig(url="files/bucket/a.png")]
         assert (
             should_enable_get_content_tool(
-                contexts, [], _caps(["application/pdf"], app_accepted_types=["image/*"])
+                contexts,
+                [],
+                _caps(["application/pdf"]),
+                _acceptance(["application/pdf"], app_accepted_types=["image/*"]),
             )
             is False
         )
@@ -316,6 +349,7 @@ class TestGetContentEligibility:
                 contexts=contexts,
                 messages=messages,
                 orchestrator_capabilities=_caps(["application/pdf"]),
+                attachment_acceptance=_acceptance(["application/pdf"]),
             )
             is True
         )

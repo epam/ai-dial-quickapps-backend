@@ -2,7 +2,7 @@ import logging
 
 from aidial_sdk.chat_completion import Message
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.attachment_processing._expanded_context_file_urls import ExpandedContextFileUrls
 from quickapp.common import StagedBaseTool
@@ -13,6 +13,9 @@ from quickapp.common.abstract.tool_execution_history_policy import ToolExecution
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
@@ -64,6 +67,21 @@ class LazyOnDemandStrategyModule(Module):
         binder.bind(_GetContentKeepPolicy, to=_GetContentKeepPolicy, scope=request_scope)
         binder.bind(_AttachmentMaterializer, to=_AttachmentMaterializer, scope=request_scope)
 
+    @provider
+    @request_scope
+    def provide_attachment_acceptance(
+        self,
+        app_config: ApplicationConfig,
+        orchestrator_capabilities: OrchestratorCapabilities,
+    ) -> _AttachmentAcceptance:
+        strategy = app_config.orchestrator.attachment_strategy
+        accepted_types = (
+            strategy.accepted_types
+            if isinstance(strategy, LazyOnDemandAttachmentStrategy)
+            else None
+        )
+        return _AttachmentAcceptance(orchestrator_capabilities, accepted_types=accepted_types)
+
     @multiprovider
     def _provide_internal_tools(
         self,
@@ -71,6 +89,7 @@ class LazyOnDemandStrategyModule(Module):
         messages: list[Message],
         get_content_builder: AssistedBuilder[_GetContentTool],
         orchestrator_capabilities: OrchestratorCapabilities,
+        attachment_acceptance: _AttachmentAcceptance,
         expanded_file_urls: ExpandedContextFileUrls,
         external_fetch_policy: ExternalUrlFetchPolicyResolver,
     ) -> list[StagedBaseTool]:
@@ -82,12 +101,13 @@ class LazyOnDemandStrategyModule(Module):
             app_config.contexts,
             messages,
             orchestrator_capabilities,
+            attachment_acceptance,
             expanded_file_urls.urls,
             external_fetch_enabled=external_fetch_policy.is_enabled(),
         ):
             return []
         rendered_tool_config = render_get_content_tool_config(
-            list(orchestrator_capabilities.advertised_input_attachment_types or [])
+            list(attachment_acceptance.advertised_input_attachment_types or [])
         )
         return [
             get_content_builder.build(

@@ -13,7 +13,9 @@ from quickapp.common.attachment_processing_utils import attachment_mime_type
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.url_classification import UrlScheme
-from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
@@ -41,10 +43,10 @@ class _AttachmentGetContentInjector(MessagesTransformer):
 
     def __init__(
         self,
-        orchestrator_capabilities: OrchestratorCapabilities,
+        attachment_acceptance: _AttachmentAcceptance,
         materializer: _AttachmentMaterializer,
     ) -> None:
-        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__attachment_acceptance: _AttachmentAcceptance = attachment_acceptance
         self.__materializer: _AttachmentMaterializer = materializer
 
     @staticmethod
@@ -196,15 +198,13 @@ class _AttachmentGetContentInjector(MessagesTransformer):
                 continue
             # Cheap MIME pre-gate before any network egress (external urls with no
             # guessable type are skipped here).
-            if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
-                attachment_mime_type(attachment)
-            ):
+            if not self.__attachment_acceptance.accepts_mime_type(attachment_mime_type(attachment)):
                 continue
             deliverable = await self._resolve_deliverable_attachment(attachment)
             if deliverable is None:
                 continue
             # Re-gate on the resolved content type (may differ from the filename guess).
-            if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
+            if not self.__attachment_acceptance.accepts_mime_type(
                 attachment_mime_type(deliverable)
             ):
                 continue
