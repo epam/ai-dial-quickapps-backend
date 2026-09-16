@@ -66,3 +66,14 @@ class TestRenderGetContentToolConfig:
         rendered = render_get_content_tool_config([])
         assert "Accepted MIME types" not in _function_description(rendered)
         assert "Accepted MIME types" not in (_attachment_url_description(rendered) or "")
+
+    def test_config_disables_automatic_propagation(self):
+        # propagate_types_to_choice=[] keeps StagedBaseTool from auto-appending a loaded
+        # file to the choice; get_content feeds the orchestrator, it does not present
+        # the file to the user (add_attachment does that).
+        assert GET_CONTENT_TOOL_CONFIG.attachment.propagate_types_to_choice == []
+
+    def test_rendered_copy_keeps_propagation_disabled(self):
+        # The per-request deep copy is what the tool actually runs with.
+        rendered = render_get_content_tool_config(["image/*", "application/pdf"])
+        assert rendered.attachment.propagate_types_to_choice == []
