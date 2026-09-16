@@ -41,10 +41,6 @@ GET_CONTENT_TOOL_CONFIG = InternalTool(
     display=ToolDisplayConfig(
         stage=ToolStageConfig(name="Get context content", show=True, defer_close=True),
     ),
-    # propagate_types_to_choice=[]: get_content only feeds the orchestrator. Loading a
-    # file for the model to read is not an act of presenting it to the user, so nothing
-    # is promoted to the choice (the add_attachment tool exists for that). Empty also
-    # registers the url as suppressed, keeping the orchestrator stream from echoing it.
     attachment=AttachmentConfig(propagate_types_to_choice=[]),
 )
 
