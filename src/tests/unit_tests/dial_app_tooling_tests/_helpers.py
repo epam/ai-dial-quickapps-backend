@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from pydantic import SecretStr
 
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
-from quickapp.config.dial_deployment import DialDeploymentConfig
+from quickapp.config.dial_deployment import DialDeploymentToolConfig
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -42,7 +42,7 @@ def make_async_loader(returns: Any) -> AsyncMock:
 
 def make_tool_config(name: str = "deployment_id_tool") -> DialDeploymentTool:
     return DialDeploymentTool(
-        deployment=DialDeploymentConfig(deployment_id="deployment-id"),
+        deployment=DialDeploymentToolConfig(deployment_id="deployment-id"),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
                 name=name,

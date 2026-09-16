@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeploymentParameters
+from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
 from quickapp.config.tools.base import (
     JsonTypeEnum,
     OpenAiToolConfig,
@@ -18,8 +18,8 @@ from tests.unit_tests.common.common import make_provider
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
     return DialDeploymentTool(
-        deployment=DialDeploymentConfig(
-            deployment_id="my-app", parameters=DialDeploymentParameters()
+        deployment=DialDeploymentToolConfig(
+            deployment_id="my-app", parameters=DialDeploymentToolParameters()
         ),
         open_ai_tool=OpenAiToolConfig(
             function=OpenAiToolFunction(
