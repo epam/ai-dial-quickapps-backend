@@ -73,5 +73,6 @@ class TestRegistration:
         with patch.dict("os.environ", {"ENABLE_PREVIEW_FEATURES": "false"}):
             names = [type(m).__name__ for m in AppFactory.build_di_modules()]
         assert "SkillInvocationModule" not in names
-        # The scrub still runs: it lives in the never-gated SkillsModule.
-        assert "SkillsModule" in names
+        # The chips are still scrubbed: _ScrubExtraFieldsTransformer lives in the never-gated
+        # AgentModule.
+        assert "AgentModule" in names
