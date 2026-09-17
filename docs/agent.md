@@ -294,7 +294,7 @@ Tool results are standardized into a common format containing:
 - Attachments (files, images, etc.)
 - Usage statistics (if the tool calls an LLM internally)
 - Propagation flags (which attachments should be shown in the UI)
-- Citation annotations (evidence pointing at `<cit id="...">` anchors in the tool's content)
+- Citation annotations (evidence pointing at `<cit data-id="..."></cit>` anchors in the tool's content)
 
 ### Error Handling
 
@@ -407,7 +407,7 @@ The processor builds an aggregated result containing all accumulated data for th
 
 Annotations collected from a deployment tool are relayed onto the choice as a raw
 `custom_fields.annotations` chunk (`aidial-sdk` cannot model `custom_fields`), verbatim and
-unfiltered. Keeping the matching `<cit id="...">` anchors in the answer is left to the orchestrator
+unfiltered. Keeping the matching `<cit data-id="..."></cit>` anchors in the answer is left to the orchestrator
 model, steered by a prompt rule registered when any tool enables the flag.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> ExtractToolCalls -> AddSystemPrompt -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
