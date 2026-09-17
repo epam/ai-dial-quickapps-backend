@@ -93,7 +93,12 @@ class ChatStreamSinkFactory:
                 ),
                 StageWrapperUiSink(
                     stage_wrapper=config.stage_wrapper,
-                    stream_content=config.stream_content,
+                    # Always stream assistant text into the Calling stage. ``stream_content``
+                    # only gates ChoiceUiSink (main message). Nested-stage propagation sets
+                    # it to False to avoid dumping sub-app text into the chat body; the
+                    # stage Response must still fill — DeploymentStageWrapper.add_result
+                    # intentionally writes an empty string after the stream.
+                    stream_content=True,
                 ),
             ],
         )

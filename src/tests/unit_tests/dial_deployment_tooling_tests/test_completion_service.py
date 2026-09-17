@@ -175,6 +175,38 @@ async def test_stage_wrapper_content_streaming(
 
 
 @pytest.mark.asyncio
+async def test_nested_propagation_still_streams_response_into_calling_stage(
+    azure_client, attachment_resolver, mock_stage_wrapper
+):
+    """stream_content=False must not empty the Calling stage Response body."""
+    from tests.unit_tests.stream_test_doubles import SpyChoice
+
+    choice = SpyChoice()
+    calling = choice.create_stage("Calling WeatherApp")
+    calling.open()
+
+    service = DialCompletionService(
+        azure_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+        choice=choice,
+    )
+    await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+        parent_stage=calling,
+    )
+
+    expected_calls = [call("> #### Response:\n"), call("Test response")]
+    mock_stage_wrapper.stage_mock.append_content.assert_has_calls(expected_calls)
+    assert choice.append_content_calls == ["\n\r"]
+
+
+@pytest.mark.asyncio
 async def test_extra_params_go_to_extra_body_not_top_level(
     completion_service, azure_client, mock_stage_wrapper
 ):
