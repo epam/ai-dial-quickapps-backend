@@ -21,8 +21,7 @@ class SkillInvocationModule(Module):
     """Wires skills a user invokes from a message, via ``custom_content.skills``.
 
     Preview-gated, matching ``DialSkillsModule``, whose ``DialSkillResolver`` it
-    reuses. Scrubbing the field off the working messages deliberately lives in the
-    never-gated ``SkillsModule`` instead.
+    reuses.
     """
 
     def configure(self, binder: Binder) -> None:
