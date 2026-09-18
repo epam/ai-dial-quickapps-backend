@@ -32,6 +32,7 @@ from quickapp.shared import shared_module
 from quickapp.skill_invocation import SkillInvocationModule
 from quickapp.skills.skills_module import SkillsModule
 from quickapp.starters.starters_module import StartersModule
+from quickapp.subagent_tooling import SubagentToolingModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
 from quickapp.web_tooling.web_tooling_module import WebToolingModule
@@ -72,6 +73,7 @@ class AppFactory:
             DialFilesToolingModule(),
             WebToolingModule(),
             RepresentationToolingModule(),
+            SubagentToolingModule(),
         ]
         if FeatureSettings().enable_preview_features:
             logging.getLogger(__name__).info(
