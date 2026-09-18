@@ -2,6 +2,7 @@ import logging
 from collections.abc import AsyncIterable, Callable
 
 from aidial_sdk.chat_completion import Attachment, Choice
+from aidial_sdk.chat_completion import Choice, Stage
 from injector import inject
 from openai import APIError, BadRequestError
 from openai.types.chat import ChatCompletionChunk
@@ -36,6 +37,7 @@ class ChatStreamConfig(BaseModel):
     stage_wrapper: BaseStageWrapper | None = None
     stream_content: bool = True
     propagate_stages: bool = False
+    parent_stage: Stage | None = None
     attachment_filter: Callable[[Attachment], bool] | None = None
 
 
