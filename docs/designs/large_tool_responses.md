@@ -1,6 +1,6 @@
 # Design: Large Tool Response Processing
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Tool-call result offload](../../CONFIGURATION.md#tool-call-result-offload-preview)
 - **Approved:** 2026-05-25
 - **Dependencies:**
   - [DIAL Files Tools](dial_files_tools.md) — provides the `internal_file_read_lines` / `internal_file_search` tools the LLM uses to read offloaded content back on demand. This is a **hard dependency**: an offloaded response is unreadable without these tools. Offload is implemented as a **sub-feature of DIAL Files Tools** — its config nests under `features.dial_files` and its wiring lives in `DialFilesToolingModule` (see Components 3 & 5), so it cannot be configured without the dependency.

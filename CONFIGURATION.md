@@ -248,7 +248,11 @@ The project contains predefined configs of application and predefined tools
 | orchestrator | Yes      | Object       | Configurations for Agent (model, system prompt, etc.). [Orchestrator configuration](#orchestrator-configuration)                                      | -                | -             |
 | contexts     | Yes      | List[Object] | The list of contexts. [Contexts configuration](#contexts-configuration)                                                                               | -                | -             |
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
-| features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, etc.). [Features configuration](#features-configuration)                  | -                | `{}`          |
+| features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, dial files, etc.). [Features configuration](#features-configuration)      | -                | `{}`          |
+| skills       | No       | List[Object] | Optional list of DIAL prompt / DIAL skill resources. [Skills configuration](#skills-configuration)                                                    | -                | `null`        |
+| hooks        | No       | List[Object] | `[Preview]` Config-driven synthetic tool-call hooks. [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
+| tool_defaults | No      | Object       | Defaults applied to every tool call (e.g. timeout). [Tool defaults configuration](#tool-defaults-configuration)                                       | -                | `{}`          |
+| conversation_starters | No | Object    | Conversation starter chips. [Conversation starters](#conversation-starters-configuration). Deprecated top-level `starters` still accepted. | -                | `null`        |
 
 ### Orchestrator configuration
 
@@ -257,7 +261,28 @@ The project contains predefined configs of application and predefined tools
 | deployment     | Yes      | Object  | The DIAL deployment configuration. See [Deployment configuration](#deployment-configuration)             | -                | -             |
 | system_prompt  | Yes      | Object  | The configuration for the system prompt. See [System prompt configuration](#system-prompt-configuration) | -                | -             |
 | max_iterations | No       | Integer | The max count of orchestrator(agent) operations. -1 value for infinite                                   | Integer          | 15            |
+| attachment_strategy | No  | Object  | How the orchestrator receives request-scoped attachments. See [Attachment strategy](#attachment-strategy-configuration) | - | `null` |
 | tool_discovery | No       | Object  | `[Preview]` Dynamic tool discovery configuration. See [Tool discovery configuration](#tool-discovery-configuration) | -   | `null`        |
+
+#### Attachment strategy configuration
+
+Opt-in. When unset (`null`), the orchestrator does not receive admin/user attachments on the native
+path (USER `image/*` still passes through; other MIMEs appear as XML metadata only).
+
+| Field  | Required | Type   | Description | Default |
+|--------|----------|--------|-------------|---------|
+| `type` | Yes      | String | Only `lazy_on_demand` today — attachments load via `internal_attachments_get_content` on demand (MIME-gated by the orchestrator deployment's `input_attachment_types`) | `lazy_on_demand` |
+
+```json
+{
+  "orchestrator": {
+    "deployment": { "deployment_id": "gpt-4o" },
+    "attachment_strategy": { "type": "lazy_on_demand" }
+  }
+}
+```
+
+See [docs/agent.md — Orchestrator attachment strategies](docs/agent.md#orchestrator-attachment-strategies).
 
 #### Deployment configuration
 
@@ -367,12 +392,39 @@ See [Dynamic Tool Discovery design doc](docs/designs/dynamic_tool_discovery.md) 
 
 ### Contexts configuration
 
-| Field       | Required                          | Type   | Description                                                             | Available Values       | Default Value |
-|-------------|-----------------------------------|--------|-------------------------------------------------------------------------|------------------------|---------------|
-| type        | Yes                               | String | The context type                                                        | `user-defined`, `file` | -             |
-| description | Yes                               | String | The context description                                                 | -                      | -             |
-| content     | Yes (if `type` is `user-defined`) | String | The context content                                                     | -                      | -             |
-| url         | Yes (if `type` is `file`)         | String | The URL to the file (in dial bucket) where file with content is located | -                      | -             |
+Contexts are a discriminated union on `type`. Each entry is one of the shapes below.
+
+#### User-defined context (`type: user-defined`)
+
+| Field   | Required | Type   | Description                    | Default Value |
+|---------|----------|--------|--------------------------------|---------------|
+| type    | Yes      | String | Must be `user-defined`         | -             |
+| content | Yes      | String | Inline context text            | -             |
+
+#### File context (`type: file`)
+
+| Field       | Required | Type   | Description                                              | Default Value |
+|-------------|----------|--------|----------------------------------------------------------|---------------|
+| type        | Yes      | String | Must be `file`                                           | -             |
+| url         | Yes      | String | Relative DIAL file URL (e.g. `files/{bucket}/{path}`)    | -             |
+| description | No       | String | Optional description for the agent                       | `null`        |
+
+#### Folder context (`type: folder`) `[Preview]`
+
+Requires `ENABLE_PREVIEW_FEATURES=true`. When preview is off, folder entries are stripped from
+`contexts` at request validation.
+
+On every request the folder is expanded (files and subfolders, up to `max_depth`) into the
+`internal_attachments_available_context` response so newly uploaded files become discoverable
+without editing the manifest. Folder expansion does **not** require `features.dial_files`.
+
+| Field       | Required | Type    | Description                                                                 | Default Value |
+|-------------|----------|---------|-----------------------------------------------------------------------------|---------------|
+| type        | Yes      | String  | Must be `folder`                                                            | -             |
+| url         | Yes      | String  | Relative DIAL folder URL; **must end with `/`**                              | -             |
+| description | No       | String  | Optional folder-level description                                           | `null`        |
+| max_depth   | No       | Integer | Max recursion depth when expanding (1–10)                                   | `10`          |
+| mime        | No       | String  | Folder MIME marker                                                          | `application/vnd.dial.metadata+json` |
 
 <details>
 <summary><b>Contexts configuration JSON sample</b></summary>
@@ -382,20 +434,29 @@ User-defined context:
 ```json
 {
   "type": "user-defined",
-  "description": "Some user context description",
   "content": "Content of user defined context"
 }
 ```
 
-The context loaded by URL:
+File context:
 
 ```json
 {
   "type": "file",
   "description": "Some file context description",
-  "url": "files/{path}/{name}"
+  "url": "files/{bucket}/{path}/{name}"
 }
+```
 
+Folder context (preview):
+
+```json
+{
+  "type": "folder",
+  "description": "Shared team docs",
+  "url": "files/{bucket}/shared-docs/",
+  "max_depth": 5
+}
 ```
 
 </details>
@@ -403,12 +464,24 @@ The context loaded by URL:
 ### Features configuration
 
 Per-app feature overrides under the manifest's `features` object. All fields are optional; unset
-fields fall back to the deployment-wide defaults configured via environment variables.
+fields fall back to the deployment-wide defaults configured via environment variables (where
+applicable). Preview-gated fields require `ENABLE_PREVIEW_FEATURES=true`; otherwise they are
+nullified at request validation.
 
-| Field                | Required | Type           | Description                                                                                                                                                                  | Default Value                          |
-|----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
-| `timestamp`          | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
-| `external_url_fetch` | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+Omitting `features` (or setting `{}`) still constructs the default `Features` object — time
+awareness stays **on**, and nested objects like `file_loading` / `stage_display` use their defaults.
+Setting `"features": null` turns off those defaults (no timestamp feature, no per-app dial-files /
+external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STAGE_DISPLAY_LEVEL` is set).
+
+| Field                    | Required | Type           | Preview | Description                                                                                                                                                                  | Default Value                          |
+|--------------------------|----------|----------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
+| `timestamp`              | No       | Object or null | No      | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
+| `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
+| `external_url_fetch`     | No       | Object         | No      | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `stage_display`          | No       | Object         | No      | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
+| `dial_files`             | No       | Object or null | No      | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
+| `web_fetch`              | No       | Object or null | **Yes** | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
+| `representation_tooling` | No       | Object or null | **Yes** | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
 
 #### Timestamp configuration
 
@@ -453,6 +526,22 @@ Disable time awareness for this app:
 ```
 
 </details>
+
+#### File loading configuration
+
+| Field        | Required | Type            | Description                                                                                                                                 | Default Value |
+|--------------|----------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `size_limit` | No       | Integer or null | Max bytes for a single file download. `null` defers to env `DEFAULT_FILE_LOADING_SIZE_LIMIT` (default 10 MiB). Must be `> 0` when set.     | `null`        |
+
+```json
+{
+  "features": {
+    "file_loading": {
+      "size_limit": 5242880
+    }
+  }
+}
+```
 
 #### External URL fetch configuration
 
@@ -503,6 +592,201 @@ this app only allows `example.com`):
 See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL classification,
 SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
 
+#### Stage display configuration
+
+Controls which tool-execution stages are surfaced in the DIAL UI. The deployment-wide env
+`DEFAULT_STAGE_DISPLAY_LEVEL`, when set, **wins over** every app's `features.stage_display.level`.
+
+| Field   | Required | Type   | Description                                                                 | Available Values                         | Default Value |
+|---------|----------|--------|-----------------------------------------------------------------------------|------------------------------------------|---------------|
+| `level` | No       | String | Visibility threshold                                                        | `none`, `error`, `info`, `debug`         | `info`        |
+
+| Value   | Behavior                                                              |
+|---------|-----------------------------------------------------------------------|
+| `none`  | No stages at all, not even for errors                                 |
+| `error` | Stages only for failed tool calls                                     |
+| `info`  | Regular tool calls and errors (default)                               |
+| `debug` | All tool calls, including internal/system ones                        |
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "debug"
+    }
+  }
+}
+```
+
+#### DIAL files configuration
+
+Opt in to the built-in workspace file tools (`internal_file_*`). Omit `dial_files` or set it to
+`null` to leave file tools off. Setting `"dial_files": {}` enables **all** tools with defaults.
+
+| Field                      | Required | Type                         | Preview | Description                                                                                                                                 | Default Value |
+|----------------------------|----------|------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled_tools`            | No       | `"all"` or Array[String]     | No      | Which tools to expose. Short names: `list`, `read_lines`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.                    | `"all"`       |
+| `agent_home_dir`           | No       | String                       | No      | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
+| `max_files_scanned`        | No       | Integer (`≥ 1`)              | No      | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
+| `tool_call_result_offload` | No       | Object or null               | **Yes** | Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
+
+##### Tool-call result offload `[Preview]`
+
+Nested under `features.dial_files.tool_call_result_offload`. Requires `ENABLE_PREVIEW_FEATURES=true`.
+Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
+
+| Field            | Required | Type          | Description                                                                                          | Default Value |
+|------------------|----------|---------------|------------------------------------------------------------------------------|---------------|
+| `enabled`        | No       | Boolean       | Whether to offload oversized tool responses                                                          | env `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` (`true`) |
+| `size_threshold` | No       | Integer (`> 0`) | Byte threshold above which a response is offloaded                                                 | env `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` (`40000`) |
+| `excluded_tools` | No       | Array[String] | **Additional** tool names exempt from offload (additive). `internal_file_read_lines`, `internal_file_search`, and `read_skill` are always excluded. | env list (default empty) |
+
+```json
+{
+  "features": {
+    "dial_files": {
+      "enabled_tools": "all",
+      "agent_home_dir": "workspace/",
+      "tool_call_result_offload": {
+        "enabled": true,
+        "size_threshold": 40000
+      }
+    }
+  }
+}
+```
+
+#### Web fetch configuration `[Preview]`
+
+Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled, exposes `internal_web_fetch`: fetch an
+external `http(s)` resource inline (truncated to `max_inline_size`) or persist it under the
+agent home via `save_path`. Egress uses the same two-tier policy as
+[External URL fetch](#external-url-fetch-configuration).
+
+If `web_fetch.enabled` is `true` while external URL fetching is disabled (admin
+`EXTERNAL_URL_FETCH_ENABLED=false`, or this app set `features.external_url_fetch.enabled=false`),
+initialization fails with a hard `ToolInitializationException` — fix the egress policy or remove
+`features.web_fetch`.
+
+| Field              | Required | Type    | Description                                                                 | Default Value |
+|--------------------|----------|---------|-----------------------------------------------------------------------------|---------------|
+| `enabled`          | No       | Boolean | Expose `internal_web_fetch`                                                 | `false`       |
+| `max_inline_size`  | No       | Integer (`> 0`) | Byte cap on decoded inline text; larger text is truncated with a notice. Binary must use `save_path`. | env `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` (`40000`) |
+
+```json
+{
+  "features": {
+    "web_fetch": {
+      "enabled": true
+    }
+  }
+}
+```
+
+#### Representation tooling configuration `[Preview]`
+
+Requires `ENABLE_PREVIEW_FEATURES=true`. Omit or set `null` to disable the whole section.
+Set to `{}` to enable with defaults.
+
+| Field            | Required | Type    | Description                                                              | Default Value |
+|------------------|----------|---------|--------------------------------------------------------------------------|---------------|
+| `add_attachment` | No       | Boolean | Expose `internal_representation_add_attachment` (promote any URL into the answer's attachments) | `true`        |
+
+```json
+{
+  "features": {
+    "representation_tooling": {
+      "add_attachment": true
+    }
+  }
+}
+```
+
+### Skills configuration
+
+Optional top-level `skills` array. Merged with predefined skills at request time. See
+[docs/skills.md](docs/skills.md) for behaviour, precedence, and skill invocation.
+
+| Type          | Preview | Fields | Description |
+|---------------|---------|--------|-------------|
+| `dial-prompt` | No      | `url`  | DIAL prompt as a skill (`prompts/<bucket>/<path>`). |
+| `dial-skill`  | **Yes** | `url`  | DIAL skill resource folder with `SKILL.md` (`skills/<bucket>/<path>`). Requires `ENABLE_PREVIEW_FEATURES=true` and DIAL Core ≥ 0.48.0. |
+
+```json
+{
+  "skills": [
+    { "type": "dial-prompt", "url": "prompts/public/my-prompt" },
+    { "type": "dial-skill", "url": "skills/public/my-skill" }
+  ]
+}
+```
+
+### Hooks configuration `[Preview]`
+
+Requires `ENABLE_PREVIEW_FEATURES=true`. Top-level `hooks` array injects synthetic tool-call pairs
+at named orchestrator seams. See [README Hooks](./README.md#hooks-preview) and
+[docs/designs/config_driven_hooks.md](docs/designs/config_driven_hooks.md).
+
+| Field              | Required | Type   | Description | Default |
+|--------------------|----------|--------|-------------|---------|
+| `kind`             | Yes      | String | Only `"tool_call"` today | - |
+| `event`            | Yes      | String | Only `"on_request_start"` wired today | - |
+| `toolset_name`     | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
+| `tool_name`        | Yes      | String | Tool name within the toolset (or exact function name) | - |
+| `arguments`        | No       | Object | Arguments forwarded to the tool | `{}` |
+| `frequency`        | No       | String | `"always"` or `"append_if_changed"` | `append_if_changed` |
+| `name`             | No       | String | Optional hook label | `null` |
+| `refresh_condition`| No       | Object | Optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`) | `null` |
+
+### Tool defaults configuration
+
+| Field              | Required | Type            | Description | Default |
+|--------------------|----------|-----------------|-------------|---------|
+| `timeout_seconds`  | No       | Number or null  | Timeout for all tool calls in this app (`> 0`, `≤ 3600`). `null` defers to env `DEFAULT_TOOL_TIMEOUT_SECONDS`, then client library defaults. | `null` |
+
+```json
+{
+  "tool_defaults": {
+    "timeout_seconds": 60
+  }
+}
+```
+
+### Conversation starters configuration
+
+Top-level `conversation_starters` configures the starter chips shown in Chat before the first
+message.
+
+| Field                         | Required | Type    | Description | Default |
+|-------------------------------|----------|---------|-------------|---------|
+| `intro_text`                  | No       | String  | Text above the starter buttons | `"Select an action"` |
+| `chat_message_input_disabled` | No       | Boolean | If `true`, users can only start via starter buttons (input disabled) | `false` |
+| `auto_submit`                 | No       | Boolean | If `true`, clicking a starter sends immediately; if `false`, text is only filled into the input | `true` |
+| `starters`                    | Yes      | Array   | Non-empty list of `{ "title", "text" }` chips | - |
+
+```json
+{
+  "conversation_starters": {
+    "intro_text": "Pick a starting point",
+    "auto_submit": true,
+    "starters": [
+      { "title": "Summarize", "text": "Summarize the attached document." },
+      { "title": "Translate", "text": "Translate the last user message to English." }
+    ]
+  }
+}
+```
+
+> **Deprecated:** top-level `starters: ["…"]` (string list) is still accepted but will be removed.
+> Migrate to `conversation_starters`.
+
+### Localized toolset names and descriptions
+
+Toolset `name` and `description` accept either a plain string or a locale map
+`{"en": "…", "ru": "…"}`. Resolution uses the incoming `Accept-Language` header (or the header
+named by `PROXY_LANGUAGE_HEADER`), falling back to `en`, then any map entry. The generated app
+schema advertises `dial:defaultLocale` so the Chat configurator can offer locale-aware inputs.
+
 ### Tool sets configuration
 
 Most toolset types also accept a `deferred` field (Boolean, default `true`): `[Preview]` when true or unset, and
@@ -515,8 +799,8 @@ DIAL app toolsets accept the field but do not yet act on it.
 
 | Field         | Required | Type                                                                                                                                                                                                | Description                               | Default Value |
 |---------------|----------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-------------------------------------------|---------------|
-| name          | Yes      | String                                                                                                                                                                                              | The name of the tool set.                 | -             |
-| description   | No       | String                                                                                                                                                                                              | The description of the tool set.          | `null`        |
+| name          | Yes      | String or locale map (`{"en":"…","ru":"…"}`)                                                                                                                                                              | Toolset name. Plain string or localized map; see [Localized toolset names](#localized-toolset-names-and-descriptions). | -             |
+| description   | No       | String or locale map                                                                                                                                                                                    | Toolset description (same localization rules as `name`).          | `null`        |
 | enabled       | No       | Boolean                                                                                                                                                                                             | Whether the toolset is enabled.           | `true`        |
 | type          | Yes      | String                                                                                                                                                                                              | The type of the tool set.                 | `rest-api`    |
 | authorization | No       | One of `BasicAuthorization`, `BearerAuthorization`, <br/>`ClientIdSecretAuthorization`, `ApiKeyAuthorization`, `null`</br> <br>See [Authorization configuration](#Authorization-configuration)</br> | Authorization configuration for REST API. | `null`        |
@@ -612,6 +896,7 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
+| conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
 
 #### MCP resources configuration
 
@@ -736,6 +1021,45 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 | display                | No                                   | Object | Representation (display) configuration for tool execution results. See [Display configuration](#display-configuration), See [Tool stage configuration](#Display-tool-stage-configuration) | -                | `null`        |
 | fallback_configuration | No                                   | Object | Tools fallback configuration. If not present will always raise Error. See [Tool fallback configuration](#tool-fallback-configuration)                                                     | -                | `null`        |
 | propagate_annotations_to_choice | No                          | Boolean | **Preview.** Only for `deployment-tool` and `dial-deployment-simple`. Propagate citation annotations returned by the deployment to the app's answer. See [Citation annotations](#citation-annotations)               | `true`, `false`  | `null`        |
+| conversation_mode               | No                          | Object  | Resumable subagent conversation. Applies to `deployment-tool`, `dial-deployment-simple`, and `dial-app` (chat-completion branch only). See [Conversation mode](#conversation-mode) | - | `null` |
+| content_propagation             | No                          | Object  | Header / **deprecated** history propagation. Prefer `conversation_mode`. See [Content propagation](#content-propagation-deprecated-history-flag) | - | `null` |
+
+#### Conversation mode
+
+When `conversation_mode.resumable` is `true`, the deployment tool issues a `session_id` on the
+first call, accepts it on follow-ups, and the backend threads prior `[user, assistant]` history
+(including the subagent's internal tool-execution state) for that session. When `false` or omitted,
+each call is independent.
+
+| Field       | Required | Type    | Description | Default |
+|-------------|----------|---------|-------------|---------|
+| `resumable` | No       | Boolean | Enable resumable subagent conversations | `false` |
+
+Runtime details when `resumable` is `true`:
+
+- The tool schema gains an optional `session_id` argument (not forwarded to the subagent).
+- On the first call the backend assigns `session_id` from the tool-call id and appends
+  `[session_id: …]` to the tool result so the orchestrator can reuse it.
+- Follow-up calls should pass that `session_id` back; omitting it falls back to tool-name-only
+  history matching (same pooling behaviour as the old `propagate_history` path).
+
+```json
+{
+  "type": "deployment-tool",
+  "deployment": { "deployment_id": "my-subagent" },
+  "conversation_mode": { "resumable": true }
+}
+```
+
+On `dial-app` toolsets, `conversation_mode` applies only when the toolset resolves to the
+chat-completion branch; it is ignored (with a warning) on the MCP branch.
+
+#### Content propagation (deprecated history flag)
+
+| Field               | Required | Type          | Description | Default |
+|---------------------|----------|---------------|-------------|---------|
+| `propagate_history` | No       | Boolean       | **Deprecated.** Use `conversation_mode.resumable: true`. Still accepted; will be removed in a future release. | `false` |
+| `propagate_headers` | No       | Array[String] | Headers to propagate to the DIAL deployment; `null` uses defaults | `null` |
 
 #### Citation annotations
 
@@ -1075,32 +1399,34 @@ The `fallback_configuration` field allows you to define strategies for handling 
 
 ### `ToolFallbackConfig` Structure
 
-| Field      | Required | Type                 | Description                          | Available Values          | Default Value |
-|------------|----------|----------------------|--------------------------------------|---------------------------|---------------|
-| strategies | Yes      | Array[StrategyModel] | List of fallback handling strategies | See strategy models below | -             |
+| Field                  | Required | Type                 | Description                          | Available Values          | Default Value |
+|------------------------|----------|----------------------|--------------------------------------|---------------------------|---------------|
+| strategies             | Yes      | Array[StrategyModel] | List of fallback handling strategies | See strategy models below | `[{"type": "continue"}]` |
+| display_error_in_stage | No       | Boolean              | Whether to show the exception text in the tool stage (vs a generic error notification). Timeouts always show the error text. | `true`, `false` | `true` |
 
 ### Strategy Models
 
-There are two strategy types:
-
-1. **StopStrategyModel** (`type: stop`) — Terminates the agent loop. `FallbackAgentStopException`
+1. **HardStopStrategyModel** (`type: hard_stop`) — Terminates the agent loop. `FallbackAgentStopException`
    propagates through the orchestrator and the user receives a generic "agent was stopped" message.
    No content is sent to the LLM.
 2. **ContinueStrategyModel** (`type: continue`) — The agent continues execution. The actual tool
-   error text is forwarded to the LLM as the tool-result content so the LLM can make an informed
-   recovery decision. Optionally appends `instructions` when a `trigger_on` condition matches.
+   error text is **always** forwarded to the LLM as the tool-result content. Optionally appends
+   `instructions` when a `trigger_on` condition matches. Catch-all strategies (`trigger_on` omitted)
+   ignore `instructions` — only the error text is sent.
 
+> **Deprecated:** `type: stop` is a deprecated alias for `type: hard_stop` (same halt behaviour).
+> Replace with `type: hard_stop`; a warning is logged at runtime.
+>
 > **Deprecated:** `type: retry` is a deprecated alias for `type: continue` and behaves identically.
-> Replace with `type: continue`; a warning is logged at runtime for configs that still use it.
+> Replace with `type: continue`; a warning is logged at runtime.
 
 ### Common Strategy Fields
 
-| Field                  | Required | Type                      | Description                                                                                                             | Default Value                         |
-|------------------------|----------|---------------------------|-------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
-| type                   | Yes      | Enum `stop` or `continue` | The type of the strategy                                                                                                |                                       |
-| trigger_on             | No       | Object                    | Condition that triggers this strategy                                                                                   | triggers on all exceptions (catch-all) |
-| instructions           | No       | String                    | Additional instructions appended to the error text when this strategy is triggered. Only meaningful when `trigger_on` is set — instructions on a catch-all (no `trigger_on`) are deprecated and ignored. | —                                     |
-| display_error_in_stage | No       | Boolean                   | Whether to display the error in the stage                                                                               | `true`                                |
+| Field        | Required | Type                      | Description                                                                                                             | Default Value                         |
+|--------------|----------|---------------------------|-------------------------------------------------------------------------------------------------------------------------|---------------------------------------|
+| type         | Yes      | Enum `hard_stop` or `continue` (plus deprecated `stop`, `retry`) | The type of the strategy                                                                                |                                       |
+| trigger_on   | No       | Object                    | Condition that triggers this strategy                                                                                   | triggers on all exceptions (catch-all) |
+| instructions | No       | String                    | Additional instructions appended to the error text when this strategy matches via `trigger_on`. Ignored on catch-all (`trigger_on` omitted). | —                                     |
 
 > **Deprecated:** `forward_tool_error_message` is a no-op. The tool error message is now always
 > forwarded to the LLM. Remove this field from your configs; it is ignored at runtime and a warning
@@ -1120,9 +1446,10 @@ There are two strategy types:
 ```json
 {
   "fallback_configuration": {
+    "display_error_in_stage": true,
     "strategies": [
       {
-        "type": "stop",
+        "type": "hard_stop",
         "trigger_on": {
           "type": "contains",
           "value": "quota exceeded",
@@ -1136,8 +1463,7 @@ There are two strategy types:
           "value": "rate limit",
           "case_sensitive": false
         },
-        "instructions": "Wait a moment and retry with a smaller request.",
-        "display_error_in_stage": false
+        "instructions": "Wait a moment and retry with a smaller request."
       },
       {
         "type": "continue"
@@ -1158,9 +1484,9 @@ other error text as-is.
 - If no fallback configuration is provided, the default behaviour is to forward the error text to
   the LLM and continue (`ContinueStrategyModel` catch-all).
 - Strategies are evaluated in the order they appear in the array. The first matching strategy is used.
-- A `stop` strategy raises `FallbackAgentStopException`, which terminates the agent loop
-  immediately. The LLM does not receive any tool-result content for that call; the user sees a
-  generic "agent was stopped" message.
+- A `hard_stop` (or deprecated `stop`) strategy raises `FallbackAgentStopException`, which terminates
+  the agent loop immediately. The LLM does not receive any tool-result content for that call; the
+  user sees a generic "agent was stopped" message.
 - A `continue` strategy always forwards the actual tool error text to the LLM as the tool-result
   content. When `trigger_on` matches and `instructions` is set, the instructions are appended
   after the error text.

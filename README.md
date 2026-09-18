@@ -39,9 +39,13 @@ Features in Preview are marked with a `[Preview]` tag in documentation.
 ## Documentation
 
 - [Configuration Reference](./CONFIGURATION.md) - Full configuration model, environment variables, and examples
+- [Technical Documentation](./docs/README.md) - Capability map, architecture guides, and design documents (start here for navigation)
 - [Agent Skills](docs/skills.md) - How to create and manage reusable agent skills
 - [Config-Driven Hooks](docs/designs/config_driven_hooks.md) `[Preview]` - Declarative synthetic tool call injection at orchestrator seams
-- [Technical Documentation](./docs/README.md) - Internal architecture and design documents
+- [Dynamic Tool Discovery](docs/designs/dynamic_tool_discovery.md) `[Preview]` - Defer large toolsets and discover tools on demand
+
+> For configuration questions, prefer [CONFIGURATION.md](./CONFIGURATION.md) over design docs.
+> Design docs explain *why*; CONFIGURATION and `docs/*.md` guides explain *how to configure and use*.
 
 ## Quick start (general)
 
@@ -178,6 +182,60 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 }
 ```
 
+Full field reference: [Stage display configuration](./CONFIGURATION.md#stage-display-configuration).
+
+### DIAL files tools
+
+Opt in to built-in workspace file tools (`list`, `read_lines`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`):
+
+```json
+{
+  "features": {
+    "dial_files": {
+      "enabled_tools": "all",
+      "agent_home_dir": "workspace/"
+    }
+  }
+}
+```
+
+Optional `[Preview]` offload of oversized tool responses lives under
+`features.dial_files.tool_call_result_offload` (requires `ENABLE_PREVIEW_FEATURES=true`).
+See [DIAL files configuration](./CONFIGURATION.md#dial-files-configuration).
+
+### Web fetch `[Preview]`
+
+Requires `ENABLE_PREVIEW_FEATURES=true` and admin external-URL egress allowed
+(`EXTERNAL_URL_FETCH_ENABLED`). If `web_fetch.enabled` is true while egress is disabled,
+initialization fails hard — enable egress or remove `features.web_fetch`. Exposes `internal_web_fetch`:
+
+```json
+{
+  "features": {
+    "web_fetch": {
+      "enabled": true
+    }
+  }
+}
+```
+
+See [Web fetch configuration](./CONFIGURATION.md#web-fetch-configuration).
+
+### Resumable subagent conversations
+
+For deployment tools that should keep conversation history across calls:
+
+```json
+{
+  "type": "deployment-tool",
+  "deployment": { "deployment_id": "my-subagent" },
+  "conversation_mode": { "resumable": true }
+}
+```
+
+Replaces deprecated `content_propagation.propagate_history`. See
+[Conversation mode](./CONFIGURATION.md#conversation-mode).
+
 ### Environment Variables
 
 | Variable                                   | Default                                                         | Required | Description                                                                                                  |
@@ -186,6 +244,7 @@ Controls which tool-execution stages are surfaced in the DIAL UI for each app. S
 | `DIAL_URL`                                 | —                                                               | Yes      | URL of the DIAL Core API                                                                                     |
 | `DIAL_API_VERSION`                         | `2025-01-01-preview`                                            | No       | API version for DIAL Core API                                                                                |
 | `APP_SCHEMA_ID`                            | `https://mydial.epam.com/custom_application_schemas/quickapps2` | No | Full application type schema `$id` emitted in the generated app schema. When unset, the built-in default is used. |
+| `DIAL_INTERACTIVE_LOGIN_TIMEOUT_SECONDS`   | `120.0`                                                         | No       | Wall-clock timeout (seconds) waiting for the user to complete interactive sign-in when an MCP toolset returns 401 / an external-service sign-in challenge. See [docs/agent.md](docs/agent.md) (Interactive login). |
 | **Proxy**                                  |                                                                 |          |                                                                                                              |
 | `PROXY_LANGUAGE_HEADER`                    | `accept-language`                                               | No       | Name of the incoming HTTP request header that carries the locale for UI display (stage name localization). Override when a reverse proxy rewrites the standard `Accept-Language` header before forwarding the request. |
 | **Logging**                                |                                                                 |          |                                                                                                              |
