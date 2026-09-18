@@ -23,9 +23,17 @@ and re-deploy to change a helper's prompt by one sentence — every helper fores
 app that needs it exists. For a non-technical builder in the configurator, that is a reason not to decompose
 the work at all.
 
-So the gap is not confinement. It is authoring: **a builder cannot declare a helper agent in the manifest
+So the gap is not confinement. It is authoring: **a builder cannot get a helper agent out of the manifest
 they are already editing.** That absence is what this design fills; the context savings follow from
 delegation itself.
+
+There is a second question hiding behind the first: *who decides what a helper may touch?* One answer is
+the builder, at authoring time, per declared helper — the shape Claude Code's `.claude/agents` takes, and
+the right one when a job recurs and deserves a prompt tuned for it. But a builder declaring an allowlist is
+guessing at tasks that do not exist yet, and the safe way to guess is to widen it. The other answer is the
+coordinator, at the moment it delegates, when it knows what *this* sub-task needs. This design offers both:
+declared types with a fixed prompt and allowlist, and a built-in general-purpose subagent the coordinator
+scopes per call.
 
 ## Concepts
 
@@ -40,9 +48,9 @@ Core, and no state that survives the call. It exists only for the duration of on
 contrast with today's DIAL deployment tool, which calls a separate app that was built and deployed in
 advance.
 
-**Coordinator** — the QuickApp that owns the user's conversation. It decides how to split the work, spawns
-subagents, integrates their results, and is the only party that talks to the user. A role, not a new
-component: any QuickApp becomes one once its manifest declares subagents.
+**Coordinator** — the QuickApp that owns the user's conversation. It decides how to split the work, scopes
+and spawns subagents, integrates their results, and is the only party that talks to the user. A role, not a
+new component: any QuickApp becomes one once its manifest enables subagents.
 
 **Hub-and-spoke** — the multi-agent architecture this design adopts: one coordinator at the center, subagents
 around it, and every exchange running between the center and one spoke.
@@ -80,32 +88,79 @@ flowchart LR
     s3 -->|result| coord
 ```
 
-### Declaring a subagent
+### The spawn surface
 
-The app builder declares subagent *types* in the manifest, the same shape Claude Code uses for
-`.claude/agents`. The LLM does not invent a subagent; it chooses a declared one and writes its task.
+Everything lives under `features.subagents`. Turning `enabled` on gives the coordinator's LLM one tool:
+
+```
+task(subagent_type, prompt, tool_sets?)
+```
+
+`subagent_type` enumerates two kinds of spoke, offered side by side in the same enum.
+
+**The built-in `general-purpose` subagent** is on by default and needs nothing declared. The coordinator
+scopes it per call:
+
+| Argument | Written by | Purpose |
+|---|---|---|
+| `prompt` | the coordinator's LLM | The whole task. The spoke sees nothing else — not the user's message, not the coordinator's history, not another spoke's work. |
+| `tool_sets` | the coordinator's LLM | Names of the app's tool sets this spoke may use. It inherits none of the coordinator's tools. Required for this kind. |
+
+The rest of its configuration comes from `features.subagents.general_purpose`: an optional `system_prompt`
+(else the built-in general-purpose prompt — never the coordinator's), `deployment_id` and `max_iterations`
+(else inherited from the coordinator). Setting `general_purpose` to `null` withholds this kind entirely.
+
+**Declared `types`** take the shape Claude Code uses for `.claude/agents`: the builder writes each one up
+front and the LLM chooses among them by name.
 
 | Field            | Purpose                                                                                       |
 |------------------|-----------------------------------------------------------------------------------------------|
-| `name`           | Identifier the coordinator uses to select this type.                                          |
+| `name`           | Identifier the coordinator uses to select this type. May not collide with `general-purpose`.  |
 | `description`    | When to use this subagent. Surfaced to the coordinator's LLM — this is the routing mechanism. |
 | `system_prompt`  | The spoke's instructions. Replaces the app's system prompt; it is not appended to it.         |
 | `tool_sets`      | Names of the app's tool sets this spoke may use. Omitted = inherit all.                       |
 | `deployment_id`  | DIAL deployment (model) for this spoke. Omitted = inherit the coordinator's.                  |
 | `max_iterations` | The spoke's own budget, independent of the coordinator's.                                     |
 
-At runtime the coordinator gets one tool — `task(subagent_type, prompt)` — whose `subagent_type`
-enumerates the declared types. It returns the spoke's final message as a string.
+For a declared type the allowlist is the builder's, so `tool_sets` on the call is **rejected**, not ignored
+— the coordinator would otherwise believe it narrowed a spoke that it did not.
+
+Both kinds return the spoke's final message as a string, plus any attachments it produced. The two are
+one mechanism underneath: a general-purpose spawn is materialized into the declared-type shape for the call
+(`general_purpose_subagent()`), so the spawner sees a single input.
 
 > **Naming.** The tool name `task` and its `prompt` parameter deliberately mirror Anthropic's Claude Code
-> "Task" tool, which spawns subagents the same way. We follow that surface so builders and models already
-> familiar with Claude Code's delegation primitive find the same shape here.
+> "Task" tool, which spawns subagents the same way; `general-purpose` is Claude Code's built-in agent of the
+> same name. We follow that surface so builders and models already familiar with Claude Code's delegation
+> primitive find the same shape here. We diverge on one point: Claude Code fixes every agent's tools in its
+> definition, where our general-purpose spoke takes them as a call argument, for the reason below.
+
+**Why `tool_sets` is a call argument for the general-purpose kind.** A builder knows what the app is *for*;
+the coordinator, at the moment it delegates, knows what this particular sub-task *needs*. The second is the
+better-informed decision, and it is the one that has to be right — a declared allowlist is a guess made
+before the task exists, and the safe way to guess is to widen it, which erases the narrowing. Declared types
+keep the builder's answer for jobs that recur; the general-purpose kind takes the coordinator's for
+everything else. Two properties keep the call argument from being a hole rather than a decision:
+
+- **The enum is the app's own enabled tool sets.** The coordinator can only hand a spoke tools it already
+  holds itself, so a spawn is never an escalation.
+- **Handing over no tools is explicit.** `tool_sets` is required for a general-purpose spawn, and `[]` is
+  the way to say "reason over what I gave you". A model that simply *omitted* the argument would otherwise
+  get a tool-less spoke, which does not fail: it answers from the prompt alone and sounds confident doing
+  it. Requiring the argument turns that into a choice someone made rather than one nobody noticed.
+
+**Why an unknown name fails the call.** The alternative — drop the unrecognised entry, run with what is
+left — produces a spoke quietly weaker than the coordinator intended, and that failure is invisible in
+exactly the way the previous point describes. `_SubagentTool` raises `InvalidToolCallParameterException`
+listing the valid names, which reaches the LLM as a correctable tool error before any spoke runs. A
+declared type with a dangling entry is the same mistake made by the builder, so it is reported at app
+initialization instead, by name.
 
 **Why the allowlist is toolset-level, not tool-level.** An MCP toolset has no static list of tools — they
-are discovered when the session connects, long after the manifest is compiled — so there is nothing to
-match a tool-name allowlist against at declaration time. Narrowing by toolset is the finest granularity
-available uniformly across all four tool types. A tool-level allowlist would have to be applied after
-initialization, which is a different (and larger) mechanism; see *Out of Scope*.
+are discovered when the session connects, long after the manifest is compiled and the `task` schema is
+built — so there is nothing to match a tool-name allowlist against. Narrowing by toolset is the finest
+granularity available uniformly across all four tool types. A tool-level allowlist would have to be applied
+after initialization, which is a different (and larger) mechanism; see *Out of Scope*.
 
 ## Design Goals
 
@@ -118,19 +173,22 @@ properties the deployment-tool route already has; they are listed because the de
 - **G1 — No advance registration.** Spawning a subagent requires no separate DIAL deployment, no prior
   registration in DIAL Core, and no second manifest to keep in sync. The spoke's manifest is compiled from
   the coordinator's own manifest at call time. *This is the feature.*
-- **G2 — Declared in the manifest the builder is already editing.** A helper agent is a `subagents[]` entry
-  next to the tool sets it uses; changing its prompt is a manifest edit, not a re-deploy. At runtime the LLM
-  selects one *declared* type per spawn and cannot name a type that was not declared. *(Verifiable: the
-  `task` tool exposes `subagent_type` as an enum of declared names; an unknown value is rejected — see
-  UC-4.)*
+- **G2 — Enabled in the manifest the builder is already editing, and scoped by whoever knows best.** A
+  declared helper is a `features.subagents.types[]` entry next to the tool sets it uses; changing its prompt
+  is a manifest edit, not a re-deploy. The general-purpose helper needs no entry at all: the coordinator
+  names its tool sets per spawn, and can name only the app's own. At runtime the LLM cannot select a type
+  that is not offered. *(Verifiable: the `task` tool exposes `subagent_type` as an enum of the offered
+  names and `tool_sets` as an array whose items enumerate the app's enabled tool set names; an unknown
+  value in either is rejected — see UC-4.)*
 - **G3 — Context confinement.** A subagent's intermediate work — its tool calls, fetched documents, retries,
   and per-turn LLM messages — never enters the coordinator's context window; the coordinator receives only
   the subagent's final answer as a string, and its token and attention cost is dropped when the spoke
   returns. *(Verifiable: after a spawn, none of the spoke's messages appear in the coordinator's
   `_RequestContext.messages`.)*
 - **G4 — Independent budget and scope.** A spoke runs with its own system prompt, its own model
-  (`deployment_id`), its own `max_iterations`, and a tool set narrowed to the declared allowlist — each
-  independent of the coordinator's.
+  (`deployment_id`), its own `max_iterations`, and a tool set narrowed to its allowlist — declared, or
+  named by the spawn — each independent of the coordinator's. *(Verifiable:
+  `test_a_general_purpose_spoke_gets_only_the_tool_sets_the_spawn_asked_for`.)*
 - **G5 — Isolated parallelism.** A coordinator may issue several spawns that run concurrently; each runs in
   its own request scope with no shared state and no cross-talk. *(Verifiable:
   `test_parallel_spawns_do_not_share_scope`.)*
@@ -138,17 +196,18 @@ properties the deployment-tool route already has; they are listed because the de
   the coordinator as a tool error, never as an empty-but-successful result. Handing the coordinator's LLM an
   empty string it believes is an answer is the same confabulation failure the tool-set checks exist to
   prevent. *(Verifiable: `test_spawn_without_a_final_answer_fails_the_tool_call`.)*
-- **G7 — Depth capped at 1.** A spoke cannot spawn: the compiled subagent manifest has `subagents = None`.
-  *(Verifiable: `compile_subagent_manifest` clears `subagents`.)*
+- **G7 — Depth capped at 1.** A spoke cannot spawn: the compiled subagent manifest has
+  `features.subagents = None`, so the `task` tool is never offered inside a spoke.
+  *(Verifiable: `compile_subagent_manifest` clears it.)*
 
   **Why cap it.** A depth cap makes the cost of a turn bounded and predictable — with recursion, one
   coordinator decision can fan out into an unbounded tree, which is exactly the runaway spend the feature
-  exists to reduce. Under Approach A there is a second, temporary reason: spokes share the coordinator's
-  process and event loop, and there is no timeout yet (see *Out of Scope*), so depth is the only structural
-  bound available. The cap is cheap to relax later — one assignment in `compile_subagent_manifest` — and
-  relaxing it should wait until per-spawn timeouts and a concurrency bound exist. Its cost: a builder who
-  needs two levels of decomposition is pushed back to deployed apps, which is the workflow G1 exists to
-  remove.
+  exists to reduce. That reason is permanent. There was a second, temporary one — under Approach A spokes
+  share the coordinator's process and event loop, and until the per-spawn timeout and the concurrency bound
+  landed, depth was the only structural bound available — but both now exist (see *Bounds on a spawn*), so
+  it no longer applies. Relaxing the cap is cheap (one assignment in `compile_subagent_manifest`) and is now
+  gated only on whether unbounded spawn trees are wanted at all. Its cost: a builder who needs two levels of
+  decomposition is pushed back to deployed apps, which is the workflow G1 exists to remove.
 
 ---
 
@@ -158,9 +217,11 @@ properties the deployment-tool route already has; they are listed because the de
 
 **Trigger:** The user asks the coordinator to compare the current weather in three cities. The coordinator's
 system prompt instructs it to delegate each independent piece.
-**Behavior:** In a single turn the LLM issues three `task` calls, each selecting `weather_scout`
-with a task naming one city. The three spokes run concurrently, each in its own scope with only the location
-and weather tool sets; each resolves coordinates, fetches weather, and returns one line.
+**Behavior:** In a single turn the LLM issues three `task` calls, each with a task naming one city. With
+a declared `weather_scout` type it selects that; without one it selects `general-purpose` and passes
+`tool_sets: ["Location rest-api toolset", "Weather rest-api toolset"]`. Either way the three spokes run
+concurrently, each in its own scope with only those two tool sets; each resolves coordinates, fetches
+weather, and returns one line.
 **Outcome:** The coordinator receives three short answer strings, ranks the cities, and replies. The user
 sees the coordinator's stages and final ranking — never the spokes' tool calls. The coordinator's context
 never held the intermediate location/weather traffic. *(Goals G3, G5.)*
@@ -168,9 +229,10 @@ never held the intermediate location/weather traffic. *(Goals G3, G5.)*
 ### UC-2: Research delegation with a narrowed tool set
 
 **Trigger:** The user asks a question that needs current external information.
-**Behavior:** The coordinator spawns `web_researcher`, whose declared `tool_sets` is `["Web search toolset"]`
-— so the spoke can search the web but cannot reach the coordinator's other tools. The spoke runs multiple
-searches inside its own loop.
+**Behavior:** The coordinator spawns a subagent scoped to `["Web search toolset"]` — a declared
+`web_researcher` whose allowlist says so, or the general-purpose one told so on the call — so the spoke can
+search the web but cannot reach the coordinator's other tools. The spoke runs multiple searches inside its
+own loop.
 **Outcome:** The coordinator gets back a lead answer plus a few supporting bullets. The (potentially many)
 search results and transcripts stayed inside the spoke and were dropped when it returned; only the distilled
 answer entered the coordinator's context. *(Goals G3, G4.)*
@@ -178,15 +240,16 @@ answer entered the coordinator's context. *(Goals G3, G4.)*
 ### UC-3: Compute delegation over caller-supplied inputs
 
 **Trigger:** Having gathered five temperatures (via UC-1 spokes), the coordinator needs statistics.
-**Behavior:** The coordinator spawns `analyst` (tool set: the Python interpreter only) and puts the five
+**Behavior:** The coordinator spawns a subagent with the Python interpreter tool set only and puts the five
 numbers *in the task text* — the spoke sees nothing of the conversation, so the task must be self-contained.
-The spoke runs Python and returns the result.
-**Outcome:** The coordinator reports the mean, spread, and outlier. Illustrates the hub-and-spoke rule that a
-spoke's only input is the task the hub writes for it.
+The spoke runs Python and returns the result, and a chart if asked for one.
+**Outcome:** The coordinator reports the mean, spread, and outlier; the chart reaches the user as an
+attachment of the `task` result. Illustrates the hub-and-spoke rule that a spoke's only input is the task
+the hub writes for it.
 
 ### UC-4: Error paths
 
-Four cases the design must handle:
+The cases the design must handle:
 
 - **A spoke that produces no answer.** The spoke exhausts `max_iterations` mid-tool-loop, so its conversation
   ends on a tool call and there is no final assistant message to return. `SubagentSpawner` raises
@@ -196,50 +259,68 @@ Four cases the design must handle:
   say. Failing loudly turns a silent wrong answer into a tool error the coordinator can retry or reword.
   *(Goal G6.)*
 
-- **Undeclared subagent type.** The LLM calls `task` with a `subagent_type` not in the enum.
-  `_SubagentTool` raises `InvalidToolCallParameterException` naming the available types; this returns to the
-  coordinator's LLM as a tool error it can correct. No spoke runs.
-- **Dangling tool-set reference (build time).** A declared subagent names a tool set the app does not define.
-  `SubagentToolingModule` contributes a `ToolInitializationException` at initialization, so the builder sees
-  the bad reference *by name* before any spawn is attempted.
+- **Unknown subagent type.** The LLM calls `task` with a `subagent_type` not in the enum — including
+  `general-purpose` when the builder switched it off. `_SubagentTool` raises
+  `InvalidToolCallParameterException` naming the offered types; this returns to the coordinator's LLM as a
+  tool error it can correct. No spoke runs.
+- **Unknown tool set on a general-purpose spawn.** The LLM names a tool set this app does not define, or one
+  that is disabled. `_SubagentTool` raises `InvalidToolCallParameterException` listing the valid names. No
+  spoke runs, and the call fails whole rather than dropping the bad entry — see *The spawn surface* for why
+  silently narrowing is the worse outcome.
+- **Missing `tool_sets` on a general-purpose spawn.** The argument is required for that kind. Omitting it
+  fails the call the same way, rather than producing a tool-less spoke nobody chose. An *explicitly empty*
+  list is a deliberate reasoning-only subagent and is allowed.
+- **`tool_sets` on a declared type.** Rejected: the type's allowlist is the builder's, and ignoring the
+  argument would let the coordinator believe it narrowed a spoke it did not.
+- **Dangling tool-set reference in a declared type (build time).** A declared subagent names a tool set the
+  app does not define or has disabled. `SubagentToolingModule` contributes a `ToolInitializationException`
+  at initialization, so the builder sees the bad reference *by name* before any spawn is attempted.
 - **Allowlist resolves to nothing (spawn time).** If a non-empty allowlist resolves to zero tool sets,
   `compile_subagent_manifest` raises `SubagentToolSetResolutionError` and fails the spawn rather than running
-  a tool-less spoke that would confabulate an answer from the task text. An *explicitly empty* allowlist
-  (`[]`) is a deliberate no-tools subagent and is allowed.
+  a tool-less spoke that would confabulate an answer from the task text. Unreachable for a general-purpose
+  spawn (the names were vetted at the tool boundary) and for a declared type in a correctly initialized app;
+  it is the last line of defence, not the first.
+- **Spawn exceeds its wall-clock budget.** `asyncio.wait_for` cancels the spoke and `SubagentSpawner` raises
+  `SubagentToolErrorException` naming the budget — a truncated spoke has no answer, so it must reach the
+  coordinator as an error rather than as silence.
 
 ---
 
 ## Proposed Design
 
 Two implementations are on the table. They share the whole user-facing surface described in *Concepts* —
-the builder declares subagent types in the manifest, the coordinator's LLM calls one `task` tool — and
-differ only in **where the spoke runs**.
+one switch in the manifest, one `task` tool whose `subagent_type` picks a declared type or the
+general-purpose one scoped by the call — and differ only in **where the spoke runs**.
+
+> **The decision is closed.** Approach A was implemented and is what ships; B is retained below as the
+> documented migration target, and the comparison as the record of why. The two sections are written in the
+> forward tense of the original proposal, with the outcome noted where it differs from the forecast.
 
 ### Shared: a subagent is an `ApplicationConfig`
 
-Both approaches compile a declared subagent type plus the coordinator's task into a full QuickApp
-manifest:
+Both approaches compile one subagent — a declared type, or the general-purpose one materialized from the
+call — plus the coordinator's manifest into a full QuickApp manifest:
 
 | Manifest field | Source |
 |---|---|
-| `orchestrator.deployment.deployment_id` | subagent `deployment_id`, else inherited from the coordinator |
-| `orchestrator.system_prompt` | subagent `system_prompt` (replaces, never appends) |
-| `orchestrator.max_iterations` | subagent `max_iterations`, else inherited |
-| `tool_sets` | the coordinator's tool sets, narrowed to the declared allowlist |
+| `orchestrator.deployment.deployment_id` | the subagent's `deployment_id`, else inherited from the coordinator |
+| `orchestrator.system_prompt` | the subagent's `system_prompt` (replaces, never appends); for the general-purpose kind that is the builder's override or the built-in prompt, never the coordinator's |
+| `orchestrator.max_iterations` | the subagent's `max_iterations`, else inherited |
+| `tool_sets` | the coordinator's enabled tool sets, narrowed to the allowlist — the declared one, or **the one this `task` call named** |
 | `tool_defaults` | **inherited** from the coordinator (deep-copied) |
 | `contexts` | **inherited** from the coordinator (deep-copied) |
 | `skills` | **inherited** from the coordinator |
 | `hooks` | **inherited** from the coordinator |
-| `features` | **inherited** from the coordinator |
-| `subagents` | always `None` — depth 1, a spoke cannot spawn |
+| `features` | **inherited** from the coordinator, except `features.subagents` |
+| `features.subagents` | always `None` — depth 1, a spoke cannot spawn |
 | `starters`, `conversation_starters` | always **cleared** — coordinator↔user UI concerns; a spoke has no user conversation to seed |
 
 **Inherited vs. cleared.** `compile_subagent_manifest` deep-copies the coordinator's manifest, then
-overrides only what the subagent declares and clears exactly three fields: `subagents` (the depth cap), and
-`starters` / `conversation_starters` (both are coordinator-facing conversation UI, meaningless to a spoke
-that never talks to the user). Everything else — `contexts`, `skills`, `hooks`, and `features` — is inherited
-wholesale, so a spoke sees the same attached files, skill library, lifecycle hooks, and feature toggles as
-the coordinator.
+overrides only what the subagent carries and clears exactly three fields: `features.subagents` (the depth
+cap), and `starters` / `conversation_starters` (both are coordinator-facing conversation UI, meaningless to
+a spoke that never talks to the user). Everything else — `contexts`, `skills`, `hooks`, and the other
+`features` — is inherited wholesale, so a spoke sees the same attached files, skill library, lifecycle hooks,
+and feature toggles as the coordinator.
 
 **The cost of inherit-everything.** Two of the four inherited fields argue against this default:
 
@@ -251,17 +332,20 @@ the coordinator.
 - **`hooks` are lifecycle callbacks written against a user conversation.** A spoke has no user and no real
   `Choice`. A hook that assumes either is a latent failure inside a spawn, not a missing feature.
 
-The confinement-first default would be the opposite: inherit nothing but what the subagent declares. That
-default is not taken here because it would make `contexts` and `skills` required fields on every subagent
-declaration, and keeping the declaration surface small is half the point of G2. Getting the default right
-needs a per-field merge/override policy, which is a larger change than the one made here (see *Out of
-Scope*). Until then this is a known cost: builders should assume a spoke pays for the coordinator's
-attachments, and hooks should be reviewed for spoke-safety before being combined with subagents.
+`tool_sets` is the one field that already took the confinement-first default for the general-purpose kind:
+nothing is inherited, everything is named. Extending that to `contexts` and `skills` would mean adding them
+to the `task` call too, which asks the coordinator's LLM to reason about attachments and skill libraries it
+cannot see the contents of — a much weaker basis for a decision than "which tools does this sub-task need".
+For declared types it would make `contexts` and `skills` required fields on every declaration, and keeping
+that surface small is half the point of G2. Getting the default right needs a per-field merge/override
+policy, which is a larger change than the one made here (see *Out of Scope*). Until then this is a known
+cost: builders should assume a spoke pays for the coordinator's attachments, and hooks should be reviewed
+for spoke-safety before being combined with subagents.
 
 Two consequences follow. First, the tool allowlist needs no new filtering machinery in either approach: it is
-expressed by narrowing `tool_sets` in the compiled manifest. Second, running a spoke is exactly "run one
-QuickApp request against this manifest" — so the two approaches are two answers to *where that request
-executes*, not two different feature designs.
+expressed by narrowing `tool_sets` in the compiled manifest, whichever party wrote the allowlist. Second,
+running a spoke is exactly "run one QuickApp request against this manifest" — so the two approaches are two
+answers to *where that request executes*, not two different feature designs.
 
 ### Approach A — in-process spawn
 
@@ -273,57 +357,105 @@ subagent output sink.
 
 **Semantics.**
 
-1. The LLM calls `task(subagent_type, prompt)`. `ToolExecutor` dispatches to `_SubagentTool` like any
-   other tool, and a stage opens on the coordinator's choice.
+1. The LLM calls `task(subagent_type, prompt, tool_sets?)`. `ToolExecutor` dispatches to `_SubagentTool`
+   like any other tool, and a stage opens on the coordinator's choice. `_SubagentTool` settles which
+   subagent runs — a declared type as declared, or the general-purpose one materialized with the vetted
+   `tool_sets` — before anything is spawned.
 2. `SubagentSpawner` compiles the manifest and enters a fresh scope via `RequestScopeFactory.create_scope()`
    inside an `asyncio.Task`. The scope key is a `ContextVar` and
    `asyncio` copies context per task, so the child gets its own `_RequestContext`, `StateHolder`, tool
    instances, and `PerformanceTimer` — every `request_scope` binding — with no leakage in either direction.
-3. The child `_RequestContext` is populated **directly**: `api_key`, `bearer`, and forwarded headers copied
-   from the parent; `application_config` set to the compiled manifest. No SDK `Request` is synthesized — the
-   spawner already holds these as typed values, so it sets them on the context rather than round-tripping
-   them through `_RequestContextSetup.setup_context`, whose job is to *extract* them from an HTTP request.
-4. `invoke_initializers(injector, InitializerType.completion)` runs in the child scope — the spoke builds
-   its own tools from its own manifest. This step is **mandatory**: the message-transformer chain reads
+3. The spawner builds a `CompletionInputs` — `api_key`, `bearer`, and forwarded headers copied from the
+   parent; `application_config` set to the compiled manifest; the task as the sole user message; and a
+   `Choice` over a `SubagentOutputSink` rather than the user's — the assignment that decides where
+   everything the spoke writes ends up (see *How a spoke's output reaches the user*) — and hands it to
+   `CompletionRunner`, the same request-scoped lifecycle the HTTP handler runs. No SDK `Request` is
+   synthesized: `CompletionInputs.from_request` is the HTTP adapter's job, and the spawner already holds
+   the values as typed data.
+4. `CompletionRunner.run` does what it does for a user request: `_RequestContextSetup.setup_context`
+   (which runs `ConfigResolver` over the manifest), `invoke_initializers(completion)` — the spoke builds its
+   own tools from its own manifest; this is **mandatory** because the message-transformer chain reads
    `OrchestratorCapabilities`, which only exists once `_OrchestratorDeploymentInitializer.initialize()` has
-   run. A spoke can neither skip initialization nor borrow the coordinator's.
-5. `_RequestContextSetup.setup_messages([task])` runs **after** initializers (the transformer chain needs the
-   feature contexts populated during initialization), setting the task as the spoke's sole user message.
-6. `injector.get(Orchestrator)` → `await invoke()`.
-7. The final assistant message becomes `ToolCallResult.content`. The child scope exits,
-   `RequestAsyncCloseRegistry` closes its MCP sessions, and the rest is garbage.
+   run — then `setup_messages` **after** initializers (the transformer chain needs the feature contexts
+   populated during initialization), then the initialization-issues check, then `Orchestrator.invoke()`.
+   A spoke can neither skip initialization nor borrow the coordinator's.
+5. The final assistant message becomes `ToolCallResult.content`; the attachments the sink collected become
+   `ToolCallResult.attachments`. Teardown has already happened by this point: the child orchestrator's
+   `_persisting_state()` `finally` block flushes `RequestAsyncCloseRegistry` — closing the spoke's MCP
+   sessions and HTTP clients — during `invoke()`, not as a consequence of the scope exiting. The scope then
+   exits and the rest is garbage.
 
-**Current state — spike vs. target.** Steps 2–7 are built and validated as a spike in
-`src/quickapp/subagent_tooling/` (`SubagentSpawner`), including the scope-isolation claim in step 2 for
-parallel spawns. The spike runs the **unmodified** orchestrator by handing the child scope a throwaway
-`Choice` (`_headless_choice()`, marked *SPIKE ONLY*) whose chunks are discarded where they are produced.
-The spike covers scope isolation and manifest compilation; it defers the output sink.
+**How a spoke's output reaches the user.** Steps 2–5 above were first built as a spike that handed the
+child scope a throwaway `Choice` over a discarding queue, dropping everything the spoke wrote — its streamed
+content, its stage activity, and **any attachment it produced**. Lifting that appeared to require decoupling
+`Orchestrator` from `Choice` behind an output-sink interface, which was the largest change this design
+contemplated.
 
-**What the placeholder costs.** Everything the orchestrator writes to a spoke's `Choice` is dropped: its
-streamed content (harmless — the final answer is read back off `_RequestContext.messages` instead), its
-`set_state` (harmless — spokes are stateless by design), and **any attachment it produced (not harmless)**.
-A spoke that generates a chart or a file has no way to return it; only text crosses back to the coordinator.
-That capability gap is why the `subagent_demo` app's `analyst` is declared text-only rather than advertising
-charts. Approach B does not have this gap — a spoke there has a real `Choice` because it is a real request.
+It turned out not to be necessary. `Choice` and `Stage` are pure producers over a `ChunkQueue`: every write
+either offers — `append_content`, `add_attachment`, `set_state`, `create_stage`, `Stage.append_name`,
+`Stage.append_content`, `Stage.close` — is one `put_nowait` of a typed chunk. Intercepting the *queue*
+therefore captures a spoke's entire output, so `SubagentOutputSink` (an `asyncio.Queue` subclass) replaces
+the discarding one and renders the chunks into the coordinator's `task` stage. **The orchestrator is
+unchanged, and `AppModule.__provide_stage` is unchanged** — it still derives `Stage` from the child scope's
+`Choice`, which is now sink-backed.
 
-Before the feature ships on Approach A, the orchestrator must stop writing to `Choice` directly — the
-**output-sink abstraction** below is the required production change, and it removes `_headless_choice()`.
+The smaller seam was taken because the sink interface would have added an abstraction to the orchestrator's
+hot path to serve one caller, while the queue is already the SDK's own seam for exactly this: redirecting
+where a choice's output goes. The refactor remains available if a second caller ever needs it.
 
-**Change.**
+What the sink does with each chunk:
 
-- **Output-sink abstraction (the largest change, still to build).** `Orchestrator` writes to `Choice`
-  directly — `set_state`, `add_attachment`, `create_function_tool_call`, and as the stream `destination`
-  (`orchestrator.py:143,279,290,313`). A spoke has no user `Choice`. Introduce a sink interface with two
-  implementations: today's choice-backed one, and a subagent one that buffers content, forwards attachments
-  to the parent tool result, drops `set_state` (spokes are stateless), and rejects external tool calls (a
-  spoke cannot surface client-side tool calls to a user it has no channel to).
-- `AppModule.__provide_stage` derives `Stage` from `Choice` (`app_module.py:96`); the child scope must bind
-  the spoke's own stage instead.
-- **Message and manifest setup reuse the existing lifecycle, no shared extraction required.** The spawner
-  mirrors the sequence `_QuickAppCompletion.chat_completion` runs (setup → initializers → messages →
-  orchestrator), but populates `_RequestContext` directly and calls `setup_messages` rather than adding a
-  fake-`Request` entry point to `setup_context`. *(Decision: direct population, not a synthetic request —
-  see Semantics step 3.)*
+| Chunk | Handling |
+|---|---|
+| `ContentChunk` | the spoke's own prose → appended to the parent stage. This is the live progress signal. |
+| `StartStageChunk` / `NameStageChunk` / `ContentStageChunk` | buffered per stage index (names arrive incrementally) |
+| `FinishStageChunk` | emits that spoke stage as one line plus its body as a blockquote |
+| `AttachmentChunk` | collected onto `SpawnResult` → `ToolCallResult.attachments` |
+| `AttachmentStageChunk` | added to the parent stage |
+| `FunctionToolCallChunk` / `FunctionCallChunk` | dropped with a warning; unreachable, as a spoke inherits no client-side tools |
+| everything else — `StateChunk` (spokes are stateless), choice start/end, usage, form schema, discarded messages | dropped by the catch-all branch |
+
+Stage bodies are buffered until the stage closes rather than streamed through, because a spoke gathers its
+tool calls — several of its stages are open at once, and streaming them into one parent stage would splice
+two transcripts together character by character.
+
+**Attachments cross back.** `StagedBaseTool.arun` already filters a result's attachments by
+`propagate_types_to_choice` and `Orchestrator._execute_internal_tool_calls` already pushes those to the
+user's choice, so a spoke's chart reaches the user with no further plumbing. This closes the capability gap
+that once forced the demo app's `analyst` to be declared text-only.
+
+**Usage is not aggregated.** A spoke's token usage stays inside its own run: the coordinator's
+`ToolCallResult.usage` is left unset. The spoke's orchestrator renders its own "Usage Statistics" stage,
+which the sink surfaces inside the `task` stage, so the numbers are visible — but they are not folded into
+the coordinator's usage table. Reaching them properly means either a per-scope binding override or reading a
+private field off the child `Orchestrator`, neither of which is worth it for a display total. Left as a
+known gap.
+
+**Bounds on a spawn.** Both were listed as prerequisites of this ship, and both are in it.
+
+*Per-spawn timeout.* `asyncio.wait_for` wraps the spawn. The budget is `SUBAGENT_TIMEOUT_SECONDS` (admin,
+default 600s), which an app's `features.subagents.timeout_seconds` may shorten but never extend — the
+resolution is `min(declared, ceiling)`, so a manifest cannot raise a limit the operator set. On expiry the
+spawn raises `SubagentToolErrorException`, reusing the path built for the answerless case (G6): a truncated
+spoke has no answer, so it must reach the coordinator as an error it can act on rather than as silence.
+Cancelling a spoke mid-loop does not leak its resources: `_persisting_state()` catches `BaseException`, so
+the `finally` block that closes its MCP sessions and HTTP clients runs on the `CancelledError` path exactly
+as it does on the success path (see semantics step 5).
+
+*Concurrency bound.* `SpawnSemaphore` caps in-flight spawns at `SUBAGENT_MAX_CONCURRENT_SPAWNS` (default 4),
+held around the initializer pass and the orchestrator loop. It is a **singleton, not request-scoped**: the
+resource being protected is the replica's event loop and memory, which every concurrent user request draws
+on, so a per-request cap would bound nothing. Excess spawns **queue rather than fail** — an LLM that fans out
+to twelve scouts should get twelve results slowly, not eight results and four errors — and the timeout above
+bounds the wait, so a queued spawn cannot block forever.
+
+**One completion lifecycle, shared.** `CompletionRunner` (`core/application/`) owns the sequence
+`_QuickAppCompletion.chat_completion` used to run inline — context setup → initializers → messages →
+initialization issues → orchestrator — and takes a `CompletionInputs` value. The HTTP handler builds the
+inputs from the SDK `Request` (`CompletionInputs.from_request`); the spawner builds them from the values it
+already holds. The spike's first cut populated `_RequestContext` directly and re-ran the steps by hand,
+which silently skipped `ConfigResolver` and the initialization-issues check for spokes. *(Decision: a
+shared runner with typed inputs, not a synthetic request — see Semantics step 3.)*
 
 **Costs and risks.**
 
@@ -333,9 +465,6 @@ Before the feature ships on Approach A, the orchestrator must stop writing to `C
   across scopes and costs nothing after the first spawn. The per-spawn cost is therefore connection setup,
   not metadata resolution. Shared with B, but only A can mitigate it further by reusing selected parent tool
   instances.
-- **Timeouts are out of scope for the initial ship.** `asyncio.wait_for` around the spawn is the intended
-  mechanism, but enforcing it (and surfacing a clean timeout error to the coordinator) is deferred — see
-  *Out of Scope*. Until then a runaway spoke is bounded only by its own `max_iterations`.
 - No process isolation. A runaway spoke consumes the coordinator's process; there is no HTTP layer to fall
   back on for cancellation.
 - Spokes contend with the coordinator for the event loop and for memory, inside one replica.
@@ -352,7 +481,7 @@ coordinator compiles a manifest and sends it with the request.
 
 **Semantics.**
 
-1. The LLM calls `task(subagent_type, prompt)` — identical surface to Approach A.
+1. The LLM calls `task(subagent_type, prompt, tool_sets?)` — identical surface to Approach A.
 2. `SubagentTool` compiles the manifest and delegates to the existing `DialCompletionService`, targeting the
    subagent deployment with the task as the user message and the manifest in the request body.
 3. That request reaches a QuickApp instance and runs the ordinary lifecycle, with one difference:
@@ -377,7 +506,7 @@ not per subagent type — all of an installation's spokes, from every coordinato
 
 **Change.**
 
-- `ApplicationConfig` gains `subagents` (shared with A).
+- `Features` gains `subagents` (shared with A).
 - New `SubagentTool` that compiles a manifest and delegates to `DialCompletionService`.
 - `_RequestContextSetup` merges a request-supplied manifest over the resolved one. **This is the trust
   boundary** — see below.
@@ -385,7 +514,8 @@ not per subagent type — all of an installation's spokes, from every coordinato
   used.
 
 **The trust boundary.** In our own flow the manifest is server-authored: the builder declares the subagent
-types, and the LLM only picks a type and writes a task string. But the callee cannot tell the difference.
+types and enables the general-purpose one, and the LLM only picks a type, writes a task string, and — for a
+general-purpose spawn — names tool sets from the app's own. But the callee cannot tell the difference.
 Once a deployment merges caller-supplied manifests, anyone holding an API key can POST an arbitrary manifest
 — naming any deployment and any tool — and have it executed under their own key. This needs the same
 two-tier gate shape used for external fetch: an admin env switch plus a per-app feature flag. Following the
@@ -408,32 +538,33 @@ never leaves the process.
 - Process isolation. A spoke that hangs or OOMs does not take the coordinator down, and HTTP timeouts apply
   for free.
 - Horizontal scale: spokes are load-balanced across replicas like any other request.
-- **No orchestrator changes at all.** The spoke has a real `Choice`, real streaming, and real state because
-  it is a real request — Approach A's largest change simply does not exist here.
+- **A real `Choice`, real streaming, and real state, because it is a real request.** Nothing has to be
+  intercepted or stood in for. *(Forecast as B's decisive advantage, on the assumption that A would have to
+  decouple `Orchestrator` from `Choice`. It did not — A intercepts the chunk queue instead and leaves the
+  orchestrator untouched, so what remains here is a smaller edge than projected.)*
 - Per-spawn cost and usage are already visible to Core as an ordinary deployment call.
 
 ### Comparison
 
 | Dimension | A — in-process | B — separate QuickApp, configured per request |
 |---|---|---|
-| Orchestrator changes | Output-sink abstraction required | None |
+| Orchestrator changes | None — the sink intercepts the chunk queue *(forecast: output-sink abstraction required)* | None |
 | New code | Spawner + scope plumbing + sink | Spawn tool + manifest serialize/merge |
 | Deployment/ops change | None | New runner deployment |
 | Core dependency | None | Config channel policy |
 | Isolation | None — shares process, loop, memory | Full |
 | Scaling | Bounded by one replica | Load-balanced |
-| Timeouts / cancellation | Ours to build (deferred initial ship) | HTTP layer, free |
-| Concurrency backpressure | None — unbounded fan-out in one replica | HTTP layer / Core |
+| Timeouts / cancellation | Ours to build — `asyncio.wait_for` per spawn, shipped | HTTP layer, free |
+| Concurrency backpressure | Ours to build — `SpawnSemaphore`, replica-wide, shipped | HTTP layer / Core |
 | Latency per spawn | Tool init only | Tool init + HTTP hop + app bootstrap |
 | Security surface | None new — manifest never leaves the process | Caller-supplied manifest execution; needs a two-tier gate |
-| Attachments from a spoke | Dropped until the sink lands | Work — real `Choice` |
+| Attachments from a spoke | Work — the sink collects them off the queue | Work — real `Choice` |
 | Observability | In-process; parent's perf timer can nest | Separate request; needs trace correlation |
 | Parallel spawns | `asyncio.gather` (validated) | Concurrent HTTP calls |
 | Tool init cost per spawn | Connection setup only — deployment metadata is singleton-cached; mitigable further by reusing parent tools | Connection setup, not mitigable |
 
 **Recommendation: A.** B is the better runtime on every operational dimension — isolation, free HTTP
-timeouts, backpressure, horizontal scale, working attachments, and no orchestrator changes at all — and none
-of that is disputed. It is not the recommendation because of what it costs to get there:
+timeouts, backpressure, and horizontal scale — and none of that is disputed. It is not the recommendation because of what it costs to get there:
 
 - **A new trust boundary.** Merging caller-supplied manifests means the runner executes whatever manifest an
   API key posts to it, which forces the two-tier gate (`SUBAGENT_MANIFEST_INJECTION_ENABLED` plus a per-app
@@ -444,29 +575,43 @@ of that is disputed. It is not the recommendation because of what it costs to ge
   to decide.
 
 Against that, A's costs are all inside this repository and all bounded: the output sink, a per-spawn timeout,
-and a concurrency bound. The sink in particular is a refactor worth having on its own merits — it is the
-change that lets an orchestrator run anywhere. A is also already spiked and validated (scope isolation,
-manifest compilation, parallel spawns).
+and a concurrency bound. The sink in particular buys something worth having on its own merits — a way to
+point an orchestrator's output somewhere other than the user's choice. A is also already spiked and
+validated (scope isolation, manifest compilation, parallel spawns).
 
 So: **A ships first, and the output sink, a per-spawn timeout, and a concurrency bound are prerequisites of
-that ship rather than deferrals** (see *Out of Scope*). B stays on the table as the migration target once
-subagents earn the operational investment — and the switch is not a rewrite: manifest compilation, the
-`subagents` config, and the `task` tool surface are identical in both, so only the execution backend behind
-`SubagentSpawner` changes.
+that ship rather than deferrals** (all three are in it — see *Bounds on a spawn* and *How a spoke's output
+reaches the user*).
+
+**In the event, three of A's four projected costs came in below forecast.** The output sink needed no
+orchestrator change at all, because `Choice` and `Stage` are pure producers over a queue and the queue was
+already the seam; attachments cross back rather than being dropped; and the timeout and concurrency bound
+were each a contained addition. Only the scope-leakage hazard is unchanged — it is structural to running a
+second agent in one process, and no amount of implementation retires it. B's real edge is therefore narrower
+than the table forecast: isolation, scale, and free HTTP timeouts, bought with a trust boundary, a
+deployment, and a Core-policy dependency.
+
+B stays on the table as the migration target once subagents earn the operational investment — and the
+switch is not a rewrite: manifest compilation, the `features.subagents` config, and the `task` tool surface
+are identical in both, so only the execution backend behind `SubagentSpawner` changes.
 
 ---
 
 ## Secondary Fixes
 
-- **`Stage` decoupled from `Choice`.** `AppModule.__provide_stage` builds a `Stage` from the request `Choice`
-  (`app_module.py:96`). When the output-sink abstraction lands, the child scope must bind a spoke-owned stage
-  that targets the sink rather than a user choice. This is a prerequisite of the sink change, not an
-  independent fix, but it is the concrete DI seam that has to move.
-- **Build-time validation of `tool_sets` references (already implemented).** `SubagentToolingModule`
-  contributes an `InitializationException` for every subagent `tool_sets` entry that names a nonexistent app
-  tool set, so a typo surfaces as a named error at app initialization rather than as a silently tool-less
-  spoke at spawn time. This falls directly out of the manifest-compilation design and is guarded by
-  `test_dangling_tool_set_reference_is_reported_at_initialization`.
+- **`Stage` was *not* decoupled from `Choice`.** The anticipated DI seam — rebinding
+  `AppModule.__provide_stage` so a child scope gets a spoke-owned stage — turned out not to need moving: the
+  chunk queue is the cheaper interception point, and `__provide_stage` still derives `Stage` from the child
+  scope's (now sink-backed) `Choice`. Recorded here because an earlier revision listed it as work to do.
+- **Validation of `tool_sets` references happens where it can be acted on.** For a declared type the names
+  are the builder's, so `SubagentToolingModule` contributes an `InitializationException` for every entry
+  that names a nonexistent or disabled app tool set — a typo surfaces as a named error at app
+  initialization rather than as a silently tool-less spoke at spawn time (guarded by
+  `test_dangling_tool_set_reference_is_reported_at_initialization`). For a general-purpose spawn the names
+  arrive from the coordinator's LLM, so there is nothing to check at startup: `_SubagentTool` rejects an
+  unknown name with the valid options, which the LLM can read and retry against (guarded by
+  `test_an_unknown_tool_set_fails_the_call_without_spawning`). Both checks share one definition of "which
+  tool sets does this app offer" — `tool_set_names`, which also fills the schema enum.
 
 ---
 
@@ -507,56 +652,80 @@ The equivalent for a spawn would put three fields on `ToolCallResult`:
 With those, the coordinator's prompt can carry one rule ("retry a retryable failure once with a narrower
 task; otherwise report it") instead of relying on the LLM to read intent out of an error sentence.
 
-Deferred for two reasons. It is not subagent-shaped: `ToolCallResult` is
-shared by all four tool types, so adding these fields is a change to the tool contract every tool implements,
-and the categories should be settled against DIAL's own error types rather than invented here. And the
-categories only become distinguishable once the failures are — `timeout` cannot be a category before
-per-spawn timeouts exist (below). A future pass should do the two together.
+Deferred because it is not subagent-shaped: `ToolCallResult` is shared by all four tool types, so adding
+these fields changes the tool contract every tool implements, and the categories should be settled against
+DIAL's own error taxonomy rather than invented for subagents. The per-spawn timeout now exists, so
+`timeout` is a distinguishable category when that pass happens.
 
-### Per-spawn timeout / cancellation
-
-`asyncio.wait_for` around the spawn is the intended enforcement point, but it is not in the initial Approach A
-ship. A spoke is currently bounded only by its own `max_iterations`. Addressing it needs a decision on the
-timeout source (per-app config vs. an env default) and on the coordinator-facing error a timeout produces —
-which is the `timeout` category above, so the two should land together.
-
-### Concurrency bound on parallel spawns
-
-UC-1 actively encourages fan-out, and nothing limits it. An LLM that decides to spawn twelve scouts gets
-twelve spokes, each running a full initializer pass — MCP sessions reconnecting, REST clients rebuilding —
-with no semaphore and, until the item above lands, no timeout either.
-
-**This is Approach A's gap specifically.** B gets backpressure free from the HTTP layer and spreads the load
-across replicas; A concentrates all of it in the coordinator's single process and event loop. Since A ships
-first, a spawn semaphore is a prerequisite of that ship rather than a deferral, and it needs a decision on
-what the coordinator sees when it hits the cap (queue, or fail the excess spawns).
-
-### Per-subagent `contexts` / `skills` / `hooks`
+### Per-spawn `contexts` / `skills` / `hooks`
 
 A spoke inherits all three wholesale from the coordinator. As *Proposed Design* notes, this has a real cost —
 `contexts` are attachments, so inheritance sets the per-spawn token floor at the coordinator's whole
-attachment set, and `hooks` written for a user conversation are a latent failure inside a spoke. Fixing it
-needs a per-field merge/override policy plus new schema surface on `SubagentConfig`, and the cheap version
-(make the fields required) trades away the small declaration surface that is half the point of the feature
-(G2).
+attachment set, and `hooks` written for a user conversation are a latent failure inside a spoke. The
+general-purpose kind's `tool_sets` shows the shape a fix could take: make it an argument the coordinator
+chooses per spawn. It is deferred because the analogy does not carry — the coordinator picks tool sets from
+a list it understands, whereas asking it to select attachments and skills means asking it to reason about
+contents it cannot see. On the declared side the cheap version (make the fields required) trades away the
+small declaration surface that is half the point of G2. Fixing this properly needs a per-field
+merge/override policy, not one more array on the `task` call or one more field on `SubagentConfig`.
 
-### Tool-level allowlists
+### Tool-level scoping
 
 A subagent narrows its tools by toolset, not by individual tool name. Deferred because MCP tools are
-discovered when the session connects, so a tool-name allowlist cannot be resolved at manifest-compile time
-the way a toolset allowlist can. Addressing it means filtering `list[StagedBaseTool]` *after* initialization
-— a post-init filter in the child scope rather than a manifest transformation — which also raises the
-question of what to do when a named tool turns out not to exist on the connected server.
+discovered when the session connects, so a tool-name enum cannot be built when the `task` schema is, and a
+tool-name allowlist cannot be resolved at manifest-compile time the way a toolset allowlist can. Addressing
+it means filtering `list[StagedBaseTool]` *after* initialization — a post-init filter in the child scope
+rather than a manifest transformation — which also raises the question of what to do when a named tool turns
+out not to exist on the connected server. Note this limit binds the *coordinator* as much as the builder: it
+is the granularity at which the model can scope a general-purpose spawn.
+
+### Per-call system prompt for the general-purpose kind
+
+The coordinator scopes a general-purpose spawn's *tools* per call but not its *instructions*: the prompt is
+the builder's override or the built-in one. A `system_prompt` call argument would complete the "ephemeral,
+caller-configured worker" shape the problem statement describes. Deferred because it is a different trust
+question — the coordinator's LLM would then author the instructions a second LLM runs under, with nothing
+a builder wrote in between — and because the declared kind already covers the case where a task deserves
+its own prompt. Cheap to add if wanted: `general_purpose_subagent()` already takes everything per call.
 
 ---
 
 ## Configuration / Usage Examples
 
-**Preview gating.** `subagents` is a `PreviewField`: it is silently nullified during config validation unless
-the QuickApps backend runs with `ENABLE_PREVIEW_FEATURES=true`. An app that declares subagents while preview
-is off behaves exactly as if the field were absent — no `task` tool is offered.
+**Preview gating.** `features.subagents` is a `PreviewField`: it is silently nullified during config
+validation unless the QuickApps backend runs with `ENABLE_PREVIEW_FEATURES=true`. An app that enables
+subagents while preview is off behaves exactly as if the field were absent — no `task` tool is offered.
 
-**Minimal coordinator manifest** with one subagent type:
+**Minimal coordinator manifest.** One boolean; the tool sets are the app's ordinary ones, and nothing about
+them mentions subagents. The coordinator gets the general-purpose subagent and scopes it per call:
+
+```json
+{
+  "orchestrator": {
+    "deployment": { "deployment_id": "gpt-4.1-2025-04-14" },
+    "system_prompt": { "type": "custom", "content": "You coordinate; delegate multi-step work to subagents.", "variables": {} },
+    "max_iterations": 20
+  },
+  "contexts": [],
+  "tool_sets": [
+    {
+      "name": "Web search toolset",
+      "description": "Grounded web search.",
+      "type": "dial-deployment",
+      "tools": [ { "type": "predefined-tool", "template_name": "web_search" } ]
+    }
+  ],
+  "features": {
+    "subagents": { "enabled": true }
+  }
+}
+```
+
+Give tool sets a `description`: both `name` and `description` are rendered into the `task` tool's
+`tool_sets` parameter as a catalogue, because the coordinator knows which *tools* it holds but not which
+*set* each belongs to.
+
+**Adding a declared type** for a recurring job, with its own prompt and a fixed allowlist:
 
 ```json
 {
@@ -573,22 +742,28 @@ is off behaves exactly as if the field were absent — no `task` tool is offered
       "tools": [ { "type": "predefined-tool", "template_name": "web_search" } ]
     }
   ],
-  "subagents": [
-    {
-      "name": "web_researcher",
-      "description": "Researches a question on the web and reports what it found.",
-      "system_prompt": "You research questions using web search. Reply with the answer and at most five supporting bullets.",
-      "tool_sets": ["Web search toolset"],
-      "max_iterations": 12
+  "features": {
+    "subagents": {
+      "enabled": true,
+      "types": [
+        {
+          "name": "web_researcher",
+          "description": "Researches a question on the web and reports what it found.",
+          "system_prompt": "You research questions using web search. Reply with the answer and at most five supporting bullets.",
+          "tool_sets": ["Web search toolset"],
+          "max_iterations": 12
+        }
+      ]
     }
-  ]
+  }
 }
 ```
 
-`tool_sets` on a subagent matches app tool sets by their `name` (the resolved name, e.g. `"Web search
-toolset"`), not by template id.
+`tool_sets` — declared or passed on the call — matches app tool sets by their `name` (the resolved name,
+e.g. `"Web search toolset"`), not by template id. `"general_purpose": null` would withhold the built-in
+kind and leave only `web_researcher` in the enum.
 
-**The spawn round-trip.** The coordinator's LLM calls the generated tool:
+**The spawn round-trip.** The coordinator's LLM calls the generated tool, either selecting the declared type:
 
 ```json
 {
@@ -600,6 +775,19 @@ toolset"`), not by template id.
 }
 ```
 
+or scoping the general-purpose one as it goes:
+
+```json
+{
+  "name": "task",
+  "arguments": {
+    "subagent_type": "general-purpose",
+    "prompt": "What problem does the Model Context Protocol solve, and what are its main primitives? Answer in five bullets.",
+    "tool_sets": ["Web search toolset"]
+  }
+}
+```
+
 and receives back only the spoke's final message:
 
 ```json
@@ -607,18 +795,16 @@ and receives back only the spoke's final message:
 ```
 
 The spoke's own web-search calls and intermediate turns are not in this result and never entered the
-coordinator's context.
+coordinator's context. Had the coordinator passed `"tool_sets": []` on the general-purpose call, the same
+spoke would have run with no tools at all — a legitimate spawn for a task that is pure reasoning over text
+already in the `prompt`.
 
 **A full, runnable example** ships in `docker_compose_files/core/configuration/applications.json` as the
-`subagent_demo` app: a coordinator with three subagent types (`weather_scout`, `web_researcher`, `analyst`),
-per-subagent `deployment_id` / `tool_sets` / `max_iterations` narrowing, and conversation starters that
-exercise single-city, multi-city fan-out, research, and mixed spawns. It requires
-`ENABLE_PREVIEW_FEATURES=true` on the backend.
-
-`analyst` is declared text-only — it computes and reports numbers, and its prompt tells it not to offer
-charts. That is a constraint of the current runtime, not of the design: until the output sink lands, a
-spoke's attachments are dropped (see *Current state — spike vs. target*), so a demo that advertised plots
-would silently fail to deliver them.
+`subagent_demo` app: a coordinator with the general-purpose subagent on and three declared types
+(`weather_scout`, `web_researcher`, `analyst`) with per-type `deployment_id` / `tool_sets` /
+`max_iterations` narrowing, and conversation starters that exercise multi-city fan-out, computation with a
+chart returned from a Python-only spoke, research, a general-purpose spawn scoped by the coordinator, and a
+spawn with no tools at all. It requires `ENABLE_PREVIEW_FEATURES=true` on the backend.
 
 ---
 
@@ -626,45 +812,86 @@ would silently fail to deliver them.
 
 ### Breaking changes
 
-None. `subagents` is a new optional field; every existing manifest validates and behaves exactly as before.
+The root `ApplicationConfig.subagents` array of an earlier revision is **removed**; the same entries now live
+at `features.subagents.types`, under an explicit `enabled` switch. This is acceptable because the whole
+feature is preview-gated and unreleased: with `ENABLE_PREVIEW_FEATURES` unset — the default, and what any
+deployed app runs on — the field was nullified during validation anyway, so no shipped app depended on it.
+Apps built against the earlier revision move the array to `features.subagents.types` and add
+`"enabled": true`; the `subagent_demo` app in the local stack shows the result.
 
 ### Non-breaking changes
 
-`subagents` is an optional, preview-gated (`PreviewField`) addition to `ApplicationConfig`. Apps that do not
-declare it are unaffected. When `ENABLE_PREVIEW_FEATURES` is unset, the field is nullified during config
-validation, so even a manifest that *does* include it degrades gracefully to today's behavior rather than
-erroring. Enabling the feature requires no migration of existing apps.
+`features.subagents` is an optional, preview-gated (`PreviewField`) addition. Apps that do not enable it are
+unaffected. When `ENABLE_PREVIEW_FEATURES` is unset, the field is nullified during config validation, so
+even a manifest that *does* include it degrades gracefully to today's behavior rather than erroring.
+Enabling the feature requires no migration of existing apps.
 
 ## Summary of Changes
 
 **Config (`src/quickapp/config/`)**
 
-- `subagent.py` — new `SubagentConfig`: `name`, `description`, `system_prompt`, `tool_sets?`,
+- `subagent.py` — `SubagentsConfig`: `enabled`, `general_purpose: GeneralPurposeSubagentConfig | None`
+  (`system_prompt?`, `deployment_id?`, `max_iterations?`), `types: list[SubagentConfig]`,
+  `timeout_seconds?`; a validator keeps names unique and `general-purpose` reserved while that kind is on.
+  `SubagentConfig` (a declared type): `name`, `description`, `system_prompt`, `tool_sets?`,
   `deployment_id?`, `max_iterations?`.
-- `application.py` — `ApplicationConfig.subagents: list[SubagentConfig] | None` (preview field).
+- `application.py` — `Features.subagents: SubagentsConfig | None` (preview field).
 
-**New module (`src/quickapp/subagent_tooling/`)**
+**Module (`src/quickapp/subagent_tooling/`)**
 
-- `SubagentToolingModule` (`@preview_module`) — provides the `task` tool when subagents are
-  declared; contributes build-time `tool_sets` validation.
+- `SubagentToolingModule` (`@preview_module`) — offers the `task` tool when `features.subagents.enabled` is
+  true and at least one kind is offered; builds its schema from the app's enabled tool sets so the
+  coordinator can name them; contributes build-time `tool_sets` validation for declared types.
+- `_tool_config.py` — the `task` schema: `subagent_type` (enum of the offered names, general-purpose first)
+  and `prompt`, both required; `tool_sets`, present only when the general-purpose kind is offered, an array
+  whose items enumerate the app's tool set names with a `name: description` catalogue in the parameter
+  description. The `enum` is omitted when the app has no tool sets, since an empty `enum` is not valid JSON
+  Schema.
+- `_builtin_subagents.py` — `GENERAL_PURPOSE_SYSTEM_PROMPT` and `GENERAL_PURPOSE_DESCRIPTION`, and
+  `general_purpose_subagent()`, which materializes the built-in kind into a `SubagentConfig` for one call.
 - `compile_subagent_manifest` — compiles a `SubagentConfig` + parent manifest into a narrowed
-  `ApplicationConfig` (inherits `contexts` / `skills` / `hooks` / `features`; clears `subagents` /
-  `starters` / `conversation_starters`). Caller-side in both approaches — the same function either way.
-- `tool_set_names` / `unknown_tool_sets` — one definition of "which tool sets does this app have" and "which
-  ones did this subagent name that don't exist", shared by the module's build-time check (hard failure) and
-  the compiler (log only). Both tolerate the unresolved `PredefinedToolSet` shape the config type admits.
-- `SubagentSpawner` — runs a spoke in-process in an isolated request scope (Approach A).
-- `_SubagentTool` / `_SubagentStageWrapper` — the `task` `StagedBaseTool` and its stage rendering.
+  `ApplicationConfig` (filters `tool_sets` to the allowlist; inherits `contexts` / `skills` / `hooks` /
+  other `features`; clears `features.subagents` / `starters` / `conversation_starters`). Caller-side in
+  both approaches — the same function either way.
+- `selectable_tool_sets` / `tool_set_names` / `unknown_tool_sets` — one definition of "which tool sets may
+  a spoke be given" (enabled, named; manifest order) and "which ones did this subagent name that aren't
+  offered", shared by the schema builder, the call-time check, the module's build-time check (hard
+  failure) and the compiler (log only). All tolerate the unresolved `PredefinedToolSet` shape the config
+  type admits. Names are `LocalizedString`, resolved with `resolve_localized` at the default locale: the
+  coordinator selects by an identifier it read out of the schema, which must not shift with the caller's
+  `Accept-Language`.
+- `SubagentSpawner` — runs a spoke in-process in an isolated request scope (Approach A), under
+  `SpawnSemaphore` and `asyncio.wait_for`, through `CompletionRunner`; returns a `SpawnResult` (answer +
+  attachments).
+- `_SubagentTool` / `_SubagentStageWrapper` — the `task` `StagedBaseTool`, its argument validation (type
+  selection, `tool_sets` vetting for the general-purpose kind and rejection for declared types), and its
+  stage rendering (which shows the tool sets a general-purpose spawn was given, since that varies per
+  call).
+- `_subagent_output_sink.py` — `SubagentOutputSink`, the `ChunkQueue` that renders a spoke's output into the
+  coordinator's `task` stage and collects its attachments.
+- `_subagent_settings.py` — `SubagentSettings` (`SUBAGENT_TIMEOUT_SECONDS`, `SUBAGENT_MAX_CONCURRENT_SPAWNS`)
+  and `SpawnSemaphore`.
 - `SubagentToolSetResolutionError` — raised when a non-empty allowlist resolves to no tool sets.
-- `SubagentToolErrorException` — a `ToolErrorException` raised when a spawn produces no final answer, so an
-  answerless spoke reaches the coordinator as a tool error rather than an empty success (G6).
+- `SubagentToolErrorException` — a `ToolErrorException` raised when a spawn produces no final answer or
+  exceeds its budget, so an answerless spoke reaches the coordinator as a tool error rather than an empty
+  success (G6).
+
+**Core (`src/quickapp/core/application/`)**
+
+- `CompletionInputs` — the typed boundary of one completion run; `from_request` is the only reader of the
+  SDK request.
+- `CompletionRunner` — the request-scoped lifecycle (context → initializers → messages → initialization
+  issues → orchestrator) shared by `_QuickAppCompletion` and `SubagentSpawner`.
+- `_RequestContextSetup.setup_context` takes `CompletionInputs` instead of an SDK request.
 
 **Wiring**
 
 - `app_factory.py` — registers `SubagentToolingModule`.
-- `docs/generated-app-schema.json` — regenerated for the new field.
+- `docs/generated-app-schema.json`, `docs/generated-internal-tools.json` — regenerated.
+- `docker_compose_files/core/configuration/applications.json` — `subagent_demo` exercises both kinds.
 
-**Open before this ships**
+**Still open**
 
-The output-sink abstraction, a per-spawn timeout, and a concurrency bound are prerequisites of the Approach A
-ship, not deferrals. See *Approach A — Current state — spike vs. target* and *Out of Scope*.
+Usage aggregation from a spoke (see *Approach A*), the structured error contract, per-spawn
+`contexts` / `skills` / `hooks`, tool-level scoping, and a per-call system prompt for the general-purpose
+kind — all detailed in *Out of Scope* above.
