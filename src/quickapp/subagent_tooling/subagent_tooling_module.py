@@ -1,15 +1,16 @@
 import logging
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.exceptions import InitializationException, ToolInitializationException
 from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.subagent import SubagentConfig
+from quickapp.config.subagent import SubagentsConfig
 
-from ._manifest_compiler import tool_set_names, unknown_tool_sets
+from ._manifest_compiler import selectable_tool_sets, tool_set_names, unknown_tool_sets
+from ._subagent_settings import SpawnSemaphore, SubagentSettings
 from ._subagent_spawner import SubagentSpawner
 from ._subagent_stage_wrapper import _SubagentStageWrapper
 from ._subagent_tool import _SubagentTool
@@ -23,33 +24,47 @@ class SubagentToolingModule(Module):
     """In-process subagent spawning."""
 
     def configure(self, binder: Binder) -> None:
+        binder.bind(SubagentSettings, to=SubagentSettings, scope=singleton)
+        # Singleton: the spawn cap bounds this replica's event loop, so it has to hold
+        # across concurrent user requests, not per request.
+        binder.bind(SpawnSemaphore, to=SpawnSemaphore, scope=singleton)
         binder.bind(SubagentSpawner, to=SubagentSpawner, scope=request_scope)
         binder.bind(_SubagentStageWrapper, to=_SubagentStageWrapper)
         logger.debug("SubagentTooling module configuration completed")
 
-    @multiprovider
-    def _provide_subagents(self, app_config: ApplicationConfig) -> list[SubagentConfig]:
-        return list(app_config.subagents or [])
+    @provider
+    def _provide_subagents_config(self, app_config: ApplicationConfig) -> SubagentsConfig:
+        """The app's subagent settings, or all-defaults when the section is absent.
+
+        The defaults are only ever reached by injection sites that exist regardless of
+        the feature switch; nothing spawns unless `_provide_subagent_tools` offered the
+        tool, and that checks `enabled` first.
+        """
+        features = app_config.features
+        return (features.subagents if features else None) or SubagentsConfig()
 
     @multiprovider
     def _provide_initialization_exceptions(
-        self, app_config: ApplicationConfig
+        self, app_config: ApplicationConfig, config: SubagentsConfig
     ) -> list[InitializationException]:
-        """Surface dangling `tool_sets` references before the LLM can spawn.
+        """Surface a declared type's dangling `tool_sets` references before the LLM can spawn.
 
         Caught here, the app builder sees a named bad reference. Caught at spawn
         time, they see a subagent that answered without tools.
         """
+        if not config.enabled:
+            return []
         available = tool_set_names(app_config)
         exceptions: list[InitializationException] = []
-        for subagent in app_config.subagents or []:
+        for subagent in config.types:
             unknown = unknown_tool_sets(app_config, subagent)
             if unknown:
                 exceptions.append(
                     ToolInitializationException(
                         message=(
                             f"Subagent '{subagent.name}' references tool sets that do not exist "
-                            f"in this app: {unknown}. Available: {available or '(none)'}."
+                            f"or are disabled in this app: {unknown}. "
+                            f"Available: {available or '(none)'}."
                         ),
                         tool_name=TASK_TOOL_NAME,
                     )
@@ -59,14 +74,21 @@ class SubagentToolingModule(Module):
     @multiprovider
     def _provide_subagent_tools(
         self,
-        subagents: list[SubagentConfig],
+        app_config: ApplicationConfig,
+        config: SubagentsConfig,
         tool_builder: AssistedBuilder[_SubagentTool],
     ) -> list[StagedBaseTool]:
-        if not subagents:
+        """The `task` tool, when this app opted into delegation and offers a subagent.
+
+        Its schema is built here rather than at import time because the `tool_sets` enum
+        is drawn from this app's own tool sets — the coordinator picks from them per
+        general-purpose spawn, so it needs to see them by name.
+        """
+        if not config.enabled or (config.general_purpose is None and not config.types):
             return []
         return [
             tool_builder.build(
-                tool_config=build_spawn_tool_config(subagents),
+                tool_config=build_spawn_tool_config(config, selectable_tool_sets(app_config)),
                 name=TASK_TOOL_NAME,
             )
         ]
