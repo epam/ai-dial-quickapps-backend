@@ -1,11 +1,16 @@
 from injector import Module
 
 # Import order below is deliberate, and isort leaves it alone (extend_skip_glob covers
-# __init__.py). The sub-packages come FIRST so that a sub-package importing this barrel
-# fails every time: while these four lines run, ``quickapp.skills`` is in sys.modules but
+# __init__.py). The sub-packages come FIRST so that a module reached through them cannot
+# import this barrel: while these four lines run, ``quickapp.skills`` is in sys.modules but
 # carries no attributes yet, so ``from quickapp.skills import ResolvedSkill`` raises
-# ImportError. Bind the contract names first and that same mistake silently succeeds for
-# whichever names happen to be bound already — a rule that only half-enforces.
+# ImportError. Bind the contract names first and that mistake would instead succeed for
+# whichever names happened to be bound already.
+#
+# This catches the import closure of ``skills_module`` — i.e. everything the DI wiring
+# reaches — not the whole package. A module imported only lazily (inside a function) or
+# only from a test sees a fully initialized barrel and would import from it happily, so
+# the ordering is a tripwire for the common case, not an enforced invariant.
 from quickapp.skills.dial_resource.dial_skills_module import DialSkillsModule
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.invocation.skill_invocation_module import SkillInvocationModule

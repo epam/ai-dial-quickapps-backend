@@ -97,9 +97,11 @@ injected as a synthetic `read_skill` pair.
 **Import rule inside `quickapp.skills`:** always import the concrete contract module
 (`from quickapp.skills.skills_provider import ResolvedSkill`), never the `quickapp.skills` barrel —
 `skills/__init__.py` builds `skills_module` by importing the sub-packages, so a sub-package importing the
-barrel hits a circular import against a partially-initialized module. The sub-package imports are
-deliberately placed above the contract re-exports so that mistake fails every time rather than half the
-time. Code outside `quickapp.skills` may use the barrel.
+barrel hits a circular import against a partially-initialized module. The sub-package imports sit
+deliberately above the contract re-exports, which turns that mistake into an `ImportError` for anything
+in `skills_module`'s import closure — everything the DI wiring reaches. A module imported only lazily or
+only from a test still sees a fully initialized barrel, so treat the ordering as a tripwire, not a
+guarantee. Code outside `quickapp.skills` may use the barrel freely.
 
 See [`docs/skills.md`](docs/skills.md).
 
