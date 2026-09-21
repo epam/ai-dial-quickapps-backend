@@ -2,7 +2,7 @@ import threading
 
 from injector import inject
 
-from quickapp.skills.dial._dial_skills_client import MANIFEST_NAME, _DialSkillsClient
+from quickapp.skills.dial_resource._dial_skills_client import MANIFEST_NAME, _DialSkillsClient
 from quickapp.skills.exceptions import SkillFileNotFoundError
 from quickapp.skills.skills_provider import ResolvedSkill, SkillFileReader
 

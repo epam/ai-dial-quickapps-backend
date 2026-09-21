@@ -6,7 +6,7 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import SkillCatastrophicInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills.dial._dial_skills_context import _DialSkillsContext
+from quickapp.skills.dial_resource._dial_skills_context import _DialSkillsContext
 from quickapp.skills.skill_resolver import DialSkillResourceResolver
 
 logger = logging.getLogger(__name__)

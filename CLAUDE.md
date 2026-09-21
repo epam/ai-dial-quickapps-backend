@@ -86,7 +86,7 @@ Skills are reusable instruction modules. Everything skill-related lives under `s
 (`skills_provider.py` and `skill_resolver.py`) at the top, the registry runtime in `skills/registry/`,
 and one sub-package per source. Three sources: predefined skills loaded at startup from `config/predefined/skills/`
 (`skills/registry/agent_skills_provider.py`); DIAL prompt skills (`skills/dial_prompt/`) fetched per
-request from Core's prompts API; and DIAL skill resources (`skills/dial/`) fetched per request from
+request from Core's prompts API; and DIAL skill resources (`skills/dial_resource/`) fetched per request from
 Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the agent reads on demand via
 `read_skill(skill_name, file_path)`.
 `SkillsRegistry` merges all three per request and owns precedence (predefined > dial-prompt > dial-skill).

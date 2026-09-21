@@ -5,9 +5,9 @@ from injector import inject
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills.dial._dial_skill_reader import DialSkillReader
-from quickapp.skills.dial._dial_skills_client import SkillInventory, _DialSkillsClient
-from quickapp.skills.dial._exceptions import describe_exception
+from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
+from quickapp.skills.dial_resource._dial_skills_client import SkillInventory, _DialSkillsClient
+from quickapp.skills.dial_resource._exceptions import describe_exception
 from quickapp.skills.frontmatter import parse_frontmatter
 from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill

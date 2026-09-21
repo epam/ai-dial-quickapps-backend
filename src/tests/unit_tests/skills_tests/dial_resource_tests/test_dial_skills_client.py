@@ -4,13 +4,13 @@ from typing import cast
 import pytest
 from aidial_client import AsyncDial
 
-from quickapp.skills.dial._dial_skills_client import _DialSkillsClient
-from quickapp.skills.dial._exceptions import (
+from quickapp.skills.dial_resource._dial_skills_client import _DialSkillsClient
+from quickapp.skills.dial_resource._exceptions import (
     DialSkillFileNotTextError,
     DialSkillFileReadError,
     DialSkillFileTooLargeError,
 )
-from quickapp.skills.dial._settings import DialSkillsSettings
+from quickapp.skills.dial_resource._settings import DialSkillsSettings
 
 SKILL_URL = "skills/my-bucket/refund-policy"
 FILES_PREFIX = f"{SKILL_URL}/files/"

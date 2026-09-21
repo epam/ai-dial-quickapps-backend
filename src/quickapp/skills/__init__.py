@@ -6,7 +6,7 @@ from injector import Module
 # carries no attributes yet, so ``from quickapp.skills import ResolvedSkill`` raises
 # ImportError. Bind the contract names first and that same mistake silently succeeds for
 # whichever names happen to be bound already — a rule that only half-enforces.
-from quickapp.skills.dial.dial_skills_module import DialSkillsModule
+from quickapp.skills.dial_resource.dial_skills_module import DialSkillsModule
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.invocation.skill_invocation_module import SkillInvocationModule
 from quickapp.skills.registry.skills_module import SkillsModule

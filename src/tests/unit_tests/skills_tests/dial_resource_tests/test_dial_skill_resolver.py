@@ -8,10 +8,10 @@ import pytest
 # the first of them to load. Keep this import above the config one.
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills.dial._dial_skill_reader import DialSkillReader
-from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver
-from quickapp.skills.dial._dial_skills_client import SkillInventory
-from quickapp.skills.dial._exceptions import DialSkillFileReadError
+from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
+from quickapp.skills.dial_resource._dial_skill_resolver import DialSkillResolver
+from quickapp.skills.dial_resource._dial_skills_client import SkillInventory
+from quickapp.skills.dial_resource._exceptions import DialSkillFileReadError
 
 MANIFEST = """---
 name: refund-policy

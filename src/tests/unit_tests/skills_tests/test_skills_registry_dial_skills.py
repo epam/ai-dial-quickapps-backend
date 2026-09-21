@@ -2,8 +2,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.skills.dial import DialSkillReader, _DialSkillsContext
 from quickapp.skills.dial_prompt import _DialPromptSkillsContext
+from quickapp.skills.dial_resource import DialSkillReader, _DialSkillsContext
 from quickapp.skills.exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
 from quickapp.skills.registry._skills_registry import SkillsRegistry
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider

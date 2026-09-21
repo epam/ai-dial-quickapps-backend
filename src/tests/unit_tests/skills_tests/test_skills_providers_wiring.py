@@ -9,9 +9,9 @@ from injector import Binder, Module, ProviderOf
 from starlette.testclient import TestClient
 
 from quickapp.common.exceptions import InitializationException
-from quickapp.skills.dial.dial_skills_module import DialSkillsModule
 from quickapp.skills.dial_prompt import _DialPromptSkillsContext
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
+from quickapp.skills.dial_resource.dial_skills_module import DialSkillsModule
 from quickapp.skills.registry._skills_registry import SkillsRegistry
 from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.skills.skill_metadata import SkillMetadata

@@ -6,12 +6,12 @@ from injector import Binder, Module, ProviderOf, multiprovider, singleton
 from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.preview import preview_module
-from quickapp.skills.dial._dial_skill_initializer import _DialSkillInitializer
-from quickapp.skills.dial._dial_skill_reader import DialSkillReader
-from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver
-from quickapp.skills.dial._dial_skills_client import _DialSkillsClient
-from quickapp.skills.dial._dial_skills_context import _DialSkillsContext
-from quickapp.skills.dial._settings import DialSkillsSettings
+from quickapp.skills.dial_resource._dial_skill_initializer import _DialSkillInitializer
+from quickapp.skills.dial_resource._dial_skill_reader import DialSkillReader
+from quickapp.skills.dial_resource._dial_skill_resolver import DialSkillResolver
+from quickapp.skills.dial_resource._dial_skills_client import _DialSkillsClient
+from quickapp.skills.dial_resource._dial_skills_context import _DialSkillsContext
+from quickapp.skills.dial_resource._settings import DialSkillsSettings
 from quickapp.skills.skill_resolver import DialSkillResourceResolver
 from quickapp.skills.skills_provider import SkillsProvider
 

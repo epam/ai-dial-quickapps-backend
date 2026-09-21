@@ -1,7 +1,7 @@
 """``_InvokedSkillsContext`` — an ordinary ``SkillsProvider`` holding the picks."""
 
-from quickapp.skills.dial import _DialSkillsContext
 from quickapp.skills.dial_prompt import _DialPromptSkillsContext
+from quickapp.skills.dial_resource import _DialSkillsContext
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 from tests.unit_tests.common.common import make_resolved_skill as _skill

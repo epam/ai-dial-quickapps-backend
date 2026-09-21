@@ -7,13 +7,13 @@ from aidial_client import AsyncDial
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.skills.dial._exceptions import (
+from quickapp.skills.dial_resource._exceptions import (
     DialSkillFileNotTextError,
     DialSkillFileReadError,
     DialSkillFileTooLargeError,
     describe_exception,
 )
-from quickapp.skills.dial._settings import DialSkillsSettings
+from quickapp.skills.dial_resource._settings import DialSkillsSettings
 
 logger = logging.getLogger(__name__)
 
