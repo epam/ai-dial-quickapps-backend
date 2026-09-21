@@ -15,8 +15,6 @@ from quickapp.dial_app_tooling import DialAppToolingModule
 from quickapp.dial_core_services.dial_core_services_module import DialCoreServicesModule
 from quickapp.dial_deployment_tooling import DialDeploymentToolingModule
 from quickapp.dial_files_tooling.dial_files_tooling_module import DialFilesToolingModule
-from quickapp.dial_prompt_skills.dial_prompt_skills_module import DialPromptSkillsModule
-from quickapp.dial_skills.dial_skills_module import DialSkillsModule
 from quickapp.file_transfer import FileTransferModule
 from quickapp.internal_tooling.internal_tooling_module import InternalToolModule
 from quickapp.mcp_tooling import MCPToolingModule
@@ -29,8 +27,7 @@ from quickapp.representation_tooling.representation_tooling_module import (
 )
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
-from quickapp.skill_invocation import SkillInvocationModule
-from quickapp.skills.skills_module import SkillsModule
+from quickapp.skills import skills_module
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
@@ -59,14 +56,11 @@ class AppFactory:
             FileTransferModule(),
             AttachmentProcessingModule(),
             LazyOnDemandStrategyModule(),
-            # ToolDiscoveryModule is registered before SkillsModule so its tool_search prompt
+            # ToolDiscoveryModule is registered before skills_module so its tool_search prompt
             # hint (when active) lands immediately ahead of the <available_skills> block in the
             # aggregated system prompt (list[PromptPartProvider] preserves module registration order).
             ToolDiscoveryModule(),
-            SkillsModule(),
-            DialPromptSkillsModule(),
-            DialSkillsModule(),
-            SkillInvocationModule(),
+            *skills_module,
             TimestampModule(),
             AgentHooksModule(),
             DialFilesToolingModule(),

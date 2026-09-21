@@ -8,13 +8,13 @@ from injector import inject
 from quickapp.common.dial_settings import DialSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.skill import DialPromptSkillConfig
-from quickapp.dial_prompt_skills._dial_prompt_skill_resolver import (
-    fetch_and_validate_dial_prompt_skill,
-)
 from quickapp.predefined_tooling import PredefinedConfigResolver
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._skill_metadata import SkillMetadata
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.dial_prompt._dial_prompt_skill_resolver import (
+    fetch_and_validate_dial_prompt_skill,
+)
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 
 logger = logging.getLogger(__name__)
 

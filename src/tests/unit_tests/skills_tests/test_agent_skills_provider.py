@@ -9,8 +9,8 @@ from quickapp.config.predefined_content_provider import (
 from quickapp.skills._exceptions import SkillValidationError
 from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
-from quickapp.skills._xml import generate_skills_xml
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.registry._xml import generate_skills_xml
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 
 # ---------------------------------------------------------------------------
 # parse_frontmatter unit tests
