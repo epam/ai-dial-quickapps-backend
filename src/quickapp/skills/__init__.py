@@ -1,8 +1,8 @@
 from injector import Module
 
-from quickapp.skills._exceptions import SkillFileNotFoundError
-from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills.exceptions import SkillFileNotFoundError
+from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.dial.dial_skills_module import DialSkillsModule
 from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
 from quickapp.skills.invocation.skill_invocation_module import SkillInvocationModule

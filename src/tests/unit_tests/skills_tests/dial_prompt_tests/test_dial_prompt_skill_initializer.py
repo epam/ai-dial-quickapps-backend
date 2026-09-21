@@ -9,7 +9,7 @@ from quickapp.common.exceptions import (
 from quickapp.config.skill import DialPromptSkillConfig
 from quickapp.skills.dial_prompt import _DialPromptSkillsContext
 from quickapp.skills.dial_prompt._dial_prompt_skill_initializer import _DialPromptSkillInitializer
-from quickapp.skills.dial_prompt._dial_prompt_skill_resolver import DialPromptSkillResolverOutput
+from quickapp.skills.skill_resolver import SkillResolution
 from tests.unit_tests.common.common import make_resolved_skill as _resolved
 
 
@@ -60,7 +60,7 @@ class TestDialPromptSkillInitializer:
         configs = [DialPromptSkillConfig(url="prompts/b/s1")]
         resolver = MagicMock()
         resolver.resolve = AsyncMock(
-            return_value=DialPromptSkillResolverOutput(
+            return_value=SkillResolution(
                 resolved=[_resolved("prompts/b/s1", "s1")],
                 exceptions=[],
             )
@@ -84,7 +84,7 @@ class TestDialPromptSkillInitializer:
         configs = [DialPromptSkillConfig(url="prompts/b/broken")]
         resolver = MagicMock()
         resolver.resolve = AsyncMock(
-            return_value=DialPromptSkillResolverOutput(
+            return_value=SkillResolution(
                 resolved=[],
                 exceptions=[
                     SkillInitializationException(url="prompts/b/broken", reason="fetch failed")

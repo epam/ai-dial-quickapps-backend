@@ -12,6 +12,7 @@ from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver
 from quickapp.skills.dial._dial_skills_client import _DialSkillsClient
 from quickapp.skills.dial._dial_skills_context import _DialSkillsContext
 from quickapp.skills.dial._settings import DialSkillsSettings
+from quickapp.skills.skill_resolver import DialSkillResourceResolver
 from quickapp.skills.skills_provider import SkillsProvider
 
 logger = logging.getLogger(__name__)
@@ -23,7 +24,13 @@ class DialSkillsModule(Module):
     def configure(self, binder: Binder) -> None:
         binder.bind(DialSkillsSettings, to=DialSkillsSettings, scope=singleton)
         binder.bind(_DialSkillsClient, to=_DialSkillsClient, scope=request_scope)
-        binder.bind(DialSkillResolver, to=DialSkillResolver, scope=request_scope)
+        # Bound on the contract, not the implementation, so skills/invocation depends on
+        # quickapp.skills.skill_resolver rather than on this package.
+        binder.bind(
+            DialSkillResourceResolver,  # type: ignore[type-abstract]
+            to=DialSkillResolver,
+            scope=request_scope,
+        )
         binder.bind(_DialSkillsContext, to=_DialSkillsContext, scope=request_scope)
         binder.bind(DialSkillReader, to=DialSkillReader, scope=request_scope)
         binder.bind(_DialSkillInitializer, to=_DialSkillInitializer, scope=request_scope)

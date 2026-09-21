@@ -2,23 +2,14 @@ import asyncio
 
 from aidial_client import AsyncDial
 from injector import inject
-from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialPromptSkillConfig
-from quickapp.skills._exceptions import SkillValidationError
-from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import ParsedSkill
+from quickapp.skills.exceptions import SkillValidationError
+from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_metadata import ParsedSkill
+from quickapp.skills.skill_resolver import SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
-
-
-class DialPromptSkillResolverOutput(BaseModel):
-    """Return shape of ``DialPromptSkillResolver.resolve``."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
-
-    resolved: list[ResolvedSkill]
-    exceptions: list[SkillInitializationException]
 
 
 async def fetch_and_validate_dial_prompt_skill(
@@ -46,7 +37,7 @@ class DialPromptSkillResolver:
     async def resolve(
         self,
         skill_configs: list[DialPromptSkillConfig],
-    ) -> DialPromptSkillResolverOutput:
+    ) -> SkillResolution:
         """Resolve skill configs into validated ``ResolvedSkill`` entries.
 
         - Deduplicates by URL before fetching.
@@ -65,7 +56,7 @@ class DialPromptSkillResolver:
                 unique_configs.append(cfg)
 
         if not unique_configs:
-            return DialPromptSkillResolverOutput(resolved=[], exceptions=[])
+            return SkillResolution(resolved=[], exceptions=[])
 
         results = await asyncio.gather(
             *(self._fetch_one(cfg) for cfg in unique_configs),
@@ -102,7 +93,7 @@ class DialPromptSkillResolver:
             seen_names.add(result.metadata.name)
             resolved.append(result)
 
-        return DialPromptSkillResolverOutput(resolved=resolved, exceptions=exceptions)
+        return SkillResolution(resolved=resolved, exceptions=exceptions)
 
     async def _fetch_one(
         self,

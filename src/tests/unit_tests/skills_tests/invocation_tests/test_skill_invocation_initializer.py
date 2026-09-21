@@ -6,10 +6,10 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.common.exceptions import SkillInitializationException
-from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver, DialSkillResolverOutput
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.invocation._settings import SkillInvocationSettings
 from quickapp.skills.invocation._skill_invocation_initializer import _SkillInvocationInitializer
+from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from tests.unit_tests.common.common import make_resolved_skill as _skill
 
 
@@ -25,13 +25,11 @@ def _user(*urls: str) -> Message:
 
 def _make(
     messages: list[Message],
-    output: DialSkillResolverOutput | None = None,
+    output: SkillResolution | None = None,
     max_skills: int = 10,
 ):
-    resolver = MagicMock(spec=DialSkillResolver)
-    resolver.resolve = AsyncMock(
-        return_value=output or DialSkillResolverOutput(resolved=[], exceptions=[])
-    )
+    resolver = MagicMock(spec=DialSkillResourceResolver)
+    resolver.resolve = AsyncMock(return_value=output or SkillResolution(resolved=[], exceptions=[]))
     context = _InvokedSkillsContext()
     settings = SkillInvocationSettings(SKILL_INVOCATION_MAX_SKILLS=max_skills)
     return _SkillInvocationInitializer(messages, resolver, context, settings), resolver, context
@@ -91,7 +89,7 @@ class TestInitialize:
     async def test_registers_what_resolved(self):
         initializer, _, context = _make(
             [_user("skills/b/a")],
-            DialSkillResolverOutput(resolved=[_skill("skills/b/a", "a")], exceptions=[]),
+            SkillResolution(resolved=[_skill("skills/b/a", "a")], exceptions=[]),
         )
 
         await initializer.initialize()
@@ -148,7 +146,7 @@ class TestReporting:
     async def test_only_this_turns_problems_reach_initialization_issues(self):
         initializer, _, context = _make(
             [_user("skills/b/old"), _user("skills/b/new")],
-            DialSkillResolverOutput(
+            SkillResolution(
                 resolved=[],
                 exceptions=[
                     SkillInitializationException(url="skills/b/old", reason="stale"),
@@ -165,7 +163,7 @@ class TestReporting:
     async def test_an_exception_without_a_url_is_always_reported(self):
         initializer, _, context = _make(
             [_user("skills/b/a")],
-            DialSkillResolverOutput(
+            SkillResolution(
                 resolved=[], exceptions=[SkillInitializationException(reason="global")]
             ),
         )

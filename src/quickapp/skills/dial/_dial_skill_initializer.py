@@ -6,8 +6,8 @@ from quickapp.common.base_initializer import CompletionInitializer
 from quickapp.common.exceptions import SkillCatastrophicInitializationException
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver
 from quickapp.skills.dial._dial_skills_context import _DialSkillsContext
+from quickapp.skills.skill_resolver import DialSkillResourceResolver
 
 logger = logging.getLogger(__name__)
 
@@ -19,13 +19,13 @@ class _DialSkillInitializer(CompletionInitializer):
 
     The direct analogue of ``_DialPromptSkillInitializer``: reads
     ``ApplicationConfig.skills`` via ``ProviderOf``, delegates to
-    ``DialSkillResolver``, and pushes the output into ``_DialSkillsContext``.
+    the resolver, and pushes the output into ``_DialSkillsContext``.
     """
 
     def __init__(
         self,
         config_provider: ProviderOf[ApplicationConfig],
-        resolver: DialSkillResolver,
+        resolver: DialSkillResourceResolver,
         context: _DialSkillsContext,
     ) -> None:
         self._config_provider = config_provider

@@ -3,8 +3,8 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.exceptions import InitializationException, SkillInitializationException
-from quickapp.skills._skill_metadata import SkillMetadata
 from quickapp.skills.registry._xml import generate_skills_xml
+from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.skills_provider import ResolvedSkill, SkillsProvider
 
 

@@ -2,8 +2,8 @@ import re
 
 import yaml
 
-from quickapp.skills._exceptions import SkillValidationError
-from quickapp.skills._skill_metadata import ParsedSkill, SkillMetadata
+from quickapp.skills.exceptions import SkillValidationError
+from quickapp.skills.skill_metadata import ParsedSkill, SkillMetadata
 
 _FRONTMATTER_RE = re.compile(
     r"\A﻿?[ \t\r\n]*---[ \t\r]*\n(.*?)\n---[ \t\r]*(?:\n|\Z)",

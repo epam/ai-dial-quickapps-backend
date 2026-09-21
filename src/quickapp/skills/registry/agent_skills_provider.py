@@ -3,9 +3,9 @@ import logging
 from injector import inject
 
 from quickapp.config.predefined_content_provider import ContentType, PredefinedContentProvider
-from quickapp.skills._exceptions import SkillValidationError
-from quickapp.skills._frontmatter import parse_frontmatter
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills.exceptions import SkillValidationError
+from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.skills_provider import ResolvedSkill, SkillsProvider
 
 logger = logging.getLogger(__name__)

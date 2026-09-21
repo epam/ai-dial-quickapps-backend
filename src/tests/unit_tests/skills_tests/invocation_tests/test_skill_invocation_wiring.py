@@ -11,8 +11,8 @@ from quickapp.app_factory import AppFactory
 from quickapp.common import REQUEST_MESSAGES, StagedBaseTool
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.base_initializer import CompletionInitializer
-from quickapp.skills.dial._dial_skill_resolver import DialSkillResolver
 from quickapp.skills.invocation import SkillInvocationModule
+from quickapp.skills.skill_resolver import DialSkillResourceResolver
 from quickapp.skills.skills_provider import SkillsProvider
 from tests.unit_tests.common.common import create_test_app
 
@@ -22,7 +22,9 @@ class _StubDependenciesModule(Module):
 
     def configure(self, binder: Binder) -> None:
         binder.bind(
-            DialSkillResolver, to=lambda: MagicMock(spec=DialSkillResolver), scope=request_scope
+            DialSkillResourceResolver,
+            to=lambda: MagicMock(spec=DialSkillResourceResolver),
+            scope=request_scope,
         )
 
     @multiprovider

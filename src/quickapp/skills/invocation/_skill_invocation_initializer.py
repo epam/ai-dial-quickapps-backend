@@ -10,10 +10,10 @@ from quickapp.common.exceptions import (
     SkillInitializationException,
 )
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills.dial import DialSkillResolver
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.invocation._settings import SkillInvocationSettings
 from quickapp.skills.invocation._skill_reference import collect_picks, skill_name_from_url
+from quickapp.skills.skill_resolver import DialSkillResourceResolver
 
 logger = logging.getLogger(__name__)
 
@@ -29,13 +29,13 @@ class _SkillInvocationInitializer(CompletionInitializer):
     Every pick is re-resolved on every turn. That is what keeps a skill picked on
     turn 1 listed in ``<available_skills>`` on turn 4 and its bundled files readable.
     The cost is one Core fetch per picked skill per turn, bounded by the cap and run
-    in parallel by ``DialSkillResolver``.
+    in parallel by the resolver.
     """
 
     def __init__(
         self,
         messages: REQUEST_MESSAGES,
-        resolver: DialSkillResolver,
+        resolver: DialSkillResourceResolver,
         context: _InvokedSkillsContext,
         settings: SkillInvocationSettings,
     ) -> None:

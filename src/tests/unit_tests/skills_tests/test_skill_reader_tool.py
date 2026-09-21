@@ -2,7 +2,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.skills._exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
+from quickapp.skills.exceptions import SkillFileNotFoundError, SkillFilesNotSupportedError
 from quickapp.skills.registry._skill_reader_tool import _SkillReaderTool
 from quickapp.skills.registry._tool_configs import SKILL_READER_TOOL_CONFIG
 

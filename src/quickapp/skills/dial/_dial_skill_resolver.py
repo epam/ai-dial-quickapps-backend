@@ -2,26 +2,17 @@ import asyncio
 import logging
 
 from injector import inject
-from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import SkillInitializationException
 from quickapp.config.skill import DialSkillConfig
-from quickapp.skills._frontmatter import parse_frontmatter
 from quickapp.skills.dial._dial_skill_reader import DialSkillReader
 from quickapp.skills.dial._dial_skills_client import SkillInventory, _DialSkillsClient
 from quickapp.skills.dial._exceptions import describe_exception
+from quickapp.skills.frontmatter import parse_frontmatter
+from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill
 
 logger = logging.getLogger(__name__)
-
-
-class DialSkillResolverOutput(BaseModel):
-    """Return shape of ``DialSkillResolver.resolve``."""
-
-    model_config = ConfigDict(arbitrary_types_allowed=True, frozen=True)
-
-    resolved: list[ResolvedSkill]
-    exceptions: list[SkillInitializationException]
 
 
 def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
@@ -40,7 +31,7 @@ def _build_skill_files_block(inventory: SkillInventory, max_files: int) -> str:
 
 
 @inject
-class DialSkillResolver:
+class DialSkillResolver(DialSkillResourceResolver):
     """Request-scoped resolver that fetches DIAL skill resources and validates them."""
 
     def __init__(self, client: _DialSkillsClient, reader: DialSkillReader) -> None:
@@ -50,7 +41,7 @@ class DialSkillResolver:
     async def resolve(
         self,
         skill_configs: list[DialSkillConfig],
-    ) -> DialSkillResolverOutput:
+    ) -> SkillResolution:
         """Resolve skill configs into validated ``ResolvedSkill`` entries.
 
         Mirrors ``DialPromptSkillResolver.resolve``: dedup by URL, fetch in
@@ -66,7 +57,7 @@ class DialSkillResolver:
                 unique_configs.append(cfg)
 
         if not unique_configs:
-            return DialSkillResolverOutput(resolved=[], exceptions=[])
+            return SkillResolution(resolved=[], exceptions=[])
 
         results = await asyncio.gather(*(self._fetch_labeled(cfg) for cfg in unique_configs))
 
@@ -101,7 +92,7 @@ class DialSkillResolver:
             seen_names.add(result.metadata.name)
             resolved.append(result)
 
-        return DialSkillResolverOutput(resolved=resolved, exceptions=exceptions)
+        return SkillResolution(resolved=resolved, exceptions=exceptions)
 
     async def _fetch_labeled(
         self, config: DialSkillConfig
