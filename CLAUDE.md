@@ -94,14 +94,9 @@ A user can also invoke one of their own skills from a message (`skills/invocatio
 `custom_content.skills[*]` chips are resolved per request, registered ahead of every agent source, and
 injected as a synthetic `read_skill` pair.
 
-**Import rule inside `quickapp.skills`:** always import the concrete contract module
-(`from quickapp.skills.skills_provider import ResolvedSkill`), never the `quickapp.skills` barrel —
-`skills/__init__.py` builds `skills_module` by importing the sub-packages, so a sub-package importing the
-barrel hits a circular import against a partially-initialized module. The sub-package imports sit
-deliberately above the contract re-exports, which turns that mistake into an `ImportError` for anything
-in `skills_module`'s import closure — everything the DI wiring reaches. A module imported only lazily or
-only from a test still sees a fully initialized barrel, so treat the ordering as a tripwire, not a
-guarantee. Code outside `quickapp.skills` may use the barrel freely.
+The DI module array lives in `skills/skills_di.py`, not in `skills/__init__.py`, so the contract package
+never imports its own sources: `quickapp.skills` pulls in only the leaf contract modules and is safe to
+import from anywhere, sub-packages included. `app_factory` splices `*skills_module` from `skills_di`.
 
 See [`docs/skills.md`](docs/skills.md).
 

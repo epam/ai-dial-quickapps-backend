@@ -1,43 +1,13 @@
-from injector import Module
-
-# Import order below is deliberate, and isort leaves it alone (extend_skip_glob covers
-# __init__.py). The sub-packages come FIRST so that a module reached through them cannot
-# import this barrel: while these four lines run, ``quickapp.skills`` is in sys.modules but
-# carries no attributes yet, so ``from quickapp.skills import ResolvedSkill`` raises
-# ImportError. Bind the contract names first and that mistake would instead succeed for
-# whichever names happened to be bound already.
-#
-# This catches the import closure of ``skills_module`` — i.e. everything the DI wiring
-# reaches — not the whole package. A module imported only lazily (inside a function) or
-# only from a test sees a fully initialized barrel and would import from it happily, so
-# the ordering is a tripwire for the common case, not an enforced invariant.
-from quickapp.skills.dial_resource.dial_skills_module import DialSkillsModule
-from quickapp.skills.dial_prompt.dial_prompt_skills_module import DialPromptSkillsModule
-from quickapp.skills.invocation.skill_invocation_module import SkillInvocationModule
-from quickapp.skills.registry.skills_module import SkillsModule
 from quickapp.skills.exceptions import SkillFileNotFoundError
 from quickapp.skills.frontmatter import parse_frontmatter
 from quickapp.skills.skill_metadata import SkillMetadata
 from quickapp.skills.skill_resolver import DialSkillResourceResolver, SkillResolution
 from quickapp.skills.skills_provider import ResolvedSkill, SkillFileReader, SkillsProvider
 
-# The skill DI modules: the never-gated registry plus one module per source.
-# ``app_factory`` splices this array into its module list, so a new source joins by
-# appending here rather than being registered individually. Preview-gated entries stay
-# in the array — ``AppFactory.build_di_modules`` filters ``is_preview_module`` over the
-# flattened list.
-#
-# Import rule for everything under ``quickapp.skills``: import the concrete contract
-# module (``from quickapp.skills.skills_provider import ResolvedSkill``), never this
-# barrel. Building the array here imports the sub-packages, so a sub-package that
-# imports ``quickapp.skills`` hits a circular import against a partially-initialized
-# module.
-skills_module: list[Module] = [
-    SkillsModule(),
-    DialPromptSkillsModule(),
-    DialSkillsModule(),
-    SkillInvocationModule(),
-]
+# The contract every skill source implements. Importing it pulls in nothing but these
+# leaf modules — no sub-package, no DI wiring — so this barrel is safe to import from
+# anywhere, ``quickapp.skills`` sub-packages included. The module array that does reach
+# into the sub-packages lives in ``skills_di.py`` for exactly that reason.
 
 __all__ = [
     "DialSkillResourceResolver",
@@ -48,5 +18,4 @@ __all__ = [
     "SkillResolution",
     "SkillsProvider",
     "parse_frontmatter",
-    "skills_module",
 ]

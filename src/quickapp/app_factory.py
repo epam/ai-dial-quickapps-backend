@@ -27,7 +27,7 @@ from quickapp.representation_tooling.representation_tooling_module import (
 )
 from quickapp.rest_api_tooling import RestApiToolingModule
 from quickapp.shared import shared_module
-from quickapp.skills import skills_module
+from quickapp.skills.skills_di import skills_module
 from quickapp.starters.starters_module import StartersModule
 from quickapp.timestamp_tooling.timestamp_module import TimestampModule
 from quickapp.tool_discovery.tool_discovery_module import ToolDiscoveryModule
