@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 class SkillInvocationModule(Module):
     """Wires skills a user invokes from a message, via ``custom_content.skills``.
 
-    Preview-gated, matching ``DialSkillsModule``, whose ``DialSkillResolver`` it
-    reuses.
+    Preview-gated, matching ``DialSkillsModule``. Resolution goes through the
+    ``DialSkillResourceResolver`` contract, which ``DialSkillsModule`` binds.
     """
 
     def configure(self, binder: Binder) -> None:

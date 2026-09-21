@@ -83,8 +83,8 @@ per-app `features.external_url_fetch.enabled` field. The deployment-attachment p
 ### Skills
 
 Skills are reusable instruction modules. Everything skill-related lives under `skills/`: the contract
-(`skills_provider.py`) at the top, the registry runtime in `skills/registry/`, and one sub-package per
-source. Three sources: predefined skills loaded at startup from `config/predefined/skills/`
+(`skills_provider.py` and `skill_resolver.py`) at the top, the registry runtime in `skills/registry/`,
+and one sub-package per source. Three sources: predefined skills loaded at startup from `config/predefined/skills/`
 (`skills/registry/agent_skills_provider.py`); DIAL prompt skills (`skills/dial_prompt/`) fetched per
 request from Core's prompts API; and DIAL skill resources (`skills/dial/`) fetched per request from
 Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the agent reads on demand via
@@ -97,7 +97,9 @@ injected as a synthetic `read_skill` pair.
 **Import rule inside `quickapp.skills`:** always import the concrete contract module
 (`from quickapp.skills.skills_provider import ResolvedSkill`), never the `quickapp.skills` barrel —
 `skills/__init__.py` builds `skills_module` by importing the sub-packages, so a sub-package importing the
-barrel deadlocks on a partially-initialized `__init__`. Code outside `quickapp.skills` may use the barrel.
+barrel hits a circular import against a partially-initialized module. The sub-package imports are
+deliberately placed above the contract re-exports so that mistake fails every time rather than half the
+time. Code outside `quickapp.skills` may use the barrel.
 
 See [`docs/skills.md`](docs/skills.md).
 
