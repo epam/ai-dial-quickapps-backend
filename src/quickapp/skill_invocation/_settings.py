@@ -17,3 +17,13 @@ class SkillInvocationSettings(BaseSettings):
         ),
         alias="SKILL_INVOCATION_MAX_SKILLS",
     )
+
+    max_skills_per_message: int = Field(
+        default=5,
+        gt=0,
+        description=(
+            "Maximum number of chips honoured on one message. The rest are dropped "
+            "and reported when that message is the one being answered."
+        ),
+        alias="SKILL_INVOCATION_MAX_PER_MESSAGE",
+    )

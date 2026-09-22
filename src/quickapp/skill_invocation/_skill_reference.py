@@ -41,14 +41,16 @@ class ConversationPicks(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    by_ordinal: dict[int, str] = Field(default_factory=dict)
-    """Picked URL, keyed by the ordinal of the user message that picked it."""
+    by_ordinal: dict[int, list[str]] = Field(default_factory=dict)
+    """Picked URLs, keyed by the ordinal of the user message that picked them, in
+    chip order."""
 
-    ignored_by_ordinal: dict[int, list[str]] = Field(default_factory=dict)
-    """Extra URLs dropped because only one skill may be invoked per message."""
+    overflow_by_ordinal: dict[int, list[str]] = Field(default_factory=dict)
+    """Extra URLs dropped because a message carried more chips than
+    ``max_per_message``."""
 
 
-def collect_picks(messages: list[Message]) -> ConversationPicks:
+def collect_picks(messages: list[Message], max_per_message: int) -> ConversationPicks:
     """Every skill pick in the conversation, keyed by the **ordinal** of the user
     message that made it (0 for the first user message, 1 for the second, ...).
 
@@ -57,13 +59,13 @@ def collect_picks(messages: list[Message]) -> ConversationPicks:
     stored tool history and the scrub transformer has copied the chipped messages.
     User messages survive both, in order, so counting them is stable.
 
-    One skill per turn: a message carrying more than one chip keeps the first and
-    reports the rest, rather than dropping them silently. A URL picked again on a
-    later turn keeps its first pick, so the skill is loaded once, ahead of the
-    message that first asked for it.
+    Every distinct chip of a message is kept, up to ``max_per_message``; the rest are
+    reported rather than dropped silently. A URL picked again on a later turn keeps
+    its first pick, so the skill is loaded once, ahead of the message that first
+    asked for it.
     """
-    by_ordinal: dict[int, str] = {}
-    ignored_by_ordinal: dict[int, list[str]] = {}
+    by_ordinal: dict[int, list[str]] = {}
+    overflow_by_ordinal: dict[int, list[str]] = {}
     seen: set[str] = set()
     ordinal = -1
 
@@ -74,18 +76,23 @@ def collect_picks(messages: list[Message]) -> ConversationPicks:
         urls = message_skill_urls(message)
         if not urls:
             continue
-        if len(urls) > 1:
-            ignored_by_ordinal[ordinal] = urls[1:]
-            # Debug, not warning: every turn re-parses the whole conversation, so a
-            # warning here would repeat for every historical message that carried extras.
-            logger.debug(
-                "A user message carries %d skill chips; only the first is loaded", len(urls)
-            )
-        if urls[0] not in seen:
-            seen.add(urls[0])
-            by_ordinal[ordinal] = urls[0]
 
-    return ConversationPicks(by_ordinal=by_ordinal, ignored_by_ordinal=ignored_by_ordinal)
+        kept, overflow = urls[:max_per_message], urls[max_per_message:]
+        if overflow:
+            overflow_by_ordinal[ordinal] = overflow
+            # Debug, not warning: every turn re-parses the whole conversation, so a
+            # warning here would repeat for every historical message that overflowed.
+            logger.debug(
+                "A user message carries more than %d skill chips; the rest are ignored",
+                max_per_message,
+            )
+
+        fresh = [url for url in kept if url not in seen]
+        seen.update(fresh)
+        if fresh:
+            by_ordinal[ordinal] = fresh
+
+    return ConversationPicks(by_ordinal=by_ordinal, overflow_by_ordinal=overflow_by_ordinal)
 
 
 def skill_name_from_url(url: str) -> str:

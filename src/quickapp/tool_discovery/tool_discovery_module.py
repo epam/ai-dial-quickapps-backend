@@ -44,6 +44,7 @@ class ToolDiscoveryModule(Module):
 
         tool = tool_builder.build(
             tool_config=TOOL_SEARCH_TOOL_CONFIG,
+
         )
         logger.debug("ToolDiscoveryModule: tool_search meta-tool registered")
         return [tool]

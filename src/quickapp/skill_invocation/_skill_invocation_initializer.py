@@ -45,18 +45,24 @@ class _SkillInvocationInitializer(CompletionInitializer):
         self._settings = settings
 
     async def initialize(self) -> None:
-        collected = collect_picks(self._messages)
-        picks = collected.by_ordinal
+        collected = collect_picks(self._messages, self._settings.max_skills_per_message)
+        picks_by_ordinal = collected.by_ordinal
         last_ordinal = sum(1 for message in self._messages if message.role == Role.USER) - 1
-        self._context.set_current_pick_url(picks.get(last_ordinal))
+        current_urls = picks_by_ordinal.get(last_ordinal, [])
+        self._context.set_current_pick_urls(current_urls)
 
-        self.__report_ignored(collected.ignored_by_ordinal, last_ordinal)
-        if not picks:
+        self.__report_overflow(collected.overflow_by_ordinal, last_ordinal)
+
+        # Oldest first, in chip order within each message.
+        all_urls = [
+            url for ordinal in sorted(picks_by_ordinal) for url in picks_by_ordinal[ordinal]
+        ]
+        if not all_urls:
             return
 
-        # The cap is spent newest-first, so the pick made on the message being
+        # The cap is spent newest-first, so a pick made on the message being
         # answered is never the one dropped.
-        urls = [picks[ordinal] for ordinal in sorted(picks)][-self._settings.max_skills :]
+        urls = all_urls[-self._settings.max_skills :]
 
         try:
             output = await self._resolver.resolve([DialSkillConfig(url=url) for url in urls])
@@ -70,39 +76,43 @@ class _SkillInvocationInitializer(CompletionInitializer):
             return
 
         self._context.set_resolved_skills(output.resolved)
-        self.__report(output.exceptions)
+        self.__report(output.exceptions, current_urls)
 
-    def __report_ignored(self, ignored_by_ordinal: dict[int, list[str]], last_ordinal: int) -> None:
-        """Tell the user when the message being answered invoked more than one skill.
+    def __report_overflow(
+        self, overflow_by_ordinal: dict[int, list[str]], last_ordinal: int
+    ) -> None:
+        """Tell the user when the message being answered invoked more chips than
+        ``max_skills_per_message``.
 
-        Only one skill may be invoked per message. Older turns are left to the log,
-        like every other historical problem, so the stage does not repeat an issue
-        the user can no longer act on.
+        Older turns are left to the log, like every other historical problem, so the
+        stage does not repeat an issue the user can no longer act on.
         """
-        ignored = ignored_by_ordinal.get(last_ordinal)
-        if not ignored:
+        overflow = overflow_by_ordinal.get(last_ordinal)
+        if not overflow:
             return
-        names = ", ".join(skill_name_from_url(url) for url in ignored)
+        names = ", ".join(skill_name_from_url(url) for url in overflow)
         self._context.append_exception(
             SkillInitializationException(
                 reason=(
-                    "Only one skill can be invoked per message;"
-                    f" the first one was loaded and these were ignored: {names}"
+                    f"At most {self._settings.max_skills_per_message} skills can be"
+                    f" invoked per message; these were ignored: {names}"
                 ),
                 severity="warning",
             )
         )
 
-    def __report(self, exceptions: list[SkillInitializationException]) -> None:
-        """Surface only what went wrong with this turn's pick.
+    def __report(
+        self, exceptions: list[SkillInitializationException], current_urls: list[str]
+    ) -> None:
+        """Surface only what went wrong with this turn's picks.
 
         Every pick is resolved again on every turn, so reporting all of them would
         repeat the same issues until the conversation ends. The model still learns
         about a failed pick from its error result.
         """
-        current = self._context.current_pick_url
+        current = set(current_urls)
         for exception in exceptions:
-            if exception.url is None or exception.url == current:
+            if exception.url is None or exception.url in current:
                 self._context.append_exception(exception)
             else:
                 logger.debug(
