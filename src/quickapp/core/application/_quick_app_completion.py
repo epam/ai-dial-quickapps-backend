@@ -16,7 +16,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent import Orchestrator
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 
 from ._exception_message_resolver import ResolvedError, resolve_exception
 from ._initialization_error_handler import _InitializationErrorHandler

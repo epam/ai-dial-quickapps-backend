@@ -42,12 +42,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Entry points: `src/quickapp/app.py` (process) and `src/quickapp/app_factory.py` (DI assembly).\
 Each feature is an `injector.Module` wired into the `Injector` in `app_factory.py`.\
-Cross-cutting shared code lives in `common/` (a flat utility bag). Two packages each expose a
+Cross-cutting shared code lives in `common/` (a flat utility bag). Three packages each expose a
 `<pkg>_module: list[Module]` array that `app_factory` splices into the module list instead of
 registering each entry separately: `core/` exposes `core_module` (the app's central modules —
-`AppModule` + `AgentModule`), and `shared/` exposes `shared_module` (cross-cutting utility modules with
+`AppModule` + `AgentModule`), `shared/` exposes `shared_module` (cross-cutting utility modules with
 their own DI wiring; e.g. `ExternalFetchModule` in `shared/external_fetch/` and `HomePathModule`
-(the shared agent-home path resolver) in `shared/home_path/`).
+(the shared agent-home path resolver) in `shared/home_path/`), and `skills/` exposes `skills_module`
+(the skills registry plus one module per skill source).
 
 → Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md) | [`docs/error_handling.md`](docs/error_handling.md)
 
@@ -81,14 +82,23 @@ per-app `features.external_url_fetch.enabled` field. The deployment-attachment p
 
 ### Skills
 
-Skills are reusable instruction modules. Three sources: predefined skills loaded at startup from
-`config/predefined/skills/`; DIAL prompt skills (`dial_prompt_skills/`) fetched per request from Core's prompts API;
-and DIAL skill resources (`dial_skills/`) fetched per request from Core's `/v2/skills` API — a folder with `SKILL.md`
-plus bundled text files the agent reads on demand via `read_skill(skill_name, file_path)`.
+Skills are reusable instruction modules. Everything skill-related lives under `skills/`: the contract
+(`skills_provider.py` and `skill_resolver.py`) at the top, the registry runtime in `skills/registry/`,
+and one sub-package per source. Three sources: predefined skills loaded at startup from `config/predefined/skills/`
+(`skills/registry/agent_skills_provider.py`); DIAL prompt skills (`skills/dial_prompt/`) fetched per
+request from Core's prompts API; and DIAL skill resources (`skills/dial_resource/`) fetched per request from
+Core's `/v2/skills` API — a folder with `SKILL.md` plus bundled text files the agent reads on demand via
+`read_skill(skill_name, file_path)`.
 `SkillsRegistry` merges all three per request and owns precedence (predefined > dial-prompt > dial-skill).
-A user can also invoke one of their own skills from a message (`skill_invocation/`, preview): the
+A user can also invoke one of their own skills from a message (`skills/invocation/`, preview): the
 `custom_content.skills[*]` chips are resolved per request, registered ahead of every agent source, and
-injected as a synthetic `read_skill` pair. See [`docs/skills.md`](docs/skills.md).
+injected as a synthetic `read_skill` pair.
+
+The DI module array lives in `skills/skills_di.py`, not in `skills/__init__.py`, so the contract package
+never imports its own sources: `quickapp.skills` pulls in only the leaf contract modules and is safe to
+import from anywhere, sub-packages included. `app_factory` splices `*skills_module` from `skills_di`.
+
+See [`docs/skills.md`](docs/skills.md).
 
 ### Configuration Model
 

@@ -1,0 +1,69 @@
+import logging
+
+from fastapi_injector import request_scope
+from injector import AssistedBuilder, Binder, Module, multiprovider, singleton
+
+from quickapp.common import StagedBaseTool
+from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
+from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.exceptions import InitializationException
+from quickapp.skills.registry._inject_file_transfer_instruction_transformer import (
+    _InjectFileTransferInstructionTransformer,
+)
+from quickapp.skills.registry._skill_reader_tool import _SkillReaderTool
+from quickapp.skills.registry._skills_registry import SkillsRegistry
+from quickapp.skills.registry._tool_configs import SKILL_READER_TOOL_CONFIG, SKILL_READER_TOOL_NAME
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.skills_provider import SkillsProvider
+
+logger = logging.getLogger(__name__)
+
+
+class SkillsModule(Module):
+
+    def configure(self, binder: Binder) -> None:
+        binder.bind(AgentSkillsProvider, to=AgentSkillsProvider, scope=singleton)
+        binder.bind(SkillsRegistry, to=SkillsRegistry, scope=request_scope)
+        binder.bind(_SkillReaderTool, to=_SkillReaderTool, scope=request_scope)
+        binder.bind(
+            _InjectFileTransferInstructionTransformer,
+            to=_InjectFileTransferInstructionTransformer,
+            scope=request_scope,
+        )
+
+    @multiprovider
+    def _provide_internal_tools(
+        self,
+        skill_reader_builder: AssistedBuilder[_SkillReaderTool],
+    ) -> list[StagedBaseTool]:
+        return [
+            skill_reader_builder.build(
+                tool_config=SKILL_READER_TOOL_CONFIG,
+                name=SKILL_READER_TOOL_NAME,
+                description=SKILL_READER_TOOL_CONFIG.open_ai_tool.function.description,
+            )
+        ]
+
+    @multiprovider
+    def _provide_prompt_parts(
+        self,
+        skills_registry: SkillsRegistry,
+    ) -> list[PromptPartProvider]:
+        return [skills_registry]
+
+    @multiprovider
+    def _provide_skill_providers(self, provider: AgentSkillsProvider) -> list[SkillsProvider]:
+        return [provider]
+
+    @multiprovider
+    def _provide_initialization_exceptions(
+        self, registry: SkillsRegistry
+    ) -> list[InitializationException]:
+        return registry.collision_exceptions
+
+    @multiprovider
+    def _provide_message_transformers(
+        self,
+        file_transfer_transformer: _InjectFileTransferInstructionTransformer,
+    ) -> list[MessagesTransformer]:
+        return [file_transfer_transformer]

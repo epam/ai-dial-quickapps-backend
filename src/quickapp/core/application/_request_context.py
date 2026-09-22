@@ -7,11 +7,10 @@ from quickapp.common import (
     CLIENT_CHANNEL_ID,
     DIAL_API_KEY,
     DIAL_BEARER,
-    REQUEST_MESSAGES,
     TOOL_CHOICE,
     ForwardedHeaders,
 )
-from quickapp.common.messages_mixin import MessagesMixin
+from quickapp.common.messages_mixin import MessagesMixin, RequestMessagesMixin
 from quickapp.config.application import ApplicationConfig
 
 # The _RequestContext class serves as a temporary storage for data extracted from a request.
@@ -46,7 +45,7 @@ def _validate_forwarded_headers(value: ForwardedHeaders) -> None:
         )
 
 
-class _RequestContext(MessagesMixin):
+class _RequestContext(MessagesMixin, RequestMessagesMixin):
     _choice: Choice | None = None
     _api_key: DIAL_API_KEY | None = None
     _application_config: ApplicationConfig | None = None
@@ -58,19 +57,6 @@ class _RequestContext(MessagesMixin):
     _tool_choice: TOOL_CHOICE = None
     _extra_tools: list[Tool] | None = None
     _accept_language: ACCEPT_LANGUAGE = None
-    _request_messages: REQUEST_MESSAGES | None = None
-
-    @property
-    def request_messages(self) -> REQUEST_MESSAGES:
-        """Raw request messages, readable by initializers before
-        ``setup_messages`` populates the transformed ``messages``."""
-        return self._request_messages if self._request_messages is not None else []
-
-    @request_messages.setter
-    def request_messages(self, value: REQUEST_MESSAGES) -> None:
-        if self._request_messages is not None:
-            raise RuntimeError("Request messages are already set")
-        self._request_messages = value
 
     @property
     def bearer(self) -> DIAL_BEARER:
