@@ -89,6 +89,7 @@ services:
       DEV_QUICKAPPS_EDITOR_URL: "http://localhost:4600"
       # Required or chat-api's CSP frame-src blocks the iframe above.
       ALLOWED_IFRAME_ORIGINS: "http://localhost:4600"
+      SKILL_USAGE_ENABLED: "true"
     volumes:
       - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
 
