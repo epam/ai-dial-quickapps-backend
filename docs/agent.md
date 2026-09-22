@@ -294,7 +294,7 @@ Tool results are standardized into a common format containing:
 - Attachments (files, images, etc.)
 - Usage statistics (if the tool calls an LLM internally)
 - Propagation flags (which attachments should be shown in the UI)
-- Citation annotations (evidence pointing at `<cit id="...">` anchors in the tool's content)
+- Citation annotations (evidence pointing at `<cit data-id="..."></cit>` anchors in the tool's content)
 
 ### Error Handling
 
@@ -364,16 +364,21 @@ The setup pipeline runs the following steps in order:
    packed in `custom_content.state[TOOL_EXECUTION_HISTORY]` into proper ASSISTANT + TOOL message pairs. This must run
    before any component that inspects `msg.tool_calls` on historical messages.
 
-2. **System Prompt Transformer** (`_AddSystemPromptTransformer`): Ensures a system message exists at the start of the
+2. **Extra Fields Scrub** (`_ScrubExtraFieldsTransformer`): Removes fields aidial-sdk does not declare (e.g.
+   `custom_content.annotations` stored by Chat, `custom_content.skills` chips) from the working copy. The app accepts
+   them (`allow_extra_request_fields`), but SDK-based model adapters reject them with `400`. Features that read them
+   use the request's own messages.
+
+3. **System Prompt Transformer** (`_AddSystemPromptTransformer`): Ensures a system message exists at the start of the
    conversation, combining the configured system prompt with any agent instructions.
 
-3. **Attachment Notification Injector** (`_AttachmentNotificationInjector`): Always included in the pipeline
+4. **Attachment Notification Injector** (`_AttachmentNotificationInjector`): Always included in the pipeline
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used
    in a prior turn). When active, checks whether admin-configured context files have changed since the last
    notification. If changes are detected, inserts synthetic tool call and tool result message pairs into the history
    using the `internal_attachments_available_context` tool. Returns messages unchanged when inactive.
 
-4. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
+5. **Timestamp Injection Transformer** (`_TimestampInjectionTransformer`): Appends a synthetic
    `current_timestamp` tool-call + result pair at the end of the message list so the agent knows "when" the
    interaction is happening. Historical timestamps are restored from state with their original times.
 
@@ -402,7 +407,7 @@ The processor builds an aggregated result containing all accumulated data for th
 
 Annotations collected from a deployment tool are relayed onto the choice as a raw
 `custom_fields.annotations` chunk (`aidial-sdk` cannot model `custom_fields`), verbatim and
-unfiltered. Keeping the matching `<cit id="...">` anchors in the answer is left to the orchestrator
+unfiltered. Keeping the matching `<cit data-id="..."></cit>` anchors in the answer is left to the orchestrator
 model, steered by a prompt rule registered when any tool enables the flag.
 
 <!-- DIAGRAM: Message processing pipeline showing Messages -> ExtractToolCalls -> AddSystemPrompt -> AttachmentNotification -> LLM -> ChunkProcessor -> AssistantCallResult -->
