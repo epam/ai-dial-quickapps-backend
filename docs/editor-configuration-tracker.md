@@ -28,7 +28,6 @@ resource**, so this editor only needs to reference them, not re-edit them. The e
 toolset-level fields the *app* owns — `description`, `enabled`, `deferred`.
 
 *(preview)* marks preview-tier backend fields — gate any editor control behind the preview flag.
-Draft links point into `claude/issues/chat/`, a local working area not tracked in git.
 
 ## Coverage
 
@@ -43,9 +42,9 @@ Counted in tracked rows; a few rows cover a group of sibling fields (noted in th
 | `starters` | 0 | 0 | 0 | 0 | 1 | 1 |
 | `skills` | 1 | 0 | 0 | 1 | 1 | 3 |
 | `hooks` | 0 | 0 | 0 | 7 | 1 | 8 |
-| `features` | 1 | 1 | 0 | 14 | 0 | 16 |
+| `features` | 1 | 1 | 0 | 13 | 1 | 16 |
 | `tool_defaults` | 0 | 0 | 0 | 1 | 0 | 1 |
-| **Total** | **14** | **2** | **38** | **46** | **13** | **113** |
+| **Total** | **14** | **2** | **38** | **45** | **14** | **113** |
 
 ### Open work by priority
 
@@ -58,13 +57,13 @@ Rows still needing editor work (❌ + 📝 + 🟡), by priority.
 | `tool_sets` | 2 | 1 | 36 |
 | `skills` | 1 | 0 | 0 |
 | `hooks` | 0 | 0 | 7 |
-| `features` | 2 | 6 | 6 |
+| `features` | 2 | 6 | 5 |
 | `tool_defaults` | 0 | 1 | 0 |
-| **Total** | **8** | **15** | **62** |
+| **Total** | **8** | **15** | **61** |
 
 **High-priority shortlist:** folder contexts · toolset `description` · toolset `deferred` +
 `tool_discovery.enabled`/`service_model` (one feature) · `dial-skill` resources ·
-`features.web_fetch.enabled` *(drafted)* · `features.representation_tooling.add_attachment` *(drafted)*.
+`features.web_fetch.enabled` · `features.representation_tooling.add_attachment`.
 
 ---
 
@@ -270,11 +269,11 @@ seed the conversation with a directory listing, refreshed on a TTL.
 | Field | What it does | Status | Tier | Pri |
 |---|---|---|---|---|
 | `timestamp` | Agent knows the current time. [docs](./time_awareness.md) | ✅ *Time awareness* | — | — |
-| `timestamp.injection_strategy` | How the timestamp reaches the model (tool call vs other). | ❌ | Advanced | Low |
+| `timestamp.injection_strategy` | Fixed to `tool_call` — the only allowed value. | ➖ | — | — |
 | `file_loading.size_limit` | Per-app cap on a single downloaded file; otherwise the env default (10 MiB). | ❌ | Advanced | Medium |
 | `external_url_fetch.enabled` | Per-app opt-out of fetching external URLs, inside the admin env cap. [design](./designs/external_url_attachments.md) | ❌ | Advanced | Medium |
 | `external_url_fetch.host_allowlist` | Narrow the allowed hosts (intersected with the admin list). | ❌ | Advanced | Medium |
-| `stage_display.level` | How much of the agent's work users see: `none` / `errors` / `info` / `debug`. [design](./designs/stage_display_level.md) | ❌ | Advanced | Medium |
+| `stage_display.level` | How much of the agent's work users see: `none` / `error` / `info` / `debug`. [design](./designs/stage_display_level.md) | ❌ | Advanced | Medium |
 | `dial_files` | Built-in file tools for the app's storage. [design](./designs/dial_files_tools.md) | 🟡 *File tools* — all-or-nothing | — | — |
 | `dial_files.enabled_tools` | Expose a subset instead of all nine (e.g. read-only: `read_lines` + `search`). | ❌ | Advanced | Medium |
 | `dial_files.agent_home_dir` | Root the agent in a subfolder of the app's appdata. | ❌ | Advanced | Medium |
@@ -282,9 +281,9 @@ seed the conversation with a directory listing, refreshed on a TTL.
 | `dial_files.tool_call_result_offload.enabled` *(preview)* | Offload oversized tool results to a file, read back on demand. [design](./designs/large_tool_responses.md) | ❌ | Advanced | Low |
 | `dial_files.tool_call_result_offload.size_threshold` *(preview)* | Byte threshold that triggers offloading. | ❌ | Advanced | Low |
 | `dial_files.tool_call_result_offload.excluded_tools` *(preview)* | Tools exempt from offloading. | ❌ | Advanced | Low |
-| `web_fetch.enabled` *(preview)* | Expose `internal_web_fetch` — fetch an external resource inline or save it to the workspace. [design](./designs/web_fetch_tool.md) · [draft](../claude/issues/chat/web-fetch-toggle.md) | ❌ | Basic | **High** |
+| `web_fetch.enabled` *(preview)* | Expose `internal_web_fetch` — fetch an external resource inline or save it to the workspace. [design](./designs/web_fetch_tool.md) | ❌ | Basic | **High** |
 | `web_fetch.max_inline_size` *(preview)* | Byte cap on text returned inline by `internal_web_fetch`. | ❌ | Advanced | Low |
-| `representation_tooling.add_attachment` *(preview)* | Let the agent attach a file it produced to its own answer. [design](./designs/add_attachment_to_response.md) · [draft](../claude/issues/chat/add-attachment-toggle.md) | ❌ | Basic | **High** |
+| `representation_tooling.add_attachment` *(preview)* | Let the agent attach a file it produced to its own answer. [design](./designs/add_attachment_to_response.md) | ❌ | Basic | **High** |
 
 ## tool_defaults
 
