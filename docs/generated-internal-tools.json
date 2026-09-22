@@ -414,5 +414,33 @@
     "required": [
       "url"
     ]
+  },
+  {
+    "name": "task",
+    "description": "Delegate a self-contained task to a subagent. The subagent works in its own isolated context and returns only its final answer — its intermediate steps never enter this conversation. Available subagents:\n- general-purpose: General-purpose subagent for researching complex questions, searching for information, and executing multi-step tasks. Use it when a sub-task takes several tool calls whose intermediate results you do not need to see. You choose which tool sets it gets for each task via `tool_sets`.",
+    "properties": {
+      "subagent_type": {
+        "type": "string",
+        "description": "Which subagent to spawn.",
+        "enum": [
+          "general-purpose"
+        ]
+      },
+      "prompt": {
+        "type": "string",
+        "description": "The complete task for the subagent. It sees nothing but this text — no conversation history, no other subagent's work — so state everything it needs."
+      },
+      "tool_sets": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "Only for `general-purpose`, where it is required: which of this app's tool sets the subagent may use. It gets these and nothing else — it does not inherit your tools, so name every set the task needs. Pass an empty list for a subagent that only has to reason over the text you give it. Omit for any other subagent type; those have a fixed tool set."
+      }
+    },
+    "required": [
+      "subagent_type",
+      "prompt"
+    ]
   }
 ]

@@ -8,13 +8,14 @@ from aidial_sdk.exceptions import HTTPException as DialHTTPException
 from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
+import quickapp.core.application._completion_runner as completion_runner
 import quickapp.core.application._quick_app_completion as quick_app_completion
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
 )
 from quickapp.config.config_template_resolver import ConfigResolver
-from quickapp.core.application import _MessagesSetup, _RequestContext
+from quickapp.core.application import CompletionRunner, _MessagesSetup, _RequestContext
 from quickapp.core.application._proxy_settings import ProxySettings
 from quickapp.core.application._request_context_setup import _RequestContextSetup
 
@@ -80,6 +81,7 @@ def patch_invoke_initializers(monkeypatch):
         return None
 
     monkeypatch.setattr(quick_app_completion, "invoke_initializers", _noop)
+    monkeypatch.setattr(completion_runner, "invoke_initializers", _noop)
     yield
 
 
@@ -141,25 +143,24 @@ def make_request_completion():
             context_provider=provider,
             config_resolver=config_resolver,
             messages_setup=messages_setup,
-            proxy_settings=ProxySettings(),
         )
 
         mapping = {
-            quick_app_completion._InitializationErrorHandler: init_handler,
+            completion_runner._InitializationErrorHandler: init_handler,
             _RequestContext: request_context,
             _RequestContextSetup: request_context_setup,
             _MessagesSetup: messages_setup,
             ConfigResolver: config_resolver,
             quick_app_completion.PerformanceTimer: Mock(),
-            quick_app_completion.ApplicationConfig: SimpleNamespace(
+            completion_runner.ApplicationConfig: SimpleNamespace(
                 orchestrator=SimpleNamespace(
                     deployment=SimpleNamespace(deployment_id="default-deployment")
                 ),
                 skills=None,
                 contexts=[],
             ),
-            list[quick_app_completion.StagedBaseTool]: [],
-            quick_app_completion.AgentSkillsProvider: SimpleNamespace(get_all_skills=lambda: []),
+            list[completion_runner.StagedBaseTool]: [],
+            completion_runner.AgentSkillsProvider: SimpleNamespace(get_all_skills=lambda: []),
         }
         if orchestrator is not None:
             mapping[quick_app_completion.Orchestrator] = orchestrator
@@ -172,7 +173,15 @@ def make_request_completion():
         mapping[quick_app_completion.PresentationSettings] = presentation_settings
 
         injector = FakeInjector(mapping, has_binding=has_binding)
-        completion = quick_app_completion._QuickAppCompletion(injector, presentation_settings)
+        mapping[CompletionRunner] = CompletionRunner(
+            injector=injector,
+            context_setup=request_context_setup,
+            error_handler=init_handler,
+            perf_timer=mapping[quick_app_completion.PerformanceTimer],
+        )
+        completion = quick_app_completion._QuickAppCompletion(
+            injector, presentation_settings, ProxySettings()
+        )
         return request, completion, injector
 
     return _make

@@ -1788,6 +1788,19 @@
           "default": null,
           "description": "Enables tools that control how the agent surfaces its output to the user. Omit or set to null to disable the whole section. Set to {} to enable with defaults, or set individual sub-fields to false to disable specific tools while keeping the section enabled.",
           "x-preview": true
+        },
+        "subagents": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SubagentsConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Built-in `task` tool: delegate a scoped sub-task to a subagent that runs in its own isolated context and returns a single result. Omit or set to null to disable. Set `enabled` to true to turn it on; the remaining fields tune the built-in general-purpose subagent and declare further subagent types.",
+          "x-preview": true
         }
       },
       "title": "Features",
@@ -2004,6 +2017,53 @@
         }
       },
       "title": "ForwardAuthTokenAuthorization",
+      "type": "object"
+    },
+    "GeneralPurposeSubagentConfig": {
+      "description": "Tuning for the built-in ``general-purpose`` subagent.\n\nUnlike a declared type, its tool sets are not decided here: the coordinator names\nthem per call through the ``task`` tool's ``tool_sets`` argument, so a spoke's tool\nsurface fits the task at hand rather than the whole app.",
+      "properties": {
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subagent's instructions. Replaces the built-in general-purpose prompt, never appends to it. When unset, the built-in prompt is used.",
+          "title": "System Prompt"
+        },
+        "deployment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deployment for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Deployment Id"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for one spawn. When unset, the coordinator's is inherited.",
+          "title": "Max Iterations"
+        }
+      },
+      "title": "GeneralPurposeSubagentConfig",
       "type": "object"
     },
     "HardStopStrategyModel": {
@@ -3645,6 +3705,122 @@
         }
       },
       "title": "StopStrategyModel",
+      "type": "object"
+    },
+    "SubagentConfig": {
+      "description": "A subagent type this app may spawn.\n\nA subagent runs its own orchestrator loop with its own system prompt, model,\niteration budget, and tool sets, and returns a single result. It inherits the\napp's contexts, skills, hooks, and features. Its tools are narrowed per tool\nset, not per individual tool.",
+      "properties": {
+        "name": {
+          "description": "Identifier the coordinator uses to select this subagent.",
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "description": "When to use this subagent. Surfaced to the coordinator's LLM for routing.",
+          "title": "Description",
+          "type": "string"
+        },
+        "system_prompt": {
+          "description": "The subagent's instructions. Replaces the app system prompt, never appends.",
+          "title": "System Prompt",
+          "type": "string"
+        },
+        "tool_sets": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Names of the app's tool sets this subagent may use. When unset, the subagent inherits every tool set.",
+          "title": "Tool Sets"
+        },
+        "deployment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deployment for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Deployment Id"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Max Iterations"
+        }
+      },
+      "required": [
+        "name",
+        "description",
+        "system_prompt"
+      ],
+      "title": "SubagentConfig",
+      "type": "object"
+    },
+    "SubagentsConfig": {
+      "description": "Delegation to subagents through the built-in ``task`` tool.\n\nA subagent is a helper agent the app spawns to carry out one scoped task. It runs\nits own orchestrator loop and returns a single result; its intermediate steps never\nenter the coordinator's conversation.\n\nTwo kinds are offered side by side: the built-in ``general-purpose`` subagent, whose\ntools the coordinator picks per call, and the ``types`` the builder declares, each\nwith a fixed prompt and tool allowlist.",
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether to offer the `task` tool, which spawns subagents.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "general_purpose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GeneralPurposeSubagentConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The built-in `general-purpose` subagent: the coordinator names the tool sets it may use on every call. Set to null to offer only the declared `types`."
+        },
+        "types": {
+          "description": "Subagent types declared by the builder, each with a fixed system prompt and tool allowlist. The coordinator selects one by name.",
+          "items": {
+            "$ref": "#/$defs/SubagentConfig"
+          },
+          "title": "Types",
+          "type": "array"
+        },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Wall-clock budget for one spawn. Narrows the admin ceiling set by `SUBAGENT_TIMEOUT_SECONDS` but never extends it.",
+          "title": "Timeout Seconds"
+        }
+      },
+      "title": "SubagentsConfig",
       "type": "object"
     },
     "TTLRefreshCondition": {
