@@ -15,6 +15,7 @@ This folder contains technical documentation for the Quick Apps backend.
 | [Agent Skills](skills.md)                     | How to create and manage reusable agent skills (directory layout, metadata).                                                         |
 | [Time Awareness](time_awareness.md)           | How the agent knows the current time and reasons about data freshness.                                                               |
 | [Custom CA Certificates](custom_ca_certificates.md) | How to trust a private/corporate Root CA when running behind a TLS-intercepting proxy (`USE_SYSTEM_CA_CERTS`).               |
+| [Editor Configuration Tracker](editor-configuration-tracker.md) | Every app-config field and whether the Quick Apps 2.0 editor surfaces it; gaps categorised basic/advanced with priorities. |
 
 ## Preview Features
 
