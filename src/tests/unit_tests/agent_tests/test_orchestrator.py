@@ -1183,7 +1183,9 @@ async def test_tool_annotations_are_relayed_to_the_choice():
     annotations = [_annotation("e37335"), _annotation("a91c02")]
     orchestrator = _build_orchestrator_for_propagation(
         choice,
-        _tool_result_with_annotations(annotations, content='The tool says so <cit id="e37335">.'),
+        _tool_result_with_annotations(
+            annotations, content='The tool says so <cit data-id="e37335"></cit>.'
+        ),
     )
 
     await orchestrator.invoke()

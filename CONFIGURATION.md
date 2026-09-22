@@ -740,11 +740,11 @@ The same as ApiKeyAuthorization but for mcp location is not configurable and alw
 #### Citation annotations
 
 A DIAL application used as a deployment tool can return citation annotations under
-`choices[].delta.custom_fields.annotations`, with in-text `<cit id="...">` anchors in its answer
+`choices[].delta.custom_fields.annotations`, with in-text `<cit data-id="..."></cit>` anchors in its answer
 text. Set `propagate_annotations_to_choice: true` on that tool to forward them to your app's answer.
 
 Annotations are forwarded exactly as the deployment returned them. When any tool enables the flag,
-the orchestrator is additionally instructed to copy every `<cit id="...">` anchor verbatim from tool
+the orchestrator is additionally instructed to copy every `<cit data-id="..."></cit>` anchor verbatim from tool
 responses into its own answer, so the anchors the annotations point at stay in the text.
 
 This is a preview feature: it requires `ENABLE_PREVIEW_FEATURES=true`, and DIAL Chat does not

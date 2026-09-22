@@ -61,9 +61,8 @@ class DialDeploymentTool(BaseOpenAITool):
         description=(
             "Propagate citation annotations returned by the deployment "
             "(`choices[].delta.custom_fields.annotations`) onto the app's choice. "
-            "The orchestrator is instructed to copy the matching `<cit id=\"...\">` "
-            "anchors verbatim; annotations whose anchor did not survive into the final "
-            "answer are dropped."
+            "Annotations are forwarded unchanged; the orchestrator is instructed to copy "
+            "the matching `<cit data-id=\"...\"></cit>` anchors verbatim into its answer."
         ),
     )
     supports_url_attachments: bool = Field(
