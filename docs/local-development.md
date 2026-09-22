@@ -116,6 +116,10 @@ Navigation: [Documentation hub](./README.md) · [Configuration / env vars](../CO
           frame it by `ALLOWED_IFRAME_ORIGINS` — both already set on the `chat-new` service. The
           editor in turn only accepts being framed by the origin in its own
           `ALLOWED_FRAME_ANCESTORS`, so both sides must name each other.
+        - The editor's `QUICK_APPS_APPLICATION_NAME` must equal the schema's
+          `dial:applicationTypeDisplayName` (`Quick App 2.0`). Chat only enables **Save & Exit** and
+          **Preview** once it receives the editor's `<name>/readyToSave` message; with a missing or
+          mismatched name, the buttons stay disabled without any error.
 
     - Optional — DIAL Admin (UI + backend API, embedded H2 database):
 
