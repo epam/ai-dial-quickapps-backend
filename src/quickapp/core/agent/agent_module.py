@@ -53,6 +53,7 @@ from quickapp.core.agent._orchestrator_deployment_initializer import (
     _OrchestratorStaticToolsContext,
 )
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
+from quickapp.core.agent._scrub_extra_fields_transformer import _ScrubExtraFieldsTransformer
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
@@ -114,6 +115,9 @@ class AgentModule(Module):
         )
         binder.bind(
             _AddSystemPromptTransformer, to=_AddSystemPromptTransformer, scope=request_scope
+        )
+        binder.bind(
+            _ScrubExtraFieldsTransformer, to=_ScrubExtraFieldsTransformer, scope=request_scope
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
@@ -251,9 +255,11 @@ class AgentModule(Module):
     @multiprovider
     def provide_message_transformers(
         self,
+        scrub_extra_fields: _ScrubExtraFieldsTransformer,
         add_system_prompt: _AddSystemPromptTransformer,
     ) -> list[MessagesTransformer]:
         return [
+            scrub_extra_fields,
             add_system_prompt,
         ]
 
