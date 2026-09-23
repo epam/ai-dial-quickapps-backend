@@ -12,7 +12,6 @@ from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.invocation._skill_reference import skill_name_from_url
-from quickapp.skills.skills_provider import ResolvedSkill
 
 logger = logging.getLogger(__name__)
 

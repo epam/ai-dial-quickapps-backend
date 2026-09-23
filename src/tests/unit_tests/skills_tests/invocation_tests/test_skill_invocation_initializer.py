@@ -183,7 +183,7 @@ class TestReporting:
     async def test_all_of_this_turns_picks_are_reported(self):
         initializer, _, context = _make(
             [_user("skills/b/a", "skills/b/z")],
-            DialSkillResolverOutput(
+            SkillResolution(
                 resolved=[],
                 exceptions=[
                     SkillInitializationException(url="skills/b/a", reason="bad a"),
