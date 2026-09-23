@@ -495,7 +495,7 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ## Orchestrator attachment strategies
 
-`OrchestratorConfig.attachment_strategy` (preview field, gated by `ENABLE_PREVIEW_FEATURES`) selects how
+`OrchestratorConfig.attachment_strategy` selects how
 the orchestrator receives request-scoped attachments. The field is **opt-in per app**: when unset, the
 orchestrator gets no admin/user attachments on the native path — USER `image/*` passes through (legacy
 behaviour preserved by `_LegacyUserImageKeepPolicy`), other MIMEs are surfaced as XML metadata only.
