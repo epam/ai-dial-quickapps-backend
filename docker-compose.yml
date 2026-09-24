@@ -89,6 +89,7 @@ services:
       DEV_QUICKAPPS_EDITOR_URL: "http://localhost:4600"
       # Required or chat-api's CSP frame-src blocks the iframe above.
       ALLOWED_IFRAME_ORIGINS: "http://localhost:4600"
+      SKILL_USAGE_ENABLED: "true"
     volumes:
       - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
 
@@ -115,6 +116,10 @@ services:
       ALLOWED_FRAME_ANCESTORS: "http://localhost:3012"
       ALLOWED_ORIGIN: "http://localhost:3012"
       DIAL_CHAT_URL: "http://localhost:3012"
+      # Must equal dial:applicationTypeDisplayName in
+      # docker_compose_files/core/configuration/application-schemas.json — it prefixes the
+      # postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
+      QUICK_APPS_APPLICATION_NAME: "Quick App 2.0"
       THEMES_URL: "http://themes:8080/config.json"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:

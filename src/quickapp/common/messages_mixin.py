@@ -3,6 +3,8 @@ import logging
 from aidial_sdk.chat_completion import Message
 from pydantic import BaseModel
 
+from quickapp.common._di_types import REQUEST_MESSAGES
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,3 +48,27 @@ class MessagesMixin(BaseModel):
         public setter remain a loud error.
         """
         self._messages = messages
+
+
+class RequestMessagesMixin(BaseModel):
+    """
+    Mixin holding the raw request messages, as they arrived.
+
+    Deliberately separate from ``MessagesMixin``: the working message list is
+    injected into every tool, while the raw list is only read by initializers,
+    which run before ``_RequestContextSetup.setup_messages`` populates it.
+    """
+
+    _request_messages: REQUEST_MESSAGES | None = None
+
+    @property
+    def request_messages(self) -> REQUEST_MESSAGES:
+        """Raw request messages, readable by initializers before
+        ``setup_messages`` populates the transformed ``messages``."""
+        return self._request_messages if self._request_messages is not None else []
+
+    @request_messages.setter
+    def request_messages(self, value: REQUEST_MESSAGES) -> None:
+        if self._request_messages is not None:
+            raise RuntimeError("Request messages are already set")
+        self._request_messages = value

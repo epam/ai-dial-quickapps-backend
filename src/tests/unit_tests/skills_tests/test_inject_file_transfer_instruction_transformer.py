@@ -5,12 +5,12 @@ from quickapp.config.predefined_content_provider import (
     PredefinedContentProvider,
     PredefinedSettings,
 )
-from quickapp.skills._inject_file_transfer_instruction_transformer import (
+from quickapp.skills.registry._inject_file_transfer_instruction_transformer import (
     BUILTIN_FILE_TRANSFER_SKILL,
     _InjectFileTransferInstructionTransformer,
 )
-from quickapp.skills._tool_configs import SKILL_READER_TOOL_NAME
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.registry._tool_configs import SKILL_READER_TOOL_NAME
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 from tests.unit_tests.common.common import make_provider
 
 EXPECTED_CALL_ID_NAME_START = "synth_t_"
