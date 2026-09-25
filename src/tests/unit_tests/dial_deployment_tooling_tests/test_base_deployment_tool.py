@@ -107,6 +107,7 @@ def _build_tool(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
+        app_config=MagicMock(),
     )
 
 
@@ -410,6 +411,7 @@ def _build_tool_with_config(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
+        app_config=MagicMock(),
     )
 
 
@@ -522,6 +524,7 @@ def _build_tool_with_propagation(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
+        app_config=MagicMock(),
     )
 
 
@@ -782,6 +785,7 @@ def _build_tool_with_content_propagation(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
+        app_config=MagicMock(),
     )
 
 

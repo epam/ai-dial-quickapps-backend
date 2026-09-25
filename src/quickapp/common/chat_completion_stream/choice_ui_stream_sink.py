@@ -60,6 +60,7 @@ class ChoiceUiSink(ChatStreamSink):
         stream_content: bool = True,
         propagate_stages: bool = False,
         tools_by_name: dict[str, StagedBaseTool] | None = None,
+        parent_stage: Stage | None = None,
         attachment_filter: Callable[[Attachment], bool] | None = None,
     ) -> None:
         self._accumulator = accumulator
@@ -71,6 +72,7 @@ class ChoiceUiSink(ChatStreamSink):
         self._stages_by_index: dict[int, Stage] = {}
         self._tool_stages_by_index: dict[int, _StreamingToolStageState] = {}
         self._suppressed_tool_indexes: set[int] = set()
+        self._parent_stage: Stage | None = parent_stage
 
     def on_stream_start(self) -> None:
         destination = self._destination
@@ -117,7 +119,7 @@ class ChoiceUiSink(ChatStreamSink):
     def _apply_custom(self, norm: NormalizedCustomContent) -> None:
         destination = self._destination
         assert destination is not None
-        if norm.attachments:
+        if norm.attachments and self._parent_stage is None:
             self._add_attachments(destination, norm.attachments)
         for position, raw in norm.stage_entries:
             stage_delta = as_stage_delta(raw)
@@ -318,6 +320,23 @@ class ChoiceUiSink(ChatStreamSink):
             )
             self._tool_stages_by_index.pop(index, None)
 
+    def _resolve_parent(self, delta: StageDeltaItem) -> Stage | None:
+        """Resolve the parent Stage for a new sub-stage, or None for flat behaviour."""
+        if self._parent_stage is None:
+            return None
+        sub_parent_idx = delta.get("parent_stage_index")
+        if sub_parent_idx is not None:
+            parent = self._stages_by_index.get(sub_parent_idx)
+            if parent is None:
+                logger.warning(
+                    "parent_stage_index=%s not yet seen when creating index=%s; "
+                    "falling back to top-level parent",
+                    sub_parent_idx,
+                    delta.get("index"),
+                )
+            return parent if parent is not None else self._parent_stage
+        return self._parent_stage
+
     def _stream_stage_delta(self, delta: StageDeltaItem, position: int) -> None:
         destination = self._destination
         assert destination is not None
@@ -335,8 +354,9 @@ class ChoiceUiSink(ChatStreamSink):
                 )
                 log_payload(logger, "Stage delta with missing name: %s", delta)
                 return
+            parent = self._resolve_parent(delta)
             try:
-                stage = destination.create_stage(stage_name)
+                stage = (parent or destination).create_stage(stage_name)
                 stage.open()
                 self._stages_by_index[idx] = stage
                 just_created = True

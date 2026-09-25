@@ -81,18 +81,24 @@ class ChatStreamSinkFactory:
         return ChatStreamPipeline(
             accumulator,
             [
-                AccumulationSink(accumulator, stream_content=config.stream_content),
+                AccumulationSink(accumulator),
                 ChoiceUiSink(
                     accumulator,
                     destination=config.destination,
                     stream_content=config.stream_content,
                     propagate_stages=config.propagate_stages,
                     tools_by_name=_tools_by_name(self._tools()),
+                    parent_stage=config.parent_stage,
                     attachment_filter=config.attachment_filter,
                 ),
                 StageWrapperUiSink(
                     stage_wrapper=config.stage_wrapper,
-                    stream_content=config.stream_content,
+                    # Always stream assistant text into the Calling stage. ``stream_content``
+                    # only gates ChoiceUiSink (main message). Nested-stage propagation sets
+                    # it to False to avoid dumping sub-app text into the chat body; the
+                    # stage Response must still fill — DeploymentStageWrapper.add_result
+                    # intentionally writes an empty string after the stream.
+                    stream_content=True,
                 ),
             ],
         )

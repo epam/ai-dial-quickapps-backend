@@ -157,22 +157,25 @@ calls made during that chat completion. No configuration is required.
 Use this for tracing (e.g. `X-Request-Id`, `X-Correlation-Id`), multi-tenancy (`X-Tenant-Id`), or any custom header
 your gateways or downstream services expect.
 
-### Stage display level
+### Stage display
 
-Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set `features.stage_display.level` in the app manifest:
+Controls which tool-execution stages are surfaced in the DIAL UI for each app. Set
+`features.stage_display` in the app manifest:
 
-| Value | Behavior |
-|---|---|
-| `none` | No stages shown at all, not even for errors |
-| `error` | Show stages only for failed tool calls |
-| `info` | Show stages for regular tool calls and errors (default) |
-| `debug` | Show stages for all tool calls, including internal/system ones |
+| Field | Value | Behavior |
+|---|---|---|
+| `level` | `none` | No stages shown at all, not even for errors |
+| `level` | `error` | Show stages only for failed tool calls |
+| `level` | `info` | Show stages for regular tool calls and errors (default) |
+| `level` | `debug` | Show stages for all tool calls, including internal/system ones |
+| `propagate_sub_stages` `[Preview]` | `true` / `false` / omit | When a QuickApp calls another DIAL deployment (or QuickApp) as a tool, re-emit the callee's stages as nested children of the caller's "Calling X" stage (`parent_stage_index` on the wire). Default when preview features are enabled: `true`. Set to `false` to keep the previous flat behaviour (callee stages discarded). Requires `ENABLE_PREVIEW_FEATURES=true`. Nested rendering also needs a Chat build that understands `parent_stage_index`; older clients still show a flat list. |
 
 ```json
 {
   "features": {
     "stage_display": {
-      "level": "debug"
+      "level": "debug",
+      "propagate_sub_stages": true
     }
   }
 }

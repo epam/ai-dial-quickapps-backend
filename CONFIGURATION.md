@@ -409,6 +409,7 @@ fields fall back to the deployment-wide defaults configured via environment vari
 |----------------------|----------|----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
 | `timestamp`          | No       | Object or null | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
 | `external_url_fetch` | No       | Object         | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `stage_display`      | No       | Object         | Stage visibility threshold and optional nested sub-stage propagation. See [Stage display configuration](#stage-display-configuration).                                       | `{"level": "info"}`                    |
 
 #### Timestamp configuration
 
@@ -502,6 +503,44 @@ this app only allows `example.com`):
 
 See [`docs/file_transfer.md`](docs/file_transfer.md) for the full pipeline (URL classification,
 SSRF envelope, deployment dispatch table, error messages and agent retry behaviour).
+
+#### Stage display configuration
+
+Controls which tool-execution stages appear in the DIAL UI, and whether stages from a sub-app
+called as a tool are nested under the caller's stage.
+
+| Field                   | Required | Type            | Description                                                                                                                                                                                                                                                                                                                                                         | Available Values                         | Default Value |
+|-------------------------|----------|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------|---------------|
+| `level`                 | No       | String          | Visibility threshold for tool stages.                                                                                                                                                                                                                                                                                                                               | `none`, `error`, `info`, `debug`         | `info`        |
+| `propagate_sub_stages`  | No       | Boolean or null | `[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. When enabled (default if the field is omitted while preview features are on), stages emitted by a DIAL deployment / QuickApp tool are re-emitted as nested children of the open "Calling X" stage via `parent_stage_index` on the wire. Set to `false` to keep the previous behaviour (callee stages are discarded). Nested UI rendering needs a Chat build that understands `parent_stage_index`; older clients still show a flat list. | `true`, `false`, `null`                  | `null`        |
+
+<details>
+<summary><b>Stage display configuration JSON sample</b></summary>
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "level": "info",
+      "propagate_sub_stages": true
+    }
+  }
+}
+```
+
+Disable nested propagation while keeping normal stage visibility:
+
+```json
+{
+  "features": {
+    "stage_display": {
+      "propagate_sub_stages": false
+    }
+  }
+}
+```
+
+</details>
 
 ### Tool sets configuration
 
