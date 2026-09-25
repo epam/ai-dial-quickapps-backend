@@ -3,7 +3,7 @@
 - **Status:** Draft
 - **Issue:** [epam/ai-dial-quickapps-backend#567](https://github.com/epam/ai-dial-quickapps-backend/issues/567)
 - **Dependencies:**
-    - [`skill-invocation.md`](skill-invocation.md) — the chip mechanism (`custom_content.skills`),
+    - [`skill-invocation.md`](skill_invocation.md) — the chip mechanism (`custom_content.skills`),
       `SkillsRegistry`, `generate_skills_xml`, and the `read_skill` tool all stay as they are and are
       reused, not replaced. As actually implemented in `src/quickapp/skill_invocation/` today (not
       as that doc's draft text describes it), the chip path resolves **one** skill per message
@@ -23,7 +23,7 @@
 
 ## Problem Statement
 
-[`skill-invocation.md`](skill-invocation.md) solves *explicit* invocation: the user picks one skill
+[`skill-invocation.md`](skill_invocation.md) solves *explicit* invocation: the user picks one skill
 from a Chat palette, and it is sent as a `custom_content.skills[]` chip. That closes the access gap
 for the user's own skills, but leaves two things unsolved:
 
@@ -48,7 +48,7 @@ one, possibly from different sources, in a single turn — when the user only wr
 ## Design Goals
 
 1. A skill named in the message text is matched and loaded **deterministically** — the same
-   guarantee [`skill-invocation.md`](skill-invocation.md) gives the chip, extended to free text.
+   guarantee [`skill-invocation.md`](skill_invocation.md) gives the chip, extended to free text.
 2. **All sources are eligible**, and each is independently toggleable by the app author: predefined
    skills, the app's declared DIAL prompt/skill resources, the user's own Core skills, skills shared
    with the user, and public skills. (Favorite?)
@@ -198,7 +198,7 @@ the LLM-classification approach is already an established, working pattern here
 
 ### 3. Injection — one assistant turn, N parallel tool calls
 
-This is the part that most changes shape relative to [`skill-invocation.md`](skill-invocation.md).
+This is the part that most changes shape relative to [`skill-invocation.md`](skill_invocation.md).
 That doc's mechanism, and its actual implementation, produce **one pair**: one assistant message
 with a single tool call, one matching tool result. Matching from free text routinely needs to load
 more than one skill in the same turn (the goal use case names two), so the unit of injection can no
@@ -276,7 +276,7 @@ and is not proposed as a default.
 
 ## Failure Modes
 
-Extends, does not replace, [`skill-invocation.md`](skill-invocation.md)'s existing table.
+Extends, does not replace, [`skill-invocation.md`](skill_invocation.md)'s existing table.
 
 | Condition | Result |
 |---|---|
@@ -301,7 +301,7 @@ Extends, does not replace, [`skill-invocation.md`](skill-invocation.md)'s existi
 |---|---|
 | Embedding/vector search over the skill catalog | No such infrastructure exists anywhere in this codebase; LLM-based classification is already an established, working pattern here (`tool_discovery`), so it needs no new infra. |
 | Keep the pair-per-mechanism model (one pair for the chip, a separate pair for matches) | Free-text matching routinely needs to load more than one skill per turn; stacking separate pairs from separate mechanisms doesn't reflect how a real parallel tool call turn looks, and complicates history/dedup for no benefit. |
-| Cache full skill content across requests, not just the catalog listing | Breaks the revocation-safety property [`skill-invocation.md`](skill-invocation.md) already established: a revoked share or edited skill must be reflected on the very next turn. |
+| Cache full skill content across requests, not just the catalog listing | Breaks the revocation-safety property [`skill-invocation.md`](skill_invocation.md) already established: a revoked share or edited skill must be reflected on the very next turn. |
 | A single global cache for "all skills," like the deployment/app caches | The candidate set is scoped per `(user, source)`, not global — a shared key would either leak one user's catalog to another or thrash on every request. |
 
 ---
