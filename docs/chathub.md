@@ -344,7 +344,7 @@ Two environment variables affect ChatHub configuration globally. They complement
 | `ENABLE_PREVIEW_FEATURES` | When `false` (default), preview features are disabled even if configured. Variants that depend on preview features must be tested with this flag enabled before promotion.                                                                              |
 
 For the full list of environment variables that affect Quick Apps 2.0, see
-[`README.md`](../README.md#environment-variables).
+[`README.md`](../CONFIGURATION.md#environment-variables).
 
 ---
 

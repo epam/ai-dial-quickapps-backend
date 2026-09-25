@@ -1,6 +1,6 @@
 # Design: MCP Capabilities Extension — Phase 1: Resources
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - MCP resources](../../CONFIGURATION.md#mcp-resources-configuration)
 - **Scope:** Resources + Capability Negotiation. Prompts and Tool Annotations are deferred to future iterations (see Out of Scope).
 - **Dependencies:**
   - None
