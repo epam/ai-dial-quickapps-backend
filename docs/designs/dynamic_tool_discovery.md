@@ -311,10 +311,14 @@ else:
     → nothing extra happens; the tool is eager as today
 ```
 
-**As built:** REST API and MCP toolsets support deferral (`rest_api_tooling_module.py`,
-`_mcp_tool_initializer.py`). Internal toolsets also support it. `dial-deployment` and `dial-app`
-toolsets do not yet call `is_toolset_deferred` — setting `deferred` on those has no effect today
-(tracked as a follow-up).
+**As built:** REST API, MCP, and internal toolsets support deferral
+(`rest_api_tooling_module.py`, `_mcp_tool_initializer.py`, `internal_tooling_module.py`).
+`dial-deployment` toolsets also support it (`_deployment_tool_initializer.py`) — tools configured
+under one `DeploymentToolSet` are grouped by their owning toolset before `is_toolset_deferred` is
+evaluated, since each config entry maps 1:1 to a tool rather than one toolset naturally producing
+a list. Tools synthesized from a `dial-app` toolset (`_dial_app_resolver.py`, chat-completion
+branch) have no config-level owner and are always eager — a `DialAppToolSet` always resolves to
+exactly one deployment tool, so the deferral threshold never applies to them anyway.
 
 `DeferredToolsContext` holds two structures across all deferred toolsets in the request (not
 one instance per toolset — a single request-scoped context aggregates all of them):
@@ -488,7 +492,7 @@ eagerly, no discovery overhead.
 | `BaseToolSet` (`config/toolsets/base.py`) | Add `deferred: bool \| None` field (tri-state, default `None`/unset — unset behaves as deferred, see [Deferral threshold](#deferral-threshold)) |
 | `config/tool_discovery.py` | New `ToolDiscoveryConfig` (`enabled`, `service_model`, `min_tools_for_deferral`), referenced by `OrchestratorConfig.tool_discovery` |
 | `shared/deferred_tools/` (`DeferredToolsContext`, `is_toolset_deferred`) | Request-scoped shared object aggregating `catalog`/`definitions` across all deferred toolsets in the request; `is_toolset_deferred` is the pure threshold predicate. Bound via its own `DeferredToolsModule`, spliced into `shared_module` |
-| REST, MCP, internal toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. **`dial-deployment`/`dial-app` toolsets do not yet do this** — follow-up |
+| REST, MCP, internal, `dial-deployment` toolset modules | After building each toolset's tools, evaluate `is_toolset_deferred`; register with `DeferredToolsContext` or leave in the eager `list[StagedBaseTool]` accordingly. `dial-deployment`'s initializer groups its per-tool config entries by owning `DeploymentToolSet` first, since it builds one tool per config entry rather than one call per toolset. `dial-app`-synthesized tools have no toolset owner and stay eager (always exactly one tool per `DialAppToolSet`, so deferral never applies) |
 | `tool_discovery/_anonymous_agent.py` (`_AnonymousAgent`) | Fires a single isolated `chat.completions.create` call (no history, no app system prompt); takes the catalog and a user query; returns matched tool names |
 | `tool_discovery/_tool_search_tool.py` (`_ToolSearchTool`) | Internal `tool_search` (registered name: `internal_tool_search`) tool injected via `ToolDiscoveryModule`'s own `@multiprovider` (preview-gated); calls `_AnonymousAgent`, looks up matched names in `DeferredToolsContext`, writes results into `LazyLoadedToolsHolder`, returns `[{name, description}]` to the main LLM. Its own `enrich_openai_tool_schema` override appends a dynamic list of deferred toolset names/descriptions (`DeferredToolsContext.toolset_summaries`) to the static tool description |
 | `core/agent/lazy_loaded_tools_holder.py` (`LazyLoadedToolsHolder`) | Request-scoped holder of discovered `OpenAiToolConfigDict`s — replaces the originally-proposed lazy-initializer + orchestrator-side `_lazy_loaded_tools` state |
@@ -595,7 +599,7 @@ top of Option 6 incrementally.
 | Per-tool granularity within a toolset | Per-toolset is sufficient for the initial use case |
 | Automatic threshold based on token count | Tool-count threshold is simpler and good enough for MVP |
 | Cross-turn discovery persistence (`custom_content.state["lazy_loaded_tools"]`) | Not implemented — `LazyLoadedToolsHolder` is request-scoped only; discovered tools are rediscovered every turn |
-| `dial-deployment` / `dial-app` toolset deferral | REST, MCP, and internal toolsets support `deferred`; deployment/app toolsets do not yet call `is_toolset_deferred` — tracked as a follow-up |
+| `dial-app` toolset deferral | A `DialAppToolSet` always resolves to exactly one synthetic deployment tool (chat-completion branch) or an `MCPToolSet` (MCP branch, which already supports deferral); batching by count never applies to the single-tool case |
 
 ---
 
