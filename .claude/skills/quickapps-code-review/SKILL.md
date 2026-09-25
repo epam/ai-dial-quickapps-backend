@@ -84,6 +84,9 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] New DI binding added? It must be wired into **every** assembly point (prod entry + integration-test container).
 - [ ] Duplicate bindings of the same protocol/type? Pick one.
 - [ ] **Request-scoped type bound in a module but parameter typed `T | None = None`?** If every production call site injects it, make the parameter required — optional-only-for-tests confuses, as this project uses injector for dependencies. Use a test double via DI, not `None` defaults.
+- [ ] **Constructor parameter that is per-call data, not a dependency, on an `@inject` class?** Mark it `@noninjectable("name", ...)`. Under `@inject` injector owns *every* parameter and **ignores Python defaults** — it resolves the annotation instead, and for an unbound type falls back to calling it: `float | None` → `0.0`, `str | None` → `''`, `int = 42` → `0`, a plain model class → a fresh all-defaults instance. The live case is any parameter that some `build(...)` call sites pass and others omit; the omitting site silently gets a zero-value, not `None`. *Example: I #582 — an omitted `start_time: float | None` arrived as `0.0`, so every non-adopted stage reported host uptime as its duration.*
+- [ ] **New optional parameter added to a class built through `AssistedBuilder`?** Check *all* `build(...)` call sites in the same diff. Asymmetry between them is the trigger for the rule above.
+- [ ] **Tests construct the class directly or pass `MagicMock()` as the builder?** Then the DI resolution path is never exercised and a wrong-default bug ships green. Add at least one test that builds through a real `Injector().get(AssistedBuilder[T])`.
 
 ### 5. Settings
 - [ ] Any `os.getenv` in app code? **Reject.** Move to a `pydantic-settings` `BaseSettings`. To check if an env var was actually set, use `"field_name" in settings.model_fields_set`.
@@ -165,6 +168,8 @@ If you find yourself thinking any of these while reviewing your own change, trea
 | "The cached tool-call responses still work" | If you renamed a tool, regenerate caches. |
 | "`Any` is fine here" | Use the concrete type. |
 | "Optional `None` default makes tests easier" | Injector always provides it in prod — require the type. |
+| "The param defaults to `None`, so omitting it is safe" | Not under `@inject` — injector ignores the default and materializes the annotation (`float()` → `0.0`). Mark per-call data `@noninjectable`. |
+| "The builder is mocked in tests, that covers it" | A mocked `AssistedBuilder` never runs DI resolution. Build through a real `Injector` at least once. |
 | "I'll add a helper now in case we need it later" | Grep for callers first — dead code gets "is it used anywhere?" |
 | "Special-case preview strip in the validator" | Extend `nullify_preview_fields` / shared preview machinery instead. |
 | "PR description is close enough" | Every bullet must match the diff after any revert/split. |
