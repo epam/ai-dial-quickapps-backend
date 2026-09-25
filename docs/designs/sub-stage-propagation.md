@@ -89,17 +89,17 @@ A new optional field `parent_stage_index` is added to `StartStageChunk`. When pr
 
 ### SDK API
 
-Two additions to `aidial_sdk`:
+Nesting is expressed by calling `create_stage` on the parent stage (not via a `parent=` kwarg on `Choice`):
 
 ```python
-# Option A — factory method on Stage
-child = parent_stage.create_child_stage("Fetching forecast")
+# Roots — Choice.create_stage
+calling = choice.create_stage("Calling WeatherApp")
 
-# Option B — optional parameter on Choice.create_stage
-child = choice.create_stage("Fetching forecast", parent=parent_stage)
+# Children — Stage.create_stage (same signature as Choice.create_stage)
+child = calling.create_stage("Fetching forecast")
 ```
 
-`Stage._stage_index` is exposed as a read-only property `Stage.stage_index`. `StartStageChunk.__init__` accepts `parent_stage_index: int | None = None` and includes it in `to_dict()` via `remove_nones`.
+`StartStageChunk.__init__` accepts `parent_stage_index: int | None = None` and includes it in `to_dict()` via `remove_nones`. Internally, `Choice._create_stage(name, parent=...)` still allocates children and wires `Stage._allocate_child`; the public `parent=` kwarg on `Choice.create_stage` is not part of the API.
 
 ### Mechanism (backend)
 
@@ -107,8 +107,8 @@ child = choice.create_stage("Fetching forecast", parent=parent_stage)
 2. `BaseDeploymentTool._run_in_stage_async()` passes `stage_wrapper.stage` to `complete_request_async()` as a new `parent_stage: Stage | None` parameter.
 3. `DialCompletionService._consume_stream()` forwards `parent_stage` in `ChatStreamConfig`.
 4. `ChoiceUiSink` receives `parent_stage` and uses it when re-emitting sub-app stages:
-   - Top-level sub-stages (no `parent_stage_index` in delta): created with `parent=parent_stage`.
-   - Nested sub-stages (`parent_stage_index` present): remapped through the local `_stages_by_index` dict to find the `Stage` object created in the parent context, then passed as `parent=`.
+   - Top-level sub-stages (no `parent_stage_index` in delta): `parent_stage.create_stage(name)` when a nesting root is set, else `destination.create_stage(name)`.
+   - Nested sub-stages (`parent_stage_index` present): remapped through the local `_stages_by_index` dict to find the `Stage` object created in the parent context, then `resolved_parent.create_stage(name)`.
 
 The `_stages_by_index` dict (already maintained by `ChoiceUiSink`) naturally handles arbitrary recursion depth: each level's index space is remapped independently as it is processed.
 
@@ -129,8 +129,8 @@ The UI must:
 | File | Change |
 |------|--------|
 | `chat_completion/chunks.py` | `StartStageChunk`: add `parent_stage_index: int | None`; update `to_dict` |
-| `chat_completion/stage.py` | Add `parent_stage_index` param; expose `stage_index` property |
-| `chat_completion/choice.py` | `create_stage()`: add `parent: Stage | None = None` |
+| `chat_completion/stage.py` | Add `create_stage(name)` |
+| `chat_completion/choice.py` | `create_stage(name)` for roots; private `_create_stage` + `_allocate_child` for nesting |
 
 **`quickapps-backend`:**
 
@@ -143,7 +143,7 @@ The UI must:
 | `dial_deployment_tooling/dial_completion_service.py` | Add `parent_stage` param; forward to `_consume_stream` |
 | `common/chat_completion_stream/handler.py` | Add `parent_stage: Stage | None` to `ChatStreamConfig` |
 | `common/chat_completion_stream/chat_stream_sink_factory.py` | Forward `parent_stage` to `ChoiceUiSink` |
-| `common/chat_completion_stream/choice_ui_stream_sink.py` | Index remapping + `parent=` on `create_stage` |
+| `common/chat_completion_stream/choice_ui_stream_sink.py` | Index remapping; `parent.create_stage` / `destination.create_stage` |
 
 ### Trade-offs
 

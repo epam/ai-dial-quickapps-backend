@@ -356,7 +356,7 @@ class ChoiceUiSink(ChatStreamSink):
                 return
             parent = self._resolve_parent(delta)
             try:
-                stage = destination.create_stage(stage_name, parent=parent)
+                stage = (parent or destination).create_stage(stage_name)
                 stage.open()
                 self._stages_by_index[idx] = stage
                 just_created = True

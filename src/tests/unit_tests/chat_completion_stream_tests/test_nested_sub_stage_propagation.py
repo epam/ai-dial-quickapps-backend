@@ -41,11 +41,20 @@ def _start_stages(chunks: list) -> list[dict]:
     ]
 
 
+def _open_stage(choice: SpyChoice, stage: Stage) -> int:
+    stage.open()
+    chunks = choice.drain_queue()
+    return next(
+        chunk.stage_index
+        for chunk in chunks
+        if isinstance(chunk, StartStageChunk)
+    )
+
+
 def test_sub_app_stages_are_nested_under_the_calling_stage():
     choice = SpyChoice()
     calling = choice.create_stage("Calling WeatherApp")
-    calling.open()
-    choice.drain_queue()
+    calling_index = _open_stage(choice, calling)
 
     sink = _make_sink(choice, calling)
     sink.on_delta(_delta_with_stages([{"index": 0, "name": "Fetching forecast"}]))
@@ -53,15 +62,14 @@ def test_sub_app_stages_are_nested_under_the_calling_stage():
     stages = _start_stages(choice.drain_queue())
     assert len(stages) == 1
     assert stages[0]["name"] == "Fetching forecast"
-    assert stages[0]["parent_stage_index"] == calling.stage_index
+    assert stages[0]["parent_stage_index"] == calling_index
 
 
 def test_nested_sub_app_stages_are_remapped_to_their_propagated_parent():
     """A sub-app index space is remapped onto the stages created in the caller."""
     choice = SpyChoice()
     calling = choice.create_stage("Calling WeatherApp")
-    calling.open()
-    choice.drain_queue()
+    calling_index = _open_stage(choice, calling)
 
     sink = _make_sink(choice, calling)
     sink.on_delta(
@@ -75,21 +83,20 @@ def test_nested_sub_app_stages_are_remapped_to_their_propagated_parent():
 
     stages = _start_stages(choice.drain_queue())
     assert [stage["name"] for stage in stages] == ["Calling Geocoder", "Resolving city"]
-    assert stages[0]["parent_stage_index"] == calling.stage_index
+    assert stages[0]["parent_stage_index"] == calling_index
     assert stages[1]["parent_stage_index"] == stages[0]["index"]
 
 
 def test_unknown_parent_stage_index_falls_back_to_the_calling_stage():
     choice = SpyChoice()
     calling = choice.create_stage("Calling WeatherApp")
-    calling.open()
-    choice.drain_queue()
+    calling_index = _open_stage(choice, calling)
 
     sink = _make_sink(choice, calling)
     sink.on_delta(_delta_with_stages([{"index": 1, "name": "Orphan", "parent_stage_index": 42}]))
 
     stages = _start_stages(choice.drain_queue())
-    assert stages[0]["parent_stage_index"] == calling.stage_index
+    assert stages[0]["parent_stage_index"] == calling_index
 
 
 def test_sub_stages_are_emitted_before_the_calling_stage_closes():
@@ -108,6 +115,12 @@ def test_sub_stages_are_emitted_before_the_calling_stage_closes():
         sink.on_stream_success()
 
     chunks = choice.drain_queue()
+    calling_index = next(
+        chunk.stage_index
+        for chunk in chunks
+        if isinstance(chunk, StartStageChunk)
+        and chunk.parent_stage_index is None
+    )
     child_starts = [
         position
         for position, chunk in enumerate(chunks)
@@ -116,7 +129,7 @@ def test_sub_stages_are_emitted_before_the_calling_stage_closes():
     calling_finish = next(
         position
         for position, chunk in enumerate(chunks)
-        if isinstance(chunk, FinishStageChunk) and chunk.stage_index == calling.stage_index
+        if isinstance(chunk, FinishStageChunk) and chunk.stage_index == calling_index
     )
 
     assert child_starts
