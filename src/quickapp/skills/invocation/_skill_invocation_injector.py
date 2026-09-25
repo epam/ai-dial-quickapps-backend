@@ -5,7 +5,7 @@ from injector import ProviderOf, inject
 
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.staged_base_tool import StagedBaseTool
-from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+from quickapp.common.synthetic_injection.multi_synthetic_tool_call_injector import (
     MultiSyntheticToolCallInjector,
 )
 from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
