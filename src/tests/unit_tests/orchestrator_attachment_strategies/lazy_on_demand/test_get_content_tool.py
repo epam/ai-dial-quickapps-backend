@@ -17,9 +17,11 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import to_file_url_reference
 from quickapp.common.messages_mixin import MessagesMixin
-from quickapp.common.utils import matches_type
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
@@ -60,10 +62,12 @@ def _make_tool(
     promoter: DialFilePromoter | None = None,
     home_resolver: MagicMock | None = None,
 ) -> _GetContentTool:
-    caps = MagicMock(spec=OrchestratorCapabilities)
-    caps.input_attachment_types = input_attachment_types
-    caps.deployment_id = "test-orchestrator"
-    caps.orchestrator_accepts_mime_type = lambda mime: matches_type(mime, input_attachment_types)
+    caps = OrchestratorCapabilities(
+        deployment=SimpleNamespace(  # type: ignore[arg-type]
+            id="test-orchestrator", input_attachment_types=input_attachment_types
+        )
+    )
+    acceptance = _AttachmentAcceptance(caps)
     messages_mixin = MagicMock(spec=MessagesMixin)
     messages_mixin.messages = messages or []
     settings = MagicMock(spec=DialSettings)
@@ -79,7 +83,7 @@ def _make_tool(
         stage_wrapper_builder=MagicMock(),
         tool_config=GET_CONTENT_TOOL_CONFIG,
         perf_timer=MagicMock(),
-        orchestrator_capabilities=caps,
+        attachment_acceptance=acceptance,
         messages_mixin=messages_mixin,
         deferred_stage_close_registry=MagicMock(),
         materializer=materializer,
