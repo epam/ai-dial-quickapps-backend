@@ -148,6 +148,19 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] Broad `except Exception` that wraps/re-raises errors which a narrower handler above already raised intentionally (e.g. a 422 swallowed and re-thrown as 500)? Let the intended error propagate; catch narrowly or re-raise the original.
 - [ ] Catching `Exception` where the operation has known failure modes? Catch the specific types instead (e.g. `UnicodeDecodeError` when decoding bytes, the SDK's `ResourceNotFoundError`/`EtagMismatchError` for file ops).
 
+### 18. Documentation hierarchy
+
+The project uses a **L0–L4** layered docs structure. Violations here accumulate as broken links, broken anchors, and readers sent to stale design docs instead of live config references.
+
+- [ ] **New doc placed at the wrong layer?** Correct homes:
+  - `README.md` (root) — L1 entry: project overview + table of links only. No deep config prose.
+  - `docs/README.md` — L0 hub: capability map (Stable / Preview) + reading guide. Update it whenever a new capability is added.
+  - `docs/*.md` guides — L2 behaviour. Describe how a feature works end-to-end.
+  - `docs/designs/*.md` — L3 design history. Link forward to L1/L2, not the other way.
+- [ ] **Design doc with `Status: Implemented` missing a `User-facing:` header line?** Add one pointing at the relevant `CONFIGURATION.md#anchor` (L1) or `docs/*.md` guide (L2). Readers and agents use this line to find the live config reference.
+- [ ] **Section heading contains a tag like `[Preview]`?** Tags in headings corrupt GitHub-generated anchors (e.g. `### Hooks configuration [Preview]` yields `#hooks-configuration-preview`, not `#hooks-configuration`). Move the preview callout into the section body (e.g. `> **Preview** — requires …`) and keep the heading clean.
+- [ ] **`docs/README.md` capability map not updated?** A new or renamed capability must appear in the Stable or Preview table (with L1 and L2 columns filled where they exist).
+
 ## Red flags — stop and reconsider
 
 If you find yourself thinking any of these while reviewing your own change, treat it as a blocker:
@@ -168,6 +181,9 @@ If you find yourself thinking any of these while reviewing your own change, trea
 | "I'll add a helper now in case we need it later" | Grep for callers first — dead code gets "is it used anywhere?" |
 | "Special-case preview strip in the validator" | Extend `nullify_preview_fields` / shared preview machinery instead. |
 | "PR description is close enough" | Every bullet must match the diff after any revert/split. |
+| "I'll mark it `[Preview]` in the heading" | That breaks anchor generation. Put the callout in the section body. |
+| "The design doc is Implemented, no need to touch it" | Add a `User-facing:` line pointing at L1/L2 if it's missing. |
+| "I'll update `docs/README.md` capability map later" | Do it in this PR — the hub is stale otherwise. |
 
 ## Output format
 

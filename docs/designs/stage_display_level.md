@@ -1,6 +1,6 @@
 # Design: Stage Display Level
-
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Stage display](../../CONFIGURATION.md#stage-display-configuration)
 - **Approved:** 2026-05-15
 - **Dependencies:**
   - None

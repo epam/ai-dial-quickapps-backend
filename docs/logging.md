@@ -19,7 +19,7 @@ Logs carry structure, not content: message bodies, tool-call arguments, and resp
 never logged at any level. The `LOG_PAYLOADS` switch (local development only) routes truncated
 payload detail through dedicated DEBUG records, and while it is off the payload-capable third-party
 loggers (`openai`, `httpx`, `httpcore`) are capped at INFO regardless of `LOG_LEVEL`. See
-[Payload Logging](../README.md#payload-logging) in the README for the switch reference.
+[Payload Logging](../CONFIGURATION.md#payload-logging) in the README for the switch reference.
 
 ## Output format
 

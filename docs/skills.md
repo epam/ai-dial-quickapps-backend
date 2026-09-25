@@ -23,7 +23,7 @@ Skills come from three sources, merged per request:
 - Each skill is presented to the agent as XML metadata in the system prompt.
 - The agent can read detailed skill instructions on-demand using the internal `read_skill` tool.
 - Skills support metadata including name, description, license, compatibility, and allowed tools.
-- Extra skill directories can be layered via `PREDEFINED_EXTRA_PATHS` (see [README](../README.md) for env var details).
+- Extra skill directories can be layered via `PREDEFINED_EXTRA_PATHS` (see [CONFIGURATION](../CONFIGURATION.md#environment-variables) for env var details).
 
 ## Directory Layout
 
@@ -412,4 +412,4 @@ the system prompt. Skills differ in several ways:
 3. Remove the `config/predefined/instructions/` directory.
 
 4. If you were using `PREDEFINED_BASE_PATH` to point to a custom instructions directory, switch to
-   `PREDEFINED_EXTRA_PATHS` (see [README](../README.md) for details).
+   `PREDEFINED_EXTRA_PATHS` (see [CONFIGURATION](../CONFIGURATION.md#environment-variables) for details).
