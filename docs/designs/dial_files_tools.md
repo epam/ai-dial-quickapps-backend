@@ -1,6 +1,6 @@
 # Design: DIAL Files Tools
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - DIAL files](../../CONFIGURATION.md#dial-files-configuration)
 - **Approved:** 2026-05-11
 - **Owner:** Andrii Novikov
 

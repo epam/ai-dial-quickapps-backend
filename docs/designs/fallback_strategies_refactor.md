@@ -1,6 +1,6 @@
 # Design: Fallback Strategy Semantics Refactor
-
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Tool Fallback](../../CONFIGURATION.md#tool-fallback-configuration)
 - **Dependencies:**
   - [Configurable Tool Timeouts](configurable_timeouts.md) — introduced `ToolTimeoutError`, the
     special-cased `FallbackProcessor` path, and the `ContinueStrategyModel` validator that this

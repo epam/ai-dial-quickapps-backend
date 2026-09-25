@@ -1,8 +1,9 @@
 # Design: Invoking a Skill from a Message
-
 - **Status:** Implemented
+- **User-facing:** [docs/skills.md](../skills.md#invoking-a-skill-from-a-message-preview)
 - **Approved:** 2026-09-14
 - **Issue:** [epam/ai-dial-quickapps-backend#549](https://github.com/epam/ai-dial-quickapps-backend/issues/549), a
+
   sub-issue of [#421](https://github.com/epam/ai-dial-quickapps-backend/issues/421) ([EPIC] Advanced Agent Skills
   support)
 - **Scope:** Phase 1a — a picked skill is loaded, listed and readable, under its **own** name. Making a picked skill

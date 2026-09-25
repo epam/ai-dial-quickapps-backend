@@ -1,6 +1,6 @@
 # Design: External URLs as First-Class File References
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - External URL fetch](../../CONFIGURATION.md#external-url-fetch-configuration); [file_transfer.md](../file_transfer.md)
 - **Approved:** 2026-05-08
 - **Dependencies:**
   - None
