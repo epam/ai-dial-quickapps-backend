@@ -5,15 +5,13 @@ from injector import ProviderOf, inject
 
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.staged_base_tool import StagedBaseTool
-from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
-from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
-    StagedToolSyntheticInjector,
+from quickapp.common.synthetic_injection.multi_synthetic_tool_call_injector import (
+    MultiSyntheticToolCallInjector,
 )
 from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
 from quickapp.skills.invocation._invoked_skills_context import _InvokedSkillsContext
 from quickapp.skills.invocation._skill_reference import skill_name_from_url
-from quickapp.skills.skills_provider import ResolvedSkill
 
 logger = logging.getLogger(__name__)
 
@@ -25,32 +23,38 @@ _LOAD_FAILED = (
 )
 
 
-class _SkillInvocationInjector(StagedToolSyntheticInjector):
-    """Turns the skill the user invoked on this message into a synthetic ``read_skill``
-    call and result, so the model always starts the turn with the manifest in context.
+class _SkillInvocationInjector(MultiSyntheticToolCallInjector):
+    """Turns every skill the user invoked on this message into one synthetic
+    assistant turn with a parallel ``read_skill`` call per skill, so the model
+    always starts the turn with every picked manifest already in context.
 
-    Everything but the arguments comes from ``StagedToolSyntheticInjector``: it looks
-    the tool up by its function name and runs it. The stage is raised to ``INFO`` —
-    the invocation is something the user did explicitly, so the ordinary
-    "Reading Skill: <name>" stage belongs in the response.
+    A resolved skill's call is run through the real ``read_skill`` tool, byte
+    identical to what a model-initiated call returns. A skill that failed to
+    resolve gets a fixed error result instead — running the tool for one would
+    only reproduce its own "not found".
 
-    ``APPEND_IF_CHANGED`` puts the pair after the first user message, the same slot the
-    built-in file-transfer skill uses, and it runs only on the turn the pick is made
-    (``should_inject``).
+    The stage is raised to ``INFO`` for a resolved skill — the invocation is
+    something the user did explicitly, so the ordinary "Reading Skill: <name>"
+    stage belongs in the response.
 
-    How long the pair survives depends on *which* turn made the pick.
+    ``MultiSyntheticToolCallInjector`` puts the turn after the first user message,
+    the same slot the built-in file-transfer skill uses, and it runs only on the
+    turn the picks are made (``get_calls`` returns nothing otherwise).
+
+    How long the turn survives depends on *which* turn made the picks.
     ``Orchestrator._build_tool_execution_history`` persists only what follows the
-    **last** user message, so a pick made on the first user message is stored and comes
-    back from ``state.tool_execution_history`` on every later turn, like any other tool
-    result. A pick made on any later message lands ahead of that boundary, is never
-    persisted, and is therefore in context for its own turn only — the skill stays
-    listed in ``<available_skills>`` and readable through ``read_skill``, but the model
-    is no longer handed the manifest unprompted. Accepted for phase 1a; the file-transfer
-    injector does not hit this because it re-injects on every turn instead of relying on
-    persistence.
+    **last** user message, so picks made on the first user message are stored and
+    come back from ``state.tool_execution_history`` on every later turn, like any
+    other tool result. Picks made on any later message land ahead of that boundary,
+    are never persisted, and are therefore in context for their own turn only — the
+    skills stay listed in ``<available_skills>`` and readable through ``read_skill``,
+    but the model is no longer handed the manifests unprompted. Accepted for phase
+    1a; the file-transfer injector does not hit this because it re-injects on every
+    turn instead of relying on persistence.
     """
 
     stage_level = StageDisplayLevel.INFO
+    call_id_prefix = "synth_skill_invocation_"
 
     @inject
     def __init__(
@@ -59,40 +63,41 @@ class _SkillInvocationInjector(StagedToolSyntheticInjector):
         tools: list[StagedBaseTool],
         enrichers_provider: ProviderOf[list[ToolCallResultEnricher]],
     ) -> None:
-        super().__init__(tools, enrichers_provider)
+        super().__init__(enrichers_provider)
         self.__context = context
+        self.__tools: dict[str, StagedBaseTool] = {
+            tool.tool_config.open_ai_tool.function.name: tool for tool in tools
+        }
 
-    async def should_inject(self, messages: list[Message]) -> bool:
-        return self.__context.current_pick_url is not None
+    async def get_calls(self, messages: list[Message]) -> list[tuple[str, dict]]:
+        urls = self.__context.current_pick_urls
+        if not urls:
+            return []
+        if INTERNAL_SKILLS_READ_SKILL_TOOL_NAME not in self.__tools:
+            logger.warning(
+                "_SkillInvocationInjector: tool '%s' not found in staged tools, skipping",
+                INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
+            )
+            return []
+        return [
+            (INTERNAL_SKILLS_READ_SKILL_TOOL_NAME, {"skill_name": self.__skill_name(url)})
+            for url in urls
+        ]
 
-    async def get_tool_name(self) -> str:
-        return INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
+    async def get_content(
+        self, tool_name: str, arguments: dict, index: int, messages: list[Message]
+    ) -> str:
+        url = self.__context.current_pick_urls[index]
+        if self.__context.find_skill(url) is None:
+            return _LOAD_FAILED.format(name=self.__skill_name(url))
 
-    async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
-        return InjectionFrequency.APPEND_IF_CHANGED
+        tool = self.__tools[tool_name]
+        result = await tool.arun(arguments["skill_name"], stage_level=self.stage_level, **arguments)
+        return result.content
 
-    async def get_arguments(self) -> dict:
-        return {"skill_name": self.__skill_name()}
-
-    async def get_content(self, messages: list[Message]) -> str | None:
-        """Delegate to the tool, except for a skill that never made it into the registry.
-
-        Running ``read_skill`` for one would only produce the tool's own "not found",
-        so the fixed sentence is returned directly instead.
-        """
-        if self.__resolved_skill() is None:
-            return _LOAD_FAILED.format(name=self.__skill_name())
-        return await super().get_content(messages)
-
-    def __skill_name(self) -> str:
+    def __skill_name(self, url: str) -> str:
         """The picked skill's own name, or the URL's last segment when it failed to
         resolve — which is what the name would almost certainly have been, and gives
         the model something to name in its apology."""
-        skill = self.__resolved_skill()
-        if skill is not None:
-            return skill.metadata.name
-        return skill_name_from_url(self.__context.current_pick_url or "")
-
-    def __resolved_skill(self) -> ResolvedSkill | None:
-        url = self.__context.current_pick_url
-        return self.__context.find_skill(url) if url is not None else None
+        skill = self.__context.find_skill(url)
+        return skill.metadata.name if skill is not None else skill_name_from_url(url)

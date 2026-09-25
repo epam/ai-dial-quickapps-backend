@@ -65,6 +65,10 @@ class TestMessageSkillUrls:
         assert message_skill_urls(message) == ["skills/b/a"]
 
 
+def _collect(messages: list[Message], max_per_message: int = 5):
+    return collect_picks(messages, max_per_message)
+
+
 class TestCollectPicks:
 
     def test_keys_picks_by_the_ordinal_of_the_user_message(self):
@@ -74,28 +78,37 @@ class TestCollectPicks:
             Message(role=Role.USER, content="plain"),
             _user("skills/b/z"),
         ]
-        assert collect_picks(messages).by_ordinal == {0: "skills/b/a", 2: "skills/b/z"}
+        assert _collect(messages).by_ordinal == {0: ["skills/b/a"], 2: ["skills/b/z"]}
 
-    def test_only_the_first_chip_of_a_message_is_loaded(self):
-        collected = collect_picks([_user("skills/b/a", "skills/b/z")])
+    def test_every_chip_of_a_message_is_loaded_in_order(self):
+        collected = _collect([_user("skills/b/a", "skills/b/z")])
 
-        assert collected.by_ordinal == {0: "skills/b/a"}
+        assert collected.by_ordinal == {0: ["skills/b/a", "skills/b/z"]}
 
-    def test_the_extra_chips_of_a_message_are_reported_not_dropped_silently(self):
-        collected = collect_picks([_user("skills/b/a", "skills/b/z", "skills/b/k")])
+    def test_extra_chips_over_the_per_message_cap_are_reported_not_dropped_silently(self):
+        collected = _collect([_user("skills/b/a", "skills/b/z", "skills/b/k")], max_per_message=2)
 
-        assert collected.ignored_by_ordinal == {0: ["skills/b/z", "skills/b/k"]}
+        assert collected.by_ordinal == {0: ["skills/b/a", "skills/b/z"]}
+        assert collected.overflow_by_ordinal == {0: ["skills/b/k"]}
 
-    def test_a_single_chip_reports_nothing(self):
-        assert collect_picks([_user("skills/b/a")]).ignored_by_ordinal == {}
+    def test_within_the_cap_reports_no_overflow(self):
+        assert (
+            _collect([_user("skills/b/a", "skills/b/z")], max_per_message=2).overflow_by_ordinal
+            == {}
+        )
 
     def test_a_repicked_url_keeps_its_first_pick(self):
-        collected = collect_picks([_user("skills/b/a"), _user("skills/b/a")])
+        collected = _collect([_user("skills/b/a"), _user("skills/b/a")])
 
-        assert collected.by_ordinal == {0: "skills/b/a"}
+        assert collected.by_ordinal == {0: ["skills/b/a"]}
+
+    def test_a_repicked_url_is_dropped_from_the_later_messages_chip_list(self):
+        collected = _collect([_user("skills/b/a"), _user("skills/b/a", "skills/b/z")])
+
+        assert collected.by_ordinal == {0: ["skills/b/a"], 1: ["skills/b/z"]}
 
     def test_no_chips_anywhere_yields_nothing(self):
-        assert collect_picks([Message(role=Role.USER, content="hi")]).by_ordinal == {}
+        assert _collect([Message(role=Role.USER, content="hi")]).by_ordinal == {}
 
 
 class TestSkillNameFromUrl:
