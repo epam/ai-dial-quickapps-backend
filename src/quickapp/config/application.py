@@ -46,9 +46,9 @@ class StageDisplayConfig(BaseModel):
     propagate_sub_stages: bool | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description=(
-            "When True (default when preview features are enabled), stages emitted by "
-            "sub-apps called as tools are propagated as nested children of the "
-            "'Calling X' stage. Set to False to disable."
+            "Propagate stages from sub-apps called as tools as nested children of the "
+            "'Calling X' stage. Defaults to True when preview features are enabled; "
+            "set to False to disable."
         ),
     )
 

@@ -3570,7 +3570,7 @@
             }
           ],
           "default": null,
-          "description": "When True (default when preview features are enabled), stages emitted by sub-apps called as tools are propagated as nested children of the 'Calling X' stage. Set to False to disable.",
+          "description": "Propagate stages from sub-apps called as tools as nested children of the 'Calling X' stage. Defaults to True when preview features are enabled; set to False to disable.",
           "title": "Propagate Sub Stages",
           "x-preview": true
         }

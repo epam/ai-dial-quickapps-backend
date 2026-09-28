@@ -1,6 +1,6 @@
 # Sub-Stage Propagation
 
-**Status:** Approved  
+**Status:** Implemented  
 **Approved:** 2026-09-04  
 **Author:** Aleksei Korota
 
@@ -37,7 +37,7 @@ Sub-app stages are re-emitted into the parent's flat stage list with a name pref
 2. Pass it as `destination` and set `propagate_stages=True` in `_consume_stream`.
 3. Thread a `sub_stage_prefix` string (e.g. `"[WeatherApp]"`) from `BaseDeploymentTool` through `ChatStreamConfig` to `ChoiceUiSink._stream_stage_delta()`, where it is prepended to the stage name on creation.
 
-For deep nesting (A → B → C), C's stages reach A's stream as siblings of B's stages, all with their respective prefixes. The feature is gated by a new `PreviewField` on `ApplicationConfig` (`orchestrator.propagate_sub_stages`, default `true`) and by the existing `ENABLE_PREVIEW_FEATURES` env switch.
+For deep nesting (A → B → C), C's stages reach A's stream as siblings of B's stages, all with their respective prefixes. The feature is gated by a new `PreviewField` on `StageDisplayConfig` (`features.stage_display.propagate_sub_stages`, default `true` when preview is on) and by the existing `ENABLE_PREVIEW_FEATURES` env switch.
 
 ### Stage index safety
 
@@ -47,7 +47,7 @@ For deep nesting (A → B → C), C's stages reach A's stream as siblings of B's
 
 | File | Change |
 |------|--------|
-| `config/application.py` | `PreviewField` `orchestrator.propagate_sub_stages: bool` |
+| `config/application.py` | `PreviewField` `features.stage_display.propagate_sub_stages: bool` |
 | `dial_deployment_tooling/dial_completion_service.py` | Inject `Choice`; pass `destination` + prefix to `_consume_stream` |
 | `dial_deployment_tooling/base_deployment_tool.py` | Pass `application_name` as prefix to `complete_request_async` |
 | `common/chat_completion_stream/handler.py` | Add `sub_stage_prefix: str | None` to `ChatStreamConfig` |
@@ -136,10 +136,10 @@ The UI must:
 
 | File | Change |
 |------|--------|
-| `config/application.py` | `PreviewField` `orchestrator.propagate_sub_stages: bool` |
+| `config/application.py` | `PreviewField` on `StageDisplayConfig.propagate_sub_stages` (`features.stage_display`) |
 | `common/_stage_delta_types.py` | Add `parent_stage_index` to `StageDeltaItem` TypedDict |
 | `common/base_stage_wrapper.py` | Add `@property stage -> Stage` |
-| `dial_deployment_tooling/base_deployment_tool.py` | Pass `stage_wrapper.stage` as `parent_stage` |
+| `dial_deployment_tooling/base_deployment_tool.py` | Gate via injected `propagate_sub_stages`; pass `stage_wrapper.stage` as `parent_stage` |
 | `dial_deployment_tooling/dial_completion_service.py` | Add `parent_stage` param; forward to `_consume_stream` |
 | `common/chat_completion_stream/handler.py` | Add `parent_stage: Stage | None` to `ChatStreamConfig` |
 | `common/chat_completion_stream/chat_stream_sink_factory.py` | Forward `parent_stage` to `ChoiceUiSink` |

@@ -4,8 +4,9 @@ from pydantic import BaseModel, Field
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
-from quickapp.config.application import ApplicationConfig, StageDisplayLevel
+from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
+from quickapp.shared.config_resolvers import PROPAGATE_SUB_STAGES
 
 from ._attachment_resolver import AttachmentResolver
 from .base_deployment_tool import BaseDeploymentTool
@@ -32,7 +33,7 @@ class DeploymentTool(BaseDeploymentTool):
         messages_mixin: MessagesMixin,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
         perf_timer: PerformanceTimer,
-        app_config: ApplicationConfig,
+        propagate_sub_stages: PROPAGATE_SUB_STAGES = True,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
     ):
@@ -47,7 +48,7 @@ class DeploymentTool(BaseDeploymentTool):
             stage_wrapper_builder=stage_wrapper_builder,
             description=description,
             perf_timer=perf_timer,
-            app_config=app_config,
+            propagate_sub_stages=propagate_sub_stages,
             stage_display_level=stage_display_level,
             argument_transformers=argument_transformers,
         )

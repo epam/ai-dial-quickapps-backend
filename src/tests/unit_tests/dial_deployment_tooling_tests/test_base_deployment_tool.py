@@ -107,7 +107,6 @@ def _build_tool(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
-        app_config=MagicMock(),
     )
 
 
@@ -411,7 +410,6 @@ def _build_tool_with_config(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
-        app_config=MagicMock(),
     )
 
 
@@ -509,6 +507,7 @@ def _build_tool_with_propagation(
     content_propagation: ContentPropagation | None = None,
     dial_completion_service: Any = None,
     conversation_mode: ConversationMode | None = None,
+    propagate_sub_stages: bool = True,
 ) -> BaseDeploymentTool:
     """Build a BaseDeploymentTool with a real tool_config and configurable propagation/mode."""
     if dial_completion_service is None:
@@ -524,7 +523,7 @@ def _build_tool_with_propagation(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
-        app_config=MagicMock(),
+        propagate_sub_stages=propagate_sub_stages,
     )
 
 
@@ -766,6 +765,49 @@ async def test_run_in_stage_no_injection_when_not_resumable():
 
 
 # ---------------------------------------------------------------------------
+# _run_in_stage_async: nested sub-stage propagation gate
+# ---------------------------------------------------------------------------
+
+
+def _stage_wrapper_with_parent() -> tuple[MagicMock, MagicMock]:
+    parent_stage = MagicMock(name="calling_stage")
+    stage_wrapper = MagicMock()
+    stage_wrapper.stage = parent_stage
+    return stage_wrapper, parent_stage
+
+
+@pytest.mark.asyncio
+async def test_parent_stage_passed_when_propagate_sub_stages_enabled():
+    svc = _make_mock_completion_service()
+    stage_wrapper, parent_stage = _stage_wrapper_with_parent()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        dial_completion_service=svc,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=stage_wrapper, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["parent_stage"] is parent_stage
+
+
+@pytest.mark.asyncio
+async def test_parent_stage_omitted_when_propagate_sub_stages_disabled():
+    svc = _make_mock_completion_service()
+    stage_wrapper, _ = _stage_wrapper_with_parent()
+    tool = _build_tool_with_propagation(
+        messages=[],
+        dial_completion_service=svc,
+        propagate_sub_stages=False,
+    )
+
+    await tool._run_in_stage_async(stage_wrapper=stage_wrapper, query="hello")
+
+    _, kwargs = svc.complete_request_async.call_args
+    assert kwargs["parent_stage"] is None
+
+
+# ---------------------------------------------------------------------------
 # enrich_openai_tool_schema
 # ---------------------------------------------------------------------------
 
@@ -785,7 +827,6 @@ def _build_tool_with_content_propagation(
         perf_timer=MagicMock(),
         stage_wrapper_builder=MagicMock(),
         stage_display_level=StageDisplayLevel.INFO,
-        app_config=MagicMock(),
     )
 
 

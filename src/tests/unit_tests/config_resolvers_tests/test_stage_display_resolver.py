@@ -61,3 +61,38 @@ def test_settings_reads_env_error(monkeypatch):
 def test_settings_reads_env_uppercase(monkeypatch):
     monkeypatch.setenv("DEFAULT_STAGE_DISPLAY_LEVEL", "DEBUG")
     assert StageDisplaySettings().stage_display_level == StageDisplayLevel.DEBUG
+
+
+def _propagate_resolver(propagate_sub_stages: bool | None) -> StageDisplayResolver:
+    settings = MagicMock(spec=StageDisplaySettings)
+    settings.stage_display_level = None
+    app_config = MagicMock()
+    app_config.features = Features(
+        stage_display=StageDisplayConfig(propagate_sub_stages=propagate_sub_stages)
+    )
+    return StageDisplayResolver(settings, app_config)
+
+
+def test_propagate_sub_stages_defaults_on_when_preview_enabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    assert _propagate_resolver(None).resolve_propagate_sub_stages() is True
+
+
+def test_propagate_sub_stages_respects_explicit_false_when_preview_enabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    assert _propagate_resolver(False).resolve_propagate_sub_stages() is False
+
+
+def test_propagate_sub_stages_off_when_preview_disabled(monkeypatch):
+    monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
+    assert _propagate_resolver(None).resolve_propagate_sub_stages() is False
+    assert _propagate_resolver(True).resolve_propagate_sub_stages() is False
+
+
+def test_propagate_sub_stages_on_when_features_missing_and_preview_enabled(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    settings = MagicMock(spec=StageDisplaySettings)
+    settings.stage_display_level = None
+    app_config = MagicMock()
+    app_config.features = None
+    assert StageDisplayResolver(settings, app_config).resolve_propagate_sub_stages() is True
