@@ -1,8 +1,9 @@
 # Sub-Stage Propagation
 
-**Status:** Implemented  
-**Approved:** 2026-09-04  
-**Author:** Aleksei Korota
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION — Stage display](../../CONFIGURATION.md#stage-display-configuration)
+- **Approved:** 2026-09-04
+- **Author:** Aleksei Korota
 
 ---
 

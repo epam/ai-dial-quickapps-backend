@@ -598,9 +598,10 @@ SSRF envelope, deployment dispatch table, error messages and agent retry behavio
 Controls which tool-execution stages are surfaced in the DIAL UI. The deployment-wide env
 `DEFAULT_STAGE_DISPLAY_LEVEL`, when set, **wins over** every app's `features.stage_display.level`.
 
-| Field   | Required | Type   | Description                                                                 | Available Values                         | Default Value |
-|---------|----------|--------|-----------------------------------------------------------------------------|------------------------------------------|---------------|
-| `level` | No       | String | Visibility threshold                                                        | `none`, `error`, `info`, `debug`         | `info`        |
+| Field                  | Required | Type    | Preview | Description                                                                                                                                                                                                 | Available Values                 | Default Value |
+|------------------------|----------|---------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------|---------------|
+| `level`                | No       | String  | No      | Visibility threshold                                                                                                                                                                                        | `none`, `error`, `info`, `debug` | `info`        |
+| `propagate_sub_stages` | No       | Boolean | **Yes** | When a deployment tool calls another QuickApp, re-emit the sub-app's stages as nested children of the `Calling X` stage. Defaults to on when preview is enabled; set `false` to disable. Requires `ENABLE_PREVIEW_FEATURES=true`. | `true`, `false`                  | `null` (on when preview is enabled) |
 
 | Value   | Behavior                                                              |
 |---------|-----------------------------------------------------------------------|
@@ -613,7 +614,8 @@ Controls which tool-execution stages are surfaced in the DIAL UI. The deployment
 {
   "features": {
     "stage_display": {
-      "level": "debug"
+      "level": "debug",
+      "propagate_sub_stages": false
     }
   }
 }

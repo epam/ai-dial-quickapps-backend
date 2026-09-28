@@ -70,6 +70,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 | DIAL skill resources (`dial-skill`) | [CONFIGURATION — Skills](../CONFIGURATION.md#skills-configuration) | [skills.md](./skills.md) | [skills_as_dial_resource.md](./designs/skills_as_dial_resource.md) |
 | Skill invocation from a message | [CONFIGURATION — Environment Variables](../CONFIGURATION.md#environment-variables) / [skills.md](./skills.md#invoking-a-skill-from-a-message-preview) | [skills.md](./skills.md) | [skill_invocation.md](./designs/skill_invocation.md) |
 | Citation annotation propagation | [CONFIGURATION — Citations](../CONFIGURATION.md#citation-annotations) | [agent.md](./agent.md) | — |
+| Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
 
 ## Behaviour guides (L2)
 
