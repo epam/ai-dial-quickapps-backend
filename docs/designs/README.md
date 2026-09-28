@@ -67,6 +67,10 @@ Each design doc carries a **Status** field:
 | **Implemented** | Implementation is merged. The doc is now historical reference. |
 | **Superseded**  | Replaced by a newer design. Link to the successor doc.         |
 
+Implemented designs should also carry a **User-facing** line pointing at the L1/L2 docs
+([CONFIGURATION.md](../../CONFIGURATION.md) / guides under `docs/`) so readers and agents know
+where to configure the feature. Prefer those links over the design body for "how do I use this?".
+
 ## File Naming
 
 Use descriptive, lowercase filenames with underscores: `attachment_config_redesign.md`, `tool_system_design.md`.

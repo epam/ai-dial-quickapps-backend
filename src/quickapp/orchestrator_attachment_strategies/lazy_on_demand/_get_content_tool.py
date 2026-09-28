@@ -32,7 +32,9 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.url_classification import UrlScheme
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
-from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_materializer import (
     _AttachmentMaterializer,
 )
@@ -71,7 +73,7 @@ class _GetContentTool(StagedBaseTool):
         stage_wrapper_builder: AssistedBuilder[_GetContentStageWrapper],
         tool_config: InternalTool,
         perf_timer: PerformanceTimer,
-        orchestrator_capabilities: OrchestratorCapabilities,
+        attachment_acceptance: _AttachmentAcceptance,
         messages_mixin: MessagesMixin,
         deferred_stage_close_registry: DeferredStageCloseRegistry,
         materializer: _AttachmentMaterializer,
@@ -89,7 +91,7 @@ class _GetContentTool(StagedBaseTool):
             **kwargs,
         )
         self.__messages_mixin: MessagesMixin = messages_mixin
-        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__attachment_acceptance: _AttachmentAcceptance = attachment_acceptance
         self.__stage_close_registry: DeferredStageCloseRegistry = deferred_stage_close_registry
         self.__materializer: _AttachmentMaterializer = materializer
         self.__home_resolver: HomePathResolver = home_resolver
@@ -97,7 +99,9 @@ class _GetContentTool(StagedBaseTool):
     def _error_result(self, message: str) -> ToolCallResult:
         response = GetContentToolResponse.fail(
             message=message,
-            accepted_types=list(self.__orchestrator_capabilities.input_attachment_types or []),
+            accepted_types=list(
+                self.__attachment_acceptance.advertised_input_attachment_types or []
+            ),
         )
         content, state = response.tool_parts()
         return ToolCallResult(content=content, content_type="text/plain", state=state)
@@ -115,21 +119,40 @@ class _GetContentTool(StagedBaseTool):
             return self._error_result("Missing or empty attachment_url.")
 
         normalized_url = normalize_attachment_url_argument(str(attachment_url))
+        try:
+            resolved = await self._resolve_attachment(normalized_url)
+            self._ensure_mime_accepted(resolved)
+        except InvalidToolCallParameterException as exc:
+            return self._error_result(str(exc))
+
+        return self._build_result(
+            stage_wrapper,
+            tool_call_id,
+            payload_url=normalized_url,
+            resolved=resolved,
+        )
+
+    async def _resolve_attachment(self, normalized_url: str) -> _ResolvedAttachment:
+        """Classify ``normalized_url``'s scheme and resolve it to a fetchable DIAL
+        url plus display metadata. Raises ``InvalidToolCallParameterException`` for
+        any unsupported or unresolvable reference."""
         scheme = self.__materializer.classify(normalized_url)
         if scheme == UrlScheme.EXTERNAL:
             # Promote to a durable DIAL file the deployment can fetch; the promoted url
             # rides only on the attachment, while the payload echoes the original url.
             try:
-                resolved = await self._resolve_external(normalized_url)
+                return await self._resolve_external(normalized_url)
             except InvalidToolCallParameterException as exc:
                 logger.debug("get_content tool rejected: external promotion failed (%s)", exc)
-                return self._error_result(str(exc))
-        elif scheme == UrlScheme.DIAL:
+                raise
+        if scheme == UrlScheme.DIAL:
             if not normalized_url.startswith("files/"):
                 logger.debug("get_content tool rejected: URL does not start with files/")
-                return self._error_result(_UNSUPPORTED_REFERENCE_MESSAGE)
-            resolved = self._resolve_dial(normalized_url)
-        elif scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
+                raise InvalidToolCallParameterException(
+                    "attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE
+                )
+            return self._resolve_dial(normalized_url)
+        if scheme == UrlScheme.DIAL_APPDIR_RELATIVE:
             # Agent-home-relative reference (the convention spoken by the file
             # tools); the attachment carries the resolved files/ url while
             # the payload echoes the reference as passed.
@@ -137,25 +160,23 @@ class _GetContentTool(StagedBaseTool):
                 home_url = await self.__home_resolver.resolve_appdata_url(normalized_url)
             except InvalidToolCallParameterException as exc:
                 logger.info("get_content tool rejected: home-relative resolution failed (%s)", exc)
-                return self._error_result(str(exc))
-            resolved = self._resolve_dial(home_url)
-        else:
-            logger.debug("get_content tool rejected: unsupported url scheme")
-            return self._error_result(_UNSUPPORTED_REFERENCE_MESSAGE)
+                raise
+            return self._resolve_dial(home_url)
+        logger.debug("get_content tool rejected: unsupported url scheme")
+        raise InvalidToolCallParameterException("attachment_url", _UNSUPPORTED_REFERENCE_MESSAGE)
 
-        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(resolved.mime):
-            logger.debug(
-                "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
-                resolved.mime,
-                self.__orchestrator_capabilities.deployment_id,
-            )
-            return self._error_result("Orchestrator deployment does not accept this file type.")
-
-        return self._build_result(
-            stage_wrapper,
-            tool_call_id,
-            payload_url=normalized_url,
-            resolved=resolved,
+    def _ensure_mime_accepted(self, resolved: _ResolvedAttachment) -> None:
+        """Raises ``InvalidToolCallParameterException`` when the orchestrator
+        deployment does not accept ``resolved.mime``."""
+        if self.__attachment_acceptance.accepts_mime_type(resolved.mime):
+            return
+        logger.debug(
+            "get_content tool rejected: orchestrator does not accept MIME %s for deployment id=%s",
+            resolved.mime,
+            self.__attachment_acceptance.deployment_id,
+        )
+        raise InvalidToolCallParameterException(
+            "attachment_url", "Orchestrator deployment does not accept this file type."
         )
 
     async def _resolve_external(self, normalized_url: str) -> _ResolvedAttachment:
@@ -217,7 +238,7 @@ class _GetContentTool(StagedBaseTool):
         )
         logger.debug(
             "get_content tool allowed: deployment_id=%s url_basename=%s type=%s",
-            self.__orchestrator_capabilities.deployment_id,
+            self.__attachment_acceptance.deployment_id,
             resolved.title,
             attachment.type,
         )

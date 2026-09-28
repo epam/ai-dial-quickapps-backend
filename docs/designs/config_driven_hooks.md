@@ -1,6 +1,6 @@
 # Design: Config-Driven Synthetic Tool Call Injection
-
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration)
 - **Dependencies:**
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
 
