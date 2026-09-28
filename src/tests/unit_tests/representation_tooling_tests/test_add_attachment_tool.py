@@ -76,20 +76,14 @@ class TestAddAttachmentTool:
             ("files/bucket/path/sales_orders_report.md", "text/markdown"),
             ("files/bucket/path/data.csv", "text/csv"),
             ("files/bucket/path/My%20Report.pdf", "application/pdf"),
-            ("https://example.com/out/deck.pptx?sig=abc", None),
+            ("https://example.com/out/deck.pdf?sig=abc", "application/pdf"),
         ],
     )
-    async def test_infers_type_from_url_extension_when_omitted(
-        self, url: str, expected_type: str | None
-    ):
+    async def test_infers_type_from_url_extension_when_omitted(self, url: str, expected_type: str):
         tool = _build_tool()
         result = await tool._run_in_stage_async(stage_wrapper=None, url=url, title="Report")
 
-        attachment = result.propagate_to_choice[0]
-        if expected_type is None:
-            assert attachment.type != "text/plain"
-        else:
-            assert attachment.type == expected_type
+        assert result.propagate_to_choice[0].type == expected_type
 
     @pytest.mark.asyncio
     async def test_infers_type_from_title_when_url_has_no_extension(self):
