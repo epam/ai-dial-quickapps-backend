@@ -53,16 +53,23 @@ class _SkillInvocationInitializer(CompletionInitializer):
 
         self.__report_overflow(collected.overflow_by_ordinal, last_ordinal)
 
-        # Oldest first, in chip order within each message.
-        all_urls = [
-            url for ordinal in sorted(picks_by_ordinal) for url in picks_by_ordinal[ordinal]
+        # Oldest first, in chip order within each message, excluding the current
+        # turn's own picks — those are never subject to the cap below.
+        older_urls = [
+            url
+            for ordinal in sorted(picks_by_ordinal)
+            if ordinal != last_ordinal
+            for url in picks_by_ordinal[ordinal]
         ]
-        if not all_urls:
+        if not older_urls and not current_urls:
             return
 
-        # The cap is spent newest-first, so a pick made on the message being
-        # answered is never the one dropped.
-        urls = all_urls[-self._settings.max_skills :]
+        # The current turn's picks always get a slot; the remaining budget is spent
+        # on older picks, newest first. `SkillInvocationSettings` clamps
+        # `max_skills_per_message` to `max_skills`, so `current_urls` alone never
+        # exceeds the total cap.
+        remaining = max(self._settings.max_skills - len(current_urls), 0)
+        urls = older_urls[-remaining:] + current_urls if remaining else list(current_urls)
 
         try:
             output = await self._resolver.resolve([DialSkillConfig(url=url) for url in urls])

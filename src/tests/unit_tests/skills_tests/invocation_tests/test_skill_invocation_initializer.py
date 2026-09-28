@@ -34,7 +34,7 @@ def _make(
     context = _InvokedSkillsContext()
     settings = SkillInvocationSettings(
         SKILL_INVOCATION_MAX_SKILLS=max_skills,
-        SKILL_INVOCATION_MAX_PER_MESSAGE=max_skills_per_message,
+        SKILL_INVOCATION_MAX_SKILLS_PER_MESSAGE=max_skills_per_message,
     )
     return _SkillInvocationInitializer(messages, resolver, context, settings), resolver, context
 
@@ -158,6 +158,36 @@ class TestMultipleSkillsPerMessage:
         await initializer.initialize()
 
         assert context.exceptions == []
+
+
+class TestCurrentTurnNeverDropped:
+
+    @pytest.mark.asyncio
+    async def test_current_picks_always_resolved_even_when_older_picks_compete_for_the_cap(self):
+        initializer, resolver, _ = _make(
+            [
+                _user("skills/b/old1", "skills/b/old2"),
+                _user("skills/b/new1", "skills/b/new2"),
+            ],
+            max_skills=3,
+        )
+
+        await initializer.initialize()
+
+        resolved_urls = {cfg.url for cfg in resolver.resolve.await_args.args[0]}
+        assert resolved_urls == {"skills/b/old2", "skills/b/new1", "skills/b/new2"}
+
+    @pytest.mark.asyncio
+    async def test_current_picks_survive_even_when_they_alone_fill_the_cap(self):
+        initializer, resolver, _ = _make(
+            [_user("skills/b/old"), _user("skills/b/a", "skills/b/z")],
+            max_skills=2,
+        )
+
+        await initializer.initialize()
+
+        resolved_urls = {cfg.url for cfg in resolver.resolve.await_args.args[0]}
+        assert resolved_urls == {"skills/b/a", "skills/b/z"}
 
 
 class TestReporting:

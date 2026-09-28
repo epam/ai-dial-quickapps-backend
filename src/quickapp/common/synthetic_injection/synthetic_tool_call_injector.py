@@ -8,6 +8,7 @@ from uuid import uuid4
 from aidial_sdk.chat_completion import CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from injector import ProviderOf
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
@@ -19,8 +20,25 @@ from quickapp.common.tool_message_utils import after_first_user_idx
 logger = logging.getLogger(__name__)
 
 
-class SyntheticToolCallInjector(MessagesTransformer, ABC):
-    call_id_prefix: str = "synth_"
+class BuiltSyntheticCall(BaseModel):
+    """One synthetic tool call with its result, ready to render as a message pair."""
+
+    model_config = ConfigDict(frozen=True)
+
+    call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    content: str
+    state: dict[str, Any] | None = None
+
+
+class BaseSyntheticInjector(MessagesTransformer, ABC):
+    """Shared enrichment plumbing for injectors that fabricate tool-call turns.
+
+    Public (no leading underscore) so a sibling module in this package —
+    ``MultiSyntheticToolCallInjector`` — can subclass it without widening the
+    visibility of anything else here.
+    """
 
     def __init__(
         self,
@@ -29,6 +47,25 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         # Lazy: resolved at transform() time so this class can be constructed
         # during _RequestContextSetup, before ApplicationConfig is populated.
         self._enrichers_provider = enrichers_provider
+
+    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
+        if self._enrichers_provider is None:
+            return None
+        enrichers = self._enrichers_provider.get()
+        if not enrichers:
+            return None
+        transient = ToolCallResult(
+            tool_call_id=call_id,
+            content=content,
+            content_type=MediaTypes.PLAIN_TEXT,
+        )
+        for enricher in enrichers:
+            enricher.enrich(transient)
+        return transient.state
+
+
+class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
+    call_id_prefix: str = "synth_"
 
     @abstractmethod
     async def get_tool_name(self) -> str: ...
@@ -147,21 +184,6 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         pair = _build_pair(tool_name, call_id, arguments, content, state)
         return messages[:idx] + list(pair) + messages[idx:]
 
-    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
-        if self._enrichers_provider is None:
-            return None
-        enrichers = self._enrichers_provider.get()
-        if not enrichers:
-            return None
-        transient = ToolCallResult(
-            tool_call_id=call_id,
-            content=content,
-            content_type=MediaTypes.PLAIN_TEXT,
-        )
-        for enricher in enrichers:
-            enricher.enrich(transient)
-        return transient.state
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -201,40 +223,47 @@ def _build_pair(
     state: dict[str, Any] | None = None,
 ) -> tuple[Message, Message]:
     assistant_msg, tool_msgs = build_synthetic_multi_call_turn(
-        [(call_id, tool_name, arguments, content, state)]
+        [
+            BuiltSyntheticCall(
+                call_id=call_id,
+                tool_name=tool_name,
+                arguments=arguments,
+                content=content,
+                state=state,
+            )
+        ]
     )
     return assistant_msg, tool_msgs[0]
 
 
 def build_synthetic_multi_call_turn(
-    calls: list[tuple[str, str, dict, str, dict[str, Any] | None]],
+    calls: list[BuiltSyntheticCall],
 ) -> tuple[Message, list[Message]]:
     """One assistant message carrying every call as a parallel ``tool_calls`` entry,
     followed by one tool result message per call — the same shape a model-initiated
     parallel tool call turn has.
 
-    ``calls`` is ``(call_id, tool_name, arguments, content, state)`` tuples, in the
-    order the calls should appear.
+    ``calls`` are in the order the calls should appear.
     """
     assistant_msg = Message(
         role=Role.ASSISTANT,
         content="",
         tool_calls=[
             ToolCall(
-                id=call_id,
+                id=call.call_id,
                 type="function",
-                function=FunctionCall(name=tool_name, arguments=json.dumps(arguments)),
+                function=FunctionCall(name=call.tool_name, arguments=json.dumps(call.arguments)),
             )
-            for call_id, tool_name, arguments, _content, _state in calls
+            for call in calls
         ],
     )
     tool_msgs = [
         Message(
             role=Role.TOOL,
-            content=content,
-            tool_call_id=call_id,
-            custom_content=CustomContent(state=state) if state else None,
+            content=call.content,
+            tool_call_id=call.call_id,
+            custom_content=CustomContent(state=call.state) if call.state else None,
         )
-        for call_id, _tool_name, _arguments, content, state in calls
+        for call in calls
     ]
     return assistant_msg, tool_msgs

@@ -4,20 +4,34 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from aidial_sdk.chat_completion import Message, Role
-from injector import ProviderOf
+from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.abstract.base_transformer import MessagesTransformer
-from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.common.media_types import MediaTypes
 from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    BaseSyntheticInjector,
+    BuiltSyntheticCall,
     build_synthetic_multi_call_turn,
     hash6,
 )
-from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.common.tool_message_utils import after_first_user_idx
 
 
-class MultiSyntheticToolCallInjector(MessagesTransformer, ABC):
+class SyntheticCall(BaseModel):
+    """One tool call ``MultiSyntheticToolCallInjector`` should inject this turn.
+
+    ``payload`` carries whatever a subclass needs at ``get_content`` time (e.g. the
+    URL a call was built from), so it never has to recover that from the call's
+    *index* in the list ``get_calls`` returned — index and list can drift apart the
+    moment either side reorders or filters.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    tool_name: str
+    arguments: dict[str, Any]
+    payload: Any = None
+
+
+class MultiSyntheticToolCallInjector(BaseSyntheticInjector, ABC):
     """Injects one synthetic assistant turn carrying several parallel tool calls and
     their results, generalizing ``SyntheticToolCallInjector``'s ``APPEND_IF_CHANGED``
     frequency to more than one call per turn.
@@ -38,25 +52,17 @@ class MultiSyntheticToolCallInjector(MessagesTransformer, ABC):
 
     call_id_prefix: str = "synth_multi_"
 
-    def __init__(
-        self,
-        enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
-    ) -> None:
-        # Lazy: resolved at transform() time so this class can be constructed
-        # during _RequestContextSetup, before ApplicationConfig is populated.
-        self._enrichers_provider = enrichers_provider
-
     @abstractmethod
-    async def get_calls(self, messages: list[Message]) -> list[tuple[str, dict]]:
-        """Tool calls to inject this turn, as ``(tool_name, arguments)`` pairs, in
-        the order they should appear. Return ``[]`` to inject nothing."""
+    async def get_calls(self, messages: list[Message]) -> list[SyntheticCall]:
+        """Tool calls to inject this turn, in the order they should appear.
+        Return ``[]`` to inject nothing."""
         ...
 
     @abstractmethod
-    async def get_content(
-        self, tool_name: str, arguments: dict, index: int, messages: list[Message]
-    ) -> str:
-        """Tool result content for the call at *index* in ``get_calls``'s list."""
+    async def get_content(self, call: SyntheticCall, index: int, messages: list[Message]) -> str:
+        """Tool result content for *call*, the entry at *index* in ``get_calls``'s
+        list. Carry anything you need to build it on ``call.payload`` rather than
+        recovering it from *index* — safer if the two lists ever diverge."""
         ...
 
     async def transform(self, messages: list[Message]) -> list[Message]:
@@ -66,18 +72,28 @@ class MultiSyntheticToolCallInjector(MessagesTransformer, ABC):
 
         batch_prefix = self.__batch_prefix(calls)
         contents = await asyncio.gather(
-            *(
-                self.get_content(tool_name, arguments, index, messages)
-                for index, (tool_name, arguments) in enumerate(calls)
-            )
+            *(self.get_content(call, index, messages) for index, call in enumerate(calls))
         )
-        built: list[tuple[str, str, dict, str, dict[str, Any] | None]] = []
-        for index, ((tool_name, arguments), content) in enumerate(zip(calls, contents)):
+        built: list[BuiltSyntheticCall] = []
+        for index, (call, content) in enumerate(zip(calls, contents)):
+            # Format: {prefix}b_{signature_hash6}_i_{index}_c_{content_hash6}
+            # Maximum length: prefix + 2+6+3+len(str(index))+3+6 chars.
             call_id = f"{batch_prefix}i_{index}_c_{hash6(content)}"
             state = self._enrich_state(call_id, content)
-            built.append((call_id, tool_name, arguments, content, state))
+            built.append(
+                BuiltSyntheticCall(
+                    call_id=call_id,
+                    tool_name=call.tool_name,
+                    arguments=call.arguments,
+                    content=content,
+                    state=state,
+                )
+            )
 
-        if _find_assistant_with_ids(messages, [call_id for call_id, *_ in built]) is not None:
+        if (
+            _find_assistant_with_ids(messages, [built_call.call_id for built_call in built])
+            is not None
+        ):
             return messages
 
         assistant_msg, tool_msgs = build_synthetic_multi_call_turn(built)
@@ -88,24 +104,16 @@ class MultiSyntheticToolCallInjector(MessagesTransformer, ABC):
         )
         return messages[:idx] + [assistant_msg, *tool_msgs] + messages[idx:]
 
-    def __batch_prefix(self, calls: list[tuple[str, dict]]) -> str:
-        signature = json.dumps(calls, sort_keys=False)
-        return f"{self.call_id_prefix}b_{hash6(signature)}_"
-
-    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
-        if self._enrichers_provider is None:
-            return None
-        enrichers = self._enrichers_provider.get()
-        if not enrichers:
-            return None
-        transient = ToolCallResult(
-            tool_call_id=call_id,
-            content=content,
-            content_type=MediaTypes.PLAIN_TEXT,
+    def __batch_prefix(self, calls: list[SyntheticCall]) -> str:
+        """Batch identity depends only on each call's tool name and arguments,
+        independent of *payload* (arbitrary subclass data, not always JSON-safe)
+        and of content, so a set from one turn never collides with a different set
+        from another turn."""
+        signature = json.dumps(
+            [{"tool_name": call.tool_name, "arguments": call.arguments} for call in calls],
+            sort_keys=True,
         )
-        for enricher in enrichers:
-            enricher.enrich(transient)
-        return transient.state
+        return f"{self.call_id_prefix}b_{hash6(signature)}_"
 
 
 def _find_assistant_with_ids(messages: list[Message], ids: list[str]) -> int | None:

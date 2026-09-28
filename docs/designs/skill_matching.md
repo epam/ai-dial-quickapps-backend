@@ -3,18 +3,23 @@
 - **Status:** Draft
 - **Issue:** [epam/ai-dial-quickapps-backend#567](https://github.com/epam/ai-dial-quickapps-backend/issues/567)
 - **Dependencies:**
-    - [`skill-invocation.md`](skill_invocation.md) — the chip mechanism (`custom_content.skills`),
+    - [`skill_invocation.md`](skill_invocation.md) — the chip mechanism (`custom_content.skills`),
       `SkillsRegistry`, `generate_skills_xml`, and the `read_skill` tool all stay as they are and are
-      reused, not replaced. As actually implemented in `src/quickapp/skill_invocation/` today (not
-      as that doc's draft text describes it), the chip path resolves **one** skill per message
-      (`_skill_reference.collect_picks` → `ConversationPicks.by_ordinal`, one URL per ordinal) and
-      injects **one** synthetic `read_skill` pair per turn (`_SkillInvocationInjector`, built on
-      `StagedToolSyntheticInjector`, which assumes exactly one call per transformer). This design's
-      multi-skill-per-turn requirement does not fit that shape and is why concern 2 below exists.
+      reused, not replaced. As actually implemented in `src/quickapp/skills/invocation/` today, the
+      chip path resolves **several** skills per message, up to
+      `SKILL_INVOCATION_MAX_SKILLS_PER_MESSAGE`
+      (`_skill_reference.collect_picks` → `ConversationPicks.by_ordinal`, up to that many URLs per
+      ordinal) and injects **one synthetic assistant turn with N parallel `read_skill` calls** per
+      turn (`_SkillInvocationInjector`, built on `MultiSyntheticToolCallInjector`). That primitive —
+      one assistant message carrying N parallel tool calls plus N tool results — is exactly what
+      concern 3 below proposed; it now already exists in
+      `common/synthetic_injection/multi_synthetic_tool_call_injector.py` and just needs a second,
+      free-text-driven producer of the calls list, not a new mechanism.
     - `src/quickapp/tool_discovery/` — `_AnonymousAgent` / `_ToolSearchTool`, the existing
       LLM-classification pattern this design mirrors for matching.
-    - `src/quickapp/dial_skills/` — `DialSkillResolver`, `DialSkillReader`, `_DialSkillsClient` — the
-      per-URL manifest/file resolution this design reuses unchanged for every source.
+    - `src/quickapp/skills/dial_resource/` — `DialSkillResolver`, `DialSkillReader`,
+      `_DialSkillsClient` — the per-URL manifest/file resolution this design reuses unchanged for
+      every source.
     - `ai-dial-core` — an aggregate "list every skill readable by this user" capability (own +
       shared-with-me + public in one call) is **not confirmed to exist**. `aidial_client`'s
       `AsyncSkillsRef.list()` only lists one bucket at a time (the caller's own, when unqualified),
@@ -23,9 +28,9 @@
 
 ## Problem Statement
 
-[`skill-invocation.md`](skill_invocation.md) solves *explicit* invocation: the user picks one skill
-from a Chat palette, and it is sent as a `custom_content.skills[]` chip. That closes the access gap
-for the user's own skills, but leaves two things unsolved:
+[`skill_invocation.md`](skill_invocation.md) solves *explicit* invocation: the user picks one or more
+skills from a Chat palette, and they are sent as `custom_content.skills[]` chips. That closes the
+access gap for the user's own skills, but leaves two things unsolved:
 
 1. **No way to invoke a skill by naming it in the message itself.** "Review this PR with my review
    checklist and write it up in my report style" names two skills in prose. There is no palette chip
@@ -48,10 +53,10 @@ one, possibly from different sources, in a single turn — when the user only wr
 ## Design Goals
 
 1. A skill named in the message text is matched and loaded **deterministically** — the same
-   guarantee [`skill-invocation.md`](skill_invocation.md) gives the chip, extended to free text.
+   guarantee [`skill_invocation.md`](skill_invocation.md) gives the chip, extended to free text.
 2. **All sources are eligible**, and each is independently toggleable by the app author: predefined
    skills, the app's declared DIAL prompt/skill resources, the user's own Core skills, skills shared
-   with the user, and public skills. (Favorite?)
+   with the user, and public skills.
 3. **More than one skill can be matched and loaded from a single message**, because that is the
    ordinary case once free text is the trigger (the goal example names two).
 4. Matched skills are injected as **one coherent assistant turn**: one assistant message issuing all
@@ -198,42 +203,52 @@ the LLM-classification approach is already an established, working pattern here
 
 ### 3. Injection — one assistant turn, N parallel tool calls
 
-This is the part that most changes shape relative to [`skill-invocation.md`](skill_invocation.md).
-That doc's mechanism, and its actual implementation, produce **one pair**: one assistant message
-with a single tool call, one matching tool result. Matching from free text routinely needs to load
-more than one skill in the same turn (the goal use case names two), so the unit of injection can no
-longer be a pair.
+This concern is **already solved and shipped**, not proposed here. The chip path
+([`skill_invocation.md`](skill_invocation.md)) needed exactly this shape for its own multi-chip
+support and built it first; skill matching just becomes a second producer of the same primitive.
 
-**New primitive, decoupled from skills entirely:** a multi-call synthetic turn builder —
+**Existing primitive, decoupled from skills entirely:** `MultiSyntheticToolCallInjector`
+(`common/synthetic_injection/multi_synthetic_tool_call_injector.py`), generalizing the single-call
+`SyntheticToolCallInjector` in the same package. A subclass implements two methods —
 
+```python
+async def get_calls(self, messages: list[Message]) -> list[SyntheticCall]: ...
+async def get_content(self, call: SyntheticCall, index: int, messages: list[Message]) -> str: ...
 ```
-build_synthetic_multi_call_turn(
-    calls: list[tuple[tool_name: str, arguments: dict]],
-) -> tuple[assistant_message, list[tool_message]]
-```
 
-living alongside (and generalizing) today's pair-building helpers in
-`common/synthetic_injection/synthetic_tool_call_injector.py`. It produces exactly the shape a real
-model-initiated parallel tool call turn has: **one assistant message carrying N `tool_calls`,
-followed by N tool result messages**, one per call id. This is intentionally a separate, reusable
-piece of logic, not skill-specific — skill matching (and, going forward, the chip path too) becomes
-one consumer of it, and any future feature that needs to inject several synthetic tool results
-together can reuse the same primitive instead of re-deriving it.
+— and `transform()` does the rest: it hashes the whole call set into a **batch signature**
+(tool name + arguments only, independent of content and of each call's `payload`), builds the N
+results in parallel, and produces exactly the shape a real model-initiated parallel tool call turn
+has — **one assistant message carrying N `tool_calls`, followed by N tool result messages**. This is
+skill-agnostic; `_SkillInvocationInjector` is just today's one consumer, and a future
+`_SkillMatchingInjector` would be a second.
 
-Design points this needs to settle:
+How the settled design points actually work, for this design to build on:
 
-- **Call-id generation** reuses the existing call-id-prefix approach (tool name + canonicalized
-  arguments) per call, now computed N times for one turn instead of once.
-- **Dedup is per call, not per batch.** A turn matching two skills where one was already injected on
-  an earlier turn (e.g. re-picked, or matched again) must still inject the other — the batch has to
-  tolerate a mix of "already in history, skip" and "new, inject" within the same call.
-- **Ordering** of the N calls within the one assistant message — classifier output order vs. catalog
-  order — is an open question (see below), not yet decided.
-- **Staging** should piggyback on however the existing stage-display machinery already renders a
-  real multi-tool-call assistant turn (the model itself can already emit parallel tool calls today),
-  rather than invent a separate per-call staging path for the synthetic case.
-- **Unifies chip and free-text matches.** A turn carrying both a picked chip and a free-text match
-  produces one multi-call turn covering all of them, not a chip-pair plus a separate match-pair (UC-5).
+- **Call-id generation is per batch, not per call.** A call's id is
+  `{prefix}b_{signature_hash6}_i_{index}_c_{content_hash6}` — the *batch* signature (every call's
+  tool name + arguments together) plus that call's own index and content hash. This, not a
+  per-call sorted-arguments hash, is what makes the whole set collide-or-not as one unit (see
+  `transform()`'s docstring for the three cases: identical set/identical content is a no-op,
+  identical set/changed content appends a fresh copy, no occurrence inserts after the first user
+  message).
+- **Dedup is per batch, not per call.** The unit of identity is the whole call set returned by
+  `get_calls`, not each call independently — a *different* set (e.g. this turn matches a different
+  combination of skills than an earlier turn did) never collides with an earlier occurrence, but a
+  turn that repeats the exact same set is a no-op regardless of which individual skills in it were
+  also picked elsewhere. A matcher that wants "skip only the skills already injected, inject only the
+  new ones" builds that filtering into its own `get_calls`, before the set reaches the shared
+  primitive — the primitive itself does not do per-call dedup.
+- **Ordering** of the N calls within the one assistant message is whatever order `get_calls` returns
+  them in — classifier output order vs. catalog order is a decision this design still has to make
+  for its own `get_calls` implementation (see [Open Questions](#open-questions--external-dependencies)).
+- **Staging** already piggybacks on the ordinary stage-display machinery: the synthetic turn renders
+  exactly like a real multi-tool-call assistant turn would.
+- **Unifies chip and free-text matches** is still open: today each `MultiSyntheticToolCallInjector`
+  subclass produces its own independent turn, so a chip pick and a free-text match on the same
+  message currently become *two* synthetic turns, not one merged turn as UC-5 wants. Merging them
+  into a single `get_calls` result — one injector call site combining both sources — is scope this
+  design still owns.
 
 ### 4. Catalog assembly and caching
 
@@ -276,7 +291,7 @@ and is not proposed as a default.
 
 ## Failure Modes
 
-Extends, does not replace, [`skill-invocation.md`](skill_invocation.md)'s existing table.
+Extends, does not replace, [`skill_invocation.md`](skill_invocation.md)'s existing table.
 
 | Condition | Result |
 |---|---|
@@ -301,7 +316,7 @@ Extends, does not replace, [`skill-invocation.md`](skill_invocation.md)'s existi
 |---|---|
 | Embedding/vector search over the skill catalog | No such infrastructure exists anywhere in this codebase; LLM-based classification is already an established, working pattern here (`tool_discovery`), so it needs no new infra. |
 | Keep the pair-per-mechanism model (one pair for the chip, a separate pair for matches) | Free-text matching routinely needs to load more than one skill per turn; stacking separate pairs from separate mechanisms doesn't reflect how a real parallel tool call turn looks, and complicates history/dedup for no benefit. |
-| Cache full skill content across requests, not just the catalog listing | Breaks the revocation-safety property [`skill-invocation.md`](skill_invocation.md) already established: a revoked share or edited skill must be reflected on the very next turn. |
+| Cache full skill content across requests, not just the catalog listing | Breaks the revocation-safety property [`skill_invocation.md`](skill_invocation.md) already established: a revoked share or edited skill must be reflected on the very next turn. |
 | A single global cache for "all skills," like the deployment/app caches | The candidate set is scoped per `(user, source)`, not global — a shared key would either leak one user's catalog to another or thrash on every request. |
 
 ---
@@ -326,14 +341,16 @@ Extends, does not replace, [`skill-invocation.md`](skill_invocation.md)'s existi
 
 ## Summary of Changes
 
-This is a design only; nothing here has been implemented. Anticipated shape, for a future
-implementation pass:
+This is a design only; the free-text matching itself is not implemented. What §3 depends on —
+`MultiSyntheticToolCallInjector`, the shared multi-call injection primitive — already is, built for
+the chip path's own multi-skill support; this design's implementation pass reuses it as-is rather
+than adding it. Anticipated shape, for a future implementation pass:
 
-- `quickapp/skill_invocation/` (or a new sibling package) — the free-text matcher(s), one per
-  catalog-cost tier (declared vs. Core-backed), and a `SkillMatchingConfig`-driven catalog assembler.
-- `quickapp/common/synthetic_injection/` — the new `build_synthetic_multi_call_turn` primitive,
-  generalizing today's single-pair helpers.
-- `quickapp/dial_skills/` — a new own-bucket listing method on `_DialSkillsClient`, wrapping
+- `quickapp/skills/matching/` (or a similarly-scoped new sibling package under `quickapp/skills/`) —
+  the free-text matcher(s), one per catalog-cost tier (declared vs. Core-backed), a
+  `SkillMatchingConfig`-driven catalog assembler, and a `MultiSyntheticToolCallInjector` subclass
+  whose `get_calls` returns the matched skills as `read_skill` calls.
+- `quickapp/skills/dial_resource/` — a new own-bucket listing method on `_DialSkillsClient`, wrapping
   `client.skills.list()`.
 - `quickapp/common/cache.py` — reused as-is; the new compound cache key is built by the caller.
 - `quickapp/config/` — `SkillMatchingConfig` / `SkillMatchingSources`, wired into `Features`.

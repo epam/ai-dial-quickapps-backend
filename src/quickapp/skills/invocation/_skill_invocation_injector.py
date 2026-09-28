@@ -7,6 +7,11 @@ from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnr
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.synthetic_injection.multi_synthetic_tool_call_injector import (
     MultiSyntheticToolCallInjector,
+    SyntheticCall,
+)
+from quickapp.common.synthetic_injection.staged_tool_lookup import (
+    build_staged_tool_index,
+    find_staged_tool,
 )
 from quickapp.common.tool_names import INTERNAL_SKILLS_READ_SKILL_TOOL_NAME
 from quickapp.config.application import StageDisplayLevel
@@ -21,6 +26,11 @@ logger = logging.getLogger(__name__)
 _LOAD_FAILED = (
     "Error: the user's skill `{name}` could not be loaded. The reason is shown to the user."
 )
+
+# The real call id is only known after every call's content is hashed (see
+# MultiSyntheticToolCallInjector.transform), which happens after get_content runs.
+# This probe id is used only for the tool's own logging/timers, never surfaced.
+_ARUN_SYNTHETIC_CALL_ID = "synthetic_injection_probe"
 
 
 class _SkillInvocationInjector(MultiSyntheticToolCallInjector):
@@ -65,34 +75,35 @@ class _SkillInvocationInjector(MultiSyntheticToolCallInjector):
     ) -> None:
         super().__init__(enrichers_provider)
         self.__context = context
-        self.__tools: dict[str, StagedBaseTool] = {
-            tool.tool_config.open_ai_tool.function.name: tool for tool in tools
-        }
+        self.__tools = build_staged_tool_index(tools)
 
-    async def get_calls(self, messages: list[Message]) -> list[tuple[str, dict]]:
+    async def get_calls(self, messages: list[Message]) -> list[SyntheticCall]:
         urls = self.__context.current_pick_urls
         if not urls:
             return []
-        if INTERNAL_SKILLS_READ_SKILL_TOOL_NAME not in self.__tools:
-            logger.warning(
-                "_SkillInvocationInjector: tool '%s' not found in staged tools, skipping",
-                INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
-            )
+        tool = find_staged_tool(
+            self.__tools, INTERNAL_SKILLS_READ_SKILL_TOOL_NAME, logger, "_SkillInvocationInjector"
+        )
+        if tool is None:
             return []
         return [
-            (INTERNAL_SKILLS_READ_SKILL_TOOL_NAME, {"skill_name": self.__skill_name(url)})
+            SyntheticCall(
+                tool_name=INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
+                arguments={"skill_name": self.__skill_name(url)},
+                payload=url,
+            )
             for url in urls
         ]
 
-    async def get_content(
-        self, tool_name: str, arguments: dict, index: int, messages: list[Message]
-    ) -> str:
-        url = self.__context.current_pick_urls[index]
+    async def get_content(self, call: SyntheticCall, index: int, messages: list[Message]) -> str:
+        url = call.payload
         if self.__context.find_skill(url) is None:
             return _LOAD_FAILED.format(name=self.__skill_name(url))
 
-        tool = self.__tools[tool_name]
-        result = await tool.arun(arguments["skill_name"], stage_level=self.stage_level, **arguments)
+        tool = self.__tools[call.tool_name]
+        result = await tool.arun(
+            _ARUN_SYNTHETIC_CALL_ID, stage_level=self.stage_level, **call.arguments
+        )
         return result.content
 
     def __skill_name(self, url: str) -> str:

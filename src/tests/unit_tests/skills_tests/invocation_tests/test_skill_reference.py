@@ -110,6 +110,15 @@ class TestCollectPicks:
     def test_no_chips_anywhere_yields_nothing(self):
         assert _collect([Message(role=Role.USER, content="hi")]).by_ordinal == {}
 
+    def test_a_repicked_url_does_not_spend_the_later_messages_cap_budget(self):
+        collected = _collect(
+            [_user("skills/b/a"), _user("skills/b/a", "skills/b/z")],
+            max_per_message=1,
+        )
+
+        assert collected.by_ordinal == {0: ["skills/b/a"], 1: ["skills/b/z"]}
+        assert collected.overflow_by_ordinal == {}
+
 
 class TestSkillNameFromUrl:
 

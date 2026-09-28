@@ -59,10 +59,10 @@ def collect_picks(messages: list[Message], max_per_message: int) -> Conversation
     stored tool history and the scrub transformer has copied the chipped messages.
     User messages survive both, in order, so counting them is stable.
 
-    Every distinct chip of a message is kept, up to ``max_per_message``; the rest are
-    reported rather than dropped silently. A URL picked again on a later turn keeps
-    its first pick, so the skill is loaded once, ahead of the message that first
-    asked for it.
+    Every distinct **new** chip of a message is kept, up to ``max_per_message``; the
+    rest are reported rather than dropped silently. A chip repeating a URL already
+    picked on an earlier message is dropped before the cap is applied — it does not
+    ask for a fresh resolution slot, so it must not spend one of this message's.
     """
     by_ordinal: dict[int, list[str]] = {}
     overflow_by_ordinal: dict[int, list[str]] = {}
@@ -77,7 +77,11 @@ def collect_picks(messages: list[Message], max_per_message: int) -> Conversation
         if not urls:
             continue
 
-        kept, overflow = urls[:max_per_message], urls[max_per_message:]
+        fresh_urls = [url for url in urls if url not in seen]
+        if not fresh_urls:
+            continue
+
+        kept, overflow = fresh_urls[:max_per_message], fresh_urls[max_per_message:]
         if overflow:
             overflow_by_ordinal[ordinal] = overflow
             # Debug, not warning: every turn re-parses the whole conversation, so a
@@ -87,10 +91,8 @@ def collect_picks(messages: list[Message], max_per_message: int) -> Conversation
                 max_per_message,
             )
 
-        fresh = [url for url in kept if url not in seen]
-        seen.update(fresh)
-        if fresh:
-            by_ordinal[ordinal] = fresh
+        seen.update(kept)
+        by_ordinal[ordinal] = kept
 
     return ConversationPicks(by_ordinal=by_ordinal, overflow_by_ordinal=overflow_by_ordinal)
 
