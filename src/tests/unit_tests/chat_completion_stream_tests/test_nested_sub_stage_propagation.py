@@ -44,11 +44,7 @@ def _start_stages(chunks: list) -> list[dict]:
 def _open_stage(choice: SpyChoice, stage: Stage) -> int:
     stage.open()
     chunks = choice.drain_queue()
-    return next(
-        chunk.stage_index
-        for chunk in chunks
-        if isinstance(chunk, StartStageChunk)
-    )
+    return next(chunk.stage_index for chunk in chunks if isinstance(chunk, StartStageChunk))
 
 
 def test_sub_app_stages_are_nested_under_the_calling_stage():
@@ -118,8 +114,7 @@ def test_sub_stages_are_emitted_before_the_calling_stage_closes():
     calling_index = next(
         chunk.stage_index
         for chunk in chunks
-        if isinstance(chunk, StartStageChunk)
-        and chunk.parent_stage_index is None
+        if isinstance(chunk, StartStageChunk) and chunk.parent_stage_index is None
     )
     child_starts = [
         position

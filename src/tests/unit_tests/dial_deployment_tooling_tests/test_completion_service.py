@@ -400,6 +400,7 @@ async def test_annotations_from_custom_fields_land_on_tool_call_result(
         stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
     )
 
     result = await service.complete_request_async(
