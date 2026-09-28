@@ -42,19 +42,18 @@ class ToolExecutor:
         adopted_tool_stages: dict[str, AdoptedToolStage] | None = None,
     ) -> list[ToolCallResult]:
         adopted = adopted_tool_stages if adopted_tool_stages is not None else {}
-        unknown_calls = [tc for tc in tool_call_list if tc.name not in self.__tools]
-        if unknown_calls:
+        unknown_names = {tc.name for tc in tool_call_list if tc.name not in self.__tools}
+        if unknown_names:
             logger.error(
                 "Model requested unknown tool(s) %s; registered=%s",
-                sorted({tc.name for tc in unknown_calls}),
+                sorted(unknown_names),
                 sorted(self.__tools),
             )
-        unknown_results = {tc.id: self.__unknown_tool_result(tc) for tc in unknown_calls}
 
-        valid_calls: list[AccumulatedToolCall] = []
         tasks = []
         for tc in tool_call_list:
-            if tc.id in unknown_results:
+            if tc.name not in self.__tools:
+                tasks.append(self.__unknown_tool_result(tc))
                 continue
             tool = self.__tools[tc.name]
             args = json.loads(tc.arguments)
@@ -62,15 +61,13 @@ class ToolExecutor:
             log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
             adopted_stage = adopted.pop(tc.id, None)
             tasks.append(tool.arun(tool_call_id=tc.id, adopted_stage=adopted_stage, **args))
-            valid_calls.append(tc)
 
         results: list[ToolCallResult] = list(await asyncio.gather(*tasks))
         self.__enrich_all(results)
-        processed = [await self.__process_result(r, tc) for r, tc in zip(results, valid_calls)]
-        return [unknown_results.get(tc.id) or processed.pop(0) for tc in tool_call_list]
+        return [await self.__process_result(r, tc) for r, tc in zip(results, tool_call_list)]
 
     @staticmethod
-    def __unknown_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
+    async def __unknown_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
         return FallbackProcessor.process_fallback(
             [
                 ContinueStrategyModel(
