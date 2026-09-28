@@ -63,7 +63,7 @@ def test_settings_reads_env_uppercase(monkeypatch):
     assert StageDisplaySettings().stage_display_level == StageDisplayLevel.DEBUG
 
 
-def _propagate_resolver(propagate_sub_stages: bool | None) -> StageDisplayResolver:
+def _propagate_resolver(propagate_sub_stages: bool = True) -> StageDisplayResolver:
     settings = MagicMock(spec=StageDisplaySettings)
     settings.stage_display_level = None
     app_config = MagicMock()
@@ -73,24 +73,21 @@ def _propagate_resolver(propagate_sub_stages: bool | None) -> StageDisplayResolv
     return StageDisplayResolver(settings, app_config)
 
 
-def test_propagate_sub_stages_defaults_on_when_preview_enabled(monkeypatch):
-    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
-    assert _propagate_resolver(None).resolve_propagate_sub_stages() is True
+def test_propagate_sub_stages_defaults_on():
+    assert _propagate_resolver().resolve_propagate_sub_stages() is True
 
 
-def test_propagate_sub_stages_respects_explicit_false_when_preview_enabled(monkeypatch):
-    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+def test_propagate_sub_stages_respects_explicit_false():
     assert _propagate_resolver(False).resolve_propagate_sub_stages() is False
 
 
-def test_propagate_sub_stages_off_when_preview_disabled(monkeypatch):
+def test_propagate_sub_stages_on_when_preview_disabled(monkeypatch):
     monkeypatch.delenv("ENABLE_PREVIEW_FEATURES", raising=False)
-    assert _propagate_resolver(None).resolve_propagate_sub_stages() is False
-    assert _propagate_resolver(True).resolve_propagate_sub_stages() is False
+    assert _propagate_resolver().resolve_propagate_sub_stages() is True
+    assert _propagate_resolver(False).resolve_propagate_sub_stages() is False
 
 
-def test_propagate_sub_stages_on_when_features_missing_and_preview_enabled(monkeypatch):
-    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+def test_propagate_sub_stages_on_when_features_missing():
     settings = MagicMock(spec=StageDisplaySettings)
     settings.stage_display_level = None
     app_config = MagicMock()

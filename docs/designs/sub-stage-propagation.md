@@ -4,6 +4,7 @@
 - **User-facing:** [CONFIGURATION — Stage display](../../CONFIGURATION.md#stage-display-configuration)
 - **Approved:** 2026-09-04
 - **Author:** Aleksei Korota
+- **GA:** `features.stage_display.propagate_sub_stages` is a regular field (default `true`). It is no longer gated by `PreviewField` or `ENABLE_PREVIEW_FEATURES`. Set it to `false` to disable nested sub-app stages.
 
 ---
 
@@ -38,7 +39,7 @@ Sub-app stages are re-emitted into the parent's flat stage list with a name pref
 2. Pass it as `destination` and set `propagate_stages=True` in `_consume_stream`.
 3. Thread a `sub_stage_prefix` string (e.g. `"[WeatherApp]"`) from `BaseDeploymentTool` through `ChatStreamConfig` to `ChoiceUiSink._stream_stage_delta()`, where it is prepended to the stage name on creation.
 
-For deep nesting (A → B → C), C's stages reach A's stream as siblings of B's stages, all with their respective prefixes. The feature is gated by a new `PreviewField` on `StageDisplayConfig` (`features.stage_display.propagate_sub_stages`, default `true` when preview is on) and by the existing `ENABLE_PREVIEW_FEATURES` env switch.
+For deep nesting (A → B → C), C's stages reach A's stream as siblings of B's stages, all with their respective prefixes. The switch is `features.stage_display.propagate_sub_stages` (default `true`). It originally shipped as a `PreviewField` behind `ENABLE_PREVIEW_FEATURES`; that gate is removed (see GA note above).
 
 ### Stage index safety
 
@@ -113,7 +114,7 @@ child = calling.create_stage("Fetching forecast")
 
 The `_stages_by_index` dict (already maintained by `ChoiceUiSink`) naturally handles arbitrary recursion depth: each level's index space is remapped independently as it is processed.
 
-The feature is gated identically to Approach 1 (`PreviewField` + `ENABLE_PREVIEW_FEATURES`).
+The switch is the same field as Approach 1 (`features.stage_display.propagate_sub_stages`). The original `PreviewField` / `ENABLE_PREVIEW_FEATURES` gate is removed (see GA note above).
 
 ### UI contract (for the UI team)
 
