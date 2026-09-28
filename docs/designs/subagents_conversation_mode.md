@@ -1,6 +1,6 @@
 # Design: Subagent Conversation Mode and Awareness
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Conversation mode](../../CONFIGURATION.md#conversation-mode)
 
 ## Problem Statement
 

@@ -2,8 +2,8 @@ from abc import ABC, abstractmethod
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from quickapp.skills._exceptions import SkillFilesNotSupportedError
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills.exceptions import SkillFilesNotSupportedError
+from quickapp.skills.skill_metadata import SkillMetadata
 
 
 class SkillFileReader(ABC):

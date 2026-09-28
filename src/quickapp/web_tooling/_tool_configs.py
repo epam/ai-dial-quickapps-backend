@@ -11,10 +11,10 @@ from quickapp.config.tools.internal import InternalTool
 from quickapp.config.tools.tool_fallback import ContinueStrategyModel, ToolFallbackConfig
 
 WEB_FETCH_TOOL_CONFIG = InternalTool(
-    # Forward fetch-error messages (egress denied, non-text body, ...) so the model
-    # sees the reason and can react, e.g. re-call with a save_path.
+    # Tool error messages (egress denied, non-text body, ...) are always forwarded to
+    # the model, so it can see the reason and react, e.g. re-call with a save_path.
     fallback_configuration=ToolFallbackConfig(
-        strategies=[ContinueStrategyModel(forward_tool_error_message=True)],
+        strategies=[ContinueStrategyModel()],
     ),
     open_ai_tool=OpenAiToolConfig(
         function=OpenAiToolFunction(

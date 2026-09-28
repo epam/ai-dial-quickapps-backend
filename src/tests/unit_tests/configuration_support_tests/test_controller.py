@@ -6,8 +6,8 @@ from httpx import ASGITransport, AsyncClient
 
 from quickapp.configuration_support._controller import _Controller
 from quickapp.predefined_tooling import PredefinedConfigResolver
-from quickapp.skills._skill_metadata import SkillMetadata
-from quickapp.skills.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
+from quickapp.skills.skill_metadata import SkillMetadata
 
 VALID_SKILL_CONTENT = (
     "---\n" "name: my-skill\n" "description: A test skill\n" "---\n" "Body content\n"

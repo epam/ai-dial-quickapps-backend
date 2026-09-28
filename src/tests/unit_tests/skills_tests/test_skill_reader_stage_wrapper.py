@@ -6,7 +6,7 @@ from aidial_sdk.chat_completion import Stage
 from quickapp.common import ToolCallResult
 
 # noinspection PyProtectedMember
-from quickapp.skills._skill_reader_stage_wrapper import _SkillReaderStageWrapper
+from quickapp.skills.registry._skill_reader_stage_wrapper import _SkillReaderStageWrapper
 
 
 @pytest.fixture

@@ -14,7 +14,7 @@ from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.skills import ResolvedSkill, SkillFileReader
-from quickapp.skills._skill_metadata import SkillMetadata
+from quickapp.skills.skill_metadata import SkillMetadata
 
 MODULE_TYPE: TypeAlias = Callable[[Binder], None] | Module | type[Module]
 

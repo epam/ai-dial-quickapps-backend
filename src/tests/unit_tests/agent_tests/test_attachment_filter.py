@@ -7,6 +7,9 @@ from quickapp.attachment_processing._legacy_user_image_keep_policy import _Legac
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.core.agent._attachment_filter import _AttachmentFilter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_keep_policy import (
     _GetContentKeepPolicy,
 )
@@ -14,12 +17,14 @@ from quickapp.orchestrator_attachment_strategies.lazy_on_demand._get_content_kee
 
 def _make_filter(
     input_attachment_types: list[str] | None = None,
+    app_accepted_types: list[str] | None = None,
 ) -> _AttachmentFilter:
     patterns = ["image/*"] if input_attachment_types is None else input_attachment_types
     caps = OrchestratorCapabilities(
-        deployment=MagicMock(id="orch", input_attachment_types=patterns)
+        deployment=MagicMock(id="orch", input_attachment_types=patterns),
     )
-    keep_policy = _GetContentKeepPolicy(orchestrator_capabilities=caps)
+    acceptance = _AttachmentAcceptance(caps, accepted_types=app_accepted_types)
+    keep_policy = _GetContentKeepPolicy(attachment_acceptance=acceptance)
     return _AttachmentFilter(tool_attachment_keep_policies=[keep_policy])
 
 
@@ -349,6 +354,36 @@ class Test_AttachmentFilter:
         result = transformer.transform([assistant, tool_msg])
         assert len(result[1].custom_content.attachments) == 1
         assert result[1].custom_content.attachments[0].url == url
+
+    def test_fetch_tool_pdf_stripped_when_app_accepted_types_excludes_it(self):
+        # Deployment declares "*/*" (accepts anything); the app narrows to images
+        # only, so a get-content PDF result must not be retained.
+        url = "files/bucket/report.pdf"
+        transformer = _make_filter(input_attachment_types=["*/*"], app_accepted_types=["image/*"])
+        assistant = Message(
+            role=Role.ASSISTANT,
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id="call_fetch_narrowed",
+                    type="function",
+                    function=FunctionCall(
+                        name=INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME,
+                        arguments='{"attachment_url": "files/bucket/report.pdf"}',
+                    ),
+                )
+            ],
+        )
+        tool_msg = Message(
+            role=Role.TOOL,
+            content='{"ok": true}',
+            tool_call_id="call_fetch_narrowed",
+            custom_content=CustomContent(
+                attachments=[_attachment("report.pdf", url, "application/pdf")]
+            ),
+        )
+        result = transformer.transform([assistant, tool_msg])
+        assert len(result[1].custom_content.attachments) == 0
 
     def test_fetch_tool_pdf_stripped_for_non_fetch_tool_name(self):
         url = "files/bucket/report.pdf"
