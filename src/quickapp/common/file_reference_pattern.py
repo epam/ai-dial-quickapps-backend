@@ -6,9 +6,14 @@ FILE_PATTERN = re.compile(
 
 
 def strip_file_prefix(value: str) -> str:
-    """Return the bare file URL/path from a file: reference, or the original string if it is not a file reference."""
+    """Return the bare file URL/path from a file: reference, or the original string if it is not a file reference.
+
+    The prefix marker is optional in :data:`FILE_PATTERN` so callers can detect and reject a
+    prefix-less ``file:`` reference, but only a recognized marker is stripped here — otherwise
+    an ordinary path ending in ``file:something`` would be silently shortened.
+    """
     m = FILE_PATTERN.match(value)
-    if not m:
+    if not m or not m.group("prefix"):
         return value
     return m.group("file_url")
 

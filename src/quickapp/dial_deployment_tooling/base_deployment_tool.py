@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 class BaseDeploymentTool(StagedBaseTool):
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
+    # AttachmentResolver resolves these itself, from the raw file:*:: reference.
+    reference_only_params: ClassVar[frozenset[str]] = frozenset({ATTACHMENT_PARAM})
 
     def __init__(
         self,

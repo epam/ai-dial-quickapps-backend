@@ -2,7 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_log, sanitize_url_for_message
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)
@@ -92,7 +92,7 @@ class FilePrefixHandlers:
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
                     message=(
-                        f"File at {safe_url} appears to be binary ({desc}). "
+                        f"File at {sanitize_url_for_message(file_url)} appears to be binary ({desc}). "
                         "Use `file:data::...`, `file:base64::...` or `file:url::...` "
                         "instead of `file:text::...`."
                     ),

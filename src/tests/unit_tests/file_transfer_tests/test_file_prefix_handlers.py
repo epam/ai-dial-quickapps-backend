@@ -137,3 +137,17 @@ class TestHandleText:
             await FilePrefixHandlers.handle_text(
                 "files/test.bin", mock_file_service, parameter_name="input"
             )
+
+    @pytest.mark.asyncio
+    async def test_binary_signature_rejection_message_is_length_capped(self, mock_file_service):
+        """The rejection message must go through sanitize_url_for_message (issue #578's
+        length cap), not the uncapped sanitize_url_for_log, even for a very long file_url."""
+        mock_file_service.load.return_value = b"%PDF-" + b"\x00" * 100
+        long_url = "https://example.com/" + "a" * 5000
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await FilePrefixHandlers.handle_text(
+                long_url, mock_file_service, parameter_name="input"
+            )
+
+        assert len(excinfo.value.message) < 400

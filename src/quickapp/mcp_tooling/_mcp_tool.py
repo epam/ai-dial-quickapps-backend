@@ -17,7 +17,7 @@ from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.state_holder import StateHolder
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.common.url_classification import UrlScheme, classify_url
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_message
 from quickapp.common.utils import (
     filename_from_url_path,
     generate_attachment_filename,
@@ -140,7 +140,7 @@ class _MCPTool(StagedBaseTool):
                         parameter_name=key,
                         message=(
                             f"Parameter `{key}` requires a DIAL file but received an "
-                            f"unsupported URL: {sanitize_url_for_log(candidate)}."
+                            f"unsupported URL: {sanitize_url_for_message(candidate)}."
                         ),
                     )
             files_to_share.extend(candidates)

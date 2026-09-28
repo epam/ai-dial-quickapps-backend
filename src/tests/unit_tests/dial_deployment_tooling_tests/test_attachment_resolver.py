@@ -113,6 +113,24 @@ async def test_unsupported_scheme_raises_invalid_param():
 
 
 @pytest.mark.asyncio
+async def test_unsupported_scheme_error_uses_stripped_value_for_data_uri_collapse():
+    """The rejection error must be built from the already-stripped `bare` value, not the raw
+    `file:...::` reference — otherwise a `file:`-wrapped `data:` URI's base64 payload isn't
+    recognized/collapsed by sanitize_url_for_message and leaks raw payload bytes into the
+    model-facing message."""
+    resolver = _make_resolver()
+    payload = "A" * 500
+    file_relative_url = f"file:data::data:image/png;base64,{payload}"
+
+    with pytest.raises(InvalidToolCallParameterException) as excinfo:
+        await resolver._resolve_attachment(file_relative_url, supports_url_attachments=False)
+
+    message = excinfo.value.message
+    assert "data:image/png;base64,<500 chars>" in message
+    assert payload not in message
+
+
+@pytest.mark.asyncio
 async def test_promoter_exception_propagates_unchanged():
     """The promoter already wraps fetch failures in ``InvalidToolCallParameterException``;
     the resolver just lets them propagate."""

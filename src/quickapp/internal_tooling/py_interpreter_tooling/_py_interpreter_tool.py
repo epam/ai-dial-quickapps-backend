@@ -11,6 +11,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.file_reference_pattern import strip_file_prefix
 from quickapp.common.media_types import MediaTypes
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -51,6 +52,8 @@ logger = logging.getLogger(__name__)
 @inject
 class _PyInterpreterTool(StagedBaseTool):
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
+    # _prepare_input_files matches these against conversation attachments itself.
+    reference_only_params: ClassVar[frozenset[str]] = frozenset({"attachment_urls"})
 
     # args_schema: Type[BaseModel] = InterpreterParameters
 
@@ -176,7 +179,7 @@ class _PyInterpreterTool(StagedBaseTool):
         errors: list[str] = []
 
         for file_name in attachment_urls:
-            target_path = unquote(posix_path_last_segment(file_name))
+            target_path = unquote(posix_path_last_segment(strip_file_prefix(file_name)))
 
             if target_path in loaded_file_names:
                 continue
@@ -214,9 +217,10 @@ class _PyInterpreterTool(StagedBaseTool):
     def _match_attachment(
         file_name: str, attachments_urls_map: dict[str, Attachment]
     ) -> tuple[str | None, Attachment | None]:
-        sanitized = file_name.replace(" ", "%20")
+        bare = strip_file_prefix(file_name)
+        sanitized = bare.replace(" ", "%20")
         for attachment_url, attachment in attachments_urls_map.items():
-            if attachment_url.endswith(file_name) or attachment_url.endswith(sanitized):
+            if attachment_url.endswith(bare) or attachment_url.endswith(sanitized):
                 return attachment_url, attachment
         return None, None
 

@@ -11,7 +11,7 @@ from injector import inject
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.url_classification import UrlScheme, classify_url
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url_for_message
 from quickapp.shared.external_fetch.external_url_fetcher import ExternalUrlFetcher, FetchedBytes
 
 
@@ -50,7 +50,7 @@ class WebContentFetcher:
             )
         if scheme == UrlScheme.UNSUPPORTED:
             raise WebContentFetchError(
-                f"URL scheme not supported: {sanitize_url_for_log(url)}. "
+                f"URL scheme not supported: {sanitize_url_for_message(url)}. "
                 "Only http(s) URLs can be fetched."
             )
 

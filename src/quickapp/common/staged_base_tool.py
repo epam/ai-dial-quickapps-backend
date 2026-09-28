@@ -41,6 +41,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
     # Opt-in: when set, orchestrator streams argument bodies into the tool stage.
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
+    # Opt-in: arguments withheld from the transformer chain because the tool resolves
+    # the file reference itself (e.g. attachment_urls).
+    reference_only_params: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(
         self,
@@ -265,8 +268,12 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         return open_ai_tool
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        # A reference-only parameter names a file the tool resolves itself, so inlining it
+        # here would destroy the reference before the tool's own resolver sees it.
+        withheld = {k: kwargs.pop(k) for k in type(self).reference_only_params if k in kwargs}
         for transformer in self.__argument_transformers:
             kwargs = await transformer.transform(kwargs)
+        kwargs.update(withheld)
         return kwargs
 
     def _resolve_tool_name(self) -> str:
