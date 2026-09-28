@@ -1,6 +1,6 @@
 # Design: Folder Context
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Folder context](../../CONFIGURATION.md#folder-context-type-folder)
 - **Dependencies:**
   - [dial_files_tools.md](dial_files_tools.md) — DIAL file tools (`list`, read/write surface)
   - [preview_feature_gating.md](preview_feature_gating.md) — preview gating for folder contexts and dial-files

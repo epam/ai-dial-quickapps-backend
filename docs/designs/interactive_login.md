@@ -1,6 +1,6 @@
 # Design: Interactive Login into DIAL Toolset
-
-**Status:** Implemented
+- **Status:** Implemented
+- **User-facing:** [docs/agent.md](../agent.md); [CONFIGURATION — Environment Variables](../../CONFIGURATION.md#environment-variables)
 
 ## Problem Statement
 

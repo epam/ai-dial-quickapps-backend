@@ -1,6 +1,6 @@
 # Design: Skills as DIAL Resource (Phase 1)
-
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Skills](../../CONFIGURATION.md#skills-configuration); [docs/skills.md](../skills.md)
 - **Approved:** 2026-08-31
 - **Issue:** [epam/ai-dial-quickapps-backend#418](https://github.com/epam/ai-dial-quickapps-backend/issues/418)
 - **Dependencies:**
