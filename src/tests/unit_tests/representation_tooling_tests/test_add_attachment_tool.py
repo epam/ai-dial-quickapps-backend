@@ -32,7 +32,7 @@ class TestAddAttachmentTool:
         assert len(result.propagate_to_choice) == 1
         attachment = result.propagate_to_choice[0]
         assert attachment.url == "files/bucket/path/report.csv"
-        assert attachment.title == "Report"
+        assert attachment.title == "Report.csv"
         assert attachment.type == "text/csv"
 
     @pytest.mark.asyncio
@@ -53,18 +53,114 @@ class TestAddAttachmentTool:
         assert excinfo.value.parameter_name == "url"
 
     @pytest.mark.asyncio
-    async def test_defaults_type_to_text_plain(self):
+    async def test_defaults_type_to_text_plain_when_extension_unknown(self):
         tool = _build_tool()
-        result = await tool._run_in_stage_async(stage_wrapper=None, url="files/a.bin")
+        result = await tool._run_in_stage_async(stage_wrapper=None, url="files/bucket/blob")
 
         assert result.propagate_to_choice[0].type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_empty_type_falls_back_to_text_plain(self):
         tool = _build_tool()
-        result = await tool._run_in_stage_async(stage_wrapper=None, url="files/a.bin", type="")
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/blob", type=""
+        )
 
         assert result.propagate_to_choice[0].type == "text/plain"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("url", "expected_type"),
+        [
+            ("files/bucket/path/report.html", "text/html"),
+            ("files/bucket/path/sales_orders_report.md", "text/markdown"),
+            ("files/bucket/path/data.csv", "text/csv"),
+            ("files/bucket/path/My%20Report.pdf", "application/pdf"),
+            ("https://example.com/out/deck.pptx?sig=abc", None),
+        ],
+    )
+    async def test_infers_type_from_url_extension_when_omitted(
+        self, url: str, expected_type: str | None
+    ):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(stage_wrapper=None, url=url, title="Report")
+
+        attachment = result.propagate_to_choice[0]
+        if expected_type is None:
+            assert attachment.type != "text/plain"
+        else:
+            assert attachment.type == expected_type
+
+    @pytest.mark.asyncio
+    async def test_infers_type_from_title_when_url_has_no_extension(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/blob", title="report.html"
+        )
+
+        assert result.propagate_to_choice[0].type == "text/html"
+
+    @pytest.mark.asyncio
+    async def test_explicit_type_wins_over_extension(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/report.md", type="text/plain"
+        )
+
+        assert result.propagate_to_choice[0].type == "text/plain"
+
+    @pytest.mark.asyncio
+    async def test_title_defaults_to_url_file_name(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/path/My%20Report.html"
+        )
+
+        attachment = result.propagate_to_choice[0]
+        assert attachment.title == "My Report.html"
+        assert attachment.type == "text/html"
+
+    @pytest.mark.asyncio
+    async def test_title_without_extension_gets_url_extension(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None,
+            url="files/bucket/path/sales_orders_report.md",
+            title="Sales Orders (Jan-Jun 2024)",
+        )
+
+        attachment = result.propagate_to_choice[0]
+        assert attachment.title == "Sales Orders (Jan-Jun 2024).md"
+        assert attachment.type == "text/markdown"
+
+    @pytest.mark.asyncio
+    async def test_title_with_known_extension_is_kept(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/path/report.html", title="summary.htm"
+        )
+
+        assert result.propagate_to_choice[0].title == "summary.htm"
+
+    @pytest.mark.asyncio
+    async def test_title_without_extension_gets_explicit_type_extension(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/blob", title="Report", type="text/html"
+        )
+
+        assert result.propagate_to_choice[0].title == "Report.html"
+
+    @pytest.mark.asyncio
+    async def test_title_unchanged_when_no_extension_is_known(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/blob", title="Report"
+        )
+
+        attachment = result.propagate_to_choice[0]
+        assert attachment.title == "Report"
+        assert attachment.type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_content_does_not_echo_the_file(self):

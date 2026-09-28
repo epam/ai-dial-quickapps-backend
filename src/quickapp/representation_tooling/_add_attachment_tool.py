@@ -1,3 +1,5 @@
+import mimetypes
+from pathlib import PurePosixPath
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -8,6 +10,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.utils import filename_from_url_path, guess_attachment_extension
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
@@ -18,6 +21,42 @@ _DEFAULT_ATTACHMENT_TYPE = "text/plain"
 # file name/path (nothing to parrot back); guidance on not restating the attachment lives in
 # the tool description, not here.
 _TOOL_RESULT_CONTENT = "The file is now attached to the response."
+
+
+def _guess_mime_type(name: str | None) -> str | None:
+    return mimetypes.guess_type(name)[0] if name else None
+
+
+def _resolve_type(explicit_type: str | None, url_file_name: str | None, title: str | None) -> str:
+    """Explicit type wins; otherwise infer from the URL file name, then the title.
+
+    The chat UI derives the download extension from the attachment type, so defaulting a
+    ``report.html`` URL to ``text/plain`` makes the user receive a ``.txt`` file.
+    """
+    return (
+        explicit_type
+        or _guess_mime_type(url_file_name)
+        or _guess_mime_type(title)
+        or _DEFAULT_ATTACHMENT_TYPE
+    )
+
+
+def _resolve_title(
+    title: str | None, url_file_name: str | None, explicit_type: str | None
+) -> str | None:
+    """Fall back to the URL file name and keep the file extension on a model-chosen title.
+
+    A title such as ``Sales Report`` has no extension, so the UI would name the download
+    after the type alone; append the URL's extension (or the explicit type's) instead.
+    """
+    if not title:
+        return url_file_name
+    if _guess_mime_type(title):
+        return title
+    extension = (url_file_name and PurePosixPath(url_file_name).suffix) or (
+        guess_attachment_extension(explicit_type) if explicit_type else ""
+    )
+    return f"{title}{extension}"
 
 
 @inject
@@ -60,8 +99,10 @@ class _AddAttachmentTool(StagedBaseTool):
         if "url" not in kwargs:
             raise InvalidToolCallParameterException("url", "url is required")
         url: str = kwargs["url"]
-        title: str | None = kwargs.get("title")
-        mime_type: str = kwargs.get("type") or _DEFAULT_ATTACHMENT_TYPE
+        explicit_type: str | None = kwargs.get("type") or None
+        url_file_name = filename_from_url_path(url)
+        title = _resolve_title(kwargs.get("title"), url_file_name, explicit_type)
+        mime_type = _resolve_type(explicit_type, url_file_name, title)
 
         attachment = Attachment(url=url, title=title, type=mime_type)
 
