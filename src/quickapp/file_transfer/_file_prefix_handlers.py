@@ -2,7 +2,7 @@ import base64
 import logging
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.url_sanitization import sanitize_url_for_log, sanitize_url_for_message
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 
 logger = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ class FilePrefixHandlers:
             except Exception:
                 logger.exception(
                     "Failed to coerce downloaded content to bytes for %s",
-                    sanitize_url_for_log(file_url),
+                    sanitize_url(file_url),
                 )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
@@ -51,7 +51,7 @@ class FilePrefixHandlers:
             except Exception:
                 logger.exception(
                     "Failed to coerce downloaded content to bytes for %s",
-                    sanitize_url_for_log(file_url),
+                    sanitize_url(file_url),
                 )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
@@ -74,7 +74,7 @@ class FilePrefixHandlers:
             except Exception:
                 logger.exception(
                     "Failed to coerce downloaded content to bytes for %s",
-                    sanitize_url_for_log(file_url),
+                    sanitize_url(file_url),
                 )
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
@@ -83,7 +83,7 @@ class FilePrefixHandlers:
 
         for sig, desc in _BINARY_SIGNATURES:
             if content_bytes.startswith(sig):
-                safe_url = sanitize_url_for_log(file_url)
+                safe_url = sanitize_url(file_url)
                 logger.warning(
                     "Downloaded file %s appears to be binary (%s); 'text' prefix is invalid for binary files",
                     safe_url,
@@ -92,7 +92,7 @@ class FilePrefixHandlers:
                 raise InvalidToolCallParameterException(
                     parameter_name=parameter_name,
                     message=(
-                        f"File at {sanitize_url_for_message(file_url)} appears to be binary ({desc}). "
+                        f"File at {sanitize_url(file_url)} appears to be binary ({desc}). "
                         "Use `file:data::...`, `file:base64::...` or `file:url::...` "
                         "instead of `file:text::...`."
                     ),

@@ -34,7 +34,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.url_sanitization import sanitize_url_for_message
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
@@ -280,9 +280,7 @@ class Orchestrator:
                 if url is not None:
                     propagated_urls.add(url)
                     if url in self.__propagated_attachment_urls:
-                        logger.debug(
-                            "Skipping duplicate attachment URL %s", sanitize_url_for_message(url)
-                        )
+                        logger.debug("Skipping duplicate attachment URL %s", sanitize_url(url))
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))

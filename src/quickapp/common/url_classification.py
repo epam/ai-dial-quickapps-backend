@@ -4,7 +4,7 @@ from functools import lru_cache
 from urllib.parse import urlsplit
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.url_sanitization import sanitize_url_for_message
+from quickapp.common.url_sanitization import sanitize_url
 
 
 class UrlScheme(str, Enum):
@@ -121,7 +121,7 @@ def unsupported_scheme_error(url: str, parameter_name: str) -> InvalidToolCallPa
     return InvalidToolCallParameterException(
         parameter_name=parameter_name,
         message=(
-            f"URL scheme not supported: {sanitize_url_for_message(url)}. "
+            f"URL scheme not supported: {sanitize_url(url)}. "
             "Only DIAL file paths (e.g. files/bucket/foo.pdf) and "
             "http(s) URLs are accepted."
         ),

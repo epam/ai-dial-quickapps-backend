@@ -10,7 +10,7 @@ class TestMessageLengthBackstop:
         exc = InvalidToolCallParameterException(parameter_name="data", message="x" * 5000)
 
         assert exc.message.startswith("x" * 1000)
-        assert exc.message.endswith("…(truncated, 5000 chars)")
+        assert exc.message.endswith("…")
         assert str(exc) == exc.message
 
     def test_message_within_budget_untouched(self):

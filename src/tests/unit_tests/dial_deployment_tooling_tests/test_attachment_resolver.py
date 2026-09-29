@@ -116,7 +116,7 @@ async def test_unsupported_scheme_raises_invalid_param():
 async def test_unsupported_scheme_error_uses_stripped_value_for_data_uri_collapse():
     """The rejection error must be built from the already-stripped `bare` value, not the raw
     `file:...::` reference — otherwise a `file:`-wrapped `data:` URI's base64 payload isn't
-    recognized/collapsed by sanitize_url_for_message and leaks raw payload bytes into the
+    recognized/collapsed by sanitize_url and leaks raw payload bytes into the
     model-facing message."""
     resolver = _make_resolver()
     payload = "A" * 500
@@ -126,7 +126,7 @@ async def test_unsupported_scheme_error_uses_stripped_value_for_data_uri_collaps
         await resolver._resolve_attachment(file_relative_url, supports_url_attachments=False)
 
     message = excinfo.value.message
-    assert "data:image/png;base64,<500 chars>" in message
+    assert "data:image/png;base64,…" in message
     assert payload not in message
 
 

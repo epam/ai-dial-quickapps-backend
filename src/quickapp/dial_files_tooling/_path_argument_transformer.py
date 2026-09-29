@@ -4,7 +4,7 @@ from typing import Any
 from injector import inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.shared.home_path.home_path_resolver import HomePathResolver
 
 logger = logging.getLogger(__name__)
@@ -43,8 +43,8 @@ class _AppdataHomePathTransformer(ToolArgumentTransformer):
                 logger.debug(
                     "Relativized argument %s: %s -> %s",
                     name,
-                    sanitize_url_for_log(value),
-                    sanitize_url_for_log(relative),
+                    sanitize_url(value),
+                    sanitize_url(relative),
                 )
                 kwargs[name] = relative
         return kwargs

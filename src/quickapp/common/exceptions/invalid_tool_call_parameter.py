@@ -10,7 +10,7 @@ class InvalidToolCallParameterException(ValueError):
 
     def __init__(self, parameter_name: str, message: str):
         if len(message) > _MAX_MESSAGE_LENGTH:
-            message = f"{message[:_MAX_MESSAGE_LENGTH]}…(truncated, {len(message)} chars)"
+            message = f"{message[:_MAX_MESSAGE_LENGTH]}…"
         super().__init__(message)
         self.parameter_name = parameter_name
         self.message = message

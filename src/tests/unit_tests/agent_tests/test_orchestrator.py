@@ -1132,7 +1132,7 @@ async def test_propagation_deduplicates_repeated_urls():
 @pytest.mark.asyncio
 async def test_propagation_duplicate_data_uri_not_logged_verbatim(caplog):
     """A duplicate data: URI attachment must not have its base64 payload logged verbatim at
-    DEBUG — sanitize_url_for_message collapses it instead of sanitize_url_for_log's no-op."""
+    DEBUG — sanitize_url collapses it to its header."""
     choice = SpyChoice()
     payload = "A" * 500
     same_url = f"data:image/png;base64,{payload}"
@@ -1154,7 +1154,7 @@ async def test_propagation_duplicate_data_uri_not_logged_verbatim(caplog):
 
     logged_text = "\n".join(record.getMessage() for record in caplog.records)
     assert payload not in logged_text
-    assert "data:image/png;base64,<500 chars>" in logged_text
+    assert "data:image/png;base64,…" in logged_text
 
 
 @pytest.mark.asyncio
