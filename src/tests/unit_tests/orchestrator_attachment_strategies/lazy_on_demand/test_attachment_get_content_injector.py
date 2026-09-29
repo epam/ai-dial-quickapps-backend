@@ -9,6 +9,9 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.core.agent import OrchestratorCapabilities
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_get_content_injector import (
     _AttachmentGetContentInjector,
 )
@@ -58,11 +61,14 @@ def _materializer(
 def _injector(
     input_attachment_types: list[str] | None,
     materializer: _AttachmentMaterializer | None = None,
+    app_accepted_types: list[str] | None = None,
 ) -> _AttachmentGetContentInjector:
-    caps = MagicMock(spec=OrchestratorCapabilities)
-    caps.input_attachment_types = input_attachment_types
+    caps = OrchestratorCapabilities(
+        deployment=SimpleNamespace(id="gpt-4", input_attachment_types=input_attachment_types),  # type: ignore[arg-type]
+    )
+    acceptance = _AttachmentAcceptance(caps, accepted_types=app_accepted_types)
     return _AttachmentGetContentInjector(
-        orchestrator_capabilities=caps,
+        attachment_acceptance=acceptance,
         materializer=materializer if materializer is not None else _materializer(),
     )
 
@@ -206,6 +212,29 @@ class TestAttachmentGetContentInjector:
         assert result[2].custom_content is not None
         assert result[2].custom_content.attachments is not None
         assert result[2].custom_content.attachments[0].url == "files/bucket/report.pdf"
+
+    @pytest.mark.asyncio
+    async def test_app_accepted_types_narrows_deployment_wildcard(self):
+        # Deployment declares "*/*" (accepts anything); the app narrows to images only.
+        injector = _injector(["*/*"], app_accepted_types=["image/*"])
+        messages = [
+            _user_msg(
+                "latest",
+                [
+                    _attachment("a.png", "files/bucket/a.png", "image/png"),
+                    _attachment("b.pdf", "files/bucket/b.pdf", "application/pdf"),
+                ],
+            ),
+        ]
+
+        result = await injector.transform(messages)
+
+        # Only the PNG gets a synthetic pair; the PDF is skipped despite the
+        # deployment's catch-all wildcard.
+        assert len(result) == 3
+        assert result[2].custom_content is not None
+        assert result[2].custom_content.attachments is not None
+        assert result[2].custom_content.attachments[0].url == "files/bucket/a.png"
 
     @pytest.mark.asyncio
     async def test_supports_wildcard_input_attachment_types(self):

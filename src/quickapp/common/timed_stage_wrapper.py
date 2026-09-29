@@ -3,6 +3,7 @@ from time import perf_counter
 from types import TracebackType
 
 from aidial_sdk.chat_completion import Stage
+from injector import noninjectable
 
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.config.tools.base import BaseTool
@@ -10,6 +11,11 @@ from quickapp.config.tools.base import BaseTool
 
 class TimedStageWrapper(BaseStageWrapper, ABC):
 
+    # Subclasses are `@inject`-decorated and built through `AssistedBuilder`, so injector
+    # resolves any omitted argument -- ignoring the Python default and calling the
+    # annotated type when it has no binding (`float()` == 0.0, not None). Only `stage` is
+    # a real dependency here; omitting it asks for a fresh stage off the request `Choice`.
+    @noninjectable("tool_config", "stage_name", "already_open", "start_time")
     def __init__(
         self,
         stage: Stage,

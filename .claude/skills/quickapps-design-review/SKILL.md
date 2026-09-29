@@ -39,10 +39,11 @@ Read — in this order:
 1. The target design doc (full contents).
 2. `docs/designs/README.md` — required structure, lifecycle, best practices.
 3. `docs/designs/template.md` — the canonical section list.
-4. `CLAUDE.md` and `CLAUDE.local.md` — project conventions.
-5. `CODESTYLE.md` if referenced by the doc or relevant to a claim.
-6. Any doc the target links to (e.g. `docs/agent.md`, `docs/skills.md`), **only** where relevant.
-7. The specific code the design references. Spot-check every non-trivial code claim against the actual file/symbol. Prefer LSP (`goToDefinition`, `findReferences`, `hover`) for navigation; fall back to Grep/Read only when LSP can't answer.
+4. `docs/README.md` — the L0 hub capability map (Stable / Preview tables). Check whether this capability already appears there and whether the L1/L2 links are filled in.
+5. `CLAUDE.md` and `CLAUDE.local.md` — project conventions.
+6. `CODESTYLE.md` if referenced by the doc or relevant to a claim.
+7. Any doc the target links to (e.g. `docs/agent.md`, `docs/skills.md`), **only** where relevant.
+8. The specific code the design references. Spot-check every non-trivial code claim against the actual file/symbol. Prefer LSP (`goToDefinition`, `findReferences`, `hover`) for navigation; fall back to Grep/Read only when LSP can't answer.
 
 Do not skip this. A review that hasn't verified the doc's claims against the codebase is low-signal noise.
 
@@ -64,6 +65,10 @@ For each dimension, produce a finding only when something is actually off — do
 - **Clarity.** Prose over code snippets? Mermaid diagrams where they clarify? Referenced components named (e.g. `StagedBaseTool._run_in_stage_report_success`) rather than inlined?
 - **Change focus — no "what is NOT changing" prose.** Design docs describe what changes. Flag any sentence or paragraph that exists only to enumerate non-changes — e.g. "no new bindings are introduced", "no new types", "behavior with the new field unset is byte-identical to today", "no change to `Foo`", "this does not require X". The *Migration / Non-breaking changes* section is the sanctioned home for such facts (and even there, keep it terse); elsewhere they bloat the doc without informing the reader. Recommend cutting.
 - **Out of Scope justification.** Is each deferral explained, or is the section a dumping ground?
+- **Documentation hierarchy (L0–L4).** The project uses a layered docs structure; design docs sit at L3 and must fit into it correctly:
+  - **`User-facing:` line on Implemented docs.** If `Status: Implemented`, the header block must carry a `User-facing:` line pointing at the live L1 reference (`CONFIGURATION.md#anchor`) or an L2 guide (`docs/*.md`). A design doc body is historical — readers looking to *configure* a feature must be pointed to L1, not left in the design prose. Flag if missing.
+  - **Capability map coverage.** The `docs/README.md` Stable / Preview table is the L0 index. If this design introduces a new capability (or renames one), the author should add or update the corresponding row with L1 and L2 column links. Flag if the doc is silent on this.
+  - **No `[Preview]` or inline tags in section headings.** Tags embedded in heading text corrupt GitHub-generated anchors (e.g. `### Hooks configuration [Preview]` yields `#hooks-configuration-preview` — breaking every existing link). Preview status belongs in the section body (e.g. a `> **Preview** — requires …` callout) or the header metadata, never in the heading itself. Flag any such heading.
 
 Prefer a small number of sharp findings over exhaustive nitpicking.
 

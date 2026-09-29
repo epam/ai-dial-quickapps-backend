@@ -1,6 +1,6 @@
 # Design: Built-in Web Fetch Tool
-
-- **Status:** Approved (reworked — supersedes the earlier two-tool proposal; see [Reworked from](#reworked-from))
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Web fetch](../../CONFIGURATION.md#web-fetch-configuration)
 - **Dependencies:**
   - [external_url_attachments.md](external_url_attachments.md) — `ExternalUrlFetcher`, `classify_url`, and the two-tier egress policy the tool reuses unchanged.
   - **PR #368 (already merged, `db4450d`).** The dial-files home-resolution refactor extracted `_HomePathResolver` (`dial_files_tooling/_home_path_resolver.py`) into a standalone, request-scoped **injectable** with `resolve_appdata_url` / `resolve_home_dir` / `to_display_path`. Saving reuses that resolver directly (Component 4) instead of subclassing `_DialFileTool` — that extraction is what makes a single independent tool viable.
