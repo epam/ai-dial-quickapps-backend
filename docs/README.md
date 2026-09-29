@@ -43,6 +43,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | External URL egress | [CONFIGURATION — External URL fetch](../CONFIGURATION.md#external-url-fetch-configuration) | [file_transfer.md](./file_transfer.md) | [external_url_attachments.md](./designs/external_url_attachments.md) |
 | DIAL files tools | [CONFIGURATION — DIAL files](../CONFIGURATION.md#dial-files-configuration) | — | [dial_files_tools.md](./designs/dial_files_tools.md) |
 | Stage display | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [stage_display_level.md](./designs/stage_display_level.md) |
+| Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
 | Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md) |
 | Resumable subagents | [CONFIGURATION — Conversation mode](../CONFIGURATION.md#conversation-mode) | — | [subagents_conversation_mode.md](./designs/subagents_conversation_mode.md) |
 | Conversation starters | [CONFIGURATION — Conversation starters](../CONFIGURATION.md#conversation-starters-configuration) | — | — |

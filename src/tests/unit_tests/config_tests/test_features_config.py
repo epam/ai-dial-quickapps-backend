@@ -30,6 +30,10 @@ class TestStageDisplayConfig:
         cfg = StageDisplayConfig()
         assert cfg.level == StageDisplayLevel.INFO
 
+    def test_default_propagate_sub_stages_is_on(self):
+        cfg = StageDisplayConfig()
+        assert cfg.propagate_sub_stages is True
+
     def test_explicit_error_level(self):
         cfg = StageDisplayConfig(level=StageDisplayLevel.ERROR)
         assert cfg.level == StageDisplayLevel.ERROR

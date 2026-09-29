@@ -23,9 +23,12 @@ Self-review the current diff against the recurring feedback this team's reviewer
 ## Arguments
 
 `scope` = `$scope` (one of `pr` | `uncommitted`; if empty, default to `pr`):
-- `pr` — review **only committed** changes on the current branch vs `development`. Use exactly:
-  `git diff development...HEAD`
-  **Do not** run plain `git diff` (no revision range), `git diff --staged`, or include `git status` output. Uncommitted/unstaged files are out of scope.
+- `pr` — review **only committed** changes on the current branch vs **remote** `development`. Local `development` is often stale. Use exactly:
+  ```bash
+  git fetch origin development
+  git diff origin/development...HEAD
+  ```
+  **Do not** use local `development` as the base. **Do not** run plain `git diff` (no revision range), `git diff --staged`, or include `git status` output. Uncommitted/unstaged files are out of scope.
 - `uncommitted` — review **only** working-tree + staged changes (not yet committed). Use exactly:
   `git diff HEAD`
   Do not include committed changes from the branch.

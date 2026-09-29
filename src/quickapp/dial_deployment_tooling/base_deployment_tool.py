@@ -51,6 +51,7 @@ class BaseDeploymentTool(StagedBaseTool):
         messages_mixin: MessagesMixin,
         perf_timer: PerformanceTimer,
         stage_wrapper_builder: AssistedBuilder[DeploymentStageWrapper],
+        propagate_sub_stages: bool = True,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
         **kwargs: Any,
     ):
@@ -66,6 +67,7 @@ class BaseDeploymentTool(StagedBaseTool):
         self.__dial_completion_service: DialCompletionService = dial_completion_service
         self.__attachment_resolver: AttachmentResolver = attachment_resolver
         self.__content_propagation: ContentPropagation | None = content_propagation
+        self.__propagate_sub_stages: bool = propagate_sub_stages
         if content_propagation and content_propagation.propagate_history:
             logger.warning(
                 "The 'propagate_history' parameter is deprecated and will be removed in a future release. "
@@ -124,6 +126,11 @@ class BaseDeploymentTool(StagedBaseTool):
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
         history = await self._resolve_history(tool_config, session_id)
+        parent_stage = (
+            stage_wrapper.stage
+            if self.__propagate_sub_stages and stage_wrapper is not None
+            else None
+        )
         result = await self.__dial_completion_service.complete_request_async(
             kwargs,
             self.__application_id,
@@ -132,6 +139,7 @@ class BaseDeploymentTool(StagedBaseTool):
             attachment_urls,
             history=history,
             supports_url_attachments=tool_config.supports_url_attachments,
+            parent_stage=parent_stage,
         )
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"
