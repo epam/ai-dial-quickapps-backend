@@ -129,7 +129,7 @@ class TestSkillInitializationWarningRendering:
         opening the stage with no content in it."""
         stage = MagicMock(spec=Stage)
         warning = SkillInitializationException(
-            reason="Only one skill can be invoked per message; these were ignored: b, c",
+            reason="At most 5 skills can be invoked per message; these were ignored: b, c",
             severity="warning",
         )
         handler = _make_handler(stage, [warning])
@@ -138,7 +138,7 @@ class TestSkillInitializationWarningRendering:
 
         rendered = _stage_content(stage)
         assert "Warnings:" in rendered
-        assert "Only one skill can be invoked per message" in rendered
+        assert "At most 5 skills can be invoked per message" in rendered
         assert rendered.strip()
         stage.close.assert_called_once_with(Status.COMPLETED)
 
