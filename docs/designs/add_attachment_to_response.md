@@ -1,6 +1,6 @@
 # Design: Add Attachment to Response Tool
-
 - **Status:** Implemented
+- **User-facing:** [CONFIGURATION - Representation tooling](../../CONFIGURATION.md#representation-tooling-configuration)
 - **Approved:** 2026-06-22
 - **Implemented:** 2026-07-01 (#348, commit b446370)
 - **Dependencies:**

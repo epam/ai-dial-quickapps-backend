@@ -8,7 +8,9 @@ from quickapp.common.attachment_processing_utils import (
 )
 from quickapp.common.tool_message_utils import tool_function_name_for_tool_message
 from quickapp.common.tool_names import INTERNAL_ATTACHMENTS_GET_CONTENT_TOOL_NAME
-from quickapp.core.agent import OrchestratorCapabilities
+from quickapp.orchestrator_attachment_strategies.lazy_on_demand._attachment_acceptance import (
+    _AttachmentAcceptance,
+)
 
 
 @inject
@@ -24,9 +26,9 @@ class _GetContentKeepPolicy(AttachmentKeepPolicy):
 
     def __init__(
         self,
-        orchestrator_capabilities: OrchestratorCapabilities,
+        attachment_acceptance: _AttachmentAcceptance,
     ) -> None:
-        self.__orchestrator_capabilities: OrchestratorCapabilities = orchestrator_capabilities
+        self.__attachment_acceptance: _AttachmentAcceptance = attachment_acceptance
         self.__get_content_tool_indices: set[int] = set()
 
     def prepare(self, messages: list[Message]) -> None:
@@ -54,8 +56,6 @@ class _GetContentKeepPolicy(AttachmentKeepPolicy):
         # Match the synthetic injector's MIME gate (with URL-filename fallback) so an
         # attachment with an empty ``type`` but an accepted URL isn't injected upstream
         # and then stripped here.
-        if not self.__orchestrator_capabilities.orchestrator_accepts_mime_type(
-            attachment_mime_type(attachment)
-        ):
+        if not self.__attachment_acceptance.accepts_mime_type(attachment_mime_type(attachment)):
             return False
         return True

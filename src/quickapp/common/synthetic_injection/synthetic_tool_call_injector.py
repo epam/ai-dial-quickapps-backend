@@ -8,6 +8,7 @@ from uuid import uuid4
 from aidial_sdk.chat_completion import CustomContent, Message, Role
 from aidial_sdk.chat_completion.request import FunctionCall, ToolCall
 from injector import ProviderOf
+from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
@@ -19,8 +20,25 @@ from quickapp.common.tool_message_utils import after_first_user_idx
 logger = logging.getLogger(__name__)
 
 
-class SyntheticToolCallInjector(MessagesTransformer, ABC):
-    call_id_prefix: str = "synth_"
+class BuiltSyntheticCall(BaseModel):
+    """One synthetic tool call with its result, ready to render as a message pair."""
+
+    model_config = ConfigDict(frozen=True)
+
+    call_id: str
+    tool_name: str
+    arguments: dict[str, Any]
+    content: str
+    state: dict[str, Any] | None = None
+
+
+class BaseSyntheticInjector(MessagesTransformer, ABC):
+    """Shared enrichment plumbing for injectors that fabricate tool-call turns.
+
+    Public (no leading underscore) so a sibling module in this package —
+    ``MultiSyntheticToolCallInjector`` — can subclass it without widening the
+    visibility of anything else here.
+    """
 
     def __init__(
         self,
@@ -29,6 +47,25 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         # Lazy: resolved at transform() time so this class can be constructed
         # during _RequestContextSetup, before ApplicationConfig is populated.
         self._enrichers_provider = enrichers_provider
+
+    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
+        if self._enrichers_provider is None:
+            return None
+        enrichers = self._enrichers_provider.get()
+        if not enrichers:
+            return None
+        transient = ToolCallResult(
+            tool_call_id=call_id,
+            content=content,
+            content_type=MediaTypes.PLAIN_TEXT,
+        )
+        for enricher in enrichers:
+            enricher.enrich(transient)
+        return transient.state
+
+
+class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
+    call_id_prefix: str = "synth_"
 
     @abstractmethod
     async def get_tool_name(self) -> str: ...
@@ -50,8 +87,8 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
 
     def _make_call_id_prefix(self, tool_name: str, arguments: dict) -> str:
         """Return the stable prefix for a tool+args pair (no content, no TTL)."""
-        tool_hash = _hash6(tool_name)
-        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
+        tool_hash = hash6(tool_name)
+        args_hash = hash6(json.dumps(arguments, sort_keys=True))
         return f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_"
 
     def make_call_id(
@@ -66,9 +103,9 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         Format: {prefix}t_{tool_hash6}_a_{args_hash6}_c_{content_hash6}[_ttl_{expiry:08x}]
         Maximum length: prefix + 2+6+3+6+3+6+5+8 = prefix + 39 chars (≤ 64 for any prefix ≤ 25).
         """
-        tool_hash = _hash6(tool_name)
-        args_hash = _hash6(json.dumps(arguments, sort_keys=True))
-        content_hash = _hash6(content)
+        tool_hash = hash6(tool_name)
+        args_hash = hash6(json.dumps(arguments, sort_keys=True))
+        content_hash = hash6(content)
         base = f"{self.call_id_prefix}t_{tool_hash}_a_{args_hash}_c_{content_hash}"
         if ttl_expiry_seconds is not None:
             return f"{base}_ttl_{ttl_expiry_seconds:08x}"
@@ -120,7 +157,7 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         call_id = self.make_call_id(tool_name, arguments, content)
         args_prefix = self._make_call_id_prefix(tool_name, arguments)
         # Prefix matching same tool+args+content, ignoring any _ttl_ suffix
-        ac_prefix = args_prefix + f"c_{_hash6(content)}"
+        ac_prefix = args_prefix + f"c_{hash6(content)}"
 
         pair = _find_pair_with_args_and_content(messages, ac_prefix)
         if pair is not None:
@@ -147,28 +184,13 @@ class SyntheticToolCallInjector(MessagesTransformer, ABC):
         pair = _build_pair(tool_name, call_id, arguments, content, state)
         return messages[:idx] + list(pair) + messages[idx:]
 
-    def _enrich_state(self, call_id: str, content: str) -> dict[str, Any] | None:
-        if self._enrichers_provider is None:
-            return None
-        enrichers = self._enrichers_provider.get()
-        if not enrichers:
-            return None
-        transient = ToolCallResult(
-            tool_call_id=call_id,
-            content=content,
-            content_type=MediaTypes.PLAIN_TEXT,
-        )
-        for enricher in enrichers:
-            enricher.enrich(transient)
-        return transient.state
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _hash6(value: str) -> str:
+def hash6(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:6]
 
 
@@ -200,24 +222,48 @@ def _build_pair(
     content: str,
     state: dict[str, Any] | None = None,
 ) -> tuple[Message, Message]:
+    assistant_msg, tool_msgs = build_synthetic_multi_call_turn(
+        [
+            BuiltSyntheticCall(
+                call_id=call_id,
+                tool_name=tool_name,
+                arguments=arguments,
+                content=content,
+                state=state,
+            )
+        ]
+    )
+    return assistant_msg, tool_msgs[0]
+
+
+def build_synthetic_multi_call_turn(
+    calls: list[BuiltSyntheticCall],
+) -> tuple[Message, list[Message]]:
+    """One assistant message carrying every call as a parallel ``tool_calls`` entry,
+    followed by one tool result message per call — the same shape a model-initiated
+    parallel tool call turn has.
+
+    ``calls`` are in the order the calls should appear.
+    """
     assistant_msg = Message(
         role=Role.ASSISTANT,
         content="",
         tool_calls=[
             ToolCall(
-                id=call_id,
+                id=call.call_id,
                 type="function",
-                function=FunctionCall(
-                    name=tool_name,
-                    arguments=json.dumps(arguments),
-                ),
+                function=FunctionCall(name=call.tool_name, arguments=json.dumps(call.arguments)),
             )
+            for call in calls
         ],
     )
-    tool_msg = Message(
-        role=Role.TOOL,
-        content=content,
-        tool_call_id=call_id,
-        custom_content=CustomContent(state=state) if state else None,
-    )
-    return assistant_msg, tool_msg
+    tool_msgs = [
+        Message(
+            role=Role.TOOL,
+            content=call.content,
+            tool_call_id=call.call_id,
+            custom_content=CustomContent(state=call.state) if call.state else None,
+        )
+        for call in calls
+    ]
+    return assistant_msg, tool_msgs

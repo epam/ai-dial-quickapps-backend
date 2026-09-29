@@ -92,7 +92,8 @@ skills) are visible to transformers:
   as `ToolInitializationException`. The same mechanism applies during tool execution: `_MCPTool` catches
   401 from `_MCPToolsetClient`, requests sign-in, and retries the call once. The
   `X-DIAL-CLIENT-CHANNEL-ID` request header enables this flow; without it, 401 errors fall through to
-  the standard error path. See `docs/designs/interactive_login.md` for the full design.
+  the standard error path. Wall-clock wait for the user: env `DIAL_INTERACTIVE_LOGIN_TIMEOUT_SECONDS`
+  (default `120`). See `docs/designs/interactive_login.md` for the full design.
 
 ### 6. Error Handling
 
@@ -500,22 +501,34 @@ LLM. The agent can call it at any point during the conversation to re-check avai
 
 ## Orchestrator attachment strategies
 
-`OrchestratorConfig.attachment_strategy` (preview field, gated by `ENABLE_PREVIEW_FEATURES`) selects how
-the orchestrator receives request-scoped attachments. The field is **opt-in per app**: when unset, the
+`OrchestratorConfig.attachment_strategy` selects how the orchestrator receives request-scoped
+attachments. The field is **opt-in per app** (stable — not preview-gated): when unset, the
 orchestrator gets no admin/user attachments on the native path — USER `image/*` passes through (legacy
 behaviour preserved by `_LegacyUserImageKeepPolicy`), other MIMEs are surfaced as XML metadata only.
 
 ### `lazy_on_demand` strategy
 
 Wired by `LazyOnDemandStrategyModule` (`src/quickapp/orchestrator_attachment_strategies/lazy_on_demand/`).
-The module is `@preview_module`-decorated and additionally checks the per-app strategy field; it is a
-no-op unless both gates pass. When active it contributes:
+The module is always registered; it is a no-op unless the app sets
+`orchestrator.attachment_strategy.type` to `lazy_on_demand`. When active it contributes:
 
 - `_GetContentTool` (`internal_attachments_get_content`) — registered when the orchestrator accepts input
   attachments (`input_attachment_types` non-empty) **and** either external URL fetching is policy-enabled
   (an attachment url may then arrive through any channel — system prompt, skill, user message, tool result —
   so it can't be predicted from request-visible files) **or** at least one admin context / expanded folder
   file / user attachment passes the `input_attachment_types` MIME gate (`should_enable_get_content_tool`).
+  When `LazyOnDemandAttachmentStrategy.accepted_types` is set, every MIME check in the strategy (tool
+  registration, the synthetic injector, the explicit tool call, the keep policy) requires a match against
+  **both** the deployment's `input_attachment_types` **and** the app's `accepted_types` — a conjunction, not
+  an intersected pattern set, enforced at the single choke point `_AttachmentAcceptance.accepts_mime_type`
+  (`orchestrator_attachment_strategies/lazy_on_demand/_attachment_acceptance.py`). This app-level narrowing is
+  deliberately kept out of `OrchestratorCapabilities` — that class exposes only Core-sourced deployment facts;
+  `_AttachmentAcceptance` wraps it and layers the strategy's `accepted_types` on top, request-scoped via a
+  `LazyOnDemandStrategyModule` provider. This lets an app narrow below its deployment (for example scoping a
+  `*/*`-declared deployment down to `image/*`); the deployment's declared list remains a hard cap the app can
+  only narrow, never widen. The rendered tool description advertises the narrowed list
+  (`_AttachmentAcceptance.advertised_input_attachment_types`) instead of the deployment's raw list when
+  `accepted_types` is set.
 - `_AttachmentGetContentInjector` — injects synthetic ASSISTANT/TOOL `internal_attachments_get_content`
   pairs for attachments on the last USER message.
 - `_AttachmentMaterializer` — resolves an attachment url into a form the orchestrator can fetch. DIAL
@@ -629,8 +642,8 @@ The root configuration contains:
 - **Deployment**: Which LLM model/deployment to use, with optional parameters
 - **System Prompt**: Predefined or custom instructions for the agent
 - **Max Iterations**: Limit on agent loop iterations to prevent runaway execution
-- **Attachment Strategy** (preview): How the orchestrator receives request-scoped
-  attachments. See [Orchestrator attachment strategies](#orchestrator-attachment-strategies).
+- **Attachment Strategy**: How the orchestrator receives request-scoped
+  attachments (`lazy_on_demand`). See [Orchestrator attachment strategies](#orchestrator-attachment-strategies).
 
 ### Tool Sets
 
