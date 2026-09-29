@@ -1,5 +1,4 @@
 import mimetypes
-from pathlib import PurePosixPath
 from typing import Any
 
 from aidial_sdk.chat_completion import Attachment
@@ -23,35 +22,6 @@ _TOOL_RESULT_CONTENT = "The file is now attached to the response."
 
 def _guess_mime_type(name: str | None) -> str | None:
     return mimetypes.guess_type(name)[0] if name else None
-
-
-def _resolve_type(
-    explicit_type: str | None, url_file_name: str | None, title: str | None
-) -> str | None:
-    """Explicit type wins; otherwise infer from the URL file name, then the title.
-
-    Returns ``None`` when nothing identifies the type: guessing ``text/plain`` would make the
-    chat UI offer the file as ``.txt`` whatever its real format, so the caller asks the model.
-    """
-    return explicit_type or _guess_mime_type(url_file_name) or _guess_mime_type(title)
-
-
-def _resolve_title(
-    title: str | None, url_file_name: str | None, explicit_type: str | None
-) -> str | None:
-    """Fall back to the URL file name and keep the file extension on a model-chosen title.
-
-    A title such as ``Sales Report`` has no extension, so the UI would name the download
-    after the type alone; append the URL's extension (or the explicit type's) instead.
-    """
-    if not title:
-        return url_file_name
-    if _guess_mime_type(title):
-        return title
-    extension = (url_file_name and PurePosixPath(url_file_name).suffix) or (
-        guess_attachment_extension(explicit_type) if explicit_type else ""
-    )
-    return f"{title}{extension}"
 
 
 @inject
@@ -94,16 +64,23 @@ class _AddAttachmentTool(StagedBaseTool):
         if "url" not in kwargs:
             raise InvalidToolCallParameterException("url", "url is required")
         url: str = kwargs["url"]
-        explicit_type: str | None = kwargs.get("type") or None
         url_file_name = filename_from_url_path(url)
-        title = _resolve_title(kwargs.get("title"), url_file_name, explicit_type)
-        mime_type = _resolve_type(explicit_type, url_file_name, title)
+        title: str | None = kwargs.get("title") or url_file_name
+        # The chat UI derives the download extension from the type, so a text/plain guess
+        # would offer any file as .txt: infer it from the extension or ask the model.
+        mime_type: str | None = (
+            kwargs.get("type") or _guess_mime_type(url_file_name) or _guess_mime_type(title)
+        )
         if mime_type is None:
             raise InvalidToolCallParameterException(
                 "type",
                 "Cannot determine the file type from the url or title. "
                 "Pass `type` (MIME type, e.g. text/html) or a `title` with the file extension.",
             )
+        # Keep the extension on a model-chosen title such as "Sales Report"; take it from the
+        # type so the file name and the type never disagree.
+        if title and not _guess_mime_type(title):
+            title += guess_attachment_extension(mime_type)
 
         attachment = Attachment(url=url, title=title, type=mime_type)
 

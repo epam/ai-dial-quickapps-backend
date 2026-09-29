@@ -143,6 +143,18 @@ class TestAddAttachmentTool:
         assert result.propagate_to_choice[0].title == "Report.html"
 
     @pytest.mark.asyncio
+    async def test_title_extension_follows_explicit_type(self):
+        # The explicit type wins over the URL extension, and the title follows the type.
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/report.md", title="Report", type="text/html"
+        )
+
+        attachment = result.propagate_to_choice[0]
+        assert attachment.type == "text/html"
+        assert attachment.title == "Report.html"
+
+    @pytest.mark.asyncio
     async def test_content_does_not_echo_the_file(self):
         # The confirmation returned to the LLM is a neutral status that does not contain the
         # file name/path, so there is nothing for the model to parrot back into its reply.
