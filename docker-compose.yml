@@ -120,6 +120,13 @@ services:
       # docker_compose_files/core/configuration/application-schemas.json — it prefixes the
       # postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
       QUICK_APPS_APPLICATION_NAME: "Quick App 2.0"
+      # Editor toggles (Context & Tools / features). Web fetch and Add attachment are preview
+      # fields on the backend: need ENABLE_PREVIEW_FEATURES=true (web fetch also
+      # EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable interpreter
+      # on DIAL_URL or PY_INTERPRETER_URL.
+      CODE_INTERPRETER_ENABLED: "true"
+      WEB_FETCH_ENABLED: "true"
+      ADD_ATTACHMENT_ENABLED: "true"
       THEMES_URL: "http://themes:8080/config.json"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:
