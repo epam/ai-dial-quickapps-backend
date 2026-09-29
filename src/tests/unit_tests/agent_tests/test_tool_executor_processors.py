@@ -29,7 +29,12 @@ def _make_tool(name: str, result: ToolCallResult) -> MagicMock:
     tool._tool_config = tool_config
     tool.openai_function_name = MagicMock(return_value=name)
     tool.build_argument_stream_presentation = MagicMock(return_value=None)
-    tool.arun = AsyncMock(return_value=result)
+
+    async def _arun(*, tool_call_id, **_kwargs):
+        result.tool_call_id = tool_call_id
+        return result
+
+    tool.arun = AsyncMock(side_effect=_arun)
     return tool
 
 
@@ -133,7 +138,26 @@ class TestToolExecutorProcessors:
         assert captured[0].tool_call_id == "call_abc"
 
     @pytest.mark.asyncio
-    async def test_unknown_tool_raises_runtime_error(self):
+    async def test_unknown_tool_returns_synthetic_error_result(self):
+        executor = ToolExecutor(
+            tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+        )
+
+        results = await executor.execute(
+            [_make_tool_call("missing_tool", tc_id="u1")],
+        )
+
+        assert len(results) == 1
+        assert results[0].tool_call_id == "u1"
+        assert "missing_tool" in results[0].content
+        assert "Unknown tool" in results[0].content
+        assert results[0].content_type == "text/markdown"
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_alongside_known_tool_still_executes_known_tool(self):
         known = _make_tool("known_tool", ToolCallResult(content="ok", content_type="text/plain"))
         executor = ToolExecutor(
             tools=[known],
@@ -142,12 +166,16 @@ class TestToolExecutorProcessors:
             processors=[],
         )
 
-        with pytest.raises(RuntimeError, match="Unknown tool\\(s\\).*missing_tool"):
-            await executor.execute(
-                [
-                    _make_tool_call("missing_tool", tc_id="u1"),
-                    _make_tool_call("known_tool", tc_id="k1"),
-                ]
-            )
+        results = await executor.execute(
+            [
+                _make_tool_call("missing_tool", tc_id="u1"),
+                _make_tool_call("known_tool", tc_id="k1"),
+            ]
+        )
 
-        known.arun.assert_not_awaited()
+        known.arun.assert_awaited_once()
+        assert len(results) == 2
+        assert results[0].tool_call_id == "u1"
+        assert "missing_tool" in results[0].content
+        assert results[1].tool_call_id == "k1"
+        assert results[1].content == "ok"

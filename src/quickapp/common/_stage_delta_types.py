@@ -17,6 +17,7 @@ class StageDeltaItem(TypedDict, total=False):
     content: str
     attachments: list[dict[str, Any]]
     status: str
+    parent_stage_index: int
 
 
 def as_stage_delta(item: dict[str, Any]) -> StageDeltaItem:

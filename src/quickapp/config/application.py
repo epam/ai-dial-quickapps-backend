@@ -43,6 +43,13 @@ class StageDisplayConfig(BaseModel):
         default=StageDisplayLevel.INFO,
         description="Threshold for stage visibility. none=no stages at all; errors=failures only; info=user-facing (default); debug=all.",
     )
+    propagate_sub_stages: bool = Field(
+        default=True,
+        description=(
+            "Propagate stages from sub-apps called as tools as nested children of the "
+            "'Calling X' stage. Set to False to disable."
+        ),
+    )
 
 
 def get_max_iterations() -> int:
