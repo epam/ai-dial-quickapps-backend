@@ -43,7 +43,7 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
                         type=JsonTypeEnum.string,
                         description=(
                             "MIME type (e.g. text/html, text/markdown, application/pdf). "
-                            "Optional; inferred from the file extension when omitted."
+                            "Optional when the url or title has a file extension; required otherwise."
                         ),
                     ),
                 },

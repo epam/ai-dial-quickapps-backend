@@ -15,8 +15,6 @@ from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.internal import InternalTool
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
 
-_DEFAULT_ATTACHMENT_TYPE = "text/plain"
-
 # Neutral status returned to the LLM after a successful call. Deliberately does not echo the
 # file name/path (nothing to parrot back); guidance on not restating the attachment lives in
 # the tool description, not here.
@@ -27,18 +25,15 @@ def _guess_mime_type(name: str | None) -> str | None:
     return mimetypes.guess_type(name)[0] if name else None
 
 
-def _resolve_type(explicit_type: str | None, url_file_name: str | None, title: str | None) -> str:
+def _resolve_type(
+    explicit_type: str | None, url_file_name: str | None, title: str | None
+) -> str | None:
     """Explicit type wins; otherwise infer from the URL file name, then the title.
 
-    The chat UI derives the download extension from the attachment type, so defaulting a
-    ``report.html`` URL to ``text/plain`` makes the user receive a ``.txt`` file.
+    Returns ``None`` when nothing identifies the type: guessing ``text/plain`` would make the
+    chat UI offer the file as ``.txt`` whatever its real format, so the caller asks the model.
     """
-    return (
-        explicit_type
-        or _guess_mime_type(url_file_name)
-        or _guess_mime_type(title)
-        or _DEFAULT_ATTACHMENT_TYPE
-    )
+    return explicit_type or _guess_mime_type(url_file_name) or _guess_mime_type(title)
 
 
 def _resolve_title(
@@ -103,6 +98,12 @@ class _AddAttachmentTool(StagedBaseTool):
         url_file_name = filename_from_url_path(url)
         title = _resolve_title(kwargs.get("title"), url_file_name, explicit_type)
         mime_type = _resolve_type(explicit_type, url_file_name, title)
+        if mime_type is None:
+            raise InvalidToolCallParameterException(
+                "type",
+                "Cannot determine the file type from the url or title. "
+                "Pass `type` (MIME type, e.g. text/html) or a `title` with the file extension.",
+            )
 
         attachment = Attachment(url=url, title=title, type=mime_type)
 

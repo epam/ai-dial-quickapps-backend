@@ -53,20 +53,17 @@ class TestAddAttachmentTool:
         assert excinfo.value.parameter_name == "url"
 
     @pytest.mark.asyncio
-    async def test_defaults_type_to_text_plain_when_extension_unknown(self):
+    @pytest.mark.parametrize("explicit_type", [None, ""])
+    async def test_unknown_type_raises_invalid_parameter(self, explicit_type: str | None):
+        # Guessing text/plain would make the UI offer the file as .txt, so the model is asked
+        # to pass the type instead.
         tool = _build_tool()
-        result = await tool._run_in_stage_async(stage_wrapper=None, url="files/bucket/blob")
-
-        assert result.propagate_to_choice[0].type == "text/plain"
-
-    @pytest.mark.asyncio
-    async def test_empty_type_falls_back_to_text_plain(self):
-        tool = _build_tool()
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, url="files/bucket/blob", type=""
-        )
-
-        assert result.propagate_to_choice[0].type == "text/plain"
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(
+                stage_wrapper=None, url="files/bucket/blob", title="Report", type=explicit_type
+            )
+        assert excinfo.value.parameter_name == "type"
+        assert "files/bucket/blob" not in excinfo.value.message
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -144,17 +141,6 @@ class TestAddAttachmentTool:
         )
 
         assert result.propagate_to_choice[0].title == "Report.html"
-
-    @pytest.mark.asyncio
-    async def test_title_unchanged_when_no_extension_is_known(self):
-        tool = _build_tool()
-        result = await tool._run_in_stage_async(
-            stage_wrapper=None, url="files/bucket/blob", title="Report"
-        )
-
-        attachment = result.propagate_to_choice[0]
-        assert attachment.title == "Report"
-        assert attachment.type == "text/plain"
 
     @pytest.mark.asyncio
     async def test_content_does_not_echo_the_file(self):

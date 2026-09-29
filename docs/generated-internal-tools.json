@@ -335,7 +335,7 @@
       },
       "type": {
         "type": "string",
-        "description": "MIME type (e.g. text/html, text/markdown, application/pdf). Optional; inferred from the file extension when omitted."
+        "description": "MIME type (e.g. text/html, text/markdown, application/pdf). Optional when the url or title has a file extension; required otherwise."
       }
     },
     "required": [
