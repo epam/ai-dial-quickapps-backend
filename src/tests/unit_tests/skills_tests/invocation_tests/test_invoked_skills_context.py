@@ -24,7 +24,7 @@ class TestState:
         context = _InvokedSkillsContext()
 
         assert context.resolved_skills == []
-        assert context.current_pick_url is None
+        assert context.current_pick_urls == []
 
     def test_content_is_prefixed_with_a_user_selected_header(self):
         context = _InvokedSkillsContext()

@@ -31,7 +31,7 @@ class _InvokedSkillsContext(SkillsProvider):
     display_name = "user skills"
 
     def __init__(self) -> None:
-        self._current_pick_url: str | None = None
+        self._current_pick_urls: list[str] = []
         self._skills_by_url: dict[str, ResolvedSkill] = {}
         self._exceptions: list[InitializationException] = []
         self._lock = threading.Lock()
@@ -45,16 +45,17 @@ class _InvokedSkillsContext(SkillsProvider):
         return self._exceptions
 
     @property
-    def current_pick_url(self) -> str | None:
-        """The pick on the message being answered, if this turn made one.
+    def current_pick_urls(self) -> list[str]:
+        """The picks on the message being answered, in chip order, if this turn made
+        any.
 
         Recorded here rather than re-parsed from the messages later, so the injector
         does not care whether the scrub transformer has already run.
         """
-        return self._current_pick_url
+        return self._current_pick_urls
 
-    def set_current_pick_url(self, url: str | None) -> None:
-        self._current_pick_url = url
+    def set_current_pick_urls(self, urls: list[str]) -> None:
+        self._current_pick_urls = urls
 
     def set_resolved_skills(self, skills: list[ResolvedSkill]) -> None:
         with self._lock:
