@@ -55,15 +55,12 @@ class _DeploymentToolInitializer(CompletionInitializer):
         # DialAppToolSet) have no such owner and are always eager — a DialAppToolSet always
         # resolves to exactly one deployment tool, so batching never applies to them anyway.
         owner_by_tool_id = self.__build_owner_map()
-        groups: dict[int, list[StagedBaseTool]] = {}
-        toolset_by_group_key: dict[int, DeploymentToolSet] = {}
+        groups: dict[int, tuple[DeploymentToolSet, list[StagedBaseTool]]] = {}
         ungrouped: list[StagedBaseTool] = []
 
         for tool in self.__dial_tools_provider.get():
             built_tool = self.__build_deployment_tool(tool)
-            self.__bucket_tool(
-                built_tool, owner_by_tool_id.get(id(tool)), groups, toolset_by_group_key, ungrouped
-            )
+            self.__bucket_tool(built_tool, owner_by_tool_id.get(id(tool)), groups, ungrouped)
 
         for simple_tool in self.__simple_tools_provider.get():
             built_simple_tool = await self.__build_simple_deployment_tool(simple_tool)
@@ -73,13 +70,11 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 built_simple_tool,
                 owner_by_tool_id.get(id(simple_tool)),
                 groups,
-                toolset_by_group_key,
                 ungrouped,
             )
 
         discovery_cfg = self.__app_config.orchestrator.tool_discovery
-        for group_key, tools in groups.items():
-            toolset = toolset_by_group_key[group_key]
+        for toolset, tools in groups.values():
             if is_toolset_deferred(toolset, discovery_cfg, len(tools)):
                 self.__deferred_context.register_deferred_tools(toolset, tools)
                 logger.debug(
@@ -105,16 +100,14 @@ class _DeploymentToolInitializer(CompletionInitializer):
     def __bucket_tool(
         built_tool: StagedBaseTool,
         owner: DeploymentToolSet | None,
-        groups: dict[int, list[StagedBaseTool]],
-        toolset_by_group_key: dict[int, DeploymentToolSet],
+        groups: dict[int, tuple[DeploymentToolSet, list[StagedBaseTool]]],
         ungrouped: list[StagedBaseTool],
     ) -> None:
         if owner is None:
             ungrouped.append(built_tool)
             return
-        group_key = id(owner)
-        groups.setdefault(group_key, []).append(built_tool)
-        toolset_by_group_key[group_key] = owner
+        _, tools = groups.setdefault(id(owner), (owner, []))
+        tools.append(built_tool)
 
     def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:
         return self.__builder.build(
