@@ -3,6 +3,7 @@ from typing import Any
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.utils import fenced_code_block
 
 
 @inject
@@ -20,7 +21,7 @@ class _SubagentStageWrapper(TimedStageWrapper):
         return header
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
-        return f"### Exception:\n\r{exception}\n\r"
+        return f"### Exception:\n\r{fenced_code_block(str(exception))}\n\r"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
-        return f"### Result:\n\r{result.content}\n\r"
+        return f"### Result:\n\r{fenced_code_block(result.content)}\n\r"
