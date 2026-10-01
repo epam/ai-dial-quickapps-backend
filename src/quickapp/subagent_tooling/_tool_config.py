@@ -56,6 +56,10 @@ def _subagent_catalogue(config: SubagentsConfig) -> list[tuple[str, str]]:
     return catalogue
 
 
+def _subagent_listing(subagents: list[tuple[str, str]]) -> str:
+    return "\n".join(f"- {name}: {description}" for name, description in subagents)
+
+
 def build_spawn_tool_config(config: SubagentsConfig, tool_sets: list[ToolSet]) -> InternalTool:
     """One `task` tool for every offered subagent, selected by ``subagent_type``.
 
@@ -107,7 +111,7 @@ def build_spawn_tool_config(config: SubagentsConfig, tool_sets: list[ToolSet]) -
                     "Delegate a self-contained task to a subagent. The subagent works in "
                     "its own isolated context and returns only its final answer — its "
                     "intermediate steps never enter this conversation. Available subagents:\n"
-                    + "\n".join(f"- {name}: {description}" for name, description in subagents)
+                    + _subagent_listing(subagents)
                 ),
                 parameters=OpenAiToolFunctionParameters(
                     type=JsonTypeEnum.object,

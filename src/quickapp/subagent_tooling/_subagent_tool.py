@@ -39,7 +39,7 @@ class _SubagentTool(StagedBaseTool):
         )
         self.__spawner = spawner
         self.__general_purpose = config.general_purpose
-        self.__declared = {s.name: s for s in config.types}
+        self.__declared_types = {s.name: s for s in config.types}
         self.__available_tool_sets = tool_set_names(app_config)
 
     async def _run_in_stage_async(
@@ -67,7 +67,7 @@ class _SubagentTool(StagedBaseTool):
             stage_wrapper.add_result(result)
         return result
 
-    def __select(self, subagent_type: Any, tool_sets: Any) -> SubagentConfig:
+    def __select(self, subagent_type: str | None, tool_sets: list[str] | None) -> SubagentConfig:
         """The subagent this call asked for, with its tool sets settled.
 
         A declared type carries its own allowlist, so `tool_sets` on such a call is
@@ -78,7 +78,7 @@ class _SubagentTool(StagedBaseTool):
             return general_purpose_subagent(
                 self.__general_purpose, self.__validated_tool_sets(tool_sets)
             )
-        declared = self.__declared.get(str(subagent_type))
+        declared = self.__declared_types.get(str(subagent_type))
         if declared is None:
             raise InvalidToolCallParameterException(
                 parameter_name="subagent_type",
@@ -96,9 +96,9 @@ class _SubagentTool(StagedBaseTool):
 
     def __offered(self) -> list[str]:
         names = [GENERAL_PURPOSE_SUBAGENT_NAME] if self.__general_purpose is not None else []
-        return names + list(self.__declared)
+        return names + list(self.__declared_types)
 
-    def __validated_tool_sets(self, requested: Any) -> list[str]:
+    def __validated_tool_sets(self, requested: list[str] | None) -> list[str]:
         """The tool sets this spawn asked for, every one of them known to the app.
 
         Unknown names fail the whole call rather than being dropped: a spoke quietly
