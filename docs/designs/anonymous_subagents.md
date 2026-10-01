@@ -1,7 +1,108 @@
 # Design: Anonymous Subagents
 
-- **Status:** Draft
-- **Dependencies:** None
+- **Status:** Implemented
+
+## High-Level Overview
+
+When the coordinator QuickApp's LLM decides to delegate a sub-task, it emits a `task` tool call. The
+framework compiles a narrowed manifest on the fly from the coordinator's own config — no separate
+deployment or operator registration required — and runs a Spoke as an `asyncio` task in the same Python
+process, with its own isolated orchestrator loop and LLM conversation. The Spoke's intermediate output
+is piped through a `SubagentOutputSink` into the coordinator's `task` stage; only the Spoke's final
+message crosses back as the tool result.
+
+### Topology
+
+The coordinator owns the only user-facing loop. Each Spoke runs one isolated loop, triggered by a
+single `task` tool call. The absence of any Spoke → Spoke arrow reflects the depth-1 constraint.
+
+```mermaid
+flowchart LR
+    User([User])
+
+    subgraph Coord ["Coordinator"]
+        CO["Orchestrator"]
+        CLLM["LLM"]
+    end
+
+    subgraph Spoke_ ["Spoke  (no sub-spawning)"]
+        SO["Orchestrator"]
+        SLLM["LLM"]
+    end
+
+    Sink["SubagentOutputSink"]
+
+    User ---|conversation| CO
+    CO ---|"prompt + tool schemas"| CLLM
+    CLLM -->|"task(subagent_type, prompt)"| CO
+    CO -->|spawn in isolated scope| SO
+    SO ---|"prompt + tool schemas"| SLLM
+    SO -->|output chunks| Sink
+    Sink -->|"nested stages in task stage"| CO
+    SO -->|"tool result (final answer)"| CO
+    CO -->|tool result| CLLM
+```
+
+### Spawn lifecycle
+
+A single spawn: from the `task` tool call, through manifest compilation and an isolated orchestrator
+loop, to the tool result.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CO   as Coordinator Orchestrator
+    participant CLLM as Coordinator LLM
+    participant Sink as SubagentOutputSink
+    participant SO   as Spoke Orchestrator
+    participant SLLM as Spoke LLM
+
+    User  ->>  CO:   message
+    CO    ->>  CLLM: prompt + task tool schema
+    CLLM -->>  CO:   task(subagent_type, prompt, tool_sets)
+
+    Note over CO: compile spoke manifest<br/>open task stage
+
+    CO    ->>  SO:   spawn in isolated scope
+
+    loop  spoke orchestrator loop
+        SO   ->>  SLLM: prompt + spoke tool schemas
+        SLLM -->> SO:   tool calls / reasoning
+        SO   -->> Sink: output chunks
+        Sink -->> CO:   nested stages in task stage
+    end
+
+    SLLM -->>  SO:   final answer
+    SO   -->>  CO:   tool result (answer + attachments)
+    CO    ->>  CLLM: tool result
+    CLLM -->>  CO:   final response
+    CO   -->>  User: streamed response
+```
+
+### Manifest derivation
+
+The Spoke's manifest is compiled at call time from the coordinator's own manifest, so no separate
+deployment is ever registered — this is what "anonymous" means.
+
+```mermaid
+flowchart LR
+    CM["Coordinator manifest"]
+    SA["SubagentConfig<br/>(declared type or general-purpose)"]
+    CMF["compile_subagent_manifest"]
+    SM["Spoke manifest"]
+
+    CM -->|deep copy| CMF
+    SA -->|overrides| CMF
+    CMF --> SM
+
+    CMF -->|replaced| R["system_prompt"]
+    CMF -->|"narrowed to allowlist"| N["tool_sets"]
+    CMF -->|"None - depth cap"| D["features.subagents"]
+    CMF -->|cleared| C["starters"]
+    CMF -->|inherited| I["contexts, skills<br/>hooks, features"]
+```
+
+---
 
 ## Problem Statement
 
