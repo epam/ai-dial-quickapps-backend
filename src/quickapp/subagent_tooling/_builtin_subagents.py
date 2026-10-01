@@ -13,10 +13,10 @@ from quickapp.config.subagent import (
 )
 
 GENERAL_PURPOSE_DESCRIPTION = (
-    "General-purpose subagent for researching complex questions, searching for "
-    "information, and executing multi-step tasks. Use it when a sub-task takes several "
-    "tool calls whose intermediate results you do not need to see. You choose which "
-    "tool sets it gets for each task via `tool_sets`."
+    "General-purpose subagent for any self-contained sub-task that can run independently. "
+    "Use it when the sub-task would take several tool calls whose intermediate results "
+    "you do not need — delegating keeps this context smaller and the final answer is all "
+    "you get back. You choose which tool sets it gets for each call via `tool_sets`."
 )
 
 GENERAL_PURPOSE_SYSTEM_PROMPT = """\
