@@ -1,6 +1,8 @@
 # Design: Hook Context, Parameter Templating, and Lifecycle Events
 
 - **Status:** Draft
+- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution,
+  conditional) — see [Phasing](#phasing)
 - **Dependencies:**
   - [Config-Driven Synthetic Tool Call Injection](config_driven_hooks.md) — supersedes its runtime once implemented
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
@@ -49,20 +51,46 @@ HTTP call), has nowhere to plug in.
 
 ---
 
+## Phasing
+
+| Phase | Scope | Status |
+|---|---|---|
+| **1** | `on_completion` (blocking), hook context, `${path}` templating with strict config validation, handler / dispatcher / seam-adapter split | Specified in this document |
+| **2** | `execution: background` for `on_completion` | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
+
+Phase 2 starts only if Phase 1 proves the hook model worthwhile **and** the memory PoC shows that
+blocking `on_completion` latency is a real problem. It may never be built.
+
+Phase 1 is shaped so that Phase 2 is additive, but implements none of it: no `execution` field, no
+background registry, no stage-less tool call. The rules below cost nothing in Phase 1 and are what keeps
+Phase 2 from becoming a rewrite:
+
+1. **The hook context is a self-contained immutable snapshot.** It holds plain data only — no `choice`,
+   no DI objects, no `MessagesMixin`. A background task can keep it after the request ends.
+2. **One place touches stage / choice.** Only `ToolCallHookHandler` calls `tool.arun(...)` (with the hidden
+   DEBUG stage). Phase 2 swaps a stage-less call in there and nowhere else.
+3. **`HookResult` carries plain data only.**
+4. **The seam decides how a run is applied; the dispatcher is mode-agnostic.** Timeout and failure
+   isolation live in `run_hook` and apply to any execution mode. Phase 2 adds a scheduling strategy at
+   the seam.
+5. **New configuration is additive** — enums and new fields with defaults (see
+   [Schema evolution rules](#schema-evolution-rules)).
+
+---
+
 ## Use Cases
 
 ### UC-1: Read memory at turn start, keyed by the user's message
 
 **Trigger:** A hook with `event: on_request_start`, `kind: tool_call` targeting
-`memory_server_search_memories`, with `arguments: {"query": "${last_user_message.content}"}`,
-and `frequency: always`.
+`memory_server_search_memories`, with `arguments: {"query": "${last_user_message.content}"}` and the
+default `frequency: append_if_changed`.
 **Behavior:** Before the first orchestrator iteration, the hook renders `query` from the current user
-message, calls the tool, and injects the result as a synthetic pair (existing behavior).
-`frequency: always` is required here: call-id identity uses the unrendered template, so
-`append_if_changed` / `refresh_condition` would not treat a new user message as a change (see
-Component 5).
+message, calls the tool, and injects the result as a synthetic pair (existing behavior). The tool is
+called every turn; a new pair is appended only when the recalled memories differ from the previous
+injection, an identical result replaces the earlier pair in place (see Component 5).
 **Outcome:** The LLM sees memories relevant to the current question as a tool result it "already
-called".
+called", without the context growing on turns that recall the same memories.
 
 ### UC-2: Write memory after the turn
 
@@ -78,7 +106,8 @@ closes. A failing or slow hook is logged and never fails the request.
 
 **Trigger:** A hook with `event: on_request_start` calling a file-reading tool with a literal path
 argument.
-**Behavior:** Identical to today's `on_request_start` hook — no templating involved.
+**Behavior:** The tool is called with the literal arguments and its result is injected as a synthetic
+pair; no templating is involved.
 
 ---
 
@@ -101,7 +130,7 @@ flowchart TD
     dispatcher --> handlers["HookHandler: tool_call (future: predefined, http)"]
     handlers --> result["HookResult"]
     result --> seams
-    reqStart -->|"inject_as"| history["synthetic pair in history"]
+    reqStart -->|inject| history["synthetic pair in history"]
     completion -->|discard| logOnly["logged only"]
 ```
 
@@ -118,7 +147,7 @@ defines the effect: on `SessionStart` / `UserPromptSubmit` output becomes model 
 input. QuickApps adopts the same split. The one QuickApps-specific choice is how request-start output
 enters history: for a `tool_call` handler the natural representation is a synthetic tool-call pair (the
 model sees a call it "made", and the pair round-trips through `tool_execution_history`), so that stays
-the default. It is one representation (`inject_as`), not the only possible one.
+the default. Other representations can be added later as a new config field with a default.
 
 What is intentionally **not** copied from Claude Code: subprocess/stdin execution, shell commands, and
 filesystem-scoped settings. Handlers are in-process async Python.
@@ -133,7 +162,7 @@ filesystem-scoped settings. Handlers are in-process async Python.
 
 | Value | Fires at | Result effect |
 |---|---|---|
-| `on_request_start` | In the message-transformer chain, before the first orchestrator iteration (unchanged position) | Injected into history (`inject_as`) |
+| `on_request_start` | In the message-transformer chain, before the first orchestrator iteration (unchanged position) | Injected into history as a synthetic tool-call pair |
 | `on_completion` | `Orchestrator.invoke()`, after the loop, only when `completion_kind == "completed"` | Discarded (side effect only) |
 
 `on_completion` fires **only** on a normal final answer (an assistant message without tool calls). It
@@ -271,17 +300,25 @@ The escape follows Claude Code's convention of backslash-escaping `$` in prompt 
 Claude Code does not document an escape for `${path}`, so the same convention is reused.
 
 **Static validation (config time):** `templating.py` exposes
-`validate_template_roots(arguments, allowed_roots: set[str])` — it parses every placeholder and checks
-the **root segment** against the provided set. It has no knowledge of events or context models.
-`config/hooks.py` owns the `event → context model` map and computes `allowed_roots` from
-`model_fields` and `model_computed_fields`, then calls the validator from a `model_validator` on the
-hook config. Unknown roots (`${tool_input...}` on `on_completion`) and syntax errors are Pydantic
-validation errors — the manifest is rejected with a precise message. Deeper segments are not validated
-statically (they depend on runtime data). This keeps the dependency one-way: `config` → `common`.
+`validate_template_paths(arguments, root_model: type[BaseModel])`. It parses every placeholder and walks
+the path through the model tree (`model_fields` and `model_computed_fields`):
+
+- a name segment must be a field of the current model;
+- an index segment requires a list-typed field;
+- `X | None` types are traversed (the runtime may still produce `None`, see below);
+- the walk stops at a free-form type (`dict[str, Any]`, i.e. `tool_calls[].arguments`) — everything after
+  it depends on runtime data and is not validated.
+
+Unknown roots (`${tool_input...}` on `on_completion`), typos in deeper segments
+(`${last_user_message.contnet}`), an index on a non-list (`${iteration_count[0]}`) and syntax errors are
+Pydantic validation errors — the manifest is rejected with a message naming the placeholder and the
+failing segment. `templating.py` knows nothing about events or config: it receives a model class.
+`config/hooks.py` owns the `event → context model` map and calls the validator from a `model_validator`
+on the hook config, keeping the dependency one-way: `config` → `common`.
 
 **Runtime resolution failure** — an index out of range, `None` anywhere along the path (e.g.
-`last_assistant_message` on the first turn), a missing key: the hook is **skipped** with a warning naming
-the hook and the failing path. Resolved values are never logged (CODESTYLE §9); payload detail goes
+`last_assistant_message` on the first turn), a missing key inside a free-form `arguments` object: the hook
+is **skipped** with a warning naming the hook and the failing path. Resolved values are never logged (CODESTYLE §9); payload detail goes
 through `log_payload` only.
 
 **Change:** New `common/hook_context/templating.py`.
@@ -379,14 +416,17 @@ Therefore:
   `get_content`. A second render that called the handler again would execute the tool twice — that
   must not happen.
 
-**Config semantics of template-stable identity.** Because `should_inject` / `_make_call_id_prefix` hash
-the template text, a new user message does **not** change the prefix. A templated hook with
-`refresh_condition` will not re-run until TTL expires; `append_if_changed` will not treat a newly
-resolved query as a change unless the tool *content* also changes. Templated hooks that should refresh
-on every turn (UC-1) must set `frequency: always`.
+**Config semantics of template-stable identity.** `_make_call_id_prefix` hashes the template text, so
+the prefix does not change when the rendered value does. Per policy:
 
-`inject_as` (Component 7) selects the representation; `synthetic_tool_call` is the only value now, and
-the adapter implements it.
+| Policy | Behavior with templated `arguments` |
+|---|---|
+| `append_if_changed` (default) | Works as intended. The tool is called every turn with freshly rendered arguments; the content hash (part of the call id) decides: identical result → the earlier pair is replaced in place (no growth), different result → a new pair is appended |
+| `always` | Works, but appends a pair every turn and grows the context. Use only when duplicates are wanted |
+| `refresh_condition` (TTL) | **Does not work.** `should_inject` finds the earlier pair by prefix and skips the call until TTL expiry, pinning the first turn's result. Rejected at config validation when `arguments` contains a placeholder |
+
+Memory recall results usually differ between turns, so `append_if_changed` still appends on most turns;
+deduplication only saves context when the recalled result is identical.
 
 **Change:** Rework `agent_hooks/_config_driven_hooks.py`; add `get_call_arguments` to
 `common/synthetic_injection/synthetic_tool_call_injector.py`.
@@ -438,10 +478,14 @@ error on a choice that has already streamed the final answer. Isolating each run
 logs the failure and lets the next runner still run. `except Exception` deliberately lets
 `CancelledError` (a `BaseException`) propagate.
 
-The dispatcher keeps its own per-hook isolation inside `run_hook`. Note also that `StagedBaseTool.arun`
-does not raise on a tool failure: it logs `Tool call failed` and returns a fallback `ToolCallResult`.
-For `on_completion` that content is discarded, so a failed memory write surfaces only as the tool-layer
-warning — not as a dispatcher `None` from an exception.
+The dispatcher keeps its own per-hook isolation inside `run_hook`. Note also that with the default
+fallback configuration (`ContinueStrategyModel`, which matches any exception) `StagedBaseTool.arun` does
+not raise on a tool failure: it logs `Tool call failed` and returns a fallback `ToolCallResult`. For
+`on_completion` that content is discarded, so a failed memory write surfaces only as the tool-layer
+warning — not as a dispatcher `None` from an exception. A tool whose manifest overrides the fallback
+with strategies whose `trigger_on` is narrow can let the exception through
+(`FallbackProcessor.process_fallback` re-raises when no strategy produces a message); that case is
+caught by the dispatcher's per-hook isolation.
 
 Placement matters: `_persisting_state`'s `finally` calls `request_async_close_registry.aclose_all()`,
 which closes per-request MCP sessions. Running before it lets `on_completion` tool calls reuse the live
@@ -453,6 +497,9 @@ open until the hooks finish (`_quick_app_completion.py` awaits `Orchestrator.inv
 `response.create_single_choice()`). The dispatcher resolves omitted `timeout_seconds` to the event
 default of 30s (Component 4). Hooks run sequentially, so the open response is bounded by the **sum** of
 their effective timeouts. Errors and timeouts are logged and never fail the request.
+
+Blocking is the only execution mode in Phase 1. Whether this latency is acceptable for the memory PoC is
+measured during Phase 1 and is the input to the decision on [Phase 2](#phase-2-background-execution-conditional).
 
 **Change:** New `common/abstract/completion_hook_runner.py`; `AgentModule` empty multiprovider;
 `Orchestrator` injects `list[CompletionHookRunner]` and calls it in `invoke()`.
@@ -470,34 +517,41 @@ their effective timeouts. Errors and timeouts are logged and never fail the requ
 | `event` | base | `HookEvent` | required | Adds `on_completion` |
 | `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`; none for `on_request_start` (tool's own timeouts apply, as today) |
 | `arguments` | `tool_call` | `dict[str, Any]` | `{}` | Now supports `${path}` templates |
-| `inject_as` | `tool_call` | `InjectAs` | `synthetic_tool_call` | `on_request_start` only. How the result enters history |
 | `frequency` | `tool_call` | `InjectionFrequency` | `append_if_changed` | `on_request_start` only (unchanged) |
-| `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged) |
-| `execution` | `tool_call` | `HookExecution` | `blocking` | `on_completion` only. `background` is reserved |
+| `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged); not allowed together with `${}` in `arguments` |
 
-```python
-class InjectAs(StrEnum):
-    SYNTHETIC_TOOL_CALL = "synthetic_tool_call"
-    # CONTEXT_MESSAGE = "context_message"   # future: for non-tool handlers
+No field is added "for the future": Phase 1 adds only `timeout_seconds` and the templated `arguments`.
+The `execution` field belongs to [Phase 2](#phase-2-background-execution-conditional); adding a new
+optional field with a default is a non-breaking schema change.
 
-class HookExecution(StrEnum):
-    BLOCKING = "blocking"
-    # BACKGROUND = "background"             # future: fire-and-forget
-```
+**Cross-field validation** is enforced by `model_validator`s on the hook config:
 
-**Event/field compatibility** is enforced by a `model_validator`: explicitly setting (checked via
-`model_fields_set`) an injection field on `on_completion`, or `execution` on `on_request_start`, is a
-validation error. Defaults never trigger it, so existing manifests validate unchanged.
-
-**Why `background` is reserved, not implemented.** Fire-and-forget after the response means running
-outside the request: by then the DI request scope is torn down, the choice is closed, and MCP sessions
-have been closed by `aclose_all()`. It needs its own lifecycle (task ownership, its own tool sessions,
-shutdown draining). The field exists now so the config shape is ready; adding `background` later is an
-additive enum value that still requires `make dump_app_schema` (an additive schema change), not a
-change to how the field is declared on the config. The commented member is not in the schema today —
-only `blocking` is emitted.
+- *Event/field compatibility.* Explicitly setting (checked via `model_fields_set`) `frequency` or
+  `refresh_condition` on `on_completion` is a validation error. Defaults never trigger it, so existing
+  manifests validate unchanged.
+- *Templates and TTL.* A `${}` placeholder in `arguments` together with `refresh_condition` is a
+  validation error (see Component 5).
+- *Template paths.* Every placeholder is checked against the event's context model (Component 3).
 
 **Change:** `config/hooks.py`; `make dump_app_schema`.
+
+### Schema evolution rules
+
+The application is schema-driven: manifests outlive the code that validates them, and a config shape
+that cannot grow without breaking old manifests is a defect. Rules for every field this design adds:
+
+1. **A closed set of values is a `StrEnum`, never a `bool`, a free `str`, or a `Literal`.** Adding a member
+   is non-breaking; turning a `str` or `bool` into an enum later is breaking. Example: Phase 2 adds
+   `execution: blocking | background` as an enum from day one, not an `async: bool`.
+2. **New behavior arrives as a new enum member or a new optional field with a default equal to today's
+   behavior.** Existing manifests must validate and behave identically.
+3. **Variants are discriminated by `kind`** (`kind: tool_call` today; `predefined`, `http` later), never by
+   optional-field combinations.
+4. **Grammars reject what they do not yet define.** The template syntax errors on `${a | b}` or
+   `${a:b}` today, so filters or defaults can be added later without changing the meaning of any string
+   that was valid before.
+5. **Context contracts grow by adding fields.** Templates reference fields by name, so a new context field
+   does not affect existing manifests; renaming or removing one does, and is a breaking change.
 
 ---
 
@@ -509,7 +563,7 @@ only `blocking` is emitted.
 - **Decision protocol.** `HookResult` fields for `decision` (allow/deny), `updated_input`, and
   `additional_context`, with Claude Code merge semantics (most restrictive decision wins). Only needed by
   tool-call seams.
-- **`background` execution** for `on_completion` — see Component 7.
+- **`background` execution** for `on_completion` — deferred to [Phase 2](#phase-2-background-execution-conditional).
 - **`predefined` handler kind.** A Python callable registered by a feature module via DI under a name
   and referenced from the manifest by that name — the server-side equivalent of a hook script. The
   handler layer (Component 4) is designed to accept it as one more `HookHandler`. Arbitrary code or shell
@@ -521,6 +575,79 @@ only `blocking` is emitted.
 - **Template filters/expressions** (defaults, slicing, conditionals) and templating outside `arguments`.
 - **Hooks on failures and external tool calls** (`StopFailure`-like events).
 - **Attachments in the context** (`custom_content.attachments`).
+
+---
+
+## Phase 2: Background execution (conditional)
+
+**Start condition.** Phase 1 is shipped and used by the memory PoC, and measured blocking latency of
+`on_completion` hooks is a problem. Nothing below is built in Phase 1; the [Phasing](#phasing) rules keep
+it additive.
+
+**Configuration.** One new optional field on `tool_call` hooks, an enum from the start (see
+[Schema evolution rules](#schema-evolution-rules)):
+
+```python
+class HookExecution(StrEnum):
+    BLOCKING = "blocking"      # Phase 1 behavior, the default
+    BACKGROUND = "background"
+```
+
+`execution` is valid only on `on_completion` (explicitly setting it on `on_request_start` is a validation
+error, same mechanism as `frequency` on `on_completion`). Existing manifests are unaffected.
+
+**Semantics.**
+
+- The hook runs after the answer, outside the request's lifetime. It writes **only to logs**: no stage, no
+  choice output, no usage statistics — none of them can be guaranteed to be open.
+- Best-effort: a replica restart loses pending tasks.
+- No read-your-writes guarantee: a background write of turn N may not be visible to a recall at turn N+1.
+  Hooks that need it stay `blocking` — which is why `blocking` remains the default.
+
+**Mechanism — ownership handoff.** `_persisting_state`'s `finally` calls
+`request_async_close_registry.aclose_all()`, which closes per-request MCP sessions. For background hooks
+the orchestrator does not close them; it hands the registry and the hook tasks to an application-scoped
+`BackgroundHookRegistry`, which bounds concurrency, applies the same per-hook timeout as `run_hook`, calls
+`aclose_all()` after the tasks finish, and drains pending tasks on shutdown. All tools a hook needs are
+resolved before the hand-off, so no request-scoped DI lookup happens after the request ends.
+`ToolCallHookHandler` gains a stage-less tool call — the single change point promised by the Phasing
+rules.
+
+**What a hook tool depends on** (from `_RequestContext` and the tool clients):
+
+| Resource | After the response |
+|---|---|
+| Messages, config, forwarded headers, `Accept-Language` | Plain data, remains valid |
+| Live MCP sessions (`_MCPSessionManager`) | Closed by `aclose_all()` — kept alive by the hand-off |
+| Static authorization from the manifest (API key, Basic, OAuth client secret) | Independent of the request, remains valid |
+| `DIAL_BEARER` (user token) | Valid for the token's own TTL, normally outlives the response |
+| `DIAL_API_KEY` (per-request key) | **Open question** — lifetime is decided by DIAL Core and must be confirmed before Phase 2 |
+| `choice`, stages, usage statistics | Tied to the response — unavailable, hence log-only |
+| Interactive MCP login (`MCPUnauthorizedException`) | Needs the user — the hook ends silently with a log line |
+
+**Open questions.**
+
+- Does `DIAL_API_KEY` survive the response? If not, `background` must be restricted to tools that do not
+  use it (MCP and REST with manifest-level authorization), rejected at config validation for DIAL
+  deployment tools.
+- Is per-replica best-effort delivery acceptable, or does the memory PoC need a durable queue?
+
+---
+
+## Security considerations
+
+- **Stored text is untrusted on read.** UC-2 persists user and assistant text, UC-1 later injects it into
+  the model's context — a channel for persistent prompt injection. The hook layer cannot sanitize
+  semantics; the trust boundary is the memory tool/server: it should scope memories per user, keep
+  provenance, and treat stored text as data. A recalled result enters history as a *tool result*, not as
+  a system message, which already lowers its authority.
+- **Template choice limits exposure.** `${last_user_message.content}` and `${last_assistant_message.content}`
+  are the recommended sources. `${messages}` also contains outputs of external REST/MCP tools (web pages,
+  API responses) — the main injection source — and should not be written to memory wholesale. Even
+  `last_assistant_message` may derive from a poisoned tool result, so it is not a guaranteed-clean source.
+- **Manifest authors choose what leaves the request.** A template can route any context value to any tool
+  of the app. This is within the manifest author's existing authority (they already configure the tools),
+  but it is why templating stays limited to `arguments` and never executes code.
 
 ---
 
@@ -537,14 +664,15 @@ only `blocking` is emitted.
       "name": "recall-memory",
       "toolset_name": "memory_server",
       "tool_name": "search_memories",
-      "arguments": { "query": "${last_user_message.content}" },
-      "frequency": "always"
+      "arguments": { "query": "${last_user_message.content}" }
     }
   ]
 }
 ```
 
-`frequency: always` is required for templated arguments that should refresh each turn — see Component 5.
+The default `append_if_changed` fits: the tool is called every turn and a new pair is appended only when
+the recalled memories change. Do not add `refresh_condition` — it is rejected for templated arguments
+(Component 5).
 
 ### UC-2: memory write after the final answer
 
@@ -592,7 +720,8 @@ only `blocking` is emitted.
 |---|---|
 | `"event": "on_completion"`, `"arguments": {"x": "${tool_input.path}"}` | Unknown root `tool_input` for `on_completion` |
 | `"event": "on_completion"`, `"frequency": "always"` | `frequency` is only valid for `on_request_start` |
-| `"event": "on_request_start"`, `"execution": "blocking"` | `execution` is only valid for `on_completion` |
+| `"event": "on_request_start"`, `"arguments": {"q": "${last_user_message.content}"}`, `"refresh_condition": {...}` | `refresh_condition` cannot be combined with templated `arguments` |
+| `"arguments": {"x": "${last_user_message.contnet}"}` | Unknown field `contnet` on `HookMessage` |
 | `"arguments": {"x": "${messages[}"}` | Placeholder syntax error |
 
 ---
@@ -606,8 +735,10 @@ period, because nothing user-facing is deprecated: only the internal runtime cha
 the new pipeline in the same change. Two runtimes for the same config are not kept.
 
 The one behavioral risk: an existing `arguments` string containing `${` is now parsed as a placeholder.
-The syntax deliberately matches Claude Code; a literal is written as `\${`. An accidental match fails
-loudly at config validation (unknown root) rather than substituting silently.
+The syntax deliberately matches Claude Code; a literal is written as `\${`. An accidental match of an
+unknown name fails loudly at config validation. A literal that happens to start with a valid name
+(`"processed ${messages} items"`) passes validation and is substituted at runtime, so any literal `${`
+must be escaped as `\${`.
 
 ### Non-breaking changes
 
@@ -636,17 +767,17 @@ loudly at config validation (unknown root) rather than substituting silently.
 ### `config/hooks.py` — MODIFIED
 
 - `HookEvent.ON_COMPLETION`
-- `InjectAs` (`synthetic_tool_call`), `HookExecution` (`blocking`)
 - `_BaseHookConfig.timeout_seconds`
-- `ToolCallHookConfig.inject_as`, `ToolCallHookConfig.execution`; `arguments` templated
-- Owns the `event → context model` map; `model_validator`s for event/field compatibility and for
-  calling `validate_template_roots(arguments, allowed_roots)`
+- `ToolCallHookConfig.arguments` templated
+- Owns the `event → context model` map; `model_validator`s for event/field compatibility, for
+  rejecting templated `arguments` together with `refresh_condition`, and for calling
+  `validate_template_paths(arguments, root_model)`
 
 ### `common/hook_context/` — NEW package
 
 - `context.py` — `HookToolCall`, `HookMessage`, `HookContext` (`event: str`), `RequestStartHookContext`,
   `CompletionHookContext`, `HookResult`. No imports from `config`.
-- `templating.py` — placeholder parser, `validate_template_roots(arguments, allowed_roots)`, renderer
+- `templating.py` — placeholder parser, `validate_template_paths(arguments, root_model)`, renderer
 
 ### `common/abstract/completion_hook_runner.py` — NEW
 
@@ -683,6 +814,10 @@ loudly at config validation (unknown root) rather than substituting silently.
 ---
 
 ## Review Notes — Round 1
+
+> Rounds 1 and 2 were written against earlier revisions. The document was later restructured into
+> phases: `inject_as` and `execution` were removed from Phase 1, `frequency: always` is no longer required
+> for UC-1, and template validation checks the full path. Findings are kept as history.
 
 - **Reviewer:** Claude (quickapps-design-review skill)
 - **Date:** 2026-09-30
@@ -727,3 +862,43 @@ The split into handler, dispatcher, and seam is grounded in the current code: `_
 1. **[UC-3]** — The trigger (a literal path, no templating) is a real use case. The outcome sentence exists only to say existing manifests stay byte-for-byte; Migration already owns that. Cut the outcome restatement.
 
 2. **[Component 8]** — The section only restates today's `_AgentHooksContext` behavior ("keeps reporting…"). Fold one sentence into Migration and drop the component.
+
+---
+
+## Review Notes — Round 2
+
+- **Reviewer:** Claude (quickapps-design-review skill)
+- **Date:** 2026-10-01
+
+### Verdict
+
+`Ready for approval pending minor suggestions`
+
+The revision is thorough. All four Round 1 blockers are resolved with substantive, well-integrated changes: `event: str` eliminates the import cycle, `last_assistant_message` filtering by "no `tool_calls`" with whitespace normalization gives a correct contract, the dispatcher is the single timeout-resolution owner, and per-runner `try/except Exception` at the seam isolates every failure path including context-factory errors. The architecture overview, dispatcher/adapter split, and call-id identity rules are now precise enough to implement directly. Two suggestions below would tighten edge-case documentation; neither blocks approval.
+
+### Suggestions
+
+1. **[Component 6, line ~440]** — "Note also that `StagedBaseTool.arun` does not raise on a tool failure" is the default-path behavior: `ToolFallbackConfig` ships with `[ContinueStrategyModel()]` (`trigger_on=None`), which matches every exception and always returns a `ToolCallResult`. But `FallbackProcessor.process_fallback` re-raises when no strategy message is produced (`processor.py:61-67`), which happens when every configured strategy has a narrow `trigger_on` that does not match the error. A tool whose manifest overrides the default with a selective strategy can surface the exception to the dispatcher. The dispatcher and seam both catch it, so correctness is unaffected, but the absolute phrasing ("does not raise") overpromises. Consider qualifying: "With the default fallback configuration, `arun` does not raise — it returns a fallback `ToolCallResult`. Custom fallback strategies with narrow triggers can re-raise; the dispatcher's per-hook and the seam's per-runner isolation still catch that case."
+
+2. **[Migration, line ~609]** — The doc correctly states that an accidental `${` in existing `arguments` strings "fails loudly at config validation (unknown root)." That covers most cases. The residual risk is a literal string whose text happens to use a valid context root as the first path segment — e.g. `"note": "processed ${messages} items"`. `messages` is a valid root for every event, so static validation passes; at runtime the placeholder resolves to the full message list, which is embedded as compact JSON in the surrounding text. The scenario is unlikely in practice (hook `arguments` are tool parameters, not prose), but a one-sentence note acknowledging the edge case and recommending `\${` for any literal dollar-brace would close it.
+
+### Nits
+
+1. **[UC-3, line ~78]** — Round 1 Nit 1 (cut the "existing manifests stay byte-for-byte" restatement that Migration already owns) appears unaddressed. The use case is worth keeping as a backwards-compatibility example; the outcome sentence could simply state the result the tool returns, not the migration guarantee.
+
+### Changes since previous round
+
+| Round 1 finding | Status | Note |
+|---|---|---|
+| Blocking 1 — import cycle (`HookEvent` in `common/`) | **Resolved** | `event: str` on the context model (line 161); `common/hook_context` never imports `config`; `config/hooks.py` owns the event-to-model map (line 274-279). |
+| Blocking 2 — `last_assistant_message` vs synthetic pairs | **Resolved** | Filtering rule is now "last assistant **without** `tool_calls`" (line 172); synthetic pairs from `_TimestampInjectionTransformer`, `_AttachmentNotificationInjector`, and earlier hooks are explicitly addressed (lines 176-183); whitespace-only content normalized to `""` (lines 190-192). |
+| Blocking 3 — timeout owner | **Resolved** | `HookDispatcher.run_hook` is the single owner that resolves `None` to the event default before `wait_for` (lines 319-329); sequential execution and response-open bound by sum of timeouts stated (lines 453-454). |
+| Blocking 4 — seam failure after streamed answer | **Resolved** | Per-runner `try/except Exception` at the orchestrator call site (lines 418-439); context build and `dispatch` both inside `runner.run`; `CancelledError` propagates. `StagedBaseTool.arun` fallback behavior documented (lines 440-444). |
+| Suggestion 1 — template-stable call-id config semantics | **Resolved** | Config semantics stated next to the call-id rule (lines 366-387); UC-1 notes `frequency: always` requirement (lines 62-63, 547); `get_call_arguments` caching from single `run_hook` (lines 377-380). |
+| Suggestion 2 — dispatcher vs module selection | **Resolved** | Dispatcher layer table entry revised (lines 111-112); `dispatch()` for `on_completion`, per-hook `run_hook` for `on_request_start` via `AgentHooksModule` (lines 333-337, 354-357). |
+| Suggestion 3 — factory must not read `MessagesMixin` on request-start | **Resolved** | Explicit statement that the factory uses only the chain argument on `on_request_start` and reads `MessagesMixin` only on `on_completion` (lines 198-213). |
+| Suggestion 4 — `execution` field with one value | **Resolved** | Field kept with justification; `background` reserved with lifecycle rationale (lines 493-498); commented member not in schema (line 498). |
+| Suggestion 5 — whitespace content normalization | **Resolved** | Normalization to `""` documented in the `HookMessage` contract (lines 190-192). |
+| Suggestion 6 — `docs/README.md` L3 link | **Resolved** | Migration names the repoint (lines 628-630). |
+| Nit 1 — UC-3 outcome restatement | **Still open** | UC-3 is unchanged. Minor. |
+| Nit 2 — Component 8 removal | **Resolved** | Component 8 removed; `_AgentHooksContext` behavior folded into Migration (line 618-619). |
