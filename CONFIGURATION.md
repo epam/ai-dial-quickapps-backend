@@ -251,7 +251,7 @@ The project contains predefined configs of application and predefined tools
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
 | features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, dial files, etc.). [Features configuration](#features-configuration)      | -                | `{}`          |
 | skills       | No       | List[Object] | Optional list of DIAL prompt / DIAL skill resources. [Skills configuration](#skills-configuration)                                                    | -                | `null`        |
-| hooks        | No       | List[Object] | `[Preview]` Config-driven synthetic tool-call hooks. [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
+| hooks        | No       | List[Object] | `[Preview]` Config-driven tool-call hooks fired at orchestrator seams (`on_request_start`, `on_completion`). [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
 | tool_defaults | No      | Object       | Defaults applied to every tool call (e.g. timeout). [Tool defaults configuration](#tool-defaults-configuration)                                       | -                | `{}`          |
 | conversation_starters | No | Object    | Conversation starter chips. [Conversation starters](#conversation-starters-configuration). Deprecated top-level `starters` still accepted. | -                | `null`        |
 
@@ -726,20 +726,89 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 
 ### Hooks configuration
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. Top-level `hooks` array injects synthetic tool-call pairs
-at named orchestrator seams. See
-[docs/designs/config_driven_hooks.md](docs/designs/config_driven_hooks.md).
+Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
+orchestrator seams. See
+[docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
 
-| Field              | Required | Type   | Description | Default |
-|--------------------|----------|--------|-------------|---------|
-| `kind`             | Yes      | String | Only `"tool_call"` today | - |
-| `event`            | Yes      | String | Only `"on_request_start"` wired today | - |
-| `toolset_name`     | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
-| `tool_name`        | Yes      | String | Tool name within the toolset (or exact function name) | - |
-| `arguments`        | No       | Object | Arguments forwarded to the tool | `{}` |
-| `frequency`        | No       | String | `"always"` or `"append_if_changed"` | `append_if_changed` |
-| `name`             | No       | String | Optional hook label | `null` |
-| `refresh_condition`| No       | Object | Optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`) | `null` |
+| Field               | Required | Type   | Description | Default |
+|---------------------|----------|--------|-------------|---------|
+| `kind`              | Yes      | String | Only `"tool_call"` today | - |
+| `event`             | Yes      | String | `"on_request_start"` (result is injected as a synthetic tool-call pair before the first LLM call) or `"on_completion"` (fires after a finished turn; the result is discarded) | - |
+| `toolset_name`      | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
+| `tool_name`         | Yes      | String | Tool name within the toolset (or exact function name) | - |
+| `arguments`         | No       | Object | Arguments forwarded to the tool. String values may contain `${...}` placeholders, see [Argument templates](#hook-argument-templates) | `{}` |
+| `name`              | No       | String | Optional hook label used in logs | `null` |
+| `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: no timeout for `on_request_start`, 30 s for `on_completion` | `null` |
+| `frequency`         | No       | String | `on_request_start` only: `"always"` or `"append_if_changed"` | `append_if_changed` |
+| `refresh_condition` | No       | Object | `on_request_start` only: optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`). Cannot be combined with templated `arguments` | `null` |
+
+`frequency` and `refresh_condition` describe how the injected message pair is kept in the history, so they
+are rejected for `on_completion`. A failing or timed-out hook never fails the request: the error is logged
+and the hook is skipped.
+
+#### Hook argument templates
+
+A string in `arguments` (at any depth, including nested objects and arrays) may contain `${path}`
+placeholders that are resolved from the hook context when the hook fires.
+
+| Root | Available for | Meaning |
+|------|---------------|---------|
+| `messages` | both events | The conversation as seen by the hook (list of messages with `role`, `content`, `tool_calls`, `tool_call_id`) |
+| `last_user_message` | both events | The last `user` message |
+| `last_assistant_message` | both events | The last `assistant` message that has no tool calls (`null` if there is none, for example on the first turn) |
+| `iteration_count` | `on_completion` | Number of orchestrator iterations in the turn |
+| `total_tool_calls` | `on_completion` | Number of tool calls made in the turn |
+
+Path syntax: `${root.field.sub_field}` and list indexes `${messages[0].content}`, `${messages[-1].content}`.
+Use `\${` to write a literal `${`.
+
+- A value that is exactly one placeholder keeps its JSON type: `"${iteration_count}"` becomes the number `3`,
+  and `"${last_user_message.content}"` becomes the raw string.
+- A placeholder embedded in longer text is converted to text: `"Finished after ${iteration_count} iterations"`.
+- A path that cannot be resolved for the current request (for example `last_assistant_message` on the first
+  turn) skips that hook for the request. A path that does not exist on the context model (for example a
+  typo in a field name) is rejected when the configuration is validated.
+
+Example: fetch memories relevant to the user's message at the start of a turn.
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "name": "recall-memory",
+      "toolset_name": "memory_server",
+      "tool_name": "search_memories",
+      "arguments": { "query": "${last_user_message.content}" }
+    }
+  ]
+}
+```
+
+Example: save the finished turn.
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_completion",
+      "name": "save-memory",
+      "toolset_name": "memory_server",
+      "tool_name": "save_memory",
+      "arguments": {
+        "user_message": "${last_user_message.content}",
+        "assistant_message": "${last_assistant_message.content}",
+        "note": "Turn finished after ${iteration_count} iterations"
+      },
+      "timeout_seconds": 20
+    }
+  ]
+}
+```
+
+Hooks without placeholders behave exactly as before (literal `arguments`, optional `refresh_condition`).
 
 ### Tool defaults configuration
 

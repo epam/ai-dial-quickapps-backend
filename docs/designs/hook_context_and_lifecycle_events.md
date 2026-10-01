@@ -1,6 +1,6 @@
 # Design: Hook Context, Parameter Templating, and Lifecycle Events
 
-- **Status:** Draft
+- **Status:** Implemented
 - **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution,
   conditional) — see [Phasing](#phasing)
 - **Dependencies:**

@@ -1,9 +1,9 @@
 # Design: Config-Driven Synthetic Tool Call Injection
-- **Status:** Implemented
+- **Status:** Superseded
 - **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration)
 - **Dependencies:**
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
-- **Successor (draft):** [Hook Context, Parameter Templating, and Lifecycle Events](hook_context_and_lifecycle_events.md) — replaces this runtime once implemented; the config stays compatible
+- **Superseded by:** [Hook Context, Parameter Templating, and Lifecycle Events](hook_context_and_lifecycle_events.md) — the runtime described here was replaced by a handler / dispatcher / seam-adapter split; the config stays compatible
 
 ## Problem Statement
 

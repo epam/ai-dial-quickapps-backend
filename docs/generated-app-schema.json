@@ -2033,7 +2033,8 @@
     },
     "HookEvent": {
       "enum": [
-        "on_request_start"
+        "on_request_start",
+        "on_completion"
       ],
       "title": "HookEvent",
       "type": "string"
@@ -3707,6 +3708,20 @@
           "default": null,
           "title": "Name"
         },
+        "timeout_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum run time of one hook invocation, in seconds. When exceeded the hook is cancelled and skipped. Defaults per event: unlimited for 'on_request_start', 30 for 'on_completion'.",
+          "title": "Timeout Seconds"
+        },
         "kind": {
           "const": "tool_call",
           "default": "tool_call",
@@ -3731,6 +3746,7 @@
         },
         "arguments": {
           "additionalProperties": true,
+          "description": "Arguments forwarded to the tool. String values may contain '${path}' placeholders resolved from the hook context (for example '${last_user_message.content}'); a string that is exactly one placeholder keeps the value's JSON type. Use '\\${' for a literal '${'. Paths are validated when the manifest is loaded.",
           "title": "Arguments",
           "type": "object"
         },

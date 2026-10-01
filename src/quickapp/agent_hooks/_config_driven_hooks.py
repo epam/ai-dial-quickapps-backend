@@ -5,13 +5,15 @@ from abc import ABC
 from aidial_sdk.chat_completion import Message, Role
 from injector import ProviderOf
 
+from quickapp.agent_hooks._context_factory import HookContextFactory
+from quickapp.agent_hooks._dispatcher import HookDispatcher
+from quickapp.agent_hooks._handlers import hook_display_name, resolve_hook_tool_name
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
-from quickapp.common.staged_base_tool import StagedBaseTool
+from quickapp.common.hook_context.context import HookResult
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
-from quickapp.common.synthetic_injection.staged_tool_synthetic_injector import (
-    StagedToolSyntheticInjector,
+from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    SyntheticToolCallInjector,
 )
-from quickapp.common.utils import sanitize_toolname
 from quickapp.config.hooks import ToolCallHookConfig, TTLRefreshCondition
 
 logger = logging.getLogger(__name__)
@@ -21,33 +23,37 @@ class _BaseConfigDrivenHook(ABC):
     """Abstract base for all config-driven hook variants."""
 
 
-def resolve_hook_tool_name(config: ToolCallHookConfig) -> str:
-    if config.toolset_name is not None:
-        return sanitize_toolname(f"{config.toolset_name}_{config.tool_name}")
-    return config.tool_name
+class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, SyntheticToolCallInjector):
+    """``on_request_start`` seam adapter: injects the result of a hook as a synthetic pair.
 
-
-class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInjector):
-    """Resolves a StagedBaseTool by name, calls it, and injects the result pair.
-
-    Explicit __init__ bypasses @inject on StagedToolSyntheticInjector.__init__
-    so AgentHooksModule can instantiate this class manually.
+    The hook itself runs through ``HookDispatcher``; this class owns only the injection
+    mechanics (identity by template, TTL stamping, frequency). Instances are created per
+    request, so the cached ``_last_result`` is never shared across requests.
     """
 
     def __init__(
         self,
-        tools: list[StagedBaseTool],
         config: ToolCallHookConfig,
+        dispatcher: HookDispatcher,
+        context_factory: HookContextFactory,
         enrichers_provider: ProviderOf[list[ToolCallResultEnricher]] | None = None,
     ):
-        super().__init__(tools, enrichers_provider)
+        super().__init__(enrichers_provider)
         self._config = config
+        self._dispatcher = dispatcher
+        self._context_factory = context_factory
+        self._last_result: HookResult | None = None
 
     async def get_tool_name(self) -> str:
         return resolve_hook_tool_name(self._config)
 
     async def get_arguments(self) -> dict:
         return self._config.arguments
+
+    async def get_call_arguments(self, messages: list[Message]) -> dict:
+        if self._last_result is not None and self._last_result.arguments is not None:
+            return self._last_result.arguments
+        return await self.get_arguments()
 
     async def get_frequency(self, messages: list[Message]) -> InjectionFrequency:
         return self._config.frequency
@@ -89,12 +95,15 @@ class _ConfigDrivenToolCallHook(_BaseConfigDrivenHook, StagedToolSyntheticInject
         return int(time.time()) >= expiry
 
     async def get_content(self, messages: list[Message]) -> str | None:
+        self._last_result = None
         try:
-            return await super().get_content(messages)
+            context = self._context_factory.request_start(messages)
         except Exception:
             logger.exception(
-                "Config-driven hook %r: error fetching content for tool %r — skipping injection",
-                self._config.name or self._config.tool_name,
-                self._config.tool_name,
+                "Config-driven hook %r: failed to build context — skipping injection",
+                hook_display_name(self._config),
             )
             return None
+        result = await self._dispatcher.run_hook(self._config, context)
+        self._last_result = result
+        return result.content if result is not None else None
