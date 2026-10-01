@@ -123,7 +123,6 @@ flowchart TD
     subgraph seams [Seam adapters]
         reqStart["on_request_start adapter (MessagesTransformer)"]
         completion["on_completion (Orchestrator.invoke)"]
-        toolSeam["future: on_pre/post_tool_use (ToolExecutor)"]
     end
     factory["HookContextFactory"] --> seams
     seams --> dispatcher["HookDispatcher"]
@@ -137,7 +136,7 @@ flowchart TD
 | Layer | Responsibility | Knows about |
 |---|---|---|
 | `HookHandler` | Execute one hook against a context, return a `HookResult` | The context, its own config |
-| `HookDispatcher` | Run handlers with timeout and error isolation. `dispatch(event, …)` selects hooks for an event (used by `on_completion`). For `on_request_start`, selection stays in `AgentHooksModule` (one `MessagesTransformer` per hook) so chain order is preserved; the adapter calls `run_hook` for that one hook | Handlers, hook configs |
+| `HookDispatcher` | Run handlers with timeout and error isolation. `dispatch(event, …)` selects hooks for an event (used by `on_completion`). For `on_request_start`, selection stays in `AgentHooksModule` and the adapter calls `run_hook` for its own hook (see Component 5) | Handlers, hook configs |
 | Seam adapter | Build the context at its checkpoint, call the dispatcher, apply results by event rules | Its own seam only |
 
 **Comparison with Claude Code.** In Claude Code every handler type (`command`, `http`, `mcp_tool`,
@@ -198,7 +197,7 @@ HookContext         [event: str, messages: list[HookMessage], last_user_message*
 | `event` | `str` | The seam firing the hook (the `HookEvent` value as a string — no import of `config`) |
 | `messages` | `list[HookMessage]` | Working message list at the seam (see below) |
 | `last_user_message` | `HookMessage \| None` | Last `messages` entry with `role == "user"` |
-| `last_assistant_message` | `HookMessage \| None` | Last `messages` entry with `role == "assistant"` **and no `tool_calls`** (the final answer) |
+| `last_assistant_message` | `HookMessage \| None` | Last `messages` entry with `role == "assistant"` **and no `tool_calls`** (falsy: `None` or `[]`; the final answer) |
 | `iteration_count` | `int` | `Orchestrator.iteration_count` (completion only) |
 | `total_tool_calls` | `int` | `Orchestrator.total_tool_calls` (completion only) |
 
@@ -373,9 +372,13 @@ class HookHandler(ABC):               # agent_hooks/_handlers.py
   hook); the adapter calls `run_hook` for that single hook so its place in the transformer chain is
   not collapsed into a dispatcher loop.
 
-Handler construction maps `kind` to a handler class (`match` on the config type), the same shape as
-today's `AgentHooksModule._build_on_request_message_transformers`. A future `kind` adds a handler class
-and a `case`, nothing else.
+**Handlers are constructed in DI, not by the dispatcher.** `AgentHooksModule` has a request-scoped provider
+(request-scoped because the tools a handler resolves are) that walks the configured hooks and maps each
+`kind` to a handler class (`match` on the config type, the same shape as today's
+`_build_on_request_message_transformers`); dependencies arrive through the handler constructor. The result
+is a hook → handler registry that `HookDispatcher` receives by constructor injection, and the
+`on_request_start` adapter takes its handler from the same registry. A future `kind` adds a handler class
+and a `case` in that provider, nothing else.
 
 **Change:** New `agent_hooks/_handlers.py`, `agent_hooks/_dispatcher.py`.
 
@@ -410,6 +413,14 @@ Therefore:
 - `SyntheticToolCallInjector` gains `get_call_arguments(messages)` — the arguments rendered into the
   synthetic `ASSISTANT` message — defaulting to `get_arguments()`. Existing code injectors are
   unaffected.
+- **Substitution point.** Today every `_inject_*` method passes the single `arguments` value (from
+  `get_arguments()`) to both `make_call_id` and `_build_pair`. After the change each `_inject_*` method
+  keeps `get_arguments()` for identity (`make_call_id`, `_make_call_id_prefix`) and, **after**
+  `get_content` has run, calls `await self.get_call_arguments(messages)` once for display. That value
+  replaces `arguments` in every `_build_pair` path, including the in-place replacement branch of
+  `_inject_append_if_changed`, and is passed to `_inject_at` through its existing `arguments`
+  parameter — in `_inject_at` that parameter is used only for display (the call id is already built), so
+  its signature does not change and it needs no `messages`.
 - The adapter returns the template `arguments` from `get_arguments()` (identity) and the rendered ones
   from `get_call_arguments()` (display).
 - `get_call_arguments` returns the `HookResult.arguments` cached from the single `run_hook` inside
@@ -613,7 +624,8 @@ resolved before the hand-off, so no request-scoped DI lookup happens after the r
 `ToolCallHookHandler` gains a stage-less tool call — the single change point promised by the Phasing
 rules.
 
-**What a hook tool depends on** (from `_RequestContext` and the tool clients):
+**What a hook tool depends on** (from `_RequestContext` and the tool clients). These constraints apply to
+the `background` mode of any event, not only `on_completion`:
 
 | Resource | After the response |
 |---|---|
@@ -745,8 +757,7 @@ must be escaped as `\${`.
 - Existing `on_request_start` hooks behave identically: same position in the transformer chain, same
   `frequency`/TTL semantics, same hidden stage, same call-id format for literal arguments.
 - `_AgentHooksContext` continues to report "tool not found" as `HookInitializationException` for every
-  hook regardless of event. Template syntax and root-path checks happen earlier, at config validation
-  (Component 3).
+  hook regardless of event.
 - `StagedToolSyntheticInjector` and `SyntheticToolCallInjector` remain for code-defined injectors that are
   not hooks (e.g. skill invocation). `get_call_arguments` defaults to `get_arguments`, so they are
   unaffected.
@@ -796,7 +807,7 @@ must be escaped as `\${`.
 - `_dispatcher.py` — NEW: `HookDispatcher` (request-scoped); owns event-default timeout resolution
 - `_config_driven_hooks.py` — `_ConfigDrivenToolCallHook` becomes the `on_request_start` adapter over
   `run_hook`; call-id identity from template arguments; caches `HookResult` for `get_call_arguments`
-- `agent_hooks_module.py` — binds factory and dispatcher; contributes the `CompletionHookRunner`; keeps
+- `agent_hooks_module.py` — binds factory, the hook → handler registry (provider) and dispatcher; contributes the `CompletionHookRunner`; keeps
   per-hook `MessagesTransformer` selection for `on_request_start`
 
 ### `core/agent/` — MODIFIED
@@ -815,90 +826,34 @@ must be escaped as `\${`.
 
 ## Review Notes — Round 1
 
-> Rounds 1 and 2 were written against earlier revisions. The document was later restructured into
-> phases: `inject_as` and `execution` were removed from Phase 1, `frequency: always` is no longer required
-> for UC-1, and template validation checks the full path. Findings are kept as history.
-
-- **Reviewer:** Claude (quickapps-design-review skill)
-- **Date:** 2026-09-30
-
-### Verdict
-
-`Blocking issues must be addressed`
-
-The split into handler, dispatcher, and seam is grounded in the current code: `_ConfigDrivenToolCallHook` really does fuse lookup, `arun`, and injection policy; `Orchestrator.invoke` has no post-loop seam; `ToolExecutor.execute` really does `asyncio.gather`. The per-event snapshot (instead of one mutable context) and the template-vs-rendered call-id split are the right calls. Approval waits on four gaps: a package split that creates the import cycle it claims to avoid, a `last_assistant_message` contract the transformer order falsifies, an `on_completion` timeout default with no owner, and a seam that can still fail the request after the answer has streamed.
-
-### Blocking issues
-
-1. **[Component 2 / Component 3]** — `common/hook_context/` is justified as the place `config/`, `agent_hooks/`, and `core/` can all depend on "without depending on each other." The models contradict that. `HookContext.event` is typed as `HookEvent`, which lives in `config/hooks.py`, and the config-time `model_validator` must import those models to check root segments. That is a cycle: `config/hooks.py` → `common/hook_context` → `config/hooks.py`. `ApplicationConfig` imports `config/hooks.py` at startup, so this fails at import, not at the first hook.
-   **Suggestion:** Keep the dependency one-way, `config` → `common`. Define the context models without importing `HookEvent` (an `event: str` is enough on the snapshot). Let `config/hooks.py` own the event→model map used by the validator.
-
-2. **[Component 2]** — "`last_assistant_message` is the previous turn's final answer (or `None` on the first turn)" is not what the seam sees. `last_*` is defined as the last matching role in the transformer-chain list, and that list already contains synthetic pairs from earlier modules. `TimestampModule` is registered before `AgentHooksModule` in `app_factory.py`, and `_TimestampInjectionTransformer` uses `InjectionFrequency.ALWAYS`, which appends an assistant/tool pair at `len(messages)` (`synthetic_tool_call_injector.py` `_inject_always`). The assistant message in that pair has `content=""`. The same shape comes from `_AttachmentNotificationInjector` and from an earlier `on_request_start` hook. When any of those has run, `last_assistant_message` is that empty synthetic assistant, not the previous turn.
-   **Suggestion:** Define `last_user_message` / `last_assistant_message` strictly as the last message with that role in the seam's list, and state the synthetic-pair case. If manifest authors need "previous turn's final answer," specify how synthetic pairs are skipped; the current sentence is a contract the implementation will not meet.
-
-3. **[Component 4 / Component 6 / Component 7]** — Omitted `timeout_seconds` has two meanings. Component 7: `None` means the event default, 30s for `on_completion`. Component 4: `asyncio.wait_for` runs only when `timeout_seconds` is set. Nothing names the component that turns `None` into 30 before `run_hook`. The response stays open until `Orchestrator.invoke` returns (`_quick_app_completion.py` awaits it inside `response.create_single_choice()`), so an unresolved `None` leaves that delay bounded only by the tool's own timeout. Component 6's "default 30 bounds that delay" is then false.
-   **Suggestion:** Give one owner — the dispatcher or the completion runner — that resolves `None` to the event default before `wait_for`, and state that several `on_completion` hooks run sequentially, so the open response is bounded by the sum of their timeouts.
-
-4. **[Component 6 / UC-2]** — "Errors and timeouts are logged and never fail the request" is only true inside `HookDispatcher`. The runner builds `CompletionHookContext` and then calls `dispatch`. A factory failure is outside that `try`. The proposed `invoke()` snippet sits in `_persisting_state`'s `try`; any exception there is logged as "Orchestrator interrupted," state is saved, `aclose_all()` runs, and the exception is re-raised. `_QuickAppCompletion.chat_completion` then delivers a protocol error on a choice that has already streamed the final answer (`accumulate_stream` uses `stream_content=True` before the loop exits).
-   **Suggestion:** Isolate the whole runner at the seam (context build and `dispatch`), per runner, so one failure is logged and the next runner still runs. Do not rely on the dispatcher alone. Also note that `StagedBaseTool.arun` already logs "Tool call failed" and returns a fallback `ToolCallResult` instead of raising (`staged_base_tool.py` `__run_tool_body`), so a failed memory write is not a dispatcher `None` — for `on_completion` that fallback content is discarded and only the tool-layer warning remains.
-
-### Suggestions
-
-1. **[Component 5]** — Template-stable call ids are the right fix for TTL, and the consequence should be stated as config semantics. `should_inject` and `_make_call_id_prefix` hash `get_arguments()`. After this change those arguments stay the template text, so a new user message does not change the prefix. A templated hook with `refresh_condition` will not re-run until TTL expires; `append_if_changed` will not treat a new resolved query as a change unless the tool *content* also changes. UC-1 correctly sets `frequency: always`. Say that next to the call-id rule, and in the UC-1 example, so a copied `refresh_condition` does not pin the first question's memories.
-   Same component: `transform()` today threads one `arguments` value into both `make_call_id` and `_build_pair`. `get_call_arguments` must return the `HookResult.arguments` cached from the single `run_hook` inside `get_content`. A second render that calls the handler again would execute the tool twice.
-
-2. **[Architecture overview / Component 5]** — The layer table says `HookDispatcher` selects the hooks for an event. For `on_request_start`, selection stays in `AgentHooksModule._build_on_request_message_transformers` (one `MessagesTransformer` per hook, module order in `app_factory`). Only `on_completion` uses `dispatch()`. Say that explicitly, so the adapter is not "fixed" into a single dispatcher loop and loses its place in the chain.
-
-3. **[Component 2]** — "The factory gathers common fields itself from request-scoped DI sources" is unsafe for `on_request_start`. During the transformer chain, `MessagesMixin` still holds the post-`extract_tool_calls`, pre-transform list; `replace_messages` runs only after every transformer (`_request_context_setup.py` `setup_messages`). The seam argument is the list that includes earlier injectors. State that the factory must not read `MessagesMixin` on that path.
-
-4. **[Component 7]** — `execution` accepts only `blocking`, which is the default, and setting it on `on_request_start` is a validation error. Adding `background` later is an additive enum value and still a schema change (`make dump_app_schema`); the commented member is not in the schema now. Either drop `execution` until a second value exists, or correct the sentence. The lifecycle argument for not implementing `background` yet (request scope, closed choice, `aclose_all()`) is sound and should stay.
-
-5. **[Component 6]** — A final answer with empty model content is stored as a single space (`orchestrator.py`, `content=stream_result.content or " "`). At `on_completion`, `${last_assistant_message.content}` is then `" "`, not an empty string. Mention it next to the completion message list so a memory write does not persist that placeholder as the answer.
-
-6. **[Migration]** — `docs/README.md` Preview row "Config-driven hooks" still points its Design column at `config_driven_hooks.md`. When that doc is marked `Superseded`, point the L3 link here (the L1 link can stay `CONFIGURATION.md#hooks-configuration`).
-
-### Nits
-
-1. **[UC-3]** — The trigger (a literal path, no templating) is a real use case. The outcome sentence exists only to say existing manifests stay byte-for-byte; Migration already owns that. Cut the outcome restatement.
-
-2. **[Component 8]** — The section only restates today's `_AgentHooksContext` behavior ("keeps reporting…"). Fold one sentence into Migration and drop the component.
-
----
-
-## Review Notes — Round 2
-
 - **Reviewer:** Claude (quickapps-design-review skill)
 - **Date:** 2026-10-01
+- **Follow-up:** all 4 suggestions and 3 nits were applied in the revision after this round.
 
 ### Verdict
 
-`Ready for approval pending minor suggestions`
+Ready for approval pending minor suggestions.
 
-The revision is thorough. All four Round 1 blockers are resolved with substantive, well-integrated changes: `event: str` eliminates the import cycle, `last_assistant_message` filtering by "no `tool_calls`" with whitespace normalization gives a correct contract, the dispatcher is the single timeout-resolution owner, and per-runner `try/except Exception` at the seam isolates every failure path including context-factory errors. The architecture overview, dispatcher/adapter split, and call-id identity rules are now precise enough to implement directly. Two suggestions below would tighten edge-case documentation; neither blocks approval.
+Strong design. Every non-trivial code claim checked against the codebase held up: the `_persisting_state` placement, the `completion_kind` guard, the `_make_call_id_prefix` identity-stability argument, the `ContinueStrategyModel` default-fallback semantics, and the `content=stream_result.content or " "` whitespace issue are all accurately described. The handler/dispatcher/seam layering is well-motivated, the Phase-1-to-Phase-2 compatibility rules are concrete and verifiable, and the schema evolution rules are sound. No blocking issues found.
 
 ### Suggestions
 
-1. **[Component 6, line ~440]** — "Note also that `StagedBaseTool.arun` does not raise on a tool failure" is the default-path behavior: `ToolFallbackConfig` ships with `[ContinueStrategyModel()]` (`trigger_on=None`), which matches every exception and always returns a `ToolCallResult`. But `FallbackProcessor.process_fallback` re-raises when no strategy message is produced (`processor.py:61-67`), which happens when every configured strategy has a narrow `trigger_on` that does not match the error. A tool whose manifest overrides the default with a selective strategy can surface the exception to the dispatcher. The dispatcher and seam both catch it, so correctness is unaffected, but the absolute phrasing ("does not raise") overpromises. Consider qualifying: "With the default fallback configuration, `arun` does not raise — it returns a fallback `ToolCallResult`. Custom fallback strategies with narrow triggers can re-raise; the dispatcher's per-hook and the seam's per-runner isolation still catch that case."
+1. **[Component 5 — `get_call_arguments` integration]** — The design says `SyntheticToolCallInjector` gains `get_call_arguments(messages)` defaulting to `get_arguments()`, and that it is "used when building the pair." The current `_inject_always`, `_inject_append_if_changed`, and `_inject_at` all pass the same `arguments` variable (from `get_arguments()`) to both `make_call_id` (identity) and `_build_pair` (display). A sentence or two clarifying where `get_call_arguments` is called inside the `_inject_*` flow — e.g. "each `_inject_*` method calls `await self.get_call_arguments(messages)` for the arguments passed to `_build_pair`, while continuing to use `get_arguments()` for `make_call_id` and `_make_call_id_prefix`" — would close the gap between the intent and the existing method signatures, since `_inject_at` currently has no `messages` parameter and would need one (or the method signature needs to change).
+   **Suggestion:** Add one sentence to Component 5 describing the exact substitution point in the `_inject_*` methods, so implementers do not have to reverse-engineer the threading.
 
-2. **[Migration, line ~609]** — The doc correctly states that an accidental `${` in existing `arguments` strings "fails loudly at config validation (unknown root)." That covers most cases. The residual risk is a literal string whose text happens to use a valid context root as the first path segment — e.g. `"note": "processed ${messages} items"`. `messages` is a valid root for every event, so static validation passes; at runtime the placeholder resolves to the full message list, which is embedded as compact JSON in the surrounding text. The scenario is unlikely in practice (hook `arguments` are tool parameters, not prose), but a one-sentence note acknowledging the edge case and recommending `\${` for any literal dollar-brace would close it.
+2. **[Component 2 — `last_assistant_message` with empty `tool_calls`]** — The definition is "Last `messages` entry with `role == 'assistant'` **and no `tool_calls`**." The orchestrator appends the final answer with `tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls)` where `tool_calls` is `[]`. Whether this produces `tool_calls=[]` or `tool_calls=None` depends on `to_sdk_tool_calls`. If `[]`, the implementation's truthiness check (`not msg.tool_calls`) works correctly, but the text "no `tool_calls`" is ambiguous between "field is `None`/absent" and "field is falsy." Clarify that the check is `not tool_calls` (falsy), not `tool_calls is None`.
+   **Suggestion:** Add a parenthetical: "no `tool_calls` (i.e. falsy: `None` or `[]`)".
+
+3. **[Component 4 — handler construction ownership]** — The design says handler construction "maps `kind` to a handler class (`match` on the config type), the same shape as today's `AgentHooksModule._build_on_request_message_transformers`." For `on_request_start`, selection stays in `AgentHooksModule`; for `on_completion`, `dispatch()` selects and runs hooks. Who constructs the handler instance for `dispatch()`-driven events? If it is the dispatcher, say so. If it is the module (pre-built at DI time and handed to the dispatcher), that is a different lifetime. The current text leaves this to inference.
+   **Suggestion:** One sentence clarifying whether the dispatcher constructs handlers on the fly or receives pre-built ones.
+
+4. **[Phase 2 resource table]** — The table lists resources that survive the response lifetime. The constraint that `choice`, stages, and usage statistics are unavailable is specific to `on_completion` background mode. If tool-call seams (`on_pre/post_tool_use`) later gain `background` support, the same resource constraints would apply. A brief note ("these constraints apply to any future event's `background` mode, not only `on_completion`") would prevent the table from becoming stale when tool-call seams arrive.
+   **Suggestion:** Generalize the scope note.
 
 ### Nits
 
-1. **[UC-3, line ~78]** — Round 1 Nit 1 (cut the "existing manifests stay byte-for-byte" restatement that Migration already owns) appears unaddressed. The use case is worth keeping as a backwards-compatibility example; the outcome sentence could simply state the result the tool returns, not the migration guarantee.
+1. **[Architecture overview table + Component 5]** — The chain-preservation explanation ("For `on_request_start`, selection stays in `AgentHooksModule` (one `MessagesTransformer` per hook) so chain order is preserved; the adapter calls `run_hook` for that one hook") appears almost verbatim in both the Architecture overview table and Component 5 (`on_request_start` adapter). One location could cross-reference the other to avoid the duplication.
 
-### Changes since previous round
+2. **[Migration — Non-breaking changes]** — "Template syntax and root-path checks happen earlier, at config validation (Component 3)" is listed under non-breaking changes. This is correct for valid configs, but it changes when errors surface: an existing manifest containing `${unknown_root}` in `arguments` that previously passed validation (because the current runtime treats it as a literal string) would now fail at config validation. The migration "breaking changes" section already mentions this (`"${` is now parsed as a placeholder"), so the non-breaking section could avoid restating it as though it is purely additive.
 
-| Round 1 finding | Status | Note |
-|---|---|---|
-| Blocking 1 — import cycle (`HookEvent` in `common/`) | **Resolved** | `event: str` on the context model (line 161); `common/hook_context` never imports `config`; `config/hooks.py` owns the event-to-model map (line 274-279). |
-| Blocking 2 — `last_assistant_message` vs synthetic pairs | **Resolved** | Filtering rule is now "last assistant **without** `tool_calls`" (line 172); synthetic pairs from `_TimestampInjectionTransformer`, `_AttachmentNotificationInjector`, and earlier hooks are explicitly addressed (lines 176-183); whitespace-only content normalized to `""` (lines 190-192). |
-| Blocking 3 — timeout owner | **Resolved** | `HookDispatcher.run_hook` is the single owner that resolves `None` to the event default before `wait_for` (lines 319-329); sequential execution and response-open bound by sum of timeouts stated (lines 453-454). |
-| Blocking 4 — seam failure after streamed answer | **Resolved** | Per-runner `try/except Exception` at the orchestrator call site (lines 418-439); context build and `dispatch` both inside `runner.run`; `CancelledError` propagates. `StagedBaseTool.arun` fallback behavior documented (lines 440-444). |
-| Suggestion 1 — template-stable call-id config semantics | **Resolved** | Config semantics stated next to the call-id rule (lines 366-387); UC-1 notes `frequency: always` requirement (lines 62-63, 547); `get_call_arguments` caching from single `run_hook` (lines 377-380). |
-| Suggestion 2 — dispatcher vs module selection | **Resolved** | Dispatcher layer table entry revised (lines 111-112); `dispatch()` for `on_completion`, per-hook `run_hook` for `on_request_start` via `AgentHooksModule` (lines 333-337, 354-357). |
-| Suggestion 3 — factory must not read `MessagesMixin` on request-start | **Resolved** | Explicit statement that the factory uses only the chain argument on `on_request_start` and reads `MessagesMixin` only on `on_completion` (lines 198-213). |
-| Suggestion 4 — `execution` field with one value | **Resolved** | Field kept with justification; `background` reserved with lifecycle rationale (lines 493-498); commented member not in schema (line 498). |
-| Suggestion 5 — whitespace content normalization | **Resolved** | Normalization to `""` documented in the `HookMessage` contract (lines 190-192). |
-| Suggestion 6 — `docs/README.md` L3 link | **Resolved** | Migration names the repoint (lines 628-630). |
-| Nit 1 — UC-3 outcome restatement | **Still open** | UC-3 is unchanged. Minor. |
-| Nit 2 — Component 8 removal | **Resolved** | Component 8 removed; `_AgentHooksContext` behavior folded into Migration (line 618-619). |
+3. **[Mermaid diagram]** — The "future: on_pre/post_tool_use (ToolExecutor)" node is shown in the diagram but these events are not part of this design. Consider using a dashed border or a distinct style to visually separate it from the Phase 1 components, or remove it entirely since the Out of Scope section already documents them.
