@@ -17,9 +17,9 @@ from quickapp.config.toolsets.toolset import ToolSet
 from ._builtin_subagents import GENERAL_PURPOSE_DESCRIPTION
 from ._manifest_compiler import tool_set_name
 
-# Tool name and the free-text parameter (``prompt``) mirror Anthropic's Claude Code
-# "Task" tool, so builders and models familiar with it find the same shape here.
-TASK_TOOL_NAME = "task"
+# ``prompt`` parameter mirrors Anthropic's Claude Code "Task" tool shape so
+# builders and models familiar with it find the same interface here.
+TASK_TOOL_NAME = "internal_task"
 
 _TOOL_SETS_DESCRIPTION = (
     f"Only for `{GENERAL_PURPOSE_SUBAGENT_NAME}`, where it is required: which of this "

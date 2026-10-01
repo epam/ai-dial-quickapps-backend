@@ -767,7 +767,7 @@ kind and leave only `web_researcher` in the enum.
 
 ```json
 {
-  "name": "task",
+  "name": "internal_task",
   "arguments": {
     "subagent_type": "web_researcher",
     "prompt": "What problem does the Model Context Protocol solve, and what are its main primitives? Answer in five bullets."
@@ -779,7 +779,7 @@ or scoping the general-purpose one as it goes:
 
 ```json
 {
-  "name": "task",
+  "name": "internal_task",
   "arguments": {
     "subagent_type": "general-purpose",
     "prompt": "What problem does the Model Context Protocol solve, and what are its main primitives? Answer in five bullets.",
