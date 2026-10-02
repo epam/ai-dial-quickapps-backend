@@ -35,7 +35,7 @@
             "items": {
               "type": "string"
             },
-            "description": "A list of full URLs for each attachment related to the tool call. Each item is a reference, never inline content: a DIAL file path (files/bucket/foo.pdf) or an external `https://` URL, optionally wrapped as `file:url::`. Inline forms (`file:data::`, `file:base64::`, `file:text::`, a literal `data:` URI) are not accepted and will be rejected. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+            "description": "A list of full URLs for each attachment related to the tool call. Each item is a reference, never inline content: a DIAL file path (files/bucket/foo.pdf) or an external `https://` URL. Inline forms (`file:data::`, `file:base64::`, `file:text::`, a literal `data:` URI) are not accepted and will be rejected. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
             "display": {
               "stage": {
                 "name": "**Files:** "
