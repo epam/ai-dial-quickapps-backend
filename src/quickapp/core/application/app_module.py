@@ -26,6 +26,7 @@ from quickapp.config.predefined_content_provider import (
 )
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
+from ._completion_runner import CompletionRunner
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_setup import _MessagesSetup
 from ._otel_settings import _OtelSettings
@@ -55,6 +56,7 @@ class AppModule(Module):
         binder.bind(_OtelSettings, to=_OtelSettings, scope=singleton)
         binder.bind(_RequestContext, to=_RequestContext, scope=request_scope)
         binder.bind(_RequestContextSetup, to=_RequestContextSetup, scope=request_scope)
+        binder.bind(CompletionRunner, to=CompletionRunner, scope=request_scope)
         binder.bind(_MessagesSetup, to=_MessagesSetup, scope=request_scope)
         binder.bind(PresentationSettings, to=PresentationSettings, scope=singleton)
         binder.bind(PredefinedSettings, to=PredefinedSettings, scope=singleton)
