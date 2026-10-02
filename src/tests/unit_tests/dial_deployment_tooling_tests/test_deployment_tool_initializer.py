@@ -89,6 +89,11 @@ def _make_simple_initializer(
     deployment_cache = MagicMock()
     deployment_cache.fetch_basic_tool_config = AsyncMock(return_value=cached_config)
     toolset = DeploymentToolSet(name="deployment", tools=[simple_tool])
+    # Assigned after construction (not passed to create_app_configuration) so
+    # ApplicationConfig's preview-field nullification validator, which only runs at
+    # construction time, doesn't strip simple_tool's preview-gated overrides.
+    app_config = create_app_configuration([])
+    app_config.tool_sets = [toolset]
     return _DeploymentToolInitializer(
         context=MagicMock(),
         deferred_context=MagicMock(),
@@ -96,7 +101,7 @@ def _make_simple_initializer(
         builder=builder,
         deployment_cache=deployment_cache,
         dial_tools_provider=make_provider([]),
-        app_config=create_app_configuration([toolset]),
+        app_config=app_config,
     )
 
 
@@ -131,10 +136,7 @@ async def test_simple_tool_without_conversation_mode_leaves_synthetic_default():
 
 
 @pytest.mark.asyncio
-async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config(monkeypatch):
-    # propagate_annotations_to_choice is a preview field: ApplicationConfig nullifies it
-    # unless preview features are enabled.
-    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config():
     simple_tool = DialDeploymentSimpleTool(
         deployment_id="my-app",
         propagate_annotations_to_choice=True,
@@ -150,10 +152,7 @@ async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config(m
 
 
 @pytest.mark.asyncio
-async def test_simple_tool_threads_both_overrides_together(monkeypatch):
-    # propagate_annotations_to_choice is a preview field: ApplicationConfig nullifies it
-    # unless preview features are enabled.
-    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+async def test_simple_tool_threads_both_overrides_together():
     simple_tool = DialDeploymentSimpleTool(
         deployment_id="my-app",
         conversation_mode=ConversationMode(resumable=True),
