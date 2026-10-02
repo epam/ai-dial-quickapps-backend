@@ -34,11 +34,17 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
                     ),
                     "title": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="Display name shown to the user. Optional.",
+                        description=(
+                            "Display file name shown to the user, including the extension "
+                            "(e.g. report.html). Optional; defaults to the URL file name."
+                        ),
                     ),
                     "type": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="MIME type (e.g. text/csv, application/pdf). Default: text/plain.",
+                        description=(
+                            "MIME type (e.g. text/html, text/markdown, application/pdf). "
+                            "Optional when the url or title has a file extension; required otherwise."
+                        ),
                     ),
                 },
                 required=["url"],
