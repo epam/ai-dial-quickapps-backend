@@ -32,7 +32,6 @@ class _DeploymentToolInitializer(CompletionInitializer):
         builder: AssistedBuilder[DeploymentTool],
         deployment_cache: DialDeploymentToolCacheService,
         dial_tools_provider: ProviderOf[list[DialDeploymentTool]],
-        simple_tools_provider: ProviderOf[list[DialDeploymentSimpleTool]],
         app_config: ApplicationConfig,
     ):
         self.__deployment_context: _DeploymentToolingContext = context
@@ -40,41 +39,20 @@ class _DeploymentToolInitializer(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__builder: AssistedBuilder[DeploymentTool] = builder
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
-        # Resolved lazily in initialize() because dial_app_tooling contributes
-        # to the DialDeploymentTool multibinder only after _DialAppResolver runs.
+        # Resolved lazily in initialize() because dial_app_tooling contributes to the
+        # DialDeploymentTool multibinder only after _DialAppResolver runs. By the time
+        # initialize() runs, this carries only tools synthesized from a DialAppToolSet —
+        # they have no owning DeploymentToolSet in app_config.tool_sets and are always eager.
         self.__dial_tools_provider: ProviderOf[list[DialDeploymentTool]] = dial_tools_provider
-        self.__simple_tools_provider: ProviderOf[list[DialDeploymentSimpleTool]] = (
-            simple_tools_provider
-        )
         self.__app_config: ApplicationConfig = app_config
 
     async def initialize(self) -> None:
-        # Tools configured directly under a DeploymentToolSet are grouped by their owning
-        # toolset (identified by object identity) so the toolset's tool count can be checked
-        # against the deferral threshold. Tools synthesized by dial_app_tooling (from a
-        # DialAppToolSet) have no such owner and are always eager — a DialAppToolSet always
-        # resolves to exactly one deployment tool, so batching never applies to them anyway.
-        owner_by_tool_id = self.__build_owner_map()
-        groups: dict[int, tuple[DeploymentToolSet, list[StagedBaseTool]]] = {}
-        ungrouped: list[StagedBaseTool] = []
-
-        for tool in self.__dial_tools_provider.get():
-            built_tool = self.__build_deployment_tool(tool)
-            self.__bucket_tool(built_tool, owner_by_tool_id.get(id(tool)), groups, ungrouped)
-
-        for simple_tool in self.__simple_tools_provider.get():
-            built_simple_tool = await self.__build_simple_deployment_tool(simple_tool)
-            if built_simple_tool is None:
-                continue
-            self.__bucket_tool(
-                built_simple_tool,
-                owner_by_tool_id.get(id(simple_tool)),
-                groups,
-                ungrouped,
-            )
-
         discovery_cfg = self.__app_config.orchestrator.tool_discovery
-        for toolset, tools in groups.values():
+
+        for toolset in self.__app_config.tool_sets or []:
+            if not isinstance(toolset, DeploymentToolSet) or not toolset.enabled:
+                continue
+            tools = await self.__build_toolset_tools(toolset)
             if is_toolset_deferred(toolset, discovery_cfg, len(tools)):
                 self.__deferred_context.register_deferred_tools(toolset, tools)
                 logger.debug(
@@ -84,30 +62,23 @@ class _DeploymentToolInitializer(CompletionInitializer):
                 )
             self.__deployment_context.extend_tools(tools)
 
-        self.__deployment_context.extend_tools(ungrouped)
+        # A DialAppToolSet always resolves to exactly one deployment tool, so batching
+        # never applies to these — they're extended unconditionally, without deferral.
+        synthesized_tools = [
+            self.__build_deployment_tool(tool) for tool in self.__dial_tools_provider.get()
+        ]
+        self.__deployment_context.extend_tools(synthesized_tools)
 
-    def __build_owner_map(self) -> dict[int, DeploymentToolSet]:
-        owner_by_tool_id: dict[int, DeploymentToolSet] = {}
-        for toolset in self.__app_config.tool_sets or []:
-            if not isinstance(toolset, DeploymentToolSet) or not toolset.enabled:
-                continue
-            for tool_config in toolset.tools:
-                if isinstance(tool_config, (DialDeploymentTool, DialDeploymentSimpleTool)):
-                    owner_by_tool_id[id(tool_config)] = toolset
-        return owner_by_tool_id
-
-    @staticmethod
-    def __bucket_tool(
-        built_tool: StagedBaseTool,
-        owner: DeploymentToolSet | None,
-        groups: dict[int, tuple[DeploymentToolSet, list[StagedBaseTool]]],
-        ungrouped: list[StagedBaseTool],
-    ) -> None:
-        if owner is None:
-            ungrouped.append(built_tool)
-            return
-        _, tools = groups.setdefault(id(owner), (owner, []))
-        tools.append(built_tool)
+    async def __build_toolset_tools(self, toolset: DeploymentToolSet) -> list[StagedBaseTool]:
+        tools: list[StagedBaseTool] = []
+        for tool_config in toolset.tools:
+            if isinstance(tool_config, DialDeploymentTool) and tool_config.enabled:
+                tools.append(self.__build_deployment_tool(tool_config))
+            elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
+                built_simple_tool = await self.__build_simple_deployment_tool(tool_config)
+                if built_simple_tool is not None:
+                    tools.append(built_simple_tool)
+        return tools
 
     def __build_deployment_tool(self, tool: DialDeploymentTool) -> StagedBaseTool:
         return self.__builder.build(

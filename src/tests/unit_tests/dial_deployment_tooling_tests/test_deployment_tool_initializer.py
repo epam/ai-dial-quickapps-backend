@@ -40,15 +40,13 @@ def _make_deployment_tool(name: str) -> DialDeploymentTool:
 
 
 def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _DeploymentToolInitializer:
-    dial_tools = [t for t in toolset.tools if isinstance(t, DialDeploymentTool)]
     return _DeploymentToolInitializer(
         context=MagicMock(),
         deferred_context=MagicMock(),
         tool_config_service=MagicMock(),
         builder=builder,
         deployment_cache=MagicMock(),
-        dial_tools_provider=make_provider(dial_tools),
-        simple_tools_provider=make_provider([]),
+        dial_tools_provider=make_provider([]),
         app_config=create_app_configuration([toolset]),
     )
 
@@ -90,6 +88,7 @@ def _make_simple_initializer(
 ) -> _DeploymentToolInitializer:
     deployment_cache = MagicMock()
     deployment_cache.fetch_basic_tool_config = AsyncMock(return_value=cached_config)
+    toolset = DeploymentToolSet(name="deployment", tools=[simple_tool])
     return _DeploymentToolInitializer(
         context=MagicMock(),
         deferred_context=MagicMock(),
@@ -97,8 +96,7 @@ def _make_simple_initializer(
         builder=builder,
         deployment_cache=deployment_cache,
         dial_tools_provider=make_provider([]),
-        simple_tools_provider=make_provider([simple_tool]),
-        app_config=create_app_configuration([]),
+        app_config=create_app_configuration([toolset]),
     )
 
 
@@ -196,7 +194,6 @@ def _make_initializer_with_discovery(
     context: _DeploymentToolingContext,
     deferred_context: _DeploymentDeferredToolsContext,
 ) -> _DeploymentToolInitializer:
-    dial_tools = [t for t in toolset.tools if isinstance(t, DialDeploymentTool)]
     app_config = create_app_configuration([toolset])
     app_config.orchestrator.tool_discovery = discovery_cfg
     return _DeploymentToolInitializer(
@@ -205,8 +202,7 @@ def _make_initializer_with_discovery(
         tool_config_service=MagicMock(),
         builder=builder,
         deployment_cache=MagicMock(),
-        dial_tools_provider=make_provider(dial_tools),
-        simple_tools_provider=make_provider([]),
+        dial_tools_provider=make_provider([]),
         app_config=app_config,
     )
 

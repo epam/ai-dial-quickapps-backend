@@ -24,8 +24,6 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.tools.deployment import DialDeploymentTool
-from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
@@ -130,18 +128,6 @@ class DialDeploymentToolingModule(Module):
     ) -> list[DeferredToolsetSummary]:
         return deferred_context.toolset_summaries
 
-    @multiprovider
-    def __provide_dial_deployment_tools(
-        self, app_config: ApplicationConfig
-    ) -> list[DialDeploymentTool]:
-        return [
-            tool
-            for ts in (app_config.tool_sets or [])
-            if isinstance(ts, DeploymentToolSet) and ts.enabled
-            for tool in ts.tools
-            if isinstance(tool, DialDeploymentTool) and tool.enabled
-        ]
-
     @staticmethod
     def _propagates_annotations(app_config: ApplicationConfig) -> bool:
         return any(
@@ -159,15 +145,3 @@ class DialDeploymentToolingModule(Module):
         if not self._propagates_annotations(app_config):
             return []
         return [anchor_provider]
-
-    @multiprovider
-    def __provide_dial_deployment_simple_tools(
-        self, app_config: ApplicationConfig
-    ) -> list[DialDeploymentSimpleTool]:
-        return [
-            tool
-            for ts in (app_config.tool_sets or [])
-            if isinstance(ts, DeploymentToolSet) and ts.enabled
-            for tool in ts.tools
-            if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled
-        ]
