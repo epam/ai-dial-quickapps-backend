@@ -13,18 +13,23 @@ from quickapp.common import (
 )
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.base_initializer import CompletionInitializer
+from quickapp.common.deferred_tool_types import (
+    DeferredToolCatalogEntry,
+    DeferredToolDefinition,
+    DeferredToolName,
+    DeferredToolsetSummary,
+)
 from quickapp.common.deployment_tool_cache import DialDeploymentToolCacheService
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
 from quickapp.common.tool_timeout_utils import build_async_dial_timeout
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.tools.deployment import DialDeploymentTool
-from quickapp.config.tools.deployment_simple import DialDeploymentSimpleTool
 from quickapp.config.toolsets.deployment import DeploymentToolSet
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 from ._annotation_anchor_prompt_provider import _AnnotationAnchorPromptProvider
 from ._attachment_resolver import AttachmentResolver
+from ._deployment_deferred_tools_context import _DeploymentDeferredToolsContext
 from ._deployment_tool_context import _DeploymentToolingContext
 from ._deployment_tool_initializer import _DeploymentToolInitializer
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -41,6 +46,11 @@ class DialDeploymentToolingModule(Module):
         binder.bind(DeploymentStageWrapper, to=DeploymentStageWrapper)
         binder.bind(_DeploymentToolInitializer, to=_DeploymentToolInitializer)
         binder.bind(_DeploymentToolingContext, to=_DeploymentToolingContext, scope=request_scope)
+        binder.bind(
+            _DeploymentDeferredToolsContext,
+            to=_DeploymentDeferredToolsContext,
+            scope=request_scope,
+        )
         binder.bind(
             _AnnotationAnchorPromptProvider, to=_AnnotationAnchorPromptProvider, scope=singleton
         )
@@ -91,16 +101,32 @@ class DialDeploymentToolingModule(Module):
         return context.exceptions
 
     @multiprovider
-    def __provide_dial_deployment_tools(
-        self, app_config: ApplicationConfig
-    ) -> list[DialDeploymentTool]:
+    def _provide_deferred_tool_names(
+        self, deferred_context: _DeploymentDeferredToolsContext
+    ) -> list[DeferredToolName]:
+        return list(deferred_context.deferred_names)
+
+    @multiprovider
+    def _provide_deferred_catalog_entries(
+        self, deferred_context: _DeploymentDeferredToolsContext
+    ) -> list[DeferredToolCatalogEntry]:
+        return deferred_context.catalog
+
+    @multiprovider
+    def _provide_deferred_tool_definitions(
+        self, deferred_context: _DeploymentDeferredToolsContext
+    ) -> list[DeferredToolDefinition]:
         return [
-            tool
-            for ts in (app_config.tool_sets or [])
-            if isinstance(ts, DeploymentToolSet) and ts.enabled
-            for tool in ts.tools
-            if isinstance(tool, DialDeploymentTool) and tool.enabled
+            DeferredToolDefinition(name=name, definition=definition)
+            for name in deferred_context.deferred_names
+            if (definition := deferred_context.get_definition(name)) is not None
         ]
+
+    @multiprovider
+    def _provide_deferred_toolset_summaries(
+        self, deferred_context: _DeploymentDeferredToolsContext
+    ) -> list[DeferredToolsetSummary]:
+        return deferred_context.toolset_summaries
 
     @staticmethod
     def _propagates_annotations(app_config: ApplicationConfig) -> bool:
@@ -119,15 +145,3 @@ class DialDeploymentToolingModule(Module):
         if not self._propagates_annotations(app_config):
             return []
         return [anchor_provider]
-
-    @multiprovider
-    def __provide_dial_deployment_simple_tools(
-        self, app_config: ApplicationConfig
-    ) -> list[DialDeploymentSimpleTool]:
-        return [
-            tool
-            for ts in (app_config.tool_sets or [])
-            if isinstance(ts, DeploymentToolSet) and ts.enabled
-            for tool in ts.tools
-            if isinstance(tool, DialDeploymentSimpleTool) and tool.enabled
-        ]
