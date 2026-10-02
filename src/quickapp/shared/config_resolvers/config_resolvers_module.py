@@ -6,7 +6,10 @@ from quickapp.shared.config_resolvers.file_loading_settings import FileLoadingSe
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
-from quickapp.shared.config_resolvers.stage_display_resolver import StageDisplayResolver
+from quickapp.shared.config_resolvers.stage_display_resolver import (
+    PROPAGATE_SUB_STAGES,
+    StageDisplayResolver,
+)
 from quickapp.shared.config_resolvers.stage_display_settings import StageDisplaySettings
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 from quickapp.shared.config_resolvers.tool_timeout_settings import ToolSettings
@@ -26,3 +29,9 @@ class ConfigResolversModule(Module):
     @provider
     def __provide_stage_display_level(self, resolver: StageDisplayResolver) -> StageDisplayLevel:
         return resolver.resolve()
+
+    @provider
+    def __provide_propagate_sub_stages(
+        self, resolver: StageDisplayResolver
+    ) -> PROPAGATE_SUB_STAGES:
+        return resolver.resolve_propagate_sub_stages()
