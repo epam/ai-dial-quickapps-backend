@@ -933,6 +933,46 @@ async def test_pre_process_params_forwards_reasoning_effort():
     assert result["reasoning_effort"] == "high"
 
 
+class _UppercasingArgumentTransformer:
+    """Stub transformer that mutates every string kwarg, to prove attachment_urls is protected."""
+
+    async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        return {k: (v.upper() if isinstance(v, str) else v) for k, v in kwargs.items()}
+
+
+def _build_tool_with_transformers(
+    tool_config: DialDeploymentTool,
+    argument_transformers: list[Any],
+) -> BaseDeploymentTool:
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=tool_config,
+        content_propagation=None,
+        dial_completion_service=MagicMock(),
+        attachment_resolver=MagicMock(),
+        messages_mixin=_make_messages_mixin([]),
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
+        argument_transformers=argument_transformers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_shields_attachment_urls_from_transformers():
+    """attachment_urls is a reference channel for AttachmentResolver — it must bypass the
+    argument-transformer chain even though every other string kwarg goes through it."""
+    tool = _build_tool_with_transformers(
+        _make_tool_config(), argument_transformers=[_UppercasingArgumentTransformer()]
+    )
+
+    result = await tool._pre_process_params(query="draw", attachment_urls=["file:url::files/a.pdf"])
+
+    assert result["query"] == "DRAW"
+    assert result["attachment_urls"] == ["file:url::files/a.pdf"]
+
+
 @pytest.mark.asyncio
 async def test_pre_process_params_llm_kwargs_do_not_replace_static_tools():
     """A `tools` kwarg from the model cannot override the configured static tools."""
