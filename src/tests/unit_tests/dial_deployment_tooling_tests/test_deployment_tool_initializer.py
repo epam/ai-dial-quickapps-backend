@@ -131,7 +131,10 @@ async def test_simple_tool_without_conversation_mode_leaves_synthetic_default():
 
 
 @pytest.mark.asyncio
-async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config():
+async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config(monkeypatch):
+    # propagate_annotations_to_choice is a preview field: ApplicationConfig nullifies it
+    # unless preview features are enabled.
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
     simple_tool = DialDeploymentSimpleTool(
         deployment_id="my-app",
         propagate_annotations_to_choice=True,
@@ -147,7 +150,10 @@ async def test_simple_tool_threads_propagate_annotations_onto_synthetic_config()
 
 
 @pytest.mark.asyncio
-async def test_simple_tool_threads_both_overrides_together():
+async def test_simple_tool_threads_both_overrides_together(monkeypatch):
+    # propagate_annotations_to_choice is a preview field: ApplicationConfig nullifies it
+    # unless preview features are enabled.
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
     simple_tool = DialDeploymentSimpleTool(
         deployment_id="my-app",
         conversation_mode=ConversationMode(resumable=True),
