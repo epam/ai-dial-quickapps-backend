@@ -1,8 +1,8 @@
 # Design: Hook Context, Parameter Templating, and Lifecycle Events
 
 - **Status:** Implemented
-- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution,
-  conditional) — see [Phasing](#phasing)
+- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution and a
+  hook-level `condition`, conditional) — see [Phasing](#phasing)
 - **Dependencies:**
   - [Config-Driven Synthetic Tool Call Injection](config_driven_hooks.md) — supersedes its runtime once implemented
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
@@ -41,8 +41,9 @@ HTTP call), has nowhere to plug in.
   request-scoped resources close.
 - Define a documented, read-only **hook context** per event, exposing agent-loop artifacts (message
   history, last user/assistant message, loop counters).
-- Let hook `arguments` reference context values with a `${path}` syntax, following Claude Code's
-  `mcp_tool` hook convention.
+- Let hook `arguments` reference context values through a [JSON-e](https://json-e.js.org) template
+  (`${expr}` interpolation and `{"$eval": "expr"}`) instead of a custom grammar; the engine stays behind a
+  small engine-neutral facade so it can be replaced.
 - Split the hook runtime into handler / dispatcher / seam adapter so that new events and new handler
   kinds can be added without touching existing ones.
 - Keep every existing `hooks` manifest working unchanged; migrate the existing runtime onto the new
@@ -55,15 +56,17 @@ HTTP call), has nowhere to plug in.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **1** | `on_completion` (blocking), hook context, `${path}` templating with strict config validation, handler / dispatcher / seam-adapter split | Specified in this document |
-| **2** | `execution: background` for `on_completion` | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
+| **1** | `on_completion` (blocking), hook context, JSON-e argument templating with best-effort config validation, handler / dispatcher / seam-adapter split | Specified in this document |
+| **2** | `execution: background` for `on_completion`; hook-level `condition` | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
 
-Phase 2 starts only if Phase 1 proves the hook model worthwhile **and** the memory PoC shows that
-blocking `on_completion` latency is a real problem. It may never be built.
+Phase 2 holds two independent items. Background execution starts only if Phase 1 proves the hook model
+worthwhile **and** the memory PoC shows that blocking `on_completion` latency is a real problem; it may
+never be built. The hook-level [`condition`](#hook-level-condition) has no latency precondition and is
+built when the PoC needs to gate a hook on the conversation state.
 
 Phase 1 is shaped so that Phase 2 is additive, but implements none of it: no `execution` field, no
-background registry, no stage-less tool call. The rules below cost nothing in Phase 1 and are what keeps
-Phase 2 from becoming a rewrite:
+`condition` field, no background registry, no stage-less tool call. The rules below cost nothing in
+Phase 1 and are what keeps Phase 2 from becoming a rewrite:
 
 1. **The hook context is a self-contained immutable snapshot.** It holds plain data only — no `choice`,
    no DI objects, no `MessagesMixin`. A background task can keep it after the request ends.
@@ -83,7 +86,7 @@ Phase 2 from becoming a rewrite:
 ### UC-1: Read memory at turn start, keyed by the user's message
 
 **Trigger:** A hook with `event: on_request_start`, `kind: tool_call` targeting
-`memory_server_search_memories`, with `arguments: {"query": "${last_user_message.content}"}` and the
+`memory_server_search_memories`, with `arguments: {"query": {"$eval": "last_user_message.content"}}` and the
 default `frequency: append_if_changed`.
 **Behavior:** Before the first orchestrator iteration, the hook renders `query` from the current user
 message, calls the tool, and injects the result as a synthetic pair (existing behavior). The tool is
@@ -95,8 +98,9 @@ called", without the context growing on turns that recall the same memories.
 ### UC-2: Write memory after the turn
 
 **Trigger:** A hook with `event: on_completion`, `kind: tool_call` targeting
-`memory_server_save_memory`, with arguments referencing `${last_user_message.content}` and
-`${last_assistant_message.content}`.
+`memory_server_save_memory`, with arguments referencing `last_user_message.content` and
+`last_assistant_message.content` (through `$eval`, which keeps the value as it is, or through `${...}`
+when the value is embedded in text).
 **Behavior:** After the loop terminates with a final answer (no tool calls), the hook renders the
 arguments, calls the tool under a timeout, and discards the result.
 **Outcome:** The answer is already streamed to the user; the memory is persisted before the response
@@ -217,9 +221,9 @@ template paths stable if the SDK model changes, and simplifies the shape:
   non-text parts are dropped. Attachments (`custom_content`) are not exposed in this iteration.
 - Whitespace-only `content` is normalized to `""`. The orchestrator stores an empty final answer as a
   single space (`content=stream_result.content or " "`); without this normalization
-  `${last_assistant_message.content}` at `on_completion` would be `" "` rather than empty.
+  `last_assistant_message.content` at `on_completion` would be `" "` rather than empty.
 - `tool_calls[].arguments` is the parsed JSON object, not the raw string, so
-  `${messages[-2].tool_calls[0].arguments.file_path}` works.
+  `messages[-2].tool_calls[0].arguments.file_path` works in an expression.
 
 **Which messages the context sees:**
 
@@ -255,7 +259,9 @@ fires — the same approach as Claude Code's `createBaseHookInput`.
   independent.
 
 The per-event models share a base class, so the template syntax and the common fields are identical
-across events; only the event-specific fields differ.
+across events; only the event-specific fields differ. The context is dumped with
+`model_dump(mode="json")` to become the JSON-e context, so the top-level field names are the names an
+expression can read.
 
 **Change:** New `common/hook_context/context.py`; new `agent_hooks/_context_factory.py`.
 
@@ -263,64 +269,90 @@ across events; only the event-specific fields differ.
 
 ### Component 3: Parameter templating
 
-**What:** `${path}` placeholders in hook `arguments`, resolved against the hook's context.
+**What:** Hook `arguments` is a [JSON-e](https://json-e.js.org) template, rendered against the hook's
+context when the hook fires.
 
-**Owner:** `common/hook_context/templating.py` (parser, static validation, renderer).
+**Owner:** `common/hook_context/templating.py` — a thin adapter over the `json-e` package.
 
-**Syntax** — follows Claude Code's `mcp_tool` hook `input` substitution
-(`"file_path": "${tool_input.file_path}"`), extended with list indexing:
+**Facade.** The module exposes an engine-neutral surface and nothing else is allowed to import json-e:
 
-```
-placeholder := "${" path "}"
-path        := ident ( "." ident | "[" "-"? digits "]" )*
-ident       := [A-Za-z_][A-Za-z0-9_]*
-```
-
-| Example | Resolves to |
+| Name | Purpose |
 |---|---|
-| `${last_user_message.content}` | Text of the current user message |
-| `${last_assistant_message.content}` | Text of the final answer (at `on_completion`) |
-| `${messages[-2].content}` | Second-to-last message text |
-| `${messages[0].tool_calls[0].arguments.file_path}` | An argument of a past tool call |
-| `${iteration_count}` | Loop iteration count (at `on_completion`) |
+| `render_arguments(arguments, context)` | Render the template against a context model; raises `TemplateResolutionError` |
+| `contains_placeholder(value)` | True if the value holds anything the engine evaluates (used for the TTL check and the no-template fast path) |
+| `validate_template_paths(arguments, root_model)` | Best-effort static check against a context model class; raises `TemplateError` |
+| `TemplateError`, `TemplateResolutionError` | Config-time and render-time errors (`TemplateResolutionError` is a `TemplateError`) |
 
-**Where substitution applies:** string values inside `arguments`, recursively through nested objects and
-arrays. Keys are never templated. No other config field is templated in this iteration.
+**Syntax.** The whole JSON-e language is available; the pieces hooks need most:
 
-**Rendering rules:**
-
-| Case | Result |
+| Form | Result |
 |---|---|
-| Value is exactly one placeholder (`"${messages}"`) | The raw resolved value, type preserved (list, object, number, string); models are dumped to JSON-compatible data |
-| Placeholder embedded in text (`"Q: ${last_user_message.content}"`) | Resolved value converted to string; objects and arrays as compact JSON |
-| Literal `${` needed | Escape with a backslash: `\${` renders as `${` (in a JSON manifest: `"\\${"`) |
+| `"Q: ${last_user_message.content}"` | Interpolation: the value is inserted as **text**. `null` becomes an empty string; interpolating an object or array is an error |
+| `{"$eval": "last_user_message.content"}` | The value with its **JSON type preserved** (string, number, list, object) |
+| `{"$eval": "messages[-4:]"}` | The last four messages, as a list of objects |
+| `{"$eval": "messages[0].tool_calls[0].arguments.file_path"}` | An argument of a past tool call |
+| `{"$eval": "iteration_count"}` | Loop iteration count (at `on_completion`) |
+| `{"$map": {"$eval": "messages"}, "each(m)": {"$eval": "m.role"}}` | Any other JSON-e operator (`$if`, `$let`, `$flatten`, `$merge`, `$sort`, ...) and built-in function (`len`, `lowercase`, `join`, ...) |
 
-The escape follows Claude Code's convention of backslash-escaping `$` in prompt hooks (`\$1.00`);
-Claude Code does not document an escape for `${path}`, so the same convention is reused.
+- **Where it applies:** every string value inside `arguments`, recursively through nested objects and
+  arrays, and object **keys** too (JSON-e templates keys). No other config field is templated.
+- **Escape:** `$${` renders as a literal `${`; a key that must start with a literal `$` is written `$$...`
+  (in JSON-e, `$<identifier>` keys are operators or reserved).
+- **`null` at the end of a path** is passed to the tool as `null` by `$eval`, and interpolates as `""`.
+- **Top level:** the rendered `arguments` must be an object (a top-level operator that yields anything else
+  is a render-time error).
 
-**Static validation (config time):** `templating.py` exposes
-`validate_template_paths(arguments, root_model: type[BaseModel])`. It parses every placeholder and walks
-the path through the model tree (`model_fields` and `model_computed_fields`):
+**Static validation (config time, best-effort).** `validate_template_paths(arguments, root_model)` parses
+the `${...}` interpolations and the string values of `$eval` and `$if` with json-e's own parser (no
+evaluation) and checks:
 
-- a name segment must be a field of the current model;
-- an index segment requires a list-typed field;
-- `X | None` types are traversed (the runtime may still produce `None`, see below);
-- the walk stops at a free-form type (`dict[str, Any]`, i.e. `tool_calls[].arguments`) — everything after
-  it depends on runtime data and is not validated.
+- **syntax** — a malformed expression, an empty one, a missing operand (`1 +`), an unterminated `${`, or a
+  non-string `$eval` is a validation error;
+- **root names** — a name must be a field or computed field of the event's context model, a json-e
+  built-in (`len`, `lowercase`, `now`, ...), or a name bound inside the template by `$let`, `each(..)` or
+  `by(..)` (scoping is ignored, so a valid template is never rejected);
+- **paths through the context model** — a field segment must be a field of the current model, an index
+  or slice requires a list-typed field (a slice keeps the list type, so `messages[-4:].content` is
+  rejected), and `X | None` types are traversed. The walk stops at a free-form type (`dict[str, Any]`,
+  i.e. `tool_calls[].arguments`) and at the first dynamic index (`messages[i]`); the names inside a
+  dynamic index are still checked.
 
-Unknown roots (`${tool_input...}` on `on_completion`), typos in deeper segments
-(`${last_user_message.contnet}`), an index on a non-list (`${iteration_count[0]}`) and syntax errors are
-Pydantic validation errors — the manifest is rejected with a message naming the placeholder and the
-failing segment. `templating.py` knows nothing about events or config: it receives a model class.
+Other operators (`$map`, `$let`, `$match`, `$switch`, ...) are checked only when the template is
+rendered. Unknown roots (`tool_input` on `on_completion`) and typos in deeper segments
+(`last_user_message.contnet`) are Pydantic validation errors naming the expression and the failing
+segment. `templating.py` knows nothing about events or config: it receives a model class.
 `config/hooks.py` owns the `event → context model` map and calls the validator from a `model_validator`
 on the hook config, keeping the dependency one-way: `config` → `common`.
 
-**Runtime resolution failure** — an index out of range, `None` anywhere along the path (e.g.
-`last_assistant_message` on the first turn), a missing key inside a free-form `arguments` object: the hook
-is **skipped** with a warning naming the hook and the failing path. Resolved values are never logged (CODESTYLE §9); payload detail goes
-through `log_payload` only.
+**Runtime resolution failure** — anything json-e raises while rendering (`JSONTemplateError`): a missing
+property, `null` before the end of a path (e.g. `last_assistant_message.content` on the first turn), an
+operator applied to the wrong type: the hook is **skipped** with a warning naming the hook and the
+template location (for example `template.query`). json-e does not name the failing expression. The
+message carries template text only; resolved values are never logged (CODESTYLE §9), payload detail goes
+through `log_payload` only. Any other exception from the engine is isolated by `HookDispatcher.run_hook`
+like any handler failure.
 
-**Change:** New `common/hook_context/templating.py`.
+#### Templating engine
+
+`templating.py` is the only module that imports json-e, and the facade above says nothing about the
+engine, so swapping the engine (for example for JMESPath) means replacing that one file together with its
+tests and the templating sections of `CONFIGURATION.md` and this document. The manifest syntax is the
+part that would change for users, which is why the decision below is to be confirmed before production.
+
+| Candidate | License | Verdict |
+|---|---|---|
+| **json-e** | MPL-2.0 | **Chosen.** Least code (render is one call), full templating (operators, built-ins, `${}` interpolation), pure Python, no dependencies, ~14 KB wheel. Static validation needs our own walk over its parser output |
+| JMESPath | MIT | Path/expression language only: no templating, so a small walker and a marker key would be ours; exposes an AST, returns `null` for a missing field |
+| JSONata | Apache-2.0 | More power than hooks need; the Python port is 0.x and larger |
+| CEL | Apache-2.0 | Built for untrusted expressions, but a 0.x port with heavy dependencies (`google-re2`, `pendulum`, `lark`) |
+
+json-e's MPL-2.0 is a file-level copyleft: using the unmodified package as a dependency of this
+Apache-2.0 project is fine, but its files must **not** be vendored or patched into the repository. A
+license review may still reverse the choice before production; the isolation above is what keeps that
+reversal cheap.
+
+**Change:** New `common/hook_context/templating.py` (json-e adapter); `json-e` dependency in
+`pyproject.toml` and `poetry.lock`; mypy override for `jsone.*` (the package ships no type information).
 
 ---
 
@@ -434,7 +466,7 @@ the prefix does not change when the rendered value does. Per policy:
 |---|---|
 | `append_if_changed` (default) | Works as intended. The tool is called every turn with freshly rendered arguments; the content hash (part of the call id) decides: identical result → the earlier pair is replaced in place (no growth), different result → a new pair is appended |
 | `always` | Works, but appends a pair every turn and grows the context. Use only when duplicates are wanted |
-| `refresh_condition` (TTL) | **Does not work.** `should_inject` finds the earlier pair by prefix and skips the call until TTL expiry, pinning the first turn's result. Rejected at config validation when `arguments` contains a placeholder |
+| `refresh_condition` (TTL) | **Does not work.** `should_inject` finds the earlier pair by prefix and skips the call until TTL expiry, pinning the first turn's result. Rejected at config validation when `arguments` contains any JSON-e template construct (`${`, `$eval`, another `$` operator) |
 
 Memory recall results usually differ between turns, so `append_if_changed` still appends on most turns;
 deduplication only saves context when the recalled result is identical.
@@ -527,9 +559,9 @@ measured during Phase 1 and is the input to the decision on [Phase 2](#phase-2-b
 |---|---|---|---|---|
 | `event` | base | `HookEvent` | required | Adds `on_completion` |
 | `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`; none for `on_request_start` (tool's own timeouts apply, as today) |
-| `arguments` | `tool_call` | `dict[str, Any]` | `{}` | Now supports `${path}` templates |
+| `arguments` | `tool_call` | `dict[str, Any]` | `{}` | Now a JSON-e template (`${expr}`, `{"$eval": "expr"}`, operators) rendered against the hook context |
 | `frequency` | `tool_call` | `InjectionFrequency` | `append_if_changed` | `on_request_start` only (unchanged) |
-| `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged); not allowed together with `${}` in `arguments` |
+| `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged); not allowed together with a template in `arguments` |
 
 No field is added "for the future": Phase 1 adds only `timeout_seconds` and the templated `arguments`.
 The `execution` field belongs to [Phase 2](#phase-2-background-execution-conditional); adding a new
@@ -540,9 +572,11 @@ optional field with a default is a non-breaking schema change.
 - *Event/field compatibility.* Explicitly setting (checked via `model_fields_set`) `frequency` or
   `refresh_condition` on `on_completion` is a validation error. Defaults never trigger it, so existing
   manifests validate unchanged.
-- *Templates and TTL.* A `${}` placeholder in `arguments` together with `refresh_condition` is a
-  validation error (see Component 5).
-- *Template paths.* Every placeholder is checked against the event's context model (Component 3).
+- *Templates and TTL.* Any JSON-e template construct in `arguments` (`${`, `$eval`, another `$`
+  operator key; detected by `contains_placeholder`) together with `refresh_condition` is a validation
+  error (see Component 5).
+- *Template expressions.* `${...}`, `$eval` and `$if` expressions are checked against the event's context
+  model (Component 3).
 
 **Change:** `config/hooks.py`; `make dump_app_schema`.
 
@@ -558,9 +592,10 @@ that cannot grow without breaking old manifests is a defect. Rules for every fie
    behavior.** Existing manifests must validate and behave identically.
 3. **Variants are discriminated by `kind`** (`kind: tool_call` today; `predefined`, `http` later), never by
    optional-field combinations.
-4. **Grammars reject what they do not yet define.** The template syntax errors on `${a | b}` or
-   `${a:b}` today, so filters or defaults can be added later without changing the meaning of any string
-   that was valid before.
+4. **Grammars reject what they do not yet define, and we do not extend them.** Templates use json-e's
+   own grammar, which errors on what it does not define (`${a | b}` is a syntax error), so new syntax
+   can only arrive with a new json-e release. The dependency is pinned to a major range
+   (`>=4.8.4,<5.0.0`) so a manifest keeps its meaning until the pin is moved on purpose.
 5. **Context contracts grow by adding fields.** Templates reference fields by name, so a new context field
    does not affect existing manifests; renaming or removing one does, and is a breaking change.
 
@@ -575,6 +610,9 @@ that cannot grow without breaking old manifests is a defect. Rules for every fie
   `additional_context`, with Claude Code merge semantics (most restrictive decision wins). Only needed by
   tool-call seams.
 - **`background` execution** for `on_completion` — deferred to [Phase 2](#phase-2-background-execution-conditional).
+- **Deciding whether a hook runs.** JSON-e conditionals (`$if`, `$switch`) shape argument *values*; they
+  cannot skip the tool call (`$if` without `else` only drops that argument key). A hook-level `condition`
+  is deferred to [Phase 2](#hook-level-condition).
 - **`predefined` handler kind.** A Python callable registered by a feature module via DI under a name
   and referenced from the manifest by that name — the server-side equivalent of a hook script. The
   handler layer (Component 4) is designed to accept it as one more `HookHandler`. Arbitrary code or shell
@@ -583,7 +621,8 @@ that cannot grow without breaking old manifests is a defect. Rules for every fie
   `features.external_url_fetch` before manifest authors can target arbitrary URLs.
 - **`context_message` injection** for non-tool handlers.
 - **Matchers.** Claude Code's `matcher` filters by tool name; meaningful only with tool-call seams.
-- **Template filters/expressions** (defaults, slicing, conditionals) and templating outside `arguments`.
+- **Templating outside `arguments`.** Expressions, slicing and conditionals inside `arguments` come with
+  json-e; no other config field is templated.
 - **Hooks on failures and external tool calls** (`StopFailure`-like events).
 - **Attachments in the context** (`custom_content.attachments`).
 
@@ -644,6 +683,78 @@ the `background` mode of any event, not only `on_completion`:
   deployment tools.
 - Is per-replica best-effort delivery acceptable, or does the memory PoC need a durable queue?
 
+### Hook-level `condition`
+
+Independent of background execution: no latency precondition, and it works for every event.
+
+**Problem.** `arguments` are rendered by JSON-e, so `$if` / `$switch` can pick a value — for example
+`{"$if": "len(messages) > 1", "then": {"$eval": "messages[-2:]"}, "else": []}` — but the tool is still
+called. A manifest author cannot say "call `search_memories` only after the first turn" or "save memory only
+when the turn used tools". Encoding a "skip" marker in the rendered arguments is rejected: it mixes two
+concerns (shaping arguments, gating the hook) and `$if` without `else` just removes the key.
+
+**Configuration.** One new optional field on the base hook config (every `kind`, since it gates the hook,
+not the tool):
+
+| Field | On | Type | Default | Description |
+|---|---|---|---|---|
+| `condition` | base | `str \| None` | `None` | A JSON-e expression (the language used by `$eval`), evaluated against the hook context. The hook runs only when the result is truthy. `None` = always run, today's behavior |
+
+```json
+{
+  "kind": "tool_call",
+  "event": "on_completion",
+  "name": "save-memory",
+  "toolset_name": "memory_server",
+  "tool_name": "save_memory",
+  "condition": "total_tool_calls > 0 && iteration_count > 1",
+  "arguments": { "user_message": { "$eval": "last_user_message.content" } }
+}
+```
+
+```json
+{
+  "kind": "tool_call",
+  "event": "on_request_start",
+  "name": "recall-memory",
+  "toolset_name": "memory_server",
+  "tool_name": "search_memories",
+  "condition": "last_assistant_message != null",
+  "arguments": { "query": { "$eval": "last_user_message.content" } }
+}
+```
+
+The second hook recalls memory from the second turn on. `len(messages) > 1` is a poor test for "not the
+first turn" at `on_request_start`: earlier injectors already append synthetic pairs to `messages`.
+
+**Semantics.**
+
+- `HookDispatcher.run_hook` evaluates `condition` before the handler runs, on the same context as the
+  arguments. A falsy result returns `None` (the hook is skipped) without calling the tool; no timeout is
+  applied to the evaluation.
+- An expression that cannot be evaluated (for example `last_assistant_message.content` on the first turn)
+  skips the hook with a warning naming the hook, never the context values — the same rule as a failed
+  argument render.
+- For `on_request_start` a skipped hook injects nothing and leaves the pairs from earlier turns in place, so
+  `frequency` and TTL `refresh_condition` behave as if the tool returned no content. `condition` is not a
+  template construct in `arguments`, so it can be combined with `refresh_condition`.
+- Static validation reuses the templating facade: the expression is checked like an `$eval` expression
+  (syntax, unknown names and fields against the event's context model), so a typo is rejected when the
+  manifest is loaded. The facade gains an engine-neutral `evaluate_condition(expression, context) -> bool`;
+  the engine stays confined to `templating.py`.
+
+**Why Phase 2 is additive.** The dispatcher is already the single owner of per-hook timeout and failure
+isolation (Phasing rule 4), so the check is one more step in `run_hook`; the field is optional and defaults
+to today's behavior (Phasing rule 5).
+
+**Open questions.**
+
+- Truthiness: JSON-e's rules for non-boolean results (`0`, `""`, `[]`, `null`) must be pinned down and
+  documented, or the expression required to be boolean.
+- A plain string blocks a later structured condition. Widening `condition` to `str | <kind-discriminated
+  object>` is non-breaking, but the alternative of starting with `{"kind": "expression", "expression": ...}`
+  (consistent with `refresh_condition`) should be decided before implementation.
+
 ---
 
 ## Security considerations
@@ -653,13 +764,17 @@ the `background` mode of any event, not only `on_completion`:
   semantics; the trust boundary is the memory tool/server: it should scope memories per user, keep
   provenance, and treat stored text as data. A recalled result enters history as a *tool result*, not as
   a system message, which already lowers its authority.
-- **Template choice limits exposure.** `${last_user_message.content}` and `${last_assistant_message.content}`
-  are the recommended sources. `${messages}` also contains outputs of external REST/MCP tools (web pages,
-  API responses) — the main injection source — and should not be written to memory wholesale. Even
-  `last_assistant_message` may derive from a poisoned tool result, so it is not a guaranteed-clean source.
+- **Template choice limits exposure.** `last_user_message.content` and `last_assistant_message.content`
+  are the recommended sources. `messages` (and slices such as `messages[-4:]`) also contain outputs of
+  external REST/MCP tools (web pages, API responses) — the main injection source — and should not be
+  written to memory wholesale. Even `last_assistant_message` may derive from a poisoned tool result, so it
+  is not a guaranteed-clean source.
 - **Manifest authors choose what leaves the request.** A template can route any context value to any tool
   of the app. This is within the manifest author's existing authority (they already configure the tools),
-  but it is why templating stays limited to `arguments` and never executes code.
+  but it is why templating stays limited to `arguments`. json-e is a data-templating language: it reads
+  the context and builds values, it does not run shell commands or arbitrary code. Its built-ins are
+  pure functions, but some (for example `range`) can build large values; the manifest author is trusted
+  with that, as with the rest of the tool configuration.
 
 ---
 
@@ -676,7 +791,7 @@ the `background` mode of any event, not only `on_completion`:
       "name": "recall-memory",
       "toolset_name": "memory_server",
       "tool_name": "search_memories",
-      "arguments": { "query": "${last_user_message.content}" }
+      "arguments": { "query": { "$eval": "last_user_message.content" } }
     }
   ]
 }
@@ -698,8 +813,9 @@ the recalled memories change. Do not add `refresh_condition` — it is rejected 
       "toolset_name": "memory_server",
       "tool_name": "save_memory",
       "arguments": {
-        "user_message": "${last_user_message.content}",
-        "assistant_message": "${last_assistant_message.content}",
+        "user_message": { "$eval": "last_user_message.content" },
+        "assistant_message": { "$eval": "last_assistant_message.content" },
+        "recent": { "$eval": "messages[-4:]" },
         "note": "Turn finished after ${iteration_count} iterations"
       },
       "timeout_seconds": 20
@@ -708,7 +824,8 @@ the recalled memories change. Do not add `refresh_condition` — it is rejected 
 }
 ```
 
-`user_message` and `assistant_message` receive the raw strings; `note` is rendered as text.
+`user_message` and `assistant_message` receive the raw strings, `recent` the last four messages as a list of
+objects (`$eval` keeps the type); `note` is interpolated as text.
 
 ### UC-3: literal memory file (unchanged behavior)
 
@@ -730,11 +847,12 @@ the recalled memories change. Do not add `refresh_condition` — it is rejected 
 
 | Config | Error |
 |---|---|
-| `"event": "on_completion"`, `"arguments": {"x": "${tool_input.path}"}` | Unknown root `tool_input` for `on_completion` |
+| `"event": "on_completion"`, `"arguments": {"x": "${tool_input.path}"}` | `unknown field 'tool_input' on CompletionHookContext` |
 | `"event": "on_completion"`, `"frequency": "always"` | `frequency` is only valid for `on_request_start` |
-| `"event": "on_request_start"`, `"arguments": {"q": "${last_user_message.content}"}`, `"refresh_condition": {...}` | `refresh_condition` cannot be combined with templated `arguments` |
-| `"arguments": {"x": "${last_user_message.contnet}"}` | Unknown field `contnet` on `HookMessage` |
-| `"arguments": {"x": "${messages[}"}` | Placeholder syntax error |
+| `"event": "on_request_start"`, `"arguments": {"q": {"$eval": "last_user_message.content"}}`, `"refresh_condition": {...}` | `refresh_condition` cannot be combined with templated `arguments` |
+| `"arguments": {"x": {"$eval": "last_user_message.contnet"}}` | `unknown field 'contnet' on HookMessage` |
+| `"arguments": {"x": {"$eval": "messages[-4:].content"}}` | `cannot read field 'content' of list` (a slice is still a list) |
+| `"arguments": {"x": "${messages[}"}` | Expression syntax error (`invalid ${..} expression: ...`) |
 
 ---
 
@@ -746,11 +864,12 @@ None. The user-facing contract — the `hooks` config — only gains optional fi
 period, because nothing user-facing is deprecated: only the internal runtime changes, and it migrates onto
 the new pipeline in the same change. Two runtimes for the same config are not kept.
 
-The one behavioral risk: an existing `arguments` string containing `${` is now parsed as a placeholder.
-The syntax deliberately matches Claude Code; a literal is written as `\${`. An accidental match of an
-unknown name fails loudly at config validation. A literal that happens to start with a valid name
+The one behavioral risk: an existing `arguments` string containing `${` (or a key starting with `$`
+followed by an identifier) is now evaluated by json-e. A literal is written as `$${`. An accidental match
+of an unknown name fails loudly at config validation. A literal that happens to start with a valid name
 (`"processed ${messages} items"`) passes validation and is substituted at runtime, so any literal `${`
-must be escaped as `\${`.
+must be escaped as `$${`. Templating itself is new in this same unreleased change, so no shipped manifest
+uses the earlier custom `${path}` grammar and nothing has to be deprecated or converted.
 
 ### Non-breaking changes
 
@@ -779,16 +898,23 @@ must be escaped as `\${`.
 
 - `HookEvent.ON_COMPLETION`
 - `_BaseHookConfig.timeout_seconds`
-- `ToolCallHookConfig.arguments` templated
+- `ToolCallHookConfig.arguments` is a JSON-e template
 - Owns the `event → context model` map; `model_validator`s for event/field compatibility, for
   rejecting templated `arguments` together with `refresh_condition`, and for calling
   `validate_template_paths(arguments, root_model)`
+
+### `pyproject.toml`, `poetry.lock` — MODIFIED
+
+- New dependency `json-e>=4.8.4,<5.0.0` (MPL-2.0; see [Templating engine](#templating-engine))
+- mypy override `ignore_missing_imports = true` for `jsone.*` (the package ships no type information)
 
 ### `common/hook_context/` — NEW package
 
 - `context.py` — `HookToolCall`, `HookMessage`, `HookContext` (`event: str`), `RequestStartHookContext`,
   `CompletionHookContext`, `HookResult`. No imports from `config`.
-- `templating.py` — placeholder parser, `validate_template_paths(arguments, root_model)`, renderer
+- `templating.py` — thin json-e adapter and the only module that imports it: `render_arguments`,
+  `contains_placeholder`, `validate_template_paths(arguments, root_model)`, `TemplateError`,
+  `TemplateResolutionError`
 
 ### `common/abstract/completion_hook_runner.py` — NEW
 

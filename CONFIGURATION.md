@@ -736,7 +736,7 @@ orchestrator seams. See
 | `event`             | Yes      | String | `"on_request_start"` (result is injected as a synthetic tool-call pair before the first LLM call) or `"on_completion"` (fires after a finished turn; the result is discarded) | - |
 | `toolset_name`      | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
 | `tool_name`         | Yes      | String | Tool name within the toolset (or exact function name) | - |
-| `arguments`         | No       | Object | Arguments forwarded to the tool. String values may contain `${...}` placeholders, see [Argument templates](#hook-argument-templates) | `{}` |
+| `arguments`         | No       | Object | Arguments forwarded to the tool. Rendered as a [JSON-e](https://json-e.js.org) template against the hook context, see [Argument templates](#hook-argument-templates) | `{}` |
 | `name`              | No       | String | Optional hook label used in logs | `null` |
 | `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: no timeout for `on_request_start`, 30 s for `on_completion` | `null` |
 | `frequency`         | No       | String | `on_request_start` only: `"always"` or `"append_if_changed"` | `append_if_changed` |
@@ -748,8 +748,12 @@ and the hook is skipped.
 
 #### Hook argument templates
 
-A string in `arguments` (at any depth, including nested objects and arrays) may contain `${path}`
-placeholders that are resolved from the hook context when the hook fires.
+`arguments` is a [JSON-e](https://json-e.js.org) template, rendered against the hook context when the hook
+fires. Every JSON-e feature is available: `${expr}` interpolation in strings, `{"$eval": "expr"}`, the
+operators (`$if`, `$map`, `$let`, `$flatten`, `$merge`, `$sort`, ...), and the built-in functions (`len`,
+`lowercase`, `join`, `split`, ...). See the JSON-e documentation for the full expression language.
+
+The context exposes these top-level names:
 
 | Root | Available for | Meaning |
 |------|---------------|---------|
@@ -759,15 +763,22 @@ placeholders that are resolved from the hook context when the hook fires.
 | `iteration_count` | `on_completion` | Number of orchestrator iterations in the turn |
 | `total_tool_calls` | `on_completion` | Number of tool calls made in the turn |
 
-Path syntax: `${root.field.sub_field}` and list indexes `${messages[0].content}`, `${messages[-1].content}`.
-Use `\${` to write a literal `${`.
+Path syntax: `last_user_message.content`, list indexes `messages[0].content` and `messages[-1].content`,
+and slices `messages[-4:]`.
 
-- A value that is exactly one placeholder keeps its JSON type: `"${iteration_count}"` becomes the number `3`,
-  and `"${last_user_message.content}"` becomes the raw string.
-- A placeholder embedded in longer text is converted to text: `"Finished after ${iteration_count} iterations"`.
-- A path that cannot be resolved for the current request (for example `last_assistant_message` on the first
-  turn) skips that hook for the request. A path that does not exist on the context model (for example a
-  typo in a field name) is rejected when the configuration is validated.
+- `"Q: ${last_user_message.content}"` interpolates the value as **text** (numbers and booleans are
+  stringified, `null` becomes an empty string). Interpolating an object or an array is an error: use `$eval`.
+- `{"$eval": "expr"}` keeps the value's **JSON type**: `{"$eval": "iteration_count"}` becomes the number `3`,
+  `{"$eval": "messages[-4:]"}` becomes a list of messages.
+- Use `$${` to write a literal `${`, and `$$` to start an object key with a literal `$`. Object keys are
+  templated too.
+- An expression that cannot be evaluated for the current request (for example `last_assistant_message.content`
+  on the first turn, where `last_assistant_message` is `null`) skips that hook for the request. A value that is
+  exactly `null` at the end of a path is passed to the tool as `null`.
+- When the configuration is validated, the syntax of `${...}`, `$eval` and `$if` expressions is checked, and
+  so are the names and fields they read (for example a typo such as `last_user_message.contnet`). Other
+  operators are checked only when the hook fires.
+- `refresh_condition` cannot be combined with a template, because the tool arguments change from turn to turn.
 
 Example: fetch memories relevant to the user's message at the start of a turn.
 
@@ -798,8 +809,9 @@ Example: save the finished turn.
       "toolset_name": "memory_server",
       "tool_name": "save_memory",
       "arguments": {
-        "user_message": "${last_user_message.content}",
-        "assistant_message": "${last_assistant_message.content}",
+        "user_message": { "$eval": "last_user_message.content" },
+        "assistant_message": { "$eval": "last_assistant_message.content" },
+        "recent": { "$eval": "messages[-4:]" },
         "note": "Turn finished after ${iteration_count} iterations"
       },
       "timeout_seconds": 20
@@ -808,7 +820,8 @@ Example: save the finished turn.
 }
 ```
 
-Hooks without placeholders behave exactly as before (literal `arguments`, optional `refresh_condition`).
+A string in `arguments` that contains `${` is interpolated, so write a literal `${` as `$${`. Hooks whose
+`arguments` contain neither `${` nor a `$`-operator key are passed to the tool unchanged.
 
 ### Tool defaults configuration
 

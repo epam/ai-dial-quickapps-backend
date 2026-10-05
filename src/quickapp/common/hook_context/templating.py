@@ -1,134 +1,250 @@
+"""Hook argument templating on top of json-e; the only module that imports it."""
+
 import copy
-import json
 import re
 import types
 from typing import Any, Union, get_args, get_origin
 
-from pydantic import BaseModel, ConfigDict
+import jsone
+from jsone import builtins as _jsone_builtins
+from jsone.AST import ASTNode, BinOp, ContextValue, FunctionCall
+from jsone.AST import List as _ListNode
+from jsone.AST import Object as _ObjectNode
+from jsone.AST import UnaryOp, ValueAccess
+from jsone.parser import Parser
+from jsone.render import tokenizer
+from jsone.shared import JSONTemplateError
+from pydantic import BaseModel
 
 
 class TemplateError(ValueError):
-    """A template is malformed or refers to a path the context model does not have."""
+    """A template is malformed or refers to a name the context model does not have."""
 
 
 class TemplateResolutionError(TemplateError):
-    """A well-formed template could not be resolved against a concrete context.
+    """A well-formed template could not be rendered against a concrete context.
 
-    Messages name the placeholder path and the failing segment, never context values.
+    Messages name the failing template location, never context values.
     """
 
 
-class _Placeholder(BaseModel):
-    model_config = ConfigDict(frozen=True)
+# A path segment: a field name, a list index, or None for a slice (the list stays a list).
+_Segment = str | int | None
+_DYNAMIC = object()
 
-    path: str
-    segments: tuple[str | int, ...]
-
-
-_IDENT = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-_INDEX = re.compile(r"\[(-?\d+)\]")
+_INTERPOLATION_START = re.compile(r"\$?\${")
+_RESERVED_KEY = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*$")
+_BINDING_KEY = re.compile(r"(?:each|by)\(([^)]*)\)$")
+_EXPRESSION_OPERATORS = ("$eval", "$if")
+_BUILTIN_NAMES = frozenset(_jsone_builtins.build()) | {"now"}
 
 
 def contains_placeholder(value: Any) -> bool:
-    """True if any string value (recursively) holds a ``${...}`` placeholder.
-
-    Raises ``TemplateError`` on malformed placeholders. Dict keys are never templated.
-    """
+    """True if *value* holds anything json-e would evaluate: a ``${...}`` interpolation
+    in a string (or key), or an operator key such as ``$eval``."""
     if isinstance(value, str):
-        return any(isinstance(part, _Placeholder) for part in _parse(value))
+        return any(match.group() != "$${" for match in _INTERPOLATION_START.finditer(value))
     if isinstance(value, dict):
-        return any(contains_placeholder(v) for v in value.values())
+        return any(
+            _RESERVED_KEY.match(key) is not None
+            or contains_placeholder(key)
+            or contains_placeholder(item)
+            for key, item in value.items()
+        )
     if isinstance(value, list):
-        return any(contains_placeholder(v) for v in value)
+        return any(contains_placeholder(item) for item in value)
     return False
 
 
 def validate_template_paths(arguments: dict[str, Any], root_model: type[BaseModel]) -> None:
-    """Statically check every placeholder path against *root_model*.
+    """Best-effort static check of *arguments* against *root_model*.
 
-    Raises ``TemplateError`` for syntax errors and for paths the model does not define.
+    Covers ``${...}`` interpolations and the ``$eval`` / ``$if`` expressions: syntax, unknown
+    names and unknown fields along a field/index/slice path. Other operators are only
+    checked when rendered. Raises ``TemplateError``.
     """
-    for placeholder in _collect_placeholders(arguments):
-        _check_path(placeholder, root_model)
+    known = _declared_names(arguments)
+    for source, tree in _collect_expressions(arguments):
+        _check_node(tree, source, root_model, known)
 
 
 def render_arguments(arguments: dict[str, Any], context: BaseModel) -> dict[str, Any]:
-    """Return a copy of *arguments* with every placeholder resolved against *context*.
+    """Return a copy of *arguments* with every template evaluated against *context*.
 
-    Raises ``TemplateResolutionError`` when a path cannot be resolved at runtime.
+    Raises ``TemplateResolutionError`` when rendering fails at runtime.
     """
     if not contains_placeholder(arguments):
         return copy.deepcopy(arguments)
-    data = context.model_dump(mode="json")
-    rendered = _render_value(arguments, data)
-    assert isinstance(rendered, dict)
+    try:
+        rendered = jsone.render(arguments, context.model_dump(mode="json"))
+    except JSONTemplateError as error:
+        raise TemplateResolutionError(str(error)) from error
+    if not isinstance(rendered, dict):
+        raise TemplateResolutionError("arguments must render to an object")
     return rendered
 
 
-def _parse(template: str) -> list[str | _Placeholder]:
-    parts: list[str | _Placeholder] = []
-    literal: list[str] = []
-    i = 0
-    while i < len(template):
-        if template.startswith("\\${", i):
-            literal.append("${")
-            i += 3
-        elif template.startswith("${", i):
-            if literal:
-                parts.append("".join(literal))
-                literal = []
-            placeholder, i = _parse_placeholder(template, i)
-            parts.append(placeholder)
-        else:
-            literal.append(template[i])
-            i += 1
-    if literal:
-        parts.append("".join(literal))
-    return parts
-
-
-def _parse_placeholder(template: str, start: int) -> tuple[_Placeholder, int]:
-    match = _IDENT.match(template, start + 2)
-    if match is None:
-        raise TemplateError(f"invalid placeholder at position {start}: expected an identifier")
-    segments: list[str | int] = [match.group()]
-    pos = match.end()
-    while pos < len(template):
-        char = template[pos]
-        if char == "}":
-            path = template[start + 2 : pos]
-            return _Placeholder(path=path, segments=tuple(segments)), pos + 1
-        if char == ".":
-            match = _IDENT.match(template, pos + 1)
-            if match is None:
-                raise TemplateError(
-                    f"invalid placeholder at position {start}: expected a field name after '.'"
-                )
-            segments.append(match.group())
-            pos = match.end()
-        elif char == "[":
-            index = _INDEX.match(template, pos)
-            if index is None:
-                raise TemplateError(
-                    f"invalid placeholder at position {start}: expected an integer index"
-                )
-            segments.append(int(index.group(1)))
-            pos = index.end()
-        else:
-            raise TemplateError(
-                f"invalid placeholder at position {start}: unexpected character {char!r}"
-            )
-    raise TemplateError(f"invalid placeholder at position {start}: missing closing '}}'")
-
-
-def _collect_placeholders(value: Any) -> list[_Placeholder]:
+def _collect_expressions(value: Any) -> list[tuple[str, Any]]:
+    found: list[tuple[str, Any]] = []
     if isinstance(value, str):
-        return [part for part in _parse(value) if isinstance(part, _Placeholder)]
+        found.extend(_parse_interpolations(value))
+    elif isinstance(value, dict):
+        for key, item in value.items():
+            if key in _EXPRESSION_OPERATORS:
+                if not isinstance(item, str):
+                    raise TemplateError(f"{key} must be given a string expression")
+                found.append((item, _parse_expression(item)))
+            else:
+                found.extend(_collect_expressions(key))
+                found.extend(_collect_expressions(item))
+    elif isinstance(value, list):
+        for item in value:
+            found.extend(_collect_expressions(item))
+    return found
+
+
+def _parse(source: str) -> tuple[Any, Any]:
+    """Parse the leading expression of *source*; return its tree and the first unconsumed token."""
+    try:
+        parser = Parser(source, tokenizer)
+        return parser.parse(), parser.current_token
+    except StopIteration:
+        raise TemplateError("the expression is empty or unterminated") from None
+    except JSONTemplateError as error:
+        raise TemplateError(str(error.args[0])) from error
+    except Exception as error:  # json-e's parser raises AttributeError on truncated input
+        raise TemplateError("the expression is malformed") from error
+
+
+def _parse_expression(source: str) -> Any:
+    try:
+        tree, token = _parse(source)
+    except TemplateError as error:
+        raise TemplateError(f"invalid expression {source!r}: {error}") from error
+    if tree is None or token is not None:
+        raise TemplateError(f"invalid expression {source!r}")
+    return tree
+
+
+def _parse_interpolations(template: str) -> list[tuple[str, Any]]:
+    found: list[tuple[str, Any]] = []
+    rest = template
+    match = _INTERPOLATION_START.search(rest)
+    while match:
+        rest = rest[match.end() :]
+        if match.group() != "$${":
+            try:
+                tree, token = _parse(rest)
+            except TemplateError as error:
+                raise TemplateError(f"invalid ${{..}} expression: {error}") from error
+            if tree is None or token is None or token.kind != "}":
+                raise TemplateError(f"invalid ${{..}} expression near {rest[:40]!r}")
+            found.append((rest[: token.start].strip(), tree))
+            rest = rest[token.start + 1 :]
+        match = _INTERPOLATION_START.search(rest)
+    return found
+
+
+def _declared_names(value: Any) -> set[str]:
+    """Names bound inside the template (``$let``, ``each(..)``, ``by(..)``), scoping ignored."""
+    names: set[str] = set()
     if isinstance(value, dict):
-        return [p for v in value.values() for p in _collect_placeholders(v)]
-    if isinstance(value, list):
-        return [p for v in value for p in _collect_placeholders(v)]
-    return []
+        bindings = value.get("$let")
+        if isinstance(bindings, dict):
+            names.update(bindings)
+        for key, item in value.items():
+            binding = _BINDING_KEY.match(key)
+            if binding:
+                names.update(name.strip() for name in binding.group(1).split(",") if name.strip())
+            names |= _declared_names(item)
+    elif isinstance(value, list):
+        for item in value:
+            names |= _declared_names(item)
+    return names
+
+
+def _check_node(node: Any, source: str, root_model: type[BaseModel], declared: set[str]) -> None:
+    if node is None:
+        raise TemplateError(f"invalid expression {source!r}: missing operand")
+    access = _flatten_access(node)
+    if access is not None:
+        root, segments, nested = access
+        name = root.token.value
+        is_local = name in declared or (
+            name in _BUILTIN_NAMES and name not in _model_names(root_model)
+        )
+        if not is_local:
+            _check_path(source, [name, *segments], root_model)
+        for child in nested:
+            _check_node(child, source, root_model, declared)
+    elif isinstance(node, BinOp):
+        _check_node(node.left, source, root_model, declared)
+        _check_node(node.right, source, root_model, declared)
+    elif isinstance(node, UnaryOp):
+        _check_node(node.expr, source, root_model, declared)
+    elif isinstance(node, FunctionCall):
+        _check_node(node.name, source, root_model, declared)
+        for arg in node.args:
+            _check_node(arg, source, root_model, declared)
+    elif isinstance(node, _ListNode):
+        for item in node.list:
+            _check_node(item, source, root_model, declared)
+    elif isinstance(node, _ObjectNode):
+        for item in node.obj.values():
+            _check_node(item, source, root_model, declared)
+
+
+def _model_names(model: type[BaseModel]) -> set[str]:
+    return set(model.model_fields) | set(model.model_computed_fields)
+
+
+def _flatten_access(node: Any) -> tuple[Any, list[_Segment], list[Any]] | None:
+    """Split ``a.b[0][1:].c`` into root ``a`` and segments; None if the chain is not rooted in a name.
+
+    The segment list stops at the first dynamic index (``a[i]``), whose expression is returned
+    in the third element so its own names are still checked.
+    """
+    segments: list[Any] = []
+    nested: list[Any] = []
+    current = node
+    while not isinstance(current, ContextValue):
+        if isinstance(current, BinOp) and current.token.kind == ".":
+            segments.append(current.right.token.value)
+            current = current.left
+        elif isinstance(current, ValueAccess):
+            if current.isInterval:
+                segments.append(None)
+                nested.extend(child for child in (current.left, current.right) if child)
+            else:
+                segments.append(_literal_segment(current.left))
+                if segments[-1] is _DYNAMIC:
+                    nested.append(current.left)
+            current = current.arr
+        else:
+            return None
+    segments.reverse()
+    static: list[_Segment] = []
+    for segment in segments:
+        if segment is _DYNAMIC:
+            break
+        static.append(segment)
+    return current, static, nested
+
+
+def _literal_segment(index: Any) -> Any:
+    if type(index) is ASTNode and index.token.kind == "number" and "." not in index.token.value:
+        return int(index.token.value)
+    if type(index) is ASTNode and index.token.kind == "string":
+        return index.token.value[1:-1]
+    if (
+        isinstance(index, UnaryOp)
+        and index.token.kind == "-"
+        and type(index.expr) is ASTNode
+        and index.expr.token.kind == "number"
+        and "." not in index.expr.token.value
+    ):
+        return -int(index.expr.token.value)
+    return _DYNAMIC
 
 
 def _strip_optional(tp: Any) -> Any:
@@ -147,19 +263,20 @@ def _type_name(tp: Any) -> str:
     return getattr(tp, "__name__", None) or str(tp)
 
 
-def _check_path(placeholder: _Placeholder, root_model: type[BaseModel]) -> None:
+def _check_path(source: str, segments: list[_Segment], root_model: type[BaseModel]) -> None:
     current: Any = root_model
-    prefix = f"invalid placeholder ${{{placeholder.path}}}"
-    for segment in placeholder.segments:
+    prefix = f"invalid expression {source!r}"
+    for segment in segments:
         current = _strip_optional(current)
         if _is_free_form(current):
             return
-        if isinstance(segment, int):
+        if segment is None or isinstance(segment, int):
             if get_origin(current) is not list:
                 raise TemplateError(
-                    f"{prefix}: index [{segment}] applied to non-list type {_type_name(current)}"
+                    f"{prefix}: cannot index or slice non-list type {_type_name(current)}"
                 )
-            (current,) = get_args(current)
+            if segment is not None:
+                (current,) = get_args(current)
             continue
         if not (isinstance(current, type) and issubclass(current, BaseModel)):
             raise TemplateError(f"{prefix}: cannot read field '{segment}' of {_type_name(current)}")
@@ -169,51 +286,3 @@ def _check_path(placeholder: _Placeholder, root_model: type[BaseModel]) -> None:
             current = current.model_computed_fields[segment].return_type
         else:
             raise TemplateError(f"{prefix}: unknown field '{segment}' on {current.__name__}")
-
-
-def _render_value(value: Any, data: dict[str, Any]) -> Any:
-    if isinstance(value, str):
-        return _render_string(value, data)
-    if isinstance(value, dict):
-        return {key: _render_value(item, data) for key, item in value.items()}
-    if isinstance(value, list):
-        return [_render_value(item, data) for item in value]
-    return value
-
-
-def _render_string(template: str, data: dict[str, Any]) -> Any:
-    parts = _parse(template)
-    if len(parts) == 1 and isinstance(parts[0], _Placeholder):
-        return _resolve(parts[0], data)
-    rendered: list[str] = []
-    for part in parts:
-        if isinstance(part, _Placeholder):
-            rendered.append(_stringify(_resolve(part, data)))
-        else:
-            rendered.append(part)
-    return "".join(rendered)
-
-
-def _resolve(placeholder: _Placeholder, data: dict[str, Any]) -> Any:
-    current: Any = data
-    prefix = f"cannot resolve ${{{placeholder.path}}}"
-    for segment in placeholder.segments:
-        if current is None:
-            raise TemplateResolutionError(f"{prefix}: value is empty before '{segment}'")
-        if isinstance(segment, int):
-            if not isinstance(current, list) or not -len(current) <= segment < len(current):
-                raise TemplateResolutionError(f"{prefix}: index [{segment}] is not available")
-            current = current[segment]
-        else:
-            if not isinstance(current, dict) or segment not in current:
-                raise TemplateResolutionError(f"{prefix}: no field '{segment}'")
-            current = current[segment]
-    if current is None:
-        raise TemplateResolutionError(f"{prefix}: value is empty")
-    return current
-
-
-def _stringify(value: Any) -> str:
-    if isinstance(value, str):
-        return value
-    return json.dumps(value, separators=(",", ":"), ensure_ascii=False)

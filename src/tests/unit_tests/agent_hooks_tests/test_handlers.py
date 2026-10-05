@@ -92,7 +92,8 @@ class TestToolCallHookHandler:
     ) -> None:
         tool = _tool("search")
         handler = ToolCallHookHandler(
-            _config(name="h", arguments={"q": "${last_assistant_message.content}"}), [tool]
+            _config(name="h", arguments={"q": {"$eval": "last_assistant_message.content"}}),
+            [tool],
         )
 
         with caplog.at_level(logging.WARNING):
@@ -100,7 +101,7 @@ class TestToolCallHookHandler:
 
         assert result is None
         tool.arun.assert_not_awaited()
-        assert "last_assistant_message" in caplog.text
+        assert "template.q" in caplog.text
         assert "find cats" not in caplog.text
 
     @pytest.mark.asyncio

@@ -66,8 +66,21 @@ class TestArgumentTemplates:
             _cfg(arguments={"q": "${last_user_message.contnet}"})
 
     def test_bad_syntax_rejected(self) -> None:
-        with pytest.raises(ValidationError, match="placeholder"):
+        with pytest.raises(ValidationError, match="invalid"):
             _cfg(arguments={"q": "${messages[}"})
+
+    def test_eval_expression_validated(self) -> None:
+        _cfg(arguments={"recent": {"$eval": "messages[-4:]"}})
+        with pytest.raises(ValidationError, match="contnet"):
+            _cfg(arguments={"q": {"$eval": "last_user_message.contnet"}})
+
+    def test_other_json_e_operators_accepted(self) -> None:
+        _cfg(
+            arguments={
+                "roles": {"$map": {"$eval": "messages"}, "each(m)": {"$eval": "m.role"}},
+                "n": {"$if": "len(messages) > 1", "then": 1, "else": 0},
+            }
+        )
 
     def test_nested_template_validated(self) -> None:
         with pytest.raises(ValidationError, match="nope"):
@@ -91,5 +104,9 @@ class TestTemplateWithRefreshCondition:
     def test_literal_arguments_with_ttl_accepted(self) -> None:
         _cfg(arguments={"q": "literal"}, refresh_condition=self._TTL)
 
+    def test_eval_with_ttl_rejected(self) -> None:
+        with pytest.raises(ValidationError, match="refresh_condition"):
+            _cfg(arguments={"q": {"$eval": "messages"}}, refresh_condition=self._TTL)
+
     def test_escaped_placeholder_with_ttl_accepted(self) -> None:
-        _cfg(arguments={"q": "\\${literal}"}, refresh_condition=self._TTL)
+        _cfg(arguments={"q": "$${literal}"}, refresh_condition=self._TTL)

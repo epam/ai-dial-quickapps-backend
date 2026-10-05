@@ -3746,7 +3746,7 @@
         },
         "arguments": {
           "additionalProperties": true,
-          "description": "Arguments forwarded to the tool. String values may contain '${path}' placeholders resolved from the hook context (for example '${last_user_message.content}'); a string that is exactly one placeholder keeps the value's JSON type. Use '\\${' for a literal '${'. Paths are validated when the manifest is loaded.",
+          "description": "Arguments forwarded to the tool, rendered as a JSON-e (https://json-e.js.org) template against the hook context. Use '${expr}' inside a string to interpolate a value as text (for example 'Q: ${last_user_message.content}'), or {\"$eval\": \"expr\"} to keep the value's JSON type (for example {\"$eval\": \"messages[-4:]\"}); the other JSON-e operators ($if, $map, $let, ...) and built-in functions are available too. Use '$${' for a literal '${'. Expressions are checked against the hook context when the manifest is loaded.",
           "title": "Arguments",
           "type": "object"
         },
