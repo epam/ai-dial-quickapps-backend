@@ -77,7 +77,7 @@ DEFAULT_QUERY_PARAM = ConfigurableSchemaSimpleType(
 
 DEFAULT_ATTACHMENT_URLS_PARAM = ConfigurableSchemaArray(
     type=JsonTypeEnum.array,
-    description="A list of full URLs for each attachment related to the tool call. Each item must be a full URL string. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
+    description="A list of full URLs for each attachment related to the tool call. Each item is a reference, never inline content: a DIAL file path (files/bucket/foo.pdf) or an external `https://` URL. Inline forms (`file:data::`, `file:base64::`, `file:text::`, a literal `data:` URI) are not accepted and will be rejected. *Always provide a list*, even if there is only one attachment. Do not provide a single string; use a list with one element instead. If there are no attachments, provide an empty list.",
     items=JsonSchemaSimpleType(type=JsonTypeEnum.string),
     display=ParameterDisplayConfig(stage=FormattedParameterConfig(name="**Files:** ")),
 )
