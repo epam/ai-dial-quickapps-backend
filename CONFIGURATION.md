@@ -820,6 +820,74 @@ Example: save the finished turn.
 }
 ```
 
+Example: pass only the dialog, filtered by role. `messages` also holds the system prompt, tool results and
+synthetic tool-call pairs injected by other features (skills, timestamp, other hooks), so a slice such as
+`messages[-4:]` is not "the last four utterances". JSON-e has no `filter` function, but `$map` drops an
+element when its `$if` has no `else`, which gives the same result.
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$map": { "$eval": "messages" },
+      "each(m)": {
+        "$if": "m.role == 'user' || m.role == 'assistant'",
+        "then": { "$eval": "m" }
+      }
+    }
+  }
+}
+```
+
+This keeps every `user` and `assistant` message, including the empty `assistant` messages that only carry
+tool calls. To keep only real utterances, require that an `assistant` message has no tool calls, and keep just
+the fields the tool needs:
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$map": { "$eval": "messages" },
+      "each(m)": {
+        "$if": "m.role == 'user' || (m.role == 'assistant' && len(m.tool_calls) == 0)",
+        "then": { "role": { "$eval": "m.role" }, "content": { "$eval": "m.content" } }
+      }
+    }
+  }
+}
+```
+
+To take the last N utterances, apply the slice to the filtered list, not to `messages`: bind the result with
+`$let` and slice it in `in`.
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$let": {
+        "d": {
+          "$map": { "$eval": "messages" },
+          "each(m)": {
+            "$if": "m.role == 'user' || (m.role == 'assistant' && len(m.tool_calls) == 0)",
+            "then": { "role": { "$eval": "m.role" }, "content": { "$eval": "m.content" } }
+          }
+        }
+      },
+      "in": { "$eval": "d[-4:]" }
+    }
+  }
+}
+```
+
+Notes for these examples:
+
+- On `on_request_start` the list includes the current user message; on `on_completion` it also ends with the
+  final answer.
+- The content of an `assistant` message restored from the conversation history can start with a line break.
+  Use `strip(m.content)` to remove it.
+- Names bound inside the template (`m`, `d`) are not checked when the configuration is validated, so a typo such
+  as `m.contnet` is reported only when the hook fires.
+
 A string in `arguments` that contains `${` is interpolated, so write a literal `${` as `$${`. Hooks whose
 `arguments` contain neither `${` nor a `$`-operator key are passed to the tool unchanged.
 
