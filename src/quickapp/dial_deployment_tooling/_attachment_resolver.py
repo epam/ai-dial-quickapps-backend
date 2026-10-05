@@ -97,4 +97,4 @@ class AttachmentResolver:
                 url=meta.url or "",
             )
 
-        raise unsupported_scheme_error(file_relative_url, parameter_name="attachment_urls")
+        raise unsupported_scheme_error(bare, parameter_name="attachment_urls")
