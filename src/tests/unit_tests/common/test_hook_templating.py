@@ -1,3 +1,4 @@
+import re
 from typing import Any
 
 import pytest
@@ -186,6 +187,25 @@ class TestValidateTemplatePaths:
     def test_escaped_interpolation_not_validated(self) -> None:
         validate_template_paths({"q": "$${nope}"}, RequestStartHookContext)
 
+    @pytest.mark.parametrize("key", ["$schema", "$ref", "$notAnOperator"])
+    def test_reserved_key_rejected(self, key: str) -> None:
+        pattern = f"key '{re.escape(key)}' is reserved.*'{re.escape('$' + key)}'"
+        with pytest.raises(TemplateError, match=pattern):
+            validate_template_paths({"q": {key: "x"}}, RequestStartHookContext)
+
+    def test_reserved_key_rejected_when_nested_in_list(self) -> None:
+        with pytest.raises(TemplateError, match="reserved"):
+            validate_template_paths({"q": [{"$schema": "x"}]}, RequestStartHookContext)
+
+    def test_escaped_reserved_key_accepted(self) -> None:
+        validate_template_paths({"q": {"$$schema": "x"}}, RequestStartHookContext)
+
+    def test_operator_parameter_keys_accepted(self) -> None:
+        validate_template_paths(
+            {"q": {"$if": "event == 'on_request_start'", "$then": "a", "$else": "b"}},
+            RequestStartHookContext,
+        )
+
     def test_walk_stops_at_free_form_dict(self) -> None:
         validate_template_paths(
             {"q": "${messages[0].tool_calls[0].arguments.anything.goes.here}"},
@@ -256,6 +276,14 @@ class TestRenderArguments:
             {"q": "$${literal} and ${last_user_message.content}"}, _completion_context()
         )
         assert rendered["q"] == "${literal} and first question"
+
+    def test_lone_escape_is_unescaped(self) -> None:
+        rendered = render_arguments({"q": "$${literal}"}, _completion_context())
+        assert rendered == {"q": "${literal}"}
+
+    def test_lone_escaped_key_is_unescaped(self) -> None:
+        rendered = render_arguments({"$$schema": "x"}, _completion_context())
+        assert rendered == {"$schema": "x"}
 
     def test_negative_index(self) -> None:
         rendered = render_arguments({"q": "${messages[-2].content}"}, _completion_context())

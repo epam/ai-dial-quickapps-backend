@@ -12,6 +12,7 @@ from jsone.AST import List as _ListNode
 from jsone.AST import Object as _ObjectNode
 from jsone.AST import UnaryOp, ValueAccess
 from jsone.parser import Parser
+from jsone.render import operators as _jsone_operators
 from jsone.render import tokenizer
 from jsone.shared import JSONTemplateError
 from pydantic import BaseModel
@@ -33,7 +34,8 @@ _Segment = str | int | None
 _DYNAMIC = object()
 
 _INTERPOLATION_START = re.compile(r"\$?\${")
-_RESERVED_KEY = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*$")
+_ESCAPED_KEY = re.compile(r"\$\$")
+_IDENTIFIER_KEY = re.compile(r"\$[A-Za-z_][A-Za-z0-9_]*$")
 _BINDING_KEY = re.compile(r"(?:each|by)\(([^)]*)\)$")
 _EXPRESSION_OPERATORS = ("$eval", "$if")
 _BUILTIN_NAMES = frozenset(_jsone_builtins.build()) | {"now"}
@@ -41,18 +43,32 @@ _BUILTIN_NAMES = frozenset(_jsone_builtins.build()) | {"now"}
 
 def contains_placeholder(value: Any) -> bool:
     """True if *value* holds anything json-e would evaluate: a ``${...}`` interpolation
-    in a string (or key), or an operator key such as ``$eval``."""
+    in a string (or key), or an operator key such as ``$eval``. Escapes (``$${``, ``$$name``)
+    are literals, not placeholders."""
+    return _holds_template(value, include_escapes=False)
+
+
+def _needs_rendering(value: Any) -> bool:
+    """Like ``contains_placeholder``, but escapes count too: json-e must unescape them."""
+    return _holds_template(value, include_escapes=True)
+
+
+def _holds_template(value: Any, *, include_escapes: bool) -> bool:
     if isinstance(value, str):
-        return any(match.group() != "$${" for match in _INTERPOLATION_START.finditer(value))
+        return any(
+            include_escapes or match.group() != "$${"
+            for match in _INTERPOLATION_START.finditer(value)
+        )
     if isinstance(value, dict):
         return any(
-            _RESERVED_KEY.match(key) is not None
-            or contains_placeholder(key)
-            or contains_placeholder(item)
+            (include_escapes and _ESCAPED_KEY.match(key) is not None)
+            or _IDENTIFIER_KEY.match(key) is not None
+            or _holds_template(key, include_escapes=include_escapes)
+            or _holds_template(item, include_escapes=include_escapes)
             for key, item in value.items()
         )
     if isinstance(value, list):
-        return any(contains_placeholder(item) for item in value)
+        return any(_holds_template(item, include_escapes=include_escapes) for item in value)
     return False
 
 
@@ -61,8 +77,10 @@ def validate_template_paths(arguments: dict[str, Any], root_model: type[BaseMode
 
     Covers ``${...}`` interpolations and the ``$eval`` / ``$if`` expressions: syntax, unknown
     names and unknown fields along a field/index/slice path. Other operators are only
-    checked when rendered. Raises ``TemplateError``.
+    checked when rendered. Also rejects ``$name`` keys that are not json-e operators (json-e
+    reserves them; write ``$$name`` for a literal key). Raises ``TemplateError``.
     """
+    _check_reserved_keys(arguments)
     known = _declared_names(arguments)
     for source, tree in _collect_expressions(arguments):
         _check_node(tree, source, root_model, known)
@@ -73,7 +91,7 @@ def render_arguments(arguments: dict[str, Any], context: BaseModel) -> dict[str,
 
     Raises ``TemplateResolutionError`` when rendering fails at runtime.
     """
-    if not contains_placeholder(arguments):
+    if not _needs_rendering(arguments):
         return copy.deepcopy(arguments)
     try:
         rendered = jsone.render(arguments, context.model_dump(mode="json"))
@@ -82,6 +100,23 @@ def render_arguments(arguments: dict[str, Any], context: BaseModel) -> dict[str,
     if not isinstance(rendered, dict):
         raise TemplateResolutionError("arguments must render to an object")
     return rendered
+
+
+def _check_reserved_keys(value: Any) -> None:
+    if isinstance(value, dict):
+        # Keys of an operator object ($then, $else, ...) are that operator's parameters.
+        if not any(key in _jsone_operators for key in value):
+            for key in value:
+                if _IDENTIFIER_KEY.match(key):
+                    raise TemplateError(
+                        f"key {key!r} is reserved by the template language; use '${key}' "
+                        "to write it literally"
+                    )
+        for item in value.values():
+            _check_reserved_keys(item)
+    elif isinstance(value, list):
+        for item in value:
+            _check_reserved_keys(item)
 
 
 def _collect_expressions(value: Any) -> list[tuple[str, Any]]:

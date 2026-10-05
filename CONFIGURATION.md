@@ -743,8 +743,9 @@ orchestrator seams. See
 | `refresh_condition` | No       | Object | `on_request_start` only: optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`). Cannot be combined with templated `arguments` | `null` |
 
 `frequency` and `refresh_condition` describe how the injected message pair is kept in the history, so they
-are rejected for `on_completion`. A failing or timed-out hook never fails the request: the error is logged
-and the hook is skipped.
+are rejected for `on_completion`. An `on_completion` hook runs for its side effect only: the tool result is
+discarded and is never shown to the user or added to the conversation. A failing or timed-out hook never
+fails the request: the error is logged and the hook is skipped.
 
 #### Hook argument templates
 
