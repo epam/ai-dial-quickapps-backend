@@ -263,6 +263,7 @@ class _MCPToolInitializer(CompletionInitializer):
         if resolved_toolset.allowed_tools:
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
+        toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         for tool in tools:
             mcp_tool = self.__tool_builder.build(
@@ -283,9 +284,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
                 ),
             )
-            mcp_tool.stage_name_component = resolve_localized(
-                resolved_toolset.name, self.__accept_language
-            )
+            mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
             created_tools.append(mcp_tool)
         if created_tools:
             discovery_cfg = self.__app_config.orchestrator.tool_discovery

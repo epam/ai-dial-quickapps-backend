@@ -140,7 +140,7 @@ def mcp_tool1(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
-    tool.stage_name_component = "test_toolset"
+    tool.stage_name_component = "test_toolset: tool1"
     return tool
 
 
@@ -169,7 +169,7 @@ def mcp_tool2(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
-    tool.stage_name_component = "test_toolset"
+    tool.stage_name_component = "test_toolset: tool2"
     return tool
 
 
@@ -444,6 +444,17 @@ async def test_tool_names_prefixed_with_toolset_name(initializer_factory, builde
     assert len(calls) == 2
     names = [c.kwargs["tool_config"].open_ai_tool.function.name for c in calls]
     assert names == ["mcp-local-toolset_tool1", "mcp-local-toolset_tool2"]
+
+
+@pytest.mark.asyncio
+async def test_stage_name_includes_toolset_and_tool_name(initializer_factory):
+    initializer, mcp_context = initializer_factory(
+        protocol=MCPProtocol.streamable_http, name="Notion"
+    )
+    await initializer.initialize()
+
+    created = mcp_context.extend_tools.call_args.args[0]
+    assert [t.stage_name_component for t in created] == ["Notion: tool1", "Notion: tool2"]
 
 
 @pytest.mark.asyncio
