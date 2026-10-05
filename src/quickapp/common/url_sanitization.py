@@ -2,13 +2,13 @@
 
 Query strings, fragments, and userinfo are where secrets live in URLs (signed-URL
 tokens, API keys, ``user:pass@`` credentials). Every URL that ends up in a log line
-or user-facing error message must pass through :func:`sanitize_url_for_log` first.
+or user-facing error message must pass through :func:`sanitize_url` first.
 """
 
 from urllib.parse import urlsplit, urlunsplit
 
 
-def sanitize_url_for_log(url: str) -> str:
+def sanitize_url(url: str) -> str:
     """Strip a URL to scheme, host, and path for logging (content rule, issue #436).
 
     Query strings and fragments — where signed-URL tokens live — are dropped, along with
