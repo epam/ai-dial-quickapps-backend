@@ -16,6 +16,10 @@ from quickapp.common.chat_completion_stream.argument_stream_presentation import 
     ArgumentStreamPresentation,
 )
 from quickapp.common.error_details import new_error_reference
+from quickapp.common.file_reference_pattern import (
+    MISSING_FILE_PREFIX_MESSAGE,
+    is_unprefixed_file_reference,
+)
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.parameter_stage_format import resolve_tool_stage_display_name
 from quickapp.common.payload_logging import log_payload
@@ -47,6 +51,9 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
     # Opt-in: when set, orchestrator streams argument bodies into the tool stage.
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
+    # Opt-in: arguments withheld from the transformer chain because the tool resolves
+    # the file reference itself (e.g. attachment_urls).
+    reference_only_params: ClassVar[frozenset[str]] = frozenset()
 
     def __init__(
         self,
@@ -299,8 +306,18 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
         return open_ai_tool
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
+        # A reference-only parameter names a file the tool resolves itself, so inlining it
+        # here would destroy the reference before the tool's own resolver sees it.
+        withheld = {k: kwargs.pop(k) for k in type(self).reference_only_params if k in kwargs}
+        for key, value in withheld.items():
+            values = value if isinstance(value, list) else [value]
+            if any(isinstance(v, str) and is_unprefixed_file_reference(v) for v in values):
+                raise InvalidToolCallParameterException(
+                    parameter_name=key, message=MISSING_FILE_PREFIX_MESSAGE
+                )
         for transformer in self.__argument_transformers:
             kwargs = await transformer.transform(kwargs)
+        kwargs.update(withheld)
         return kwargs
 
     def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:

@@ -5,7 +5,7 @@ from injector import inject
 
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.exceptions import InvalidToolCallParameterException
-from quickapp.common.file_reference_pattern import FILE_PATTERN
+from quickapp.common.file_reference_pattern import FILE_PATTERN, MISSING_FILE_PREFIX_MESSAGE
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.url_sanitization import sanitize_url
 from quickapp.file_transfer._file_loader_service import FileLoaderService
@@ -99,5 +99,5 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             log_payload(logger, "File reference without prefix for key %s: %s", key, value)
             raise InvalidToolCallParameterException(
                 parameter_name=key,
-                message="Missing required file prefix (data::, base64::, url::, text::)",
+                message=MISSING_FILE_PREFIX_MESSAGE,
             )
