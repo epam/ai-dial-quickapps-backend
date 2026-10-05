@@ -11,7 +11,8 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
-from quickapp.common.exceptions import FallbackAgentStopException
+from quickapp.common.exceptions import FallbackAgentStopException, InvalidToolCallParameterException
+from quickapp.common.file_reference_pattern import MISSING_FILE_PREFIX_MESSAGE
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import StageDisplayLevel
@@ -570,3 +571,69 @@ async def test_tool_parameter_named_error_reference_reaches_the_tool(
 
     assert run.call_args.kwargs["error_reference"] == "from-the-model"
     mock_stage_wrapper_factory.build.return_value.add_exception.assert_not_called()
+
+
+class _RecordingTransformer:
+    """Uppercases every string kwarg, so a withheld argument is visibly distinguishable."""
+
+    async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        return {k: (v.upper() if isinstance(v, str) else v) for k, v in kwargs.items()}
+
+
+class _ReferenceOnlyTool(CustomTestStagedBaseTool):
+    reference_only_params = frozenset({"attachment_urls"})
+
+
+@pytest.mark.asyncio
+async def test_reference_only_params_withheld_from_transformer_chain(
+    mock_stage_wrapper_factory, mock_tool_config
+):
+    tool = _ReferenceOnlyTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+    tool._StagedBaseTool__argument_transformers = [_RecordingTransformer()]
+
+    params = await tool._pre_process_params(
+        query="hello", attachment_urls=["file:data::files/a.pdf"]
+    )
+
+    assert params["query"] == "HELLO"
+    assert params["attachment_urls"] == ["file:data::files/a.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_no_reference_only_params_by_default(mock_stage_wrapper_factory, mock_tool_config):
+    """A tool that does not opt in gets every argument transformed, so a REST/MCP tool with
+    a parameter named attachment_urls is unaffected by the deployment-tool carve-out."""
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+    tool._StagedBaseTool__argument_transformers = [_RecordingTransformer()]
+
+    params = await tool._pre_process_params(attachment_urls="file:data::files/a.pdf")
+
+    assert params["attachment_urls"] == "FILE:DATA::FILES/A.PDF"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "value", [["file:url::files/a.pdf", "file:files/b.pdf"], "file:files/b.pdf"]
+)
+async def test_reference_only_params_reject_unprefixed_file_reference(
+    mock_stage_wrapper_factory, mock_tool_config, value
+):
+    tool = _ReferenceOnlyTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+
+    with pytest.raises(InvalidToolCallParameterException) as exc_info:
+        await tool._pre_process_params(attachment_urls=value)
+
+    assert exc_info.value.parameter_name == "attachment_urls"
+    assert MISSING_FILE_PREFIX_MESSAGE in str(exc_info.value)

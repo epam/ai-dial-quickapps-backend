@@ -47,3 +47,17 @@ class TestToFileUrlReference:
     def test_round_trips_with_strip_file_prefix(self, url: str):
         # to_file_url_reference is the inverse of strip_file_prefix for the url prefix.
         assert strip_file_prefix(to_file_url_reference(url)) == url
+
+
+class TestPrefixlessFileReference:
+    """FILE_PATTERN keeps the prefix marker optional so callers can detect and reject a
+    prefix-less `file:` reference, but strip_file_prefix must not shorten one."""
+
+    def test_prefixless_file_reference_not_stripped(self):
+        assert strip_file_prefix("file:files/bucket/report.pdf") == "file:files/bucket/report.pdf"
+
+    def test_path_ending_in_file_colon_segment_not_shortened(self):
+        assert strip_file_prefix("files/bucket/notes.txt") == "files/bucket/notes.txt"
+
+    def test_recognized_prefix_still_stripped(self):
+        assert strip_file_prefix("file:url::files/bucket/report.pdf") == "files/bucket/report.pdf"
