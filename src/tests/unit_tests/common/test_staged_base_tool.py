@@ -537,6 +537,17 @@ async def test_no_reference_only_params_by_default(mock_stage_wrapper_factory, m
     assert params["attachment_urls"] == "FILE:DATA::FILES/A.PDF"
 
 
+def test_reference_only_consumers_opt_in():
+    """Both tools that resolve attachment_urls themselves must declare it."""
+    from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
+    from quickapp.internal_tooling.py_interpreter_tooling._py_interpreter_tool import (
+        _PyInterpreterTool,
+    )
+
+    assert "attachment_urls" in BaseDeploymentTool.reference_only_params
+    assert "attachment_urls" in _PyInterpreterTool.reference_only_params
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "value", [["file:url::files/a.pdf", "file:files/b.pdf"], "file:files/b.pdf"]
