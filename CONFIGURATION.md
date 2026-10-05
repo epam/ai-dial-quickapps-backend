@@ -329,6 +329,8 @@ With custom fields sample:
 }
 ```
 
+Other `custom_fields` keys the deployment supports (e.g. `cache_breakpoint`) are forwarded as-is.
+
 </details>
 
 #### System prompt configuration

@@ -10,7 +10,11 @@ from quickapp.common.base_config import DialResourceConfigField, LegacyAlias, Le
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high"]
 
 
+# Based on `aidial_sdk.chat_completion.request.ChatCompletionRequestCustomFields`. The SDK types
+# `cache_breakpoint`; here every key besides `configuration` passes through to the deployment untyped.
 class CustomFieldsConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
     configuration: dict[str, Any] | None = Field(
         default=None,
         description="The configuration for the custom fields.",
@@ -93,7 +97,8 @@ class DialDeploymentParameters(BaseModel):
     custom_fields: CustomFieldsConfig | None = Field(
         default=None,
         description="The configuration parameters for the DIAL deployment. "
-        "Schema is defined for specific deployment via configuration endpoint",
+        "Schema is defined for specific deployment via configuration endpoint. "
+        "Other keys the deployment supports (e.g. `cache_breakpoint`) are forwarded as-is.",
     )
     # ToDo: add more parameters according to the DIAL API reference
 
