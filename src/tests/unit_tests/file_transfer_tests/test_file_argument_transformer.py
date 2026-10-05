@@ -140,3 +140,37 @@ class TestFileArgumentTransformer:
         )
         with pytest.raises(InvalidToolCallParameterException):
             await transformer.transform({"data": "file:base64::https://example.com/x.txt"})
+
+
+class TestAttachmentUrlsKeyIsNotSpecialCased:
+    """attachment_urls is only a reference channel for DIAL-deployment tools, which protect it
+    themselves (BaseDeploymentTool._pre_process_params). At the transformer level it is just
+    another argument name and must resolve like any other, e.g. for a REST tool that happens to
+    define a body parameter with that name."""
+
+    @pytest.mark.asyncio
+    async def test_data_prefix_resolves(self, transformer, mock_file_service):
+        raw = b"hello world"
+        mock_file_service.load_with_content_type = AsyncMock(return_value=(raw, "application/pdf"))
+        result = await transformer.transform({"attachment_urls": "file:data::files/bucket/foo.pdf"})
+        assert (
+            result["attachment_urls"]
+            == f"data:application/pdf;base64,{base64.b64encode(raw).decode()}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_base64_prefix_resolves(self, transformer, mock_file_service):
+        raw = b"hello world"
+        mock_file_service.load.return_value = raw
+        result = await transformer.transform(
+            {"attachment_urls": "file:base64::files/bucket/foo.pdf"}
+        )
+        assert result["attachment_urls"] == base64.b64encode(raw).decode()
+
+    @pytest.mark.asyncio
+    async def test_list_resolves(self, transformer, mock_file_service):
+        mock_file_service.load.return_value = b"content"
+        result = await transformer.transform(
+            {"attachment_urls": ["file:text::files/a.txt", "file:url::https://example.com/b.pdf"]}
+        )
+        assert result["attachment_urls"] == ["content", "https://example.com/b.pdf"]
