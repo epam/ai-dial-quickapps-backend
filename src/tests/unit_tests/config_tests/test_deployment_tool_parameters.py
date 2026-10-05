@@ -78,3 +78,21 @@ class TestReasoningEffort:
             DialDeploymentToolConfig.model_validate(
                 {"deployment_id": "gpt-5", "parameters": {"reasoning_effort": "xhigh"}}
             )
+
+
+class TestCustomFields:
+    def test_keeps_keys_besides_configuration(self):
+        """DIAL accepts more than `configuration` in `custom_fields`; none of it is dropped."""
+        params = DialDeploymentParameters.model_validate(
+            {
+                "custom_fields": {
+                    "configuration": {"betas": ["b1"]},
+                    "cache_breakpoint": {"expire_at": "x"},
+                }
+            }
+        )
+
+        assert params.model_dump(exclude_none=True)["custom_fields"] == {
+            "configuration": {"betas": ["b1"]},
+            "cache_breakpoint": {"expire_at": "x"},
+        }
