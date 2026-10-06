@@ -141,7 +141,6 @@ def make_request_completion():
             context_provider=provider,
             config_resolver=config_resolver,
             messages_setup=messages_setup,
-            proxy_settings=ProxySettings(),
         )
 
         mapping = {
@@ -172,7 +171,9 @@ def make_request_completion():
         mapping[quick_app_completion.PresentationSettings] = presentation_settings
 
         injector = FakeInjector(mapping, has_binding=has_binding)
-        completion = quick_app_completion._QuickAppCompletion(injector, presentation_settings)
+        completion = quick_app_completion._QuickAppCompletion(
+            injector, presentation_settings, ProxySettings()
+        )
         return request, completion, injector
 
     return _make
