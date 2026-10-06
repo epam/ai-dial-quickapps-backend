@@ -1799,7 +1799,7 @@
             }
           ],
           "default": null,
-          "description": "Built-in `task` tool: delegate a scoped sub-task to a subagent that runs in its own isolated context and returns a single result. Omit or set to null to disable. Set `enabled` to true to turn it on and declare the subagent types in `types`.",
+          "description": "Built-in `task` tool: delegate a scoped sub-task to a subagent that runs in its own isolated context and returns a single result. Omit or set to null to disable. Set `enabled` to true to turn it on; the remaining fields tune the built-in general-purpose subagent and declare further subagent types.",
           "x-preview": true
         }
       },
@@ -2017,6 +2017,53 @@
         }
       },
       "title": "ForwardAuthTokenAuthorization",
+      "type": "object"
+    },
+    "GeneralPurposeSubagentConfig": {
+      "description": "Tuning for the built-in ``general-purpose`` subagent.\n\nUnlike a declared type, its tool sets are not decided here: the coordinator names\nthem per call through the ``task`` tool's ``tool_sets`` argument, so a spoke's tool\nsurface fits the task at hand rather than the whole app.",
+      "properties": {
+        "system_prompt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "The subagent's instructions. Replaces the built-in general-purpose prompt, never appends to it. When unset, the built-in prompt is used.",
+          "title": "System Prompt"
+        },
+        "deployment_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Deployment for this subagent. When unset, the coordinator's is inherited.",
+          "title": "Deployment Id"
+        },
+        "max_iterations": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Iteration budget for one spawn. When unset, the coordinator's is inherited.",
+          "title": "Max Iterations"
+        }
+      },
+      "title": "GeneralPurposeSubagentConfig",
       "type": "object"
     },
     "HardStopStrategyModel": {
@@ -3755,13 +3802,24 @@
       "type": "object"
     },
     "SubagentsConfig": {
-      "description": "Delegation to subagents through the built-in ``task`` tool.\n\nA subagent is a helper agent the app spawns to carry out one scoped task. It runs\nits own orchestrator loop and returns a single result; its intermediate steps never\nenter the coordinator's conversation. The builder declares each subagent type with\na fixed prompt and tool allowlist.",
+      "description": "Delegation to subagents through the built-in ``task`` tool.\n\nA subagent is a helper agent the app spawns to carry out one scoped task. It runs\nits own orchestrator loop and returns a single result; its intermediate steps never\nenter the coordinator's conversation.\n\nTwo kinds are offered side by side: the built-in ``general-purpose`` subagent, whose\ntools the coordinator picks per call, and the ``types`` the builder declares, each\nwith a fixed prompt and tool allowlist.",
       "properties": {
         "enabled": {
           "default": false,
           "description": "Whether to offer the `task` tool, which spawns subagents.",
           "title": "Enabled",
           "type": "boolean"
+        },
+        "general_purpose": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GeneralPurposeSubagentConfig"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The built-in `general-purpose` subagent: the coordinator names the tool sets it may use on every call. Set to null to offer only the declared `types`."
         },
         "types": {
           "description": "Subagent types declared by the builder, each with a fixed system prompt and tool allowlist. The coordinator selects one by name.",

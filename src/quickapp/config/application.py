@@ -239,8 +239,8 @@ class Features(BaseModel):
         description=(
             "Built-in `task` tool: delegate a scoped sub-task to a subagent that runs in "
             "its own isolated context and returns a single result. Omit or set to null to "
-            "disable. Set `enabled` to true to turn it on and declare the subagent types "
-            "in `types`."
+            "disable. Set `enabled` to true to turn it on; the remaining fields tune the "
+            "built-in general-purpose subagent and declare further subagent types."
         ),
     )
 

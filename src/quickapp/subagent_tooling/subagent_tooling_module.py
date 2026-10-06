@@ -9,7 +9,7 @@ from quickapp.common.preview import preview_module
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.subagent import SubagentsConfig
 
-from ._manifest_compiler import tool_set_names, unknown_tool_sets
+from ._manifest_compiler import selectable_tool_sets, tool_set_names, unknown_tool_sets
 from ._subagent_settings import SpawnSemaphore, SubagentSettings
 from ._subagent_spawner import SubagentSpawner
 from ._subagent_stage_wrapper import _SubagentStageWrapper
@@ -78,16 +78,17 @@ class SubagentToolingModule(Module):
         config: SubagentsConfig,
         tool_builder: AssistedBuilder[_SubagentTool],
     ) -> list[StagedBaseTool]:
-        """The `task` tool, when this app opted into delegation and declares a subagent.
+        """The `task` tool, when this app opted into delegation and offers a subagent.
 
-        Its schema is built here rather than at import time because the
-        `subagent_type` enum is drawn from this app's declared types.
+        Its schema is built here rather than at import time because the `tool_sets` enum
+        is drawn from this app's own tool sets — the coordinator picks from them per
+        general-purpose spawn, so it needs to see them by name.
         """
-        if not config.enabled or not config.types:
+        if not config.enabled or (config.general_purpose is None and not config.types):
             return []
         return [
             tool_builder.build(
-                tool_config=build_spawn_tool_config(config),
+                tool_config=build_spawn_tool_config(config, selectable_tool_sets(app_config)),
                 name=TASK_TOOL_NAME,
             )
         ]
