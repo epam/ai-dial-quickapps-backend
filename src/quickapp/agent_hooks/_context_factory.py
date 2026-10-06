@@ -22,7 +22,8 @@ class HookContextFactory:
     def __init__(self, messages_provider: ProviderOf[MessagesMixin]) -> None:
         self._messages_provider = messages_provider
 
-    def request_start(self, messages: list[Message]) -> RequestStartHookContext:
+    @staticmethod
+    def request_start(messages: list[Message]) -> RequestStartHookContext:
         return RequestStartHookContext(
             event=HookEvent.ON_REQUEST_START.value,
             messages=[_to_hook_message(m) for m in messages],

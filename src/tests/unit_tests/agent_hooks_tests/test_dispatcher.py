@@ -6,7 +6,11 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from quickapp.agent_hooks._dispatcher import EVENT_DEFAULT_TIMEOUT, HookDispatcher, resolve_timeout
+from quickapp.agent_hooks._dispatcher import (
+    _EVENT_DEFAULT_TIMEOUT,
+    HookDispatcher,
+    _resolve_timeout,
+)
 from quickapp.agent_hooks._handlers import HookHandler, HookHandlerRegistry
 from quickapp.common.hook_context.context import HookResult, RequestStartHookContext
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig
@@ -42,13 +46,13 @@ async def _slow(context: Any) -> HookResult:
 
 class TestResolveTimeout:
     def test_hook_override_wins(self) -> None:
-        assert resolve_timeout(_hook("h", "on_completion", timeout_seconds=2.5)) == 2.5
+        assert _resolve_timeout(_hook("h", "on_completion", timeout_seconds=2.5)) == 2.5
 
     def test_completion_default_is_30_seconds(self) -> None:
-        assert resolve_timeout(_hook("h", "on_completion")) == 30.0
+        assert _resolve_timeout(_hook("h", "on_completion")) == 30.0
 
-    def test_request_start_default_is_unlimited(self) -> None:
-        assert resolve_timeout(_hook("h")) is None
+    def test_request_start_default_is_15_seconds(self) -> None:
+        assert _resolve_timeout(_hook("h")) == 15.0
 
 
 class TestRunHook:
@@ -72,21 +76,14 @@ class TestRunHook:
         assert "timed out" in caplog.text
 
     @pytest.mark.asyncio
-    async def test_event_default_timeout_is_applied(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setitem(EVENT_DEFAULT_TIMEOUT, HookEvent.ON_COMPLETION, 0.01)
-        hook = _hook("slow", "on_completion")
+    @pytest.mark.parametrize("event", [HookEvent.ON_COMPLETION, HookEvent.ON_REQUEST_START])
+    async def test_event_default_timeout_is_applied(
+        self, monkeypatch: pytest.MonkeyPatch, event: HookEvent
+    ) -> None:
+        monkeypatch.setitem(_EVENT_DEFAULT_TIMEOUT, event, 0.01)
+        hook = _hook("slow", event.value)
         dispatcher = _dispatcher([hook], {"slow": _handler(side_effect=_slow)})
         assert await dispatcher.run_hook(hook, _CONTEXT) is None
-
-    @pytest.mark.asyncio
-    async def test_no_timeout_for_request_start_by_default(self) -> None:
-        async def _short(context: Any) -> HookResult:
-            await asyncio.sleep(0.05)
-            return _result("short")
-
-        hook = _hook("short")
-        dispatcher = _dispatcher([hook], {"short": _handler(side_effect=_short)})
-        assert await dispatcher.run_hook(hook, _CONTEXT) == _result("short")
 
     @pytest.mark.asyncio
     async def test_exception_is_logged_and_returns_none(

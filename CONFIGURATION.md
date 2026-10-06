@@ -738,7 +738,7 @@ orchestrator seams. See
 | `tool_name`         | Yes      | String | Tool name within the toolset (or exact function name) | - |
 | `arguments`         | No       | Object | Arguments forwarded to the tool. Rendered as a [JSON-e](https://json-e.js.org) template against the hook context, see [Argument templates](#hook-argument-templates) | `{}` |
 | `name`              | No       | String | Optional hook label used in logs | `null` |
-| `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: no timeout for `on_request_start`, 30 s for `on_completion` | `null` |
+| `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: 15 s for `on_request_start`, 30 s for `on_completion` | `null` |
 | `frequency`         | No       | String | `on_request_start` only: `"always"` or `"append_if_changed"` | `append_if_changed` |
 | `refresh_condition` | No       | Object | `on_request_start` only: optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`). Cannot be combined with templated `arguments` | `null` |
 

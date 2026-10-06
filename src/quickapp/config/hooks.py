@@ -46,7 +46,7 @@ class _BaseHookConfig(BaseModel):
         gt=0,
         description=(
             "Maximum run time of one hook invocation, in seconds. When exceeded the hook is "
-            "cancelled and skipped. Defaults per event: unlimited for 'on_request_start', "
+            "cancelled and skipped. Defaults per event: 15 for 'on_request_start', "
             "30 for 'on_completion'."
         ),
     )

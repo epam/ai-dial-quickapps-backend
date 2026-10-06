@@ -10,16 +10,16 @@ from quickapp.config.hooks import HookConfig, HookEvent
 
 logger = logging.getLogger(__name__)
 
-EVENT_DEFAULT_TIMEOUT: dict[HookEvent, float | None] = {
-    HookEvent.ON_REQUEST_START: None,
+_EVENT_DEFAULT_TIMEOUT: dict[HookEvent, float] = {
+    HookEvent.ON_REQUEST_START: 15.0,
     HookEvent.ON_COMPLETION: 30.0,
 }
 
 
-def resolve_timeout(hook: HookConfig) -> float | None:
+def _resolve_timeout(hook: HookConfig) -> float:
     if hook.timeout_seconds is not None:
         return hook.timeout_seconds
-    return EVENT_DEFAULT_TIMEOUT[hook.event]
+    return _EVENT_DEFAULT_TIMEOUT[hook.event]
 
 
 @inject
@@ -36,11 +36,9 @@ class HookDispatcher:
 
     async def run_hook(self, hook: HookConfig, context: HookContext) -> HookResult | None:
         name = hook_display_name(hook)
-        timeout = resolve_timeout(hook)
+        timeout = _resolve_timeout(hook)
         try:
             handler = self._registry.handler_for(hook)
-            if timeout is None:
-                return await handler.run(context)
             return await asyncio.wait_for(handler.run(context), timeout)
         except TimeoutError:
             logger.warning(

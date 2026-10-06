@@ -389,14 +389,14 @@ class HookHandler(ABC):               # agent_hooks/_handlers.py
   raises. Timeout resolution:
 
   ```
-  effective = hook.timeout_seconds if set else EVENT_DEFAULT_TIMEOUT[event]
-  # EVENT_DEFAULT_TIMEOUT: on_completion=30, on_request_start=None
+  effective = hook.timeout_seconds if set else _EVENT_DEFAULT_TIMEOUT[event]
+  # _EVENT_DEFAULT_TIMEOUT: on_completion=30, on_request_start=15
   ```
 
-  `asyncio.wait_for` runs only when `effective` is not `None`. The dispatcher — not the seam or the
-  handler — is the single owner that turns omitted `timeout_seconds` into the event default before
-  `wait_for`. Without that step an omitted value would leave the open response bounded only by the
-  tool's own timeout.
+  `asyncio.wait_for` always runs with `effective`. The dispatcher — not the seam or the handler — is
+  the single owner that turns omitted `timeout_seconds` into the event default before `wait_for`.
+  Without that step an omitted value would leave the open response bounded only by the tool's own
+  timeout.
 - `dispatch(event, context)` — `run_hook` for every configured hook of `event`, **sequentially in
   manifest order**, returning the non-`None` results. Sequential (unlike Claude Code's parallel
   execution) keeps ordering deterministic; parallel execution can be an opt-in later. Used by
@@ -558,7 +558,7 @@ measured during Phase 1 and is the input to the decision on [Phase 2](#phase-2-b
 | Field | On | Type | Default | Description |
 |---|---|---|---|---|
 | `event` | base | `HookEvent` | required | Adds `on_completion` |
-| `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`; none for `on_request_start` (tool's own timeouts apply, as today) |
+| `timeout_seconds` | base | `float \| None` | `None` | Per-hook timeout. `None` = event default, resolved by `HookDispatcher.run_hook` (Component 4): 30 for `on_completion`, 15 for `on_request_start` (both block the response; the tool's own timeout still applies if shorter) |
 | `arguments` | `tool_call` | `dict[str, Any]` | `{}` | Now a JSON-e template (`${expr}`, `{"$eval": "expr"}`, operators) rendered against the hook context |
 | `frequency` | `tool_call` | `InjectionFrequency` | `append_if_changed` | `on_request_start` only (unchanged) |
 | `refresh_condition` | `tool_call` | `RefreshConditionConfig \| None` | `None` | `on_request_start` only (unchanged); not allowed together with a template in `arguments` |
