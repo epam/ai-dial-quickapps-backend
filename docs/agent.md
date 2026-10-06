@@ -357,9 +357,24 @@ coordinator's context, which is the point: the token and attention cost of a sub
 when the spoke returns. Nothing is deployed — a spoke exists only for the duration of one spawn.
 
 `features.subagents.enabled` is the switch. The coordinator's LLM gets one tool,
-`task(subagent_type, prompt)`, whose `subagent_type` enumerates the app's declared `types`:
-builder-authored spokes, each with a fixed `system_prompt` and `tool_sets` allowlist. A dangling
-allowlist entry is reported as a `ToolInitializationException` at app initialization, by name.
+`internal_task(subagent_type, prompt, tool_sets?)`, whose `subagent_type` enumerates two kinds of spoke:
+
+- **`general-purpose`** (built in, on unless `features.subagents.general_purpose` is `null`): the
+  coordinator scopes it per call. `tool_sets` is required for it and names which of the app's tool
+  sets the spoke may use; a spoke inherits none of the coordinator's tools, so the scoping decision
+  is made by the model at the moment it delegates — an allowlist a builder would have had to guess at
+  authoring time instead fits the task actually being delegated. The enum is drawn from the app's own
+  enabled tool sets, so a spoke can never reach a tool the coordinator does not already hold; `[]`
+  is a deliberate reasoning-only spoke. `_SubagentTool` rejects an unknown name with
+  `InvalidToolCallParameterException` rather than dropping it, since a spoke silently running with
+  fewer tools than intended answers from the prompt alone and sounds confident doing it. The prompt is
+  the built-in general-purpose one unless the builder replaced it.
+- **Declared `types`**: builder-authored, each with a fixed `system_prompt` and `tool_sets`
+  allowlist. `tool_sets` on such a call is rejected, not ignored. A dangling allowlist entry is
+  reported as a `ToolInitializationException` at app initialization, by name.
+
+Both kinds spawn the same way: the general-purpose one is materialized into the declared-type
+shape (`SubagentConfig`) for the call, so `SubagentSpawner` sees one input.
 
 **How a spawn runs.** `compile_subagent_manifest` deep-copies the coordinator's manifest and
 narrows it: the spoke's system prompt replaces the app's, `tool_sets` is filtered to the allowlist,

@@ -956,28 +956,50 @@ only for the duration of one spawn.
 Set `features.subagents.enabled` to `true` and your agent gets one extra tool:
 
 ```
-task(subagent_type, prompt)
+internal_task(subagent_type, prompt, tool_sets?)
 ```
 
-The subagents it can spawn are the `types` you declare — helpers defined up front, each with its own
-instructions and a fixed tool allowlist. Your agent selects one by name through `subagent_type`.
+Two kinds of subagent can be offered through it, side by side:
 
-`prompt` is the entire task. The subagent sees nothing else: not the user's message, not your
-agent's history, not another subagent's work.
+- **The built-in `general-purpose` subagent** — on by default, nothing to declare. Your agent
+  scopes it per call: `tool_sets` names which of this app's tool sets that spawn may use, chosen
+  from the ones you already configured. It inherits **none** of your agent's tools, so anything the
+  task needs has to be named; an empty list is valid and means a subagent that only reasons over the
+  text in `prompt`. Scoping the tools per call is what keeps a helper on task — one asked to research
+  something and handed only web search cannot wander into your other integrations, and it can never
+  reach a tool your app does not have.
+- **Declared `types`** — helpers you define up front, each with its own instructions and a fixed
+  tool allowlist. Use these when a job recurs and deserves a tuned prompt of its own; your agent
+  selects one by name and does not pass `tool_sets` for it.
+
+Either way, `prompt` is the entire task. The subagent sees nothing else: not the user's message,
+not your agent's history, not another subagent's work.
 
 #### `features.subagents`
 
 | Field             | Required | Type           | Description                                                                                                                                                                                | Default Value |
 |-------------------|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
 | `enabled`         | No       | Boolean        | Offer the `internal_task` tool.                                                                                                                                                            | `false`       |
+| `general_purpose` | No       | Object or null | Tuning for the built-in `general-purpose` subagent. See [`general_purpose`](#featuressubagentsgeneral_purpose). Set to `null` to offer only the declared `types`.                          | `{}`          |
 | `types`           | No       | Array          | Subagent types you declare, each with a fixed prompt and tool allowlist. See [`types[]`](#featuressubagentstypes).                                                                       | `[]`          |
-| `timeout_seconds` | No       | Number         | Wall-clock budget for one spawn. Narrows the admin ceiling (`SUBAGENT_TIMEOUT_SECONDS`) but never extends it.                                                                            | `null`        |
+| `timeout_seconds` | No       | Number         | Wall-clock budget for one spawn, of either kind. Narrows the admin ceiling (`SUBAGENT_TIMEOUT_SECONDS`) but never extends it.                                                            | `null`        |
+
+#### `features.subagents.general_purpose`
+
+| Field            | Required | Type    | Description                                                                                                 | Default Value |
+|------------------|----------|---------|-------------------------------------------------------------------------------------------------------------|---------------|
+| `system_prompt`  | No       | String  | The subagent's instructions. **Replaces** the built-in general-purpose prompt; it is not appended to it.    | `null`        |
+| `deployment_id`  | No       | String  | Model the subagent runs on. Omit to use the app's orchestrator model.                                       | `null`        |
+| `max_iterations` | No       | Integer | Iteration budget for one spawn. Omit to use the app's.                                                      | `null`        |
+
+Give your tool sets clear `name` and `description` values: both are shown to your agent when it
+picks the tools for a general-purpose spawn, and a set with no description is listed by name alone.
 
 #### `features.subagents.types[]`
 
 | Field            | Required | Type    | Description                                                                                                                                         | Default Value |
 |------------------|----------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `name`           | Yes      | String  | Identifier your agent uses to select this type. Must be unique.                                                                                    | —             |
+| `name`           | Yes      | String  | Identifier your agent uses to select this type. Must be unique, and may not be `general-purpose` unless that subagent is switched off.            | —             |
 | `description`    | Yes      | String  | When to use this subagent. Shown to your agent — this is how it chooses between types.                                                              | —             |
 | `system_prompt`  | Yes      | String  | The subagent's instructions. **Replaces** the app's system prompt; it is not appended to it.                                                        | —             |
 | `tool_sets`      | No       | Array   | Names of this app's tool sets the subagent may use (matched by resolved `name`). Omit to inherit every tool set; `[]` is a reasoning-only subagent. | `null`        |
@@ -987,18 +1009,32 @@ agent's history, not another subagent's work.
 **What a subagent inherits.** Your `contexts` (attached files), `skills`, `hooks`, and other
 `features` are passed on as-is. Note that attached files are inherited too, so each spawn re-pays
 their token cost — keep that in mind before attaching large files to an app that spawns often.
-Tools are the exception: a subagent gets only its allowlist. A subagent can never spawn another
-subagent.
+Tools are the exception: a general-purpose spawn gets only what the `internal_task` call named, a declared
+type only its allowlist. A subagent can never spawn another subagent.
 
-**Errors.** A declared type that references a tool set this app does not define (or has disabled)
-is reported at app initialization. Naming an unknown `subagent_type` fails the call with the list of
-valid names, so the agent can retry. A subagent that runs out of iterations or wall-clock time
-fails the call rather than returning a half-finished answer.
+**Errors your agent will see.** Naming a tool set this app does not define (or has disabled) fails
+the call with the list of valid names, so the agent can retry; a declared type that references such
+a tool set is reported at app initialization instead. Passing `tool_sets` for a declared type fails
+the call too. A subagent that runs out of iterations or wall-clock time fails the call rather than
+returning a half-finished answer.
 
 <details>
 <summary><b>Subagents configuration JSON sample</b></summary>
 
-One declared type for a recurring job, with a shorter leash:
+Zero configuration — turn it on and your agent scopes each helper itself:
+
+```json
+{
+  "features": {
+    "subagents": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Tuned: a cheaper model and instructions of your own for the general-purpose subagent, a shorter
+leash, and one declared type for a recurring job:
 
 ```json
 {
@@ -1013,6 +1049,11 @@ One declared type for a recurring job, with a shorter leash:
   "features": {
     "subagents": {
       "enabled": true,
+      "general_purpose": {
+        "system_prompt": "You are a research assistant. Reply with the answer and at most five supporting bullets, each with a source.",
+        "deployment_id": "gpt-4o-mini-2024-07-18",
+        "max_iterations": 12
+      },
       "types": [
         {
           "name": "web_researcher",
