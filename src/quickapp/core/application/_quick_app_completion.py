@@ -10,6 +10,7 @@ from injector import Injector, inject
 
 from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
+from quickapp.common.completion_inputs import CompletionInputs
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -21,6 +22,7 @@ from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 from ._exception_message_resolver import ResolvedError, resolve_exception
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_validator import validate_messages_shape
+from ._proxy_settings import ProxySettings
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 
@@ -52,9 +54,11 @@ class _QuickAppCompletion(ChatCompletion):
         self,
         injector: Injector,
         presentation_settings: PresentationSettings,
+        proxy_settings: ProxySettings,
     ):
         self.__injector: Injector = injector
         self.__presentation_settings: PresentationSettings = presentation_settings
+        self.__proxy_settings: ProxySettings = proxy_settings
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
@@ -68,9 +72,12 @@ class _QuickAppCompletion(ChatCompletion):
             error_reference: str | None = None
             agent_invoker: Orchestrator | None = None
             try:
+                inputs = await CompletionInputs.from_request(
+                    request, choice, self.__proxy_settings.language_header
+                )
                 request_context_setup = self.__injector.get(_RequestContextSetup)
                 try:
-                    await request_context_setup.setup_context(request, choice)
+                    await request_context_setup.setup_context(inputs)
                 except ConfigResolutionException:
                     # System prompt resolution is the only path that still raises;
                     # tool / toolset failures are skip-and-record inside the resolver.
@@ -155,7 +162,8 @@ class _QuickAppCompletion(ChatCompletion):
         )
 
     async def configuration(self, request: ConfigurationRequest) -> ConfigurationResponse:
-        await self.__injector.get(_RequestContextSetup).setup_context(request)
+        inputs = await CompletionInputs.from_request(request)
+        await self.__injector.get(_RequestContextSetup).setup_context(inputs)
         await invoke_initializers(self.__injector, InitializerType.configuration)
         if not self.__injector.binder.has_explicit_binding_for(list[Configuration]):
             return ConfigurationResponse()
