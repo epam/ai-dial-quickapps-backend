@@ -251,7 +251,7 @@ The project contains predefined configs of application and predefined tools
 | tool_sets    | Yes      | List[Object] | The list of tool sets. Toolset contains tools with their configurations that groped by some type. [Tool sets configuration](#tool-sets-configuration) | -                | -             |
 | features     | No       | Object       | Per-app feature overrides (file loading, external URL egress, stage display, dial files, etc.). [Features configuration](#features-configuration)      | -                | `{}`          |
 | skills       | No       | List[Object] | Optional list of DIAL prompt / DIAL skill resources. [Skills configuration](#skills-configuration)                                                    | -                | `null`        |
-| hooks        | No       | List[Object] | `[Preview]` Config-driven synthetic tool-call hooks. [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
+| hooks        | No       | List[Object] | `[Preview]` Config-driven tool-call hooks fired at orchestrator seams (`on_request_start`, `on_completion`). [Hooks configuration](#hooks-configuration)                                                      | -                | `null`        |
 | tool_defaults | No      | Object       | Defaults applied to every tool call (e.g. timeout). [Tool defaults configuration](#tool-defaults-configuration)                                       | -                | `{}`          |
 | conversation_starters | No | Object    | Conversation starter chips. [Conversation starters](#conversation-starters-configuration). Deprecated top-level `starters` still accepted. | -                | `null`        |
 
@@ -726,20 +726,171 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 
 ### Hooks configuration
 
-Requires `ENABLE_PREVIEW_FEATURES=true`. Top-level `hooks` array injects synthetic tool-call pairs
-at named orchestrator seams. See
-[docs/designs/config_driven_hooks.md](docs/designs/config_driven_hooks.md).
+Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
+orchestrator seams. See
+[docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
 
-| Field              | Required | Type   | Description | Default |
-|--------------------|----------|--------|-------------|---------|
-| `kind`             | Yes      | String | Only `"tool_call"` today | - |
-| `event`            | Yes      | String | Only `"on_request_start"` wired today | - |
-| `toolset_name`     | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
-| `tool_name`        | Yes      | String | Tool name within the toolset (or exact function name) | - |
-| `arguments`        | No       | Object | Arguments forwarded to the tool | `{}` |
-| `frequency`        | No       | String | `"always"` or `"append_if_changed"` | `append_if_changed` |
-| `name`             | No       | String | Optional hook label | `null` |
-| `refresh_condition`| No       | Object | Optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`) | `null` |
+| Field               | Required | Type   | Description | Default |
+|---------------------|----------|--------|-------------|---------|
+| `kind`              | Yes      | String | Only `"tool_call"` today | - |
+| `event`             | Yes      | String | `"on_request_start"` (result is injected as a synthetic tool-call pair before the first LLM call) or `"on_completion"` (fires after a finished turn; the result is discarded) | - |
+| `toolset_name`      | No       | String | Prefix for REST/MCP tools; omit for DIAL deployment / internal | `null` |
+| `tool_name`         | Yes      | String | Tool name within the toolset (or exact function name) | - |
+| `arguments`         | No       | Object | Arguments forwarded to the tool. Rendered as a [JSON-e](https://json-e.js.org) template against the hook context, see [Argument templates](#hook-argument-templates) | `{}` |
+| `name`              | No       | String | Optional hook label used in logs | `null` |
+| `timeout_seconds`   | No       | Number | Per-hook timeout (`> 0`). A hook that times out is logged and skipped. Defaults: 15 s for `on_request_start`, 30 s for `on_completion` | `null` |
+| `frequency`         | No       | String | `on_request_start` only: `"always"` or `"append_if_changed"` | `append_if_changed` |
+| `refresh_condition` | No       | Object | `on_request_start` only: optional TTL refresh (`{"kind":"ttl","ttl_minutes":N}`). Cannot be combined with templated `arguments` | `null` |
+
+`frequency` and `refresh_condition` describe how the injected message pair is kept in the history, so they
+are rejected for `on_completion`. An `on_completion` hook runs for its side effect only: the tool result is
+discarded and is never shown to the user or added to the conversation. A failing or timed-out hook never
+fails the request: the error is logged and the hook is skipped.
+
+#### Hook argument templates
+
+`arguments` is a [JSON-e](https://json-e.js.org) template, rendered against the hook context when the hook
+fires. Every JSON-e feature is available: `${expr}` interpolation in strings, `{"$eval": "expr"}`, the
+operators (`$if`, `$map`, `$let`, `$flatten`, `$merge`, `$sort`, ...), and the built-in functions (`len`,
+`lowercase`, `join`, `split`, ...). See the JSON-e documentation for the full expression language.
+
+The context exposes these top-level names:
+
+| Root | Available for | Meaning |
+|------|---------------|---------|
+| `messages` | both events | The conversation as seen by the hook (list of messages with `role`, `content`, `tool_calls`, `tool_call_id`) |
+| `last_user_message` | both events | The last `user` message |
+| `last_assistant_message` | both events | The last `assistant` message that has no tool calls (`null` if there is none, for example on the first turn) |
+| `iteration_count` | `on_completion` | Number of orchestrator iterations in the turn |
+| `total_tool_calls` | `on_completion` | Number of tool calls made in the turn |
+
+Path syntax: `last_user_message.content`, list indexes `messages[0].content` and `messages[-1].content`,
+and slices `messages[-4:]`.
+
+- `"Q: ${last_user_message.content}"` interpolates the value as **text** (numbers and booleans are
+  stringified, `null` becomes an empty string). Interpolating an object or an array is an error: use `$eval`.
+- `{"$eval": "expr"}` keeps the value's **JSON type**: `{"$eval": "iteration_count"}` becomes the number `3`,
+  `{"$eval": "messages[-4:]"}` becomes a list of messages.
+- Use `$${` to write a literal `${`, and `$$` to start an object key with a literal `$`. Object keys are
+  templated too.
+- An expression that cannot be evaluated for the current request (for example `last_assistant_message.content`
+  on the first turn, where `last_assistant_message` is `null`) skips that hook for the request. A value that is
+  exactly `null` at the end of a path is passed to the tool as `null`.
+- When the configuration is validated, the syntax of `${...}`, `$eval` and `$if` expressions is checked, and
+  so are the names and fields they read (for example a typo such as `last_user_message.contnet`). Other
+  operators are checked only when the hook fires.
+- `refresh_condition` cannot be combined with a template, because the tool arguments change from turn to turn.
+
+Example: fetch memories relevant to the user's message at the start of a turn.
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "name": "recall-memory",
+      "toolset_name": "memory_server",
+      "tool_name": "search_memories",
+      "arguments": { "query": "${last_user_message.content}" }
+    }
+  ]
+}
+```
+
+Example: save the finished turn.
+
+```json
+{
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_completion",
+      "name": "save-memory",
+      "toolset_name": "memory_server",
+      "tool_name": "save_memory",
+      "arguments": {
+        "user_message": { "$eval": "last_user_message.content" },
+        "assistant_message": { "$eval": "last_assistant_message.content" },
+        "recent": { "$eval": "messages[-4:]" },
+        "note": "Turn finished after ${iteration_count} iterations"
+      },
+      "timeout_seconds": 20
+    }
+  ]
+}
+```
+
+Example: pass only the dialog, filtered by role. `messages` also holds the system prompt, tool results and
+synthetic tool-call pairs injected by other features (skills, timestamp, other hooks), so a slice such as
+`messages[-4:]` is not "the last four utterances". JSON-e has no `filter` function, but `$map` drops an
+element when its `$if` has no `else`, which gives the same result.
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$map": { "$eval": "messages" },
+      "each(m)": {
+        "$if": "m.role == 'user' || m.role == 'assistant'",
+        "then": { "$eval": "m" }
+      }
+    }
+  }
+}
+```
+
+This keeps every `user` and `assistant` message, including the empty `assistant` messages that only carry
+tool calls. To keep only real utterances, require that an `assistant` message has no tool calls, and keep just
+the fields the tool needs:
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$map": { "$eval": "messages" },
+      "each(m)": {
+        "$if": "m.role == 'user' || (m.role == 'assistant' && len(m.tool_calls) == 0)",
+        "then": { "role": { "$eval": "m.role" }, "content": { "$eval": "m.content" } }
+      }
+    }
+  }
+}
+```
+
+To take the last N utterances, apply the slice to the filtered list, not to `messages`: bind the result with
+`$let` and slice it in `in`.
+
+```json
+{
+  "arguments": {
+    "dialog": {
+      "$let": {
+        "d": {
+          "$map": { "$eval": "messages" },
+          "each(m)": {
+            "$if": "m.role == 'user' || (m.role == 'assistant' && len(m.tool_calls) == 0)",
+            "then": { "role": { "$eval": "m.role" }, "content": { "$eval": "m.content" } }
+          }
+        }
+      },
+      "in": { "$eval": "d[-4:]" }
+    }
+  }
+}
+```
+
+Notes for these examples:
+
+- On `on_request_start` the list includes the current user message; on `on_completion` it also ends with the
+  final answer.
+- The content of an `assistant` message restored from the conversation history can start with a line break.
+  Use `strip(m.content)` to remove it.
+- Names bound inside the template (`m`, `d`) are not checked when the configuration is validated, so a typo such
+  as `m.contnet` is reported only when the hook fires.
+
+A string in `arguments` that contains `${` is interpolated, so write a literal `${` as `$${`. Hooks whose
+`arguments` contain neither `${` nor a `$`-operator key are passed to the tool unchanged.
 
 ### Tool defaults configuration
 

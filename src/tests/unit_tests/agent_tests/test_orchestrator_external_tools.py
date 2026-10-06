@@ -1,7 +1,8 @@
 """Unit tests for Orchestrator external tool routing (partition logic)."""
 
+import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from aidial_sdk.chat_completion.request import Message, Role
@@ -28,6 +29,7 @@ def _make_orchestrator(
     tool_names: frozenset[str],
     stream_handler_side_effect,
     tool_executor: Mock | None = None,
+    completion_hook_runners: list | None = None,
 ) -> tuple[Orchestrator, SpyChoice]:
     messages_context = Mock()
     messages_context.append_message = Mock(side_effect=lambda msg: messages_list.append(msg))
@@ -65,6 +67,7 @@ def _make_orchestrator(
         tool_names=tool_names,
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=completion_hook_runners or [],
     )
     return orch, choice
 
@@ -148,6 +151,7 @@ async def test_all_external_tool_calls_surfaced_with_correct_id_name_args():
         tool_names=frozenset({"ext_a", "ext_b"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orch.invoke()
@@ -218,6 +222,7 @@ async def test_mixed_batch_executes_internal_and_surfaces_external():
         tool_names=frozenset({"ext_tool"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orch.invoke()
@@ -292,6 +297,7 @@ async def test_all_internal_tools_loop_continues():
         tool_names=frozenset({"some_ext_tool"}),  # server_tool is NOT external
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orch.invoke()
@@ -356,6 +362,7 @@ async def test_no_external_tools_configured_existing_behavior_unchanged():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orch.invoke()
@@ -420,6 +427,7 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
         tool_names=frozenset({"ext_tool"}),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orch.invoke()
@@ -441,3 +449,95 @@ async def test_mixed_batch_persists_history_without_external_tool_calls():
     assistant_tool_calls = history[0]["tool_calls"]
     assert len(assistant_tool_calls) == 1
     assert assistant_tool_calls[0]["function"]["name"] == "server_tool"
+
+
+# ---------------------------------------------------------------------------
+# Completion hook runners
+# ---------------------------------------------------------------------------
+
+
+def _completion_runner(side_effect=None) -> Mock:
+    return Mock(run=AsyncMock(side_effect=side_effect))
+
+
+@pytest.mark.asyncio
+async def test_completion_runner_runs_once_after_completed_turn():
+    runner = _completion_runner()
+    orch, _ = _make_orchestrator(
+        [Message(role=Role.USER, content="hi")],
+        tool_names=frozenset(),
+        stream_handler_side_effect=[_stream_result()],
+        completion_hook_runners=[runner],
+    )
+
+    await orch.invoke()
+
+    runner.run.assert_awaited_once_with(iteration_count=1, total_tool_calls=0)
+
+
+@pytest.mark.asyncio
+async def test_completion_runner_is_skipped_when_turn_ends_with_external_tool_calls():
+    runner = _completion_runner()
+    result = _stream_result(tool_calls=[_make_tool_call("id-1", "ext_tool")])
+    orch, _ = _make_orchestrator(
+        [Message(role=Role.USER, content="hi")],
+        tool_names=frozenset({"ext_tool"}),
+        stream_handler_side_effect=[result],
+        completion_hook_runners=[runner],
+    )
+
+    await orch.invoke()
+
+    runner.run.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_failing_completion_runner_does_not_fail_the_turn_or_block_next_runner():
+    failing = _completion_runner(side_effect=RuntimeError("boom"))
+    following = _completion_runner()
+    orch, _ = _make_orchestrator(
+        [Message(role=Role.USER, content="hi")],
+        tool_names=frozenset(),
+        stream_handler_side_effect=[_stream_result()],
+        completion_hook_runners=[failing, following],
+    )
+
+    await orch.invoke()
+
+    failing.run.assert_awaited_once()
+    following.run.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_completion_runner_cancellation_propagates():
+    runner = _completion_runner(side_effect=asyncio.CancelledError())
+    orch, _ = _make_orchestrator(
+        [Message(role=Role.USER, content="hi")],
+        tool_names=frozenset(),
+        stream_handler_side_effect=[_stream_result()],
+        completion_hook_runners=[runner],
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await orch.invoke()
+
+
+@pytest.mark.asyncio
+async def test_completion_runner_runs_before_request_resources_are_closed():
+    order: list[str] = []
+    runner = _completion_runner(side_effect=lambda **_: order.append("runner"))
+    orch, _ = _make_orchestrator(
+        [Message(role=Role.USER, content="hi")],
+        tool_names=frozenset(),
+        stream_handler_side_effect=[_stream_result()],
+        completion_hook_runners=[runner],
+    )
+
+    with patch.object(
+        RequestAsyncCloseRegistry,
+        "aclose_all",
+        AsyncMock(side_effect=lambda: order.append("close")),
+    ):
+        await orch.invoke()
+
+    assert order == ["runner", "close"]

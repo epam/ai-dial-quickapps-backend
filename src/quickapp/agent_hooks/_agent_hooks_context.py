@@ -1,6 +1,6 @@
 from injector import ProviderOf, inject
 
-from quickapp.agent_hooks._config_driven_hooks import resolve_hook_tool_name
+from quickapp.agent_hooks._handlers import resolve_hook_tool_name
 from quickapp.common.exceptions import HookInitializationException, InitializationException
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import ApplicationConfig

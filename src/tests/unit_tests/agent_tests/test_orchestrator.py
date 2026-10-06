@@ -119,6 +119,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -200,6 +201,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -260,6 +262,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(openai.APIError):
@@ -363,6 +366,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -447,6 +451,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -536,6 +541,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -599,6 +605,7 @@ def _make_orchestrator(
         suppressed_attachment_registry=(
             suppressed_attachment_registry or SuppressedAttachmentRegistry()
         ),
+        completion_hook_runners=[],
     )
 
 
@@ -930,6 +937,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -1043,6 +1051,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):
