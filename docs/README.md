@@ -73,6 +73,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 | Capability | Configure (L1) | Behaviour (L2) | Design (L3) |
 |------------|----------------|----------------|-------------|
 | MCP per-tool configuration | [CONFIGURATION — MCP per-tool](../CONFIGURATION.md#mcp-per-tool-configuration) | — | — |
+| Subagents (`internal_task`) | [CONFIGURATION — Subagents](../CONFIGURATION.md#subagents-configuration) | [agent.md](./agent.md) | [anonymous_subagents.md](./designs/anonymous_subagents.md) |
 | Tool-result offload | [CONFIGURATION — DIAL files offload](../CONFIGURATION.md#tool-call-result-offload) | — | [large_tool_responses.md](./designs/large_tool_responses.md) |
 
 ## Behaviour guides (L2)
