@@ -22,9 +22,9 @@ def tool_set_name(tool_set: ToolSet) -> str | None:
     because the declared type of ``ApplicationConfig.tool_sets`` still admits it.
 
     A tool set name is a ``LocalizedString``, so it may be a per-locale mapping rather
-    than a plain string. Resolved with no locale — the default-locale form — because a
-    subagent's allowlist names tool sets by identifier, and that identifier must not
-    shift with the caller's Accept-Language.
+    than a plain string. Resolved with no locale — the default-locale form — because the
+    coordinator selects a tool set by an identifier it read out of the `task` tool's
+    schema, and that identifier must not shift with the caller's Accept-Language.
     """
     if isinstance(tool_set, PredefinedToolSet):
         return None
@@ -48,8 +48,9 @@ def selectable_tool_sets(config: ApplicationConfig) -> list[ToolSet]:
 def tool_set_names(config: ApplicationConfig) -> list[str]:
     """Names of the app's selectable tool sets, in manifest order.
 
-    One definition for every check of a declared type's allowlist, at initialization
-    and at spawn time alike.
+    One definition, three call sites: it fills the `task` tool's `tool_sets` enum, it
+    vets what the coordinator passed back for a general-purpose spawn, and it checks a
+    declared type's allowlist at initialization.
     """
     return [name for ts in selectable_tool_sets(config) if (name := tool_set_name(ts))]
 
@@ -70,7 +71,8 @@ def compile_subagent_manifest(
     """Compile one subagent plus the coordinator's manifest into one the orchestrator can run.
 
     The spoke is just a QuickApp with a narrowed manifest — which is why the tool
-    allowlist needs no dedicated filtering machinery.
+    allowlist needs no dedicated filtering machinery. ``subagent`` is either a declared
+    type or the general-purpose one materialized for this call.
     """
     manifest = parent.model_copy(deep=True)
 
