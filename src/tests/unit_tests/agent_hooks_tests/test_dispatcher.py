@@ -63,6 +63,32 @@ class TestRunHook:
         assert await dispatcher.run_hook(hook, _CONTEXT) == _result("a")
 
     @pytest.mark.asyncio
+    async def test_success_is_logged_without_content(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hook = _hook("a")
+        dispatcher = _dispatcher([hook], {"a": _handler(_result("a"))})
+
+        with caplog.at_level(logging.DEBUG):
+            await dispatcher.run_hook(hook, _CONTEXT)
+
+        assert "completed" in caplog.text
+        assert "'a'" in caplog.text
+        assert "content-a" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_skipped_hook_is_not_logged_as_completed(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        hook = _hook("a")
+        dispatcher = _dispatcher([hook], {"a": _handler(None)})
+
+        with caplog.at_level(logging.DEBUG):
+            assert await dispatcher.run_hook(hook, _CONTEXT) is None
+
+        assert "completed" not in caplog.text
+
+    @pytest.mark.asyncio
     async def test_slow_handler_is_cut_off_by_hook_timeout(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
