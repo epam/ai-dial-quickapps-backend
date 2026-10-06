@@ -1,8 +1,9 @@
 """Tests for in-process subagent spawning.
 
 Cover the guarantees the feature rests on: a spawned subagent runs its own
-orchestrator loop against its own compiled manifest, in a DI request scope isolated
-from the coordinator's, and never touches the coordinator's state.
+orchestrator loop against its own compiled manifest — a declared type's, or the
+general-purpose one scoped by the call — in a DI request scope isolated from the
+coordinator's, and never touches the coordinator's state.
 """
 
 import asyncio
@@ -25,11 +26,20 @@ from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import UserDefinedContextConfig
 from quickapp.config.starters import ConversationStarter, ConversationStartersConfig
-from quickapp.config.subagent import SubagentConfig, SubagentsConfig
+from quickapp.config.subagent import (
+    GENERAL_PURPOSE_SUBAGENT_NAME,
+    GeneralPurposeSubagentConfig,
+    SubagentConfig,
+    SubagentsConfig,
+)
 from quickapp.config.toolsets.internal import InternalToolSet
 from quickapp.core.agent.orchestrator import Orchestrator
 from quickapp.core.application import _InitializationErrorHandler, _RequestContext
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.subagent_tooling._builtin_subagents import (
+    GENERAL_PURPOSE_SYSTEM_PROMPT,
+    general_purpose_subagent,
+)
 from quickapp.subagent_tooling._exceptions import (
     SubagentToolErrorException,
     SubagentToolSetResolutionError,
@@ -47,6 +57,8 @@ RESEARCHER = SubagentConfig(
     tool_sets=["research"],
     max_iterations=3,
 )
+
+GENERAL_PURPOSE = GeneralPurposeSubagentConfig()
 
 
 def _parent_config(subagents: SubagentsConfig | None = None) -> ApplicationConfig:
@@ -114,9 +126,27 @@ def _spawn_tool(injector: Injector) -> StagedBaseTool | None:
 # --- config -----------------------------------------------------------------------
 
 
+def test_a_declared_type_may_not_shadow_the_general_purpose_name():
+    with pytest.raises(ValidationError, match="unique"):
+        SubagentsConfig(
+            enabled=True,
+            types=[RESEARCHER.model_copy(update={"name": GENERAL_PURPOSE_SUBAGENT_NAME})],
+        )
+
+
 def test_declared_type_names_must_be_unique():
     with pytest.raises(ValidationError, match="researcher"):
         SubagentsConfig(enabled=True, types=[RESEARCHER, RESEARCHER])
+
+
+def test_the_reserved_name_is_free_once_general_purpose_is_off():
+    config = SubagentsConfig(
+        enabled=True,
+        general_purpose=None,
+        types=[RESEARCHER.model_copy(update={"name": GENERAL_PURPOSE_SUBAGENT_NAME})],
+    )
+
+    assert [s.name for s in config.types] == [GENERAL_PURPOSE_SUBAGENT_NAME]
 
 
 # --- manifest compilation ---------------------------------------------------------
@@ -151,6 +181,55 @@ def test_manifest_compilation_narrows_the_spoke():
     assert parent.conversation_starters is not None
 
 
+def test_a_general_purpose_spoke_gets_only_the_tool_sets_the_spawn_asked_for():
+    """The core of the general-purpose design: tools are scoped per call, never inherited."""
+    parent = _parent_config()
+
+    manifest = compile_subagent_manifest(
+        parent, general_purpose_subagent(GENERAL_PURPOSE, ["reporting"])
+    )
+
+    assert [ts.name for ts in manifest.tool_sets] == ["reporting"]
+    assert manifest.orchestrator.system_prompt.content == GENERAL_PURPOSE_SYSTEM_PROMPT
+
+
+def test_an_empty_request_yields_a_toolless_general_purpose_spoke():
+    """`[]` is a deliberate reasoning-only subagent, not a mistake to correct."""
+    manifest = compile_subagent_manifest(
+        _parent_config(), general_purpose_subagent(GENERAL_PURPOSE, [])
+    )
+
+    assert manifest.tool_sets == []
+
+
+def test_general_purpose_overrides_replace_the_defaults():
+    tuned = GeneralPurposeSubagentConfig(
+        system_prompt="Be terse.", deployment_id="gpt-4.1-2025-04-14", max_iterations=3
+    )
+
+    manifest = compile_subagent_manifest(
+        _parent_config(), general_purpose_subagent(tuned, ["research"])
+    )
+
+    assert manifest.orchestrator.system_prompt.content == "Be terse."
+    assert manifest.orchestrator.deployment.deployment_id == "gpt-4.1-2025-04-14"
+    assert manifest.orchestrator.max_iterations == 3
+
+
+def test_unset_overrides_inherit_the_coordinator_model_and_budget():
+    parent = _parent_config()
+
+    manifest = compile_subagent_manifest(
+        parent, general_purpose_subagent(GENERAL_PURPOSE, ["research"])
+    )
+
+    assert (
+        manifest.orchestrator.deployment.deployment_id
+        == parent.orchestrator.deployment.deployment_id
+    )
+    assert manifest.orchestrator.max_iterations == parent.orchestrator.max_iterations
+
+
 def test_unresolvable_tool_sets_fail_the_spawn():
     """A subagent that asked for tools and got none must not run: it would answer
     from the task text alone and sound confident doing it."""
@@ -178,10 +257,11 @@ def test_empty_declared_tool_sets_is_allowed():
 
 
 @pytest.mark.asyncio
-async def test_spawn_tool_offers_the_declared_types(monkeypatch):
+async def test_spawn_tool_offers_declared_types_and_the_general_purpose_subagent(monkeypatch):
     monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
 
     config = _parent_config()
+    config.tool_sets[0].description = "Digs through sources."
 
     injector = _test_injector()
     scope_factory = injector.get(RequestScopeFactory)
@@ -194,10 +274,35 @@ async def test_spawn_tool_offers_the_declared_types(monkeypatch):
     assert tool is not None
     function = tool.tool_config.open_ai_tool.function
     properties = function.parameters.properties
-    assert sorted(properties) == ["prompt", "subagent_type"]
+    assert sorted(properties) == ["prompt", "subagent_type", "tool_sets"]
     assert function.parameters.required == ["subagent_type", "prompt"]
-    assert properties["subagent_type"].enum == ["researcher"]
+    assert properties["subagent_type"].enum == [GENERAL_PURPOSE_SUBAGENT_NAME, "researcher"]
     assert "researcher: Digs through sources" in function.description
+    assert f"{GENERAL_PURPOSE_SUBAGENT_NAME}: General-purpose" in function.description
+    assert properties["tool_sets"].items.enum == ["research", "reporting"]
+    # The catalogue: the coordinator knows its tools but not which set holds them.
+    assert "- research: Digs through sources." in properties["tool_sets"].description
+    assert "- reporting" in properties["tool_sets"].description
+
+
+@pytest.mark.asyncio
+async def test_spawn_tool_without_general_purpose_offers_no_tool_sets_argument(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+
+    config = _parent_config(SubagentsConfig(enabled=True, general_purpose=None, types=[RESEARCHER]))
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, config)
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+
+    assert tool is not None
+    properties = tool.tool_config.open_ai_tool.function.parameters.properties
+    assert sorted(properties) == ["prompt", "subagent_type"]
+    assert properties["subagent_type"].enum == ["researcher"]
 
 
 @pytest.mark.asyncio
@@ -206,7 +311,7 @@ async def test_spawn_tool_offers_the_declared_types(monkeypatch):
     [
         None,
         SubagentsConfig(enabled=False, types=[RESEARCHER]),
-        SubagentsConfig(enabled=True),
+        SubagentsConfig(enabled=True, general_purpose=None),
     ],
     ids=["absent", "disabled", "nothing to spawn"],
 )
@@ -228,6 +333,109 @@ async def test_no_spawn_tool_unless_a_subagent_is_offered(monkeypatch, subagents
 
 
 @pytest.mark.asyncio
+async def test_disabled_tool_sets_are_not_selectable(monkeypatch):
+    """A disabled set produces no tools, so offering it would only invite an empty spoke."""
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+
+    config = _parent_config()
+    config.tool_sets[1].enabled = False
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, config)
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+
+        assert tool is not None
+        assert tool.tool_config.open_ai_tool.function.parameters.properties[
+            "tool_sets"
+        ].items.enum == ["research"]
+
+        with pytest.raises(InvalidToolCallParameterException):
+            await tool._run_in_stage_async(
+                subagent_type=GENERAL_PURPOSE_SUBAGENT_NAME,
+                prompt="Report.",
+                tool_sets=["reporting"],
+            )
+
+
+@pytest.mark.asyncio
+async def test_an_unknown_tool_set_fails_the_call_without_spawning(monkeypatch):
+    """Dropping the bad name instead would run a spoke with fewer tools than intended,
+    which does not error — it answers from the prompt alone."""
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    _FakeOrchestrator.seen = []
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, _parent_config())
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+        assert tool is not None
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(
+                subagent_type=GENERAL_PURPOSE_SUBAGENT_NAME,
+                prompt="Dig in.",
+                tool_sets=["Fetch MCP toolset"],
+            )
+
+    assert "Fetch MCP toolset" in str(excinfo.value)
+    assert "research" in str(excinfo.value)
+    assert _FakeOrchestrator.seen == []
+
+
+@pytest.mark.asyncio
+async def test_omitting_tool_sets_fails_a_general_purpose_call(monkeypatch):
+    """Required, so that a tool-less spoke is always a deliberate choice."""
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, _parent_config())
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+        assert tool is not None
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(
+                subagent_type=GENERAL_PURPOSE_SUBAGENT_NAME, prompt="Dig in."
+            )
+
+    assert excinfo.value.parameter_name == "tool_sets"
+
+
+@pytest.mark.asyncio
+async def test_tool_sets_on_a_declared_type_fails_the_call(monkeypatch):
+    """A declared type's allowlist is the builder's; silently ignoring the argument
+    would let the coordinator believe it narrowed a spoke it did not."""
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    _FakeOrchestrator.seen = []
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, _parent_config())
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+        assert tool is not None
+
+        with pytest.raises(InvalidToolCallParameterException, match="fixed tool set"):
+            await tool._run_in_stage_async(
+                subagent_type="researcher", prompt="Dig in.", tool_sets=["research"]
+            )
+
+    assert _FakeOrchestrator.seen == []
+
+
+@pytest.mark.asyncio
 async def test_an_unknown_subagent_type_fails_the_call(monkeypatch):
     monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
 
@@ -244,6 +452,30 @@ async def test_an_unknown_subagent_type_fails_the_call(monkeypatch):
             await tool._run_in_stage_async(subagent_type="plumber", prompt="Fix it.")
 
     assert "researcher" in str(excinfo.value)
+    assert GENERAL_PURPOSE_SUBAGENT_NAME in str(excinfo.value)
+
+
+@pytest.mark.asyncio
+async def test_the_general_purpose_name_is_unknown_once_switched_off(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+
+    config = _parent_config(SubagentsConfig(enabled=True, general_purpose=None, types=[RESEARCHER]))
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, config)
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+        assert tool is not None
+
+        with pytest.raises(InvalidToolCallParameterException) as excinfo:
+            await tool._run_in_stage_async(
+                subagent_type=GENERAL_PURPOSE_SUBAGENT_NAME, prompt="Dig in.", tool_sets=[]
+            )
+
+    assert excinfo.value.parameter_name == "subagent_type"
 
 
 @pytest.mark.asyncio
@@ -306,6 +538,33 @@ async def test_spawn_runs_in_an_isolated_request_scope(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_general_purpose_spawn_runs_with_the_tool_sets_the_call_named(monkeypatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    _FakeOrchestrator.seen = []
+
+    injector = _test_injector()
+    scope_factory = injector.get(RequestScopeFactory)
+
+    async with scope_factory.create_scope():
+        await _enter_coordinator_scope(injector, _parent_config())
+        await invoke_initializers(injector, InitializerType.completion)
+        tool = _spawn_tool(injector)
+        assert tool is not None
+
+        result = await tool._run_in_stage_async(
+            subagent_type=GENERAL_PURPOSE_SUBAGENT_NAME,
+            prompt="Write it up.",
+            tool_sets=["reporting"],
+        )
+
+    assert result.content == "42 sources, one answer."
+    assert len(_FakeOrchestrator.seen) == 1
+    child_config = _FakeOrchestrator.seen[0]
+    assert [ts.name for ts in child_config.tool_sets] == ["reporting"]
+    assert child_config.orchestrator.system_prompt.content == GENERAL_PURPOSE_SYSTEM_PROMPT
+
+
+@pytest.mark.asyncio
 async def test_parallel_spawns_do_not_share_scope(monkeypatch):
     monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
     _FakeOrchestrator.seen = []
@@ -319,10 +578,7 @@ async def test_parallel_spawns_do_not_share_scope(monkeypatch):
         spawner = injector.get(SubagentSpawner)
         await asyncio.gather(
             spawner.spawn(RESEARCHER, "task one"),
-            spawner.spawn(
-                RESEARCHER.model_copy(update={"name": "reporter", "tool_sets": ["reporting"]}),
-                "task two",
-            ),
+            spawner.spawn(general_purpose_subagent(GENERAL_PURPOSE, ["reporting"]), "task two"),
         )
 
     assert len(_FakeOrchestrator.seen) == 2
