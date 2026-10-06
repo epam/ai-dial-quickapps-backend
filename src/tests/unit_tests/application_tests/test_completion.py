@@ -143,7 +143,6 @@ def make_request_completion():
             context_provider=provider,
             config_resolver=config_resolver,
             messages_setup=messages_setup,
-            proxy_settings=ProxySettings(),
         )
 
         mapping = {
@@ -182,6 +181,7 @@ def make_request_completion():
             AgentSettings(
                 ALLOW_OVERRIDE_SYSTEM_MESSAGE=allow_override_system_message  # type: ignore[call-arg]
             ),
+            ProxySettings(),
         )
         return request, completion, injector
 
