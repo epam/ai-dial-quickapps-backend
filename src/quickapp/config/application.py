@@ -7,6 +7,7 @@ from pydantic.fields import FieldInfo
 
 from quickapp.common.base_config import (
     BaseApplicationTypeConfig,
+    PreviewField,
     has_preview_marker,
     is_preview_model,
 )
@@ -20,6 +21,7 @@ from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachm
 from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptConfig
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
+from quickapp.config.subagent import SubagentsConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
 from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
@@ -235,6 +237,15 @@ class Features(BaseModel):
             "Omit or set to null to disable the whole section. "
             "Set to {} to enable with defaults, or set individual sub-fields to false to "
             "disable specific tools while keeping the section enabled."
+        ),
+    )
+    subagents: SubagentsConfig | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            "Built-in `task` tool: delegate a scoped sub-task to a subagent that runs in "
+            "its own isolated context and returns a single result. Omit or set to null to "
+            "disable. Set `enabled` to true to turn it on and declare the subagent types "
+            "in `types`."
         ),
     )
 
