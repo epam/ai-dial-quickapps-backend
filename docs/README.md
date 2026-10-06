@@ -62,6 +62,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 
 | Capability | Configure (L1) | Behaviour (L2) | Design (L3) |
 |------------|----------------|----------------|-------------|
+| Subagents (`internal_task`) | [CONFIGURATION — Subagents](../CONFIGURATION.md#subagents-configuration) | [agent.md](./agent.md) | [anonymous_subagents.md](./designs/anonymous_subagents.md) |
 | Config-driven hooks | [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) | — | [hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md) |
 | Dynamic tool discovery | [CONFIGURATION — Tool discovery](../CONFIGURATION.md#tool-discovery-configuration) | — | [dynamic_tool_discovery.md](./designs/dynamic_tool_discovery.md) |
 | Web fetch (`internal_web_fetch`) | [CONFIGURATION — Web fetch](../CONFIGURATION.md#web-fetch-configuration) | — | [web_fetch_tool.md](./designs/web_fetch_tool.md) |

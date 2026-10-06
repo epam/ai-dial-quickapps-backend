@@ -54,6 +54,11 @@ orchestrator-internal and must never arrive from the client.
 
 ### 3. Context Setup
 
+`_QuickAppCompletion` turns the SDK request into a `CompletionInputs` value (`CompletionInputs.from_request`
+is the only reader of the SDK request) and hands it to `CompletionRunner`, which owns steps 3–6 for every
+run in the current request scope. The subagent spawner (`subagent_tooling/`) feeds the same runner from
+values it already holds, so a spoke gets identical config resolution and initialization checks.
+
 A request-scoped context is created to hold:
 
 - API key and bearer token for authentication
@@ -126,8 +131,8 @@ request did during an incident without raising verbosity or exposing conversatio
 
 | Event | Owner |
 |---|---|
-| `Request received` (deployment, message/attachment counts) | `_QuickAppCompletion` |
-| `Request initialized` (tool counts per type, skills, contexts) | `_QuickAppCompletion` |
+| `Request received` (deployment, message/attachment counts) | `CompletionRunner` |
+| `Request initialized` (tool counts per type, skills, contexts) | `CompletionRunner` |
 | `Interactive login requested` / `resolved` (toolsets, per-toolset outcome, duration) | `InteractiveLoginService` |
 | `Model call completed` (iteration, deployment, duration, finish, requested tools, token usage) | `Orchestrator` |
 | `Tool call completed` (tool, tool_call_id, duration, outcome) | `StagedBaseTool` |
@@ -261,6 +266,7 @@ Quick Apps supports several tool types:
 - **Internal Tools**: Built-in tools such as the Python interpreter and other configured internal tools. Admin-context
   tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
   conditionally (see [Attachment Notification](#attachment-notification)).
+- **Subagent Tool** (`internal_task`, preview): spawns a helper agent in-process (see [Subagents](#subagents)).
 
 ### Parallel Execution
 
@@ -339,6 +345,45 @@ open-init-call-teardown per call, which lost all session state and re-negotiated
   (`common/`); the orchestrator awaits `aclose_all()` in its `_persisting_state()` `finally`, so every live
   session is torn down on both the success and the error path. Within-request reuse is unconditional — there
   is no configuration flag.
+
+---
+
+## Subagents
+
+Preview-gated (`ENABLE_PREVIEW_FEATURES=true`), owned by `subagent_tooling/`. A **subagent** is a
+helper agent the orchestrator spawns to carry out one scoped task; it runs its own orchestrator loop
+over its own conversation and returns a single result. Its intermediate work never enters the
+coordinator's context, which is the point: the token and attention cost of a sub-task is dropped
+when the spoke returns. Nothing is deployed — a spoke exists only for the duration of one spawn.
+
+`features.subagents.enabled` is the switch. The coordinator's LLM gets one tool,
+`task(subagent_type, prompt)`, whose `subagent_type` enumerates the app's declared `types`:
+builder-authored spokes, each with a fixed `system_prompt` and `tool_sets` allowlist. A dangling
+allowlist entry is reported as a `ToolInitializationException` at app initialization, by name.
+
+**How a spawn runs.** `compile_subagent_manifest` deep-copies the coordinator's manifest and
+narrows it: the spoke's system prompt replaces the app's, `tool_sets` is filtered to the allowlist,
+`deployment_id` / `max_iterations` override when set, `contexts` / `skills` / `hooks` / other
+`features` are inherited, and `features.subagents` is cleared so a spoke cannot spawn. The spawner
+then enters a fresh DI request scope inside an `asyncio.Task` (the scope key is a `ContextVar`, and
+asyncio copies context per task, so parent and child scopes cannot leak into each other) and hands
+a `CompletionInputs` to `CompletionRunner` — the same lifecycle the HTTP handler runs: config
+resolution, initializers, messages, the initialization-issues check, then the child `Orchestrator`.
+
+**Output.** The child scope's `Choice` is backed by `SubagentOutputSink`, an `asyncio.Queue`
+standing in for the SDK's `ChunkQueue`. Because `Choice` and `Stage` write nothing but typed chunks
+to that queue, the sink captures the spoke's whole output without the orchestrator being aware it is
+not writing to a user — its prose streams into the coordinator's `task` stage as live progress, its
+own stages render there as they close, its attachments come back on the `ToolCallResult`, and its
+state is dropped (spokes are stateless).
+
+**Bounds.** A spawn is capped by `SUBAGENT_TIMEOUT_SECONDS` (`features.subagents.timeout_seconds`
+may shorten it, never extend it) and concurrent spawns by `SUBAGENT_MAX_CONCURRENT_SPAWNS`, a
+process-wide singleton semaphore; excess spawns queue rather than fail. A spawn that produces no
+final assistant message, or that times out, raises `SubagentToolErrorException` — an answerless
+spoke must never reach the LLM as an empty *success*.
+
+See [`docs/designs/anonymous_subagents.md`](designs/anonymous_subagents.md) for the full design.
 
 ---
 
