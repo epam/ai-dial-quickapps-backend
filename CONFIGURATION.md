@@ -477,12 +477,13 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | Field                    | Required | Type           | Preview | Description                                                                                                                                                                  | Default Value                          |
 |--------------------------|----------|----------------|---------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------|
 | `timestamp`              | No       | Object or null | No      | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
-| `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
+| `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                             | `{}`                                   |
 | `external_url_fetch`     | No       | Object         | No      | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
 | `stage_display`          | No       | Object         | No      | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
 | `dial_files`             | No       | Object or null | No      | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
 | `web_fetch`              | No       | Object or null | **Yes** | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
 | `representation_tooling` | No       | Object or null | **Yes** | Tools that control how the agent surfaces output (e.g. add attachment to the answer). See [Representation tooling](#representation-tooling-configuration).                   | `null`                                 |
+| `subagents`              | No       | Object or null | **Yes** | Delegation: the agent can hand a scoped sub-task to a subagent that works in its own context. See [Subagents configuration](#subagents-configuration).                       | `null`                                 |
 
 #### Timestamp configuration
 
@@ -940,6 +941,138 @@ Toolset `name` and `description` accept either a plain string or a locale map
 `{"en": "…", "ru": "…"}`. Resolution uses the incoming `Accept-Language` header (or the header
 named by `PROXY_LANGUAGE_HEADER`), falling back to `en`, then any map entry. The generated app
 schema advertises `dial:defaultLocale` so the Chat configurator can offer locale-aware inputs.
+
+### Subagents configuration
+
+> Requires `ENABLE_PREVIEW_FEATURES=true` on the backend. When preview features are off, this
+> section is ignored and no `internal_task` tool is offered.
+
+A **subagent** is a helper agent your app spawns to carry out one scoped task. It runs its own
+orchestrator loop over its own conversation, then returns a single result. Its intermediate work —
+tool calls, fetched documents, retries — never enters the main agent's context, so a long sub-task
+costs the main conversation only the length of its answer. Nothing is deployed: a subagent exists
+only for the duration of one spawn.
+
+Set `features.subagents.enabled` to `true` and your agent gets one extra tool:
+
+```
+internal_task(subagent_type, prompt, tool_sets?)
+```
+
+Two kinds of subagent can be offered through it, side by side:
+
+- **The built-in `general-purpose` subagent** — on by default, nothing to declare. Your agent
+  scopes it per call: `tool_sets` names which of this app's tool sets that spawn may use, chosen
+  from the ones you already configured. It inherits **none** of your agent's tools, so anything the
+  task needs has to be named; an empty list is valid and means a subagent that only reasons over the
+  text in `prompt`. Scoping the tools per call is what keeps a helper on task — one asked to research
+  something and handed only web search cannot wander into your other integrations, and it can never
+  reach a tool your app does not have.
+- **Declared `types`** — helpers you define up front, each with its own instructions and a fixed
+  tool allowlist. Use these when a job recurs and deserves a tuned prompt of its own; your agent
+  selects one by name and does not pass `tool_sets` for it.
+
+Either way, `prompt` is the entire task. The subagent sees nothing else: not the user's message,
+not your agent's history, not another subagent's work.
+
+#### `features.subagents`
+
+| Field             | Required | Type           | Description                                                                                                                                                                                | Default Value |
+|-------------------|----------|----------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `enabled`         | No       | Boolean        | Offer the `internal_task` tool.                                                                                                                                                            | `false`       |
+| `general_purpose` | No       | Object or null | Tuning for the built-in `general-purpose` subagent. See [`general_purpose`](#featuressubagentsgeneral_purpose). Set to `null` to offer only the declared `types`.                          | `{}`          |
+| `types`           | No       | Array          | Subagent types you declare, each with a fixed prompt and tool allowlist. See [`types[]`](#featuressubagentstypes).                                                                       | `[]`          |
+| `timeout_seconds` | No       | Number         | Wall-clock budget for one spawn, of either kind. Narrows the admin ceiling (`SUBAGENT_TIMEOUT_SECONDS`) but never extends it.                                                            | `null`        |
+
+#### `features.subagents.general_purpose`
+
+| Field            | Required | Type    | Description                                                                                                 | Default Value |
+|------------------|----------|---------|-------------------------------------------------------------------------------------------------------------|---------------|
+| `system_prompt`  | No       | String  | The subagent's instructions. **Replaces** the built-in general-purpose prompt; it is not appended to it.    | `null`        |
+| `deployment_id`  | No       | String  | Model the subagent runs on. Omit to use the app's orchestrator model.                                       | `null`        |
+| `max_iterations` | No       | Integer | Iteration budget for one spawn. Omit to use the app's.                                                      | `null`        |
+
+Give your tool sets clear `name` and `description` values: both are shown to your agent when it
+picks the tools for a general-purpose spawn, and a set with no description is listed by name alone.
+
+#### `features.subagents.types[]`
+
+| Field            | Required | Type    | Description                                                                                                                                         | Default Value |
+|------------------|----------|---------|-----------------------------------------------------------------------------------------------------------------------------------------------------|---------------|
+| `name`           | Yes      | String  | Identifier your agent uses to select this type. Must be unique, and may not be `general-purpose` unless that subagent is switched off.            | —             |
+| `description`    | Yes      | String  | When to use this subagent. Shown to your agent — this is how it chooses between types.                                                              | —             |
+| `system_prompt`  | Yes      | String  | The subagent's instructions. **Replaces** the app's system prompt; it is not appended to it.                                                        | —             |
+| `tool_sets`      | No       | Array   | Names of this app's tool sets the subagent may use (matched by resolved `name`). Omit to inherit every tool set; `[]` is a reasoning-only subagent. | `null`        |
+| `deployment_id`  | No       | String  | Model this subagent runs on. Omit to use the app's orchestrator model.                                                                              | `null`        |
+| `max_iterations` | No       | Integer | Iteration budget for one spawn. Omit to use the app's.                                                                                              | `null`        |
+
+**What a subagent inherits.** Your `contexts` (attached files), `skills`, `hooks`, and other
+`features` are passed on as-is. Note that attached files are inherited too, so each spawn re-pays
+their token cost — keep that in mind before attaching large files to an app that spawns often.
+Tools are the exception: a general-purpose spawn gets only what the `internal_task` call named, a declared
+type only its allowlist. A subagent can never spawn another subagent.
+
+**Errors your agent will see.** Naming a tool set this app does not define (or has disabled) fails
+the call with the list of valid names, so the agent can retry; a declared type that references such
+a tool set is reported at app initialization instead. Passing `tool_sets` for a declared type fails
+the call too. A subagent that runs out of iterations or wall-clock time fails the call rather than
+returning a half-finished answer.
+
+<details>
+<summary><b>Subagents configuration JSON sample</b></summary>
+
+Zero configuration — turn it on and your agent scopes each helper itself:
+
+```json
+{
+  "features": {
+    "subagents": {
+      "enabled": true
+    }
+  }
+}
+```
+
+Tuned: a cheaper model and instructions of your own for the general-purpose subagent, a shorter
+leash, and one declared type for a recurring job:
+
+```json
+{
+  "tool_sets": [
+    {
+      "name": "Web search toolset",
+      "description": "Grounded web search.",
+      "type": "dial-deployment",
+      "tools": [ { "type": "predefined-tool", "template_name": "web_search" } ]
+    }
+  ],
+  "features": {
+    "subagents": {
+      "enabled": true,
+      "general_purpose": {
+        "system_prompt": "You are a research assistant. Reply with the answer and at most five supporting bullets, each with a source.",
+        "deployment_id": "gpt-4o-mini-2024-07-18",
+        "max_iterations": 12
+      },
+      "types": [
+        {
+          "name": "web_researcher",
+          "description": "Researches a question on the web and reports what it found.",
+          "system_prompt": "You research questions using web search. Reply with the answer and at most five supporting bullets.",
+          "tool_sets": ["Web search toolset"],
+          "max_iterations": 12
+        }
+      ],
+      "timeout_seconds": 120
+    }
+  }
+}
+```
+
+</details>
+
+Operators cap subagents with `SUBAGENT_TIMEOUT_SECONDS` and `SUBAGENT_MAX_CONCURRENT_SPAWNS`; see
+[Environment Variables](#environment-variables).
 
 ### Tool sets configuration
 
@@ -1708,6 +1841,9 @@ your gateways or downstream services expect.
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
 | `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                                                             | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
 | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                                                           | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
+| **Subagents** `[Preview]`                  |                                                                 |          |                                                                                                              |
+| `SUBAGENT_TIMEOUT_SECONDS`                 | `600.0`                                                         | No       | Wall-clock ceiling on one subagent spawn. An app's `features.subagents.timeout_seconds` may shorten this but never extend it. On expiry the spawn fails as a tool error the agent can retry. Requires `ENABLE_PREVIEW_FEATURES=true`. |
+| `SUBAGENT_MAX_CONCURRENT_SPAWNS`           | `4`                                                             | No       | Maximum subagent spawns running at once in this replica, across all requests. Excess spawns queue rather than fail. Requires `ENABLE_PREVIEW_FEATURES=true`. |
 | **Dynamic Tool Discovery** `[Preview]`     |                                                                 |          |                                                                                                              |
 | `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. Requires `ENABLE_PREVIEW_FEATURES=true`. |
 | **Skills**                                 |                                                                 |          |                                                                                                              |
