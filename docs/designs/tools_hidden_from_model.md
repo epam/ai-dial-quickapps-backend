@@ -1,6 +1,6 @@
 # Design: Tools Hidden from the Model
 
-- **Status:** Draft
+- **Status:** Approved
 - **Phases:** Phase 1 (this iteration, specified in detail) covers MCP toolsets plus the type-agnostic
   foundation. Phase 2 (REST, DIAL deployment, internal tools) is conditional — see [Phasing](#phasing)
 - **Dependencies:**
@@ -432,49 +432,3 @@ Phase 1 fixes the following so that later phases only extend the schema:
 - `Request initialized` log reports the model-hidden tool count
 
 ### `docs/generated-app-schema.json`, `CONFIGURATION.md`, `docs/README.md` — UPDATED at implementation time
-
----
-
-## Review Notes — Round 1
-
-- **Reviewer:** Claude (quickapps-design-review skill)
-- **Date:** 2026-10-06
-
-### Verdict
-
-**Ready for approval pending minor suggestions.**
-
-The design is well-grounded and structurally complete. Every code reference was verified against the
-current codebase — the two `MCPToolSet`-rebuild sites (`_MCPToolInitializer._process_toolset` lines
-408-427 and `_DialAppResolver._handle_mcp_branch` lines 124-138) are correctly identified as
-carry-through points, the `ToolExecutor` unknown-tool path matches the described extension point, and
-the `DeferredToolName` annotation technique in `common/deferred_tool_types.py` validates the proposed
-`HookOnlyTool` DI-key approach. The fail-closed safety argument (separate DI collections making leakage
-impossible by construction) is the key insight and is well-supported. The phasing strategy is sound, and
-the schema evolution rules link back cleanly to the parent hooks design. No blocking issues.
-
-### Suggestions
-
-1. **[Component 4: Hook lookup]** — The component introduces "a single request-scoped place that answers
-   'which tools can a hook call'" and the Summary of Changes calls it "New hook tool registry", but
-   neither names the type. Every other component names its new type (`HookOnlyTool`, `ToolingContextBase`
-   bucket, `ToolExecutor` change). Naming the registry class (even a working name like
-   `HookToolRegistry`) would improve traceability from the Summary of Changes to the component
-   description and from code review back to the design.
-
-2. **[Proposed Design — diagram]** — The Mermaid flowchart uses two separate nodes `executor` and
-   `executor2` for what is a single `ToolExecutor` instance with two code paths (run vs. reserved
-   reply). A reader unfamiliar with the architecture could infer two distinct executor instances.
-   Consider merging them into one node with two incoming edges differentiated by label, or adding a note
-   that both nodes represent the same `ToolExecutor`.
-
-3. **[Summary of Changes — `dial_app_tooling/`]** — The bullet for `_DialAppResolver._handle_mcp_branch`
-   reads "chat-completion branch warns and ignores", but that warning lives in
-   `_handle_chat_completion_branch` (line 141 in the current code), not in `_handle_mcp_branch`. Listing
-   both methods explicitly avoids ambiguity about where the warning is added.
-
-### Nits
-
-1. **[Phase table, line 49]** — The `dial-app` entry says "(MCP branch)" in passing. Since the
-   dual-branch concept is non-obvious to readers unfamiliar with the `dial-app` resolver, a parenthetical
-   cross-reference to the `dial_app_toolset.md` design (already listed in Dependencies) would help.
