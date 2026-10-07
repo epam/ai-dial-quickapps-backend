@@ -51,7 +51,7 @@ a published field.
 
 | Phase | Scope | Status |
 |---|---|---|
-| **1** | Foundation (DI collection, context bucket, hook lookup, executor reply, request-conflict check) and the config field for MCP-based toolsets: `mcp`, `dial-mcp`, `dial-app` (MCP branch) | Specified in this document |
+| **1** | Foundation (DI collection, context bucket, hook lookup, executor reply, request-conflict check) and the config field for MCP-based toolsets: `mcp`, `dial-mcp`, `dial-app` (MCP branch only; a `dial-app` resolves to the MCP or the chat-completion branch, see [DIAL App Toolset](dial_app_toolset.md)) | Specified in this document |
 | **2** | A per-tool flag for toolsets that declare tools one by one: `rest-api`, `dial-deployment` (including `DialDeploymentSimpleTool`), `internal`; `dial-app` chat-completion branch is reachable through `dial-deployment` | Conditional — see [Phase 2](#phase-2-other-tool-types-conditional) |
 
 Phase 1 implements nothing of Phase 2 but is shaped so that Phase 2 is additive. The rules below cost nothing
@@ -114,9 +114,9 @@ flowchart TD
     init -->|model-visible| modelTools["list of StagedBaseTool"]
     init -->|listed in hidden_from_model| hiddenTools["list of ModelHiddenTool"]
     modelTools --> payload["provide_openai_tools: tools payload"]
-    modelTools --> executor["ToolExecutor: runs the call"]
-    hiddenTools --> executor2["ToolExecutor: model-hidden reply"]
-    modelTools --> hookRegistry["Hook tool registry"]
+    modelTools -->|"known name: runs the call"| executor["ToolExecutor"]
+    hiddenTools -->|"known name: reserved reply"| executor
+    modelTools --> hookRegistry["HookToolRegistry"]
     hiddenTools --> hookRegistry
     hookRegistry --> hooks["HookHandlerRegistry and hook validation"]
 ```
@@ -198,17 +198,17 @@ error, so each path gets its own unit test.
 
 ### Component 4: Hook lookup
 
-**What:** A single request-scoped place that answers "which tools can a hook call", returning model-visible
-tools together with model-hidden tools.
+**What:** A new class `HookToolRegistry` (working name) — a single request-scoped place that answers "which
+tools can a hook call", returning model-visible tools together with model-hidden tools.
 
 **Owner:** `agent_hooks/`
 
 **Semantics:** `HookHandlerRegistry` (tool resolution for `ToolCallHookHandler`) and `_AgentHooksContext`
-(the `tool '...' not found in initialized tools` validation) both read this registry instead of
+(the `tool '...' not found in initialized tools` validation) both read `HookToolRegistry` instead of
 `ProviderOf[list[StagedBaseTool]]`. A hook behaves identically whichever collection the tool came from.
 
-**Change:** New registry in `agent_hooks/`, bound request-scoped in `AgentHooksModule`; the two consumers
-switch to it.
+**Change:** New `HookToolRegistry` in `agent_hooks/`, bound request-scoped in `AgentHooksModule`; the two
+consumers switch to it.
 
 ### Component 5: Model-side reply
 
@@ -413,7 +413,9 @@ Phase 1 fixes the following so that later phases only extend the schema:
 
 ### `dial_app_tooling/` — MODIFIED
 
-- `_DialAppResolver._handle_mcp_branch`: carries `hidden_from_model`; chat-completion branch warns and ignores
+- `_DialAppResolver._handle_mcp_branch`: carries `hidden_from_model` into the resolved `MCPToolSet`
+- `_DialAppResolver._handle_chat_completion_branch`: warns and ignores `hidden_from_model`, next to the
+  existing `allowed_tools` warning
 
 ### `core/agent/` — MODIFIED
 
@@ -423,7 +425,7 @@ Phase 1 fixes the following so that later phases only extend the schema:
 
 ### `agent_hooks/` — MODIFIED
 
-- New hook tool registry (model-visible plus model-hidden); `HookHandlerRegistry` and `_AgentHooksContext` read it
+- New `HookToolRegistry` (model-visible plus model-hidden); `HookHandlerRegistry` and `_AgentHooksContext` read it
 
 ### `core/application/_quick_app_completion.py` — MODIFIED
 
