@@ -69,3 +69,18 @@ async def test_mcp_toolset_copies_fields_from_source():
     assert built.allowed_tools == ["search", "classify"]
     assert built.attachment == toolset.attachment
     assert built.fallback_configuration == toolset.fallback_configuration
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_carries_hidden_from_model():
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        allowed_tools=["get_skill", "search"],
+        hidden_from_model=["get_skill"],
+    )
+    resolver, context, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    await resolver.resolve()
+
+    assert context.resolved_mcp_toolsets[0].hidden_from_model == ["get_skill"]

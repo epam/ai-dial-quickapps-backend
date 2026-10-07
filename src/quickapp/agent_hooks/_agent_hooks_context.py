@@ -1,8 +1,8 @@
 from injector import ProviderOf, inject
 
 from quickapp.agent_hooks._handlers import resolve_hook_tool_name
+from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.exceptions import HookInitializationException, InitializationException
-from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.hooks import ToolCallHookConfig
 
@@ -12,10 +12,10 @@ class _AgentHooksContext:
     def __init__(
         self,
         app_config_provider: ProviderOf[ApplicationConfig],
-        tools_provider: ProviderOf[list[StagedBaseTool]],
+        tool_registry: HookToolRegistry,
     ):
         self._app_config_provider = app_config_provider
-        self._tools_provider = tools_provider
+        self._tool_registry = tool_registry
         self._exceptions: list[InitializationException] = []
         self._validated = False
 
@@ -28,7 +28,7 @@ class _AgentHooksContext:
 
     def _validate(self) -> None:
         tool_names = {
-            tool.tool_config.open_ai_tool.function.name for tool in self._tools_provider.get()
+            tool.tool_config.open_ai_tool.function.name for tool in self._tool_registry.tools
         }
         for config in self._app_config_provider.get().hooks or []:
             if not isinstance(config, ToolCallHookConfig):

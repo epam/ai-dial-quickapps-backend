@@ -64,6 +64,7 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 |------------|----------------|----------------|-------------|
 | Config-driven hooks | [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) | — | [hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md) |
 | Dynamic tool discovery | [CONFIGURATION — Tool discovery](../CONFIGURATION.md#tool-discovery-configuration) | — | [dynamic_tool_discovery.md](./designs/dynamic_tool_discovery.md) |
+| Tools hidden from the model | [CONFIGURATION — MCP tool set](../CONFIGURATION.md#tool-sets-configuration) (`hidden_from_model`) | — | [tools_hidden_from_model.md](./designs/tools_hidden_from_model.md) |
 | Web fetch (`internal_web_fetch`) | [CONFIGURATION — Web fetch](../CONFIGURATION.md#web-fetch-configuration) | — | [web_fetch_tool.md](./designs/web_fetch_tool.md) |
 | Tool-result offload | [CONFIGURATION — DIAL files offload](../CONFIGURATION.md#tool-call-result-offload) | — | [large_tool_responses.md](./designs/large_tool_responses.md) |
 | Representation add-attachment | [CONFIGURATION — Representation tooling](../CONFIGURATION.md#representation-tooling-configuration) | — | [add_attachment_to_response.md](./designs/add_attachment_to_response.md) |

@@ -10,6 +10,7 @@ from quickapp.agent_hooks._handlers import (
     hook_display_name,
     resolve_hook_tool_name,
 )
+from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.hook_context.context import HookMessage, RequestStartHookContext
 from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.config.application import StageDisplayLevel
@@ -24,6 +25,10 @@ def _tool(function_name: str, content: str = "tool-output") -> MagicMock:
     )
     tool.arun = AsyncMock(return_value=SimpleNamespace(content=content))
     return tool
+
+
+def _registry(tools: list[MagicMock]) -> HookToolRegistry:
+    return HookToolRegistry(make_provider(tools), make_provider([]))
 
 
 def _config(**overrides: object) -> ToolCallHookConfig:
@@ -134,17 +139,17 @@ class TestToolCallHookHandler:
 
 class TestHookHandlerRegistry:
     def test_builds_tool_call_handler(self) -> None:
-        registry = HookHandlerRegistry(make_provider([_tool("search")]))
+        registry = HookHandlerRegistry(_registry([_tool("search")]))
         assert isinstance(registry.handler_for(_config()), ToolCallHookHandler)
 
     def test_caches_handler_per_hook_instance(self) -> None:
         provider = make_provider([_tool("search")])
-        registry = HookHandlerRegistry(provider)
+        registry = HookHandlerRegistry(HookToolRegistry(provider, make_provider([])))
         hook = _config()
 
         assert registry.handler_for(hook) is registry.handler_for(hook)
         provider.get.assert_called_once()
 
     def test_distinct_hooks_get_distinct_handlers(self) -> None:
-        registry = HookHandlerRegistry(make_provider([_tool("search")]))
+        registry = HookHandlerRegistry(_registry([_tool("search")]))
         assert registry.handler_for(_config()) is not registry.handler_for(_config())

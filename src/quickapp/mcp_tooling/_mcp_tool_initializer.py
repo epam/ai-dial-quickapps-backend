@@ -16,6 +16,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.localized_string import resolve_localized
+from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -263,7 +264,17 @@ class _MCPToolInitializer(CompletionInitializer):
         if resolved_toolset.allowed_tools:
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
+        hidden_names = set(resolved_toolset.hidden_from_model or [])
+        unknown_hidden = hidden_names - {tool.name for tool in tools}
+        if unknown_hidden:
+            logger.warning(
+                "hidden_from_model of toolset '%s' names tools the server does not provide: %s",
+                resolve_localized(resolved_toolset.name),
+                sorted(unknown_hidden),
+            )
+
         created_tools: list[StagedBaseTool] = []
+        model_hidden_tools: list[ModelHiddenTool] = []
         for tool in tools:
             mcp_tool = self.__tool_builder.build(
                 tool=tool,
@@ -286,7 +297,13 @@ class _MCPToolInitializer(CompletionInitializer):
             mcp_tool.stage_name_component = resolve_localized(
                 resolved_toolset.name, self.__accept_language
             )
-            created_tools.append(mcp_tool)
+            # Routing precedes the deferral decision: a model-hidden tool is never deferred.
+            if tool.name in hidden_names:
+                model_hidden_tools.append(mcp_tool)
+            else:
+                created_tools.append(mcp_tool)
+        if model_hidden_tools:
+            self.__mcp_context.extend_model_hidden_tools(model_hidden_tools)
         if created_tools:
             discovery_cfg = self.__app_config.orchestrator.tool_discovery
             if is_toolset_deferred(toolset_info, discovery_cfg, len(created_tools)):
@@ -410,6 +427,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     description=dial_toolset_info.description,
                     enabled=toolset_info.enabled,
                     allowed_tools=toolset_info.allowed_tools,
+                    hidden_from_model=toolset_info.hidden_from_model,
                     attachment=toolset_info.attachment,
                     fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(
