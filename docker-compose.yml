@@ -133,6 +133,10 @@ services:
         "codeInterpreterEnabled": true,
         "webFetchEnabled": true,
         "addAttachmentEnabled": true}
+      # Model pre-selected for a new app. The editor ignores the schema `default` that the backend
+      # derives from DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID, so reuse that value from .env here. When
+      # unset, the editor falls back to gpt-4o, which fails its "supports tools" validation locally.
+      DEFAULT_DEPLOYMENT: "${DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID:-}"
       THEMES_CONFIG_URL: "http://themes:8080"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:
