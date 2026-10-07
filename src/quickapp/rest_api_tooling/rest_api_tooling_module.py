@@ -100,7 +100,9 @@ class RestApiToolingModule(Module):
         for tool_config in rest_api_toolset.tools:
             if not tool_config.enabled:
                 continue
+            tool_label: str | None = None
             if isinstance(tool_config, RestApiTool):
+                tool_label = tool_config.open_ai_tool.function.name
                 if (
                     "response_as_attachment" not in tool_config.model_fields_set
                     and rest_api_toolset.response_as_attachment is not None
@@ -133,6 +135,8 @@ class RestApiToolingModule(Module):
             tool = tool_builder.build(
                 tool_config=tool_config, auth_info=rest_api_toolset.authorization
             )
-            tool.stage_name_component = toolset_stage_name
+            tool.stage_name_component = (
+                f"{toolset_stage_name}: {tool_label}" if tool_label else toolset_stage_name
+            )
             result.append(tool)
         return result
