@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from quickapp.agent_hooks._completion_runner import _CompletionHookRunner
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
+from quickapp.agent_hooks._context_factory import HookContextFactory
+from quickapp.agent_hooks._dispatcher import HookDispatcher
 from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.config.application import ApplicationConfig
@@ -18,12 +21,20 @@ def _provider(value):
     return SimpleNamespace(get=lambda: value)
 
 
+def _make_dispatcher() -> MagicMock:
+    return MagicMock(spec=HookDispatcher)
+
+
+def _make_factory() -> MagicMock:
+    return MagicMock(spec=HookContextFactory)
+
+
 class TestAgentHooksModuleBuild:
     def test_returns_empty_list_when_hooks_is_none(self):
         module = AgentHooksModule()
         config = _make_app_config(None)
         result = module._build_on_request_message_transformers(
-            _provider(config), _provider([]), HookEvent.ON_REQUEST_START
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
         )
         assert result == []
 
@@ -31,7 +42,7 @@ class TestAgentHooksModuleBuild:
         module = AgentHooksModule()
         config = _make_app_config([])
         result = module._build_on_request_message_transformers(
-            _provider(config), _provider([]), HookEvent.ON_REQUEST_START
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
         )
         assert result == []
 
@@ -47,10 +58,19 @@ class TestAgentHooksModuleBuild:
         hook_cfg = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
         config = _make_app_config([hook_cfg])
         result = module._build_on_request_message_transformers(
-            _provider(config), _provider([]), HookEvent.ON_REQUEST_START
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
         )
         assert len(result) == 1
         assert isinstance(result[0], _ConfigDrivenToolCallHook)
+
+    def test_skips_hooks_for_other_events(self):
+        module = AgentHooksModule()
+        hook_cfg = ToolCallHookConfig(event=HookEvent.ON_COMPLETION, tool_name="my_tool")
+        config = _make_app_config([hook_cfg])
+        result = module._build_on_request_message_transformers(
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
+        )
+        assert result == []
 
     def test_returns_multiple_hooks_for_same_event(self):
         module = AgentHooksModule()
@@ -58,7 +78,7 @@ class TestAgentHooksModuleBuild:
         cfg_b = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="tool_b")
         config = _make_app_config([cfg_a, cfg_b])
         result = module._build_on_request_message_transformers(
-            _provider(config), _provider([]), HookEvent.ON_REQUEST_START
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
         )
         assert len(result) == 2
         assert all(isinstance(h, _ConfigDrivenToolCallHook) for h in result)
@@ -73,7 +93,7 @@ class TestAgentHooksModuleBuild:
         )
         config = _make_app_config([hook_cfg])
         result = module._build_on_request_message_transformers(
-            _provider(config), _provider([]), HookEvent.ON_REQUEST_START
+            _provider(config), _make_dispatcher(), _make_factory(), HookEvent.ON_REQUEST_START
         )
         hook = result[0]
         assert isinstance(hook, _ConfigDrivenToolCallHook)
@@ -90,6 +110,14 @@ class TestAgentHooksModuleBuild:
 #         with caplog.at_level(logging.ERROR):
 #             module._provide_messages_transformers(_provider(config), _provider([]))
 #         assert any("not yet supported" in r.message for r in caplog.records)
+
+
+class TestAgentHooksModuleCompletionRunners:
+    def test_provides_the_completion_runner_as_a_single_element_list(self):
+        runner = MagicMock(spec=_CompletionHookRunner)
+        module = AgentHooksModule()
+
+        assert module._provide_completion_hook_runners(runner) == [runner]
 
 
 class TestAgentHooksModuleIsPreview:

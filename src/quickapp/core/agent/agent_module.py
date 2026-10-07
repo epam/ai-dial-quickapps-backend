@@ -15,6 +15,7 @@ from quickapp.common import (
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer, PreInvocationTransformer
 from quickapp.common.abstract.chat_completion_recovery_policy import ChatCompletionRecoveryPolicy
+from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_attachment_keep_policy import AttachmentKeepPolicy
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
@@ -276,6 +277,10 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_tool_execution_history_policies(self) -> list[ToolExecutionHistoryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_completion_hook_runners(self) -> list[CompletionHookRunner]:
         return []
 
     @multiprovider

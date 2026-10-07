@@ -448,6 +448,37 @@ def test_openai_tools_names():
     assert response.status_code == 200
 
 
+def test_stage_names_include_toolset_and_tool_name():
+    rest_api_toolset = RestApiToolSet(
+        name="Notion",
+        tools=[
+            _make_rest_api_tool("https://example.com/a", ToolEndpointInfoMethodType.get, name="a"),
+            _make_rest_api_tool("https://example.com/b", ToolEndpointInfoMethodType.get, name="b"),
+        ],
+    )
+
+    def configure(binder: Binder):
+        binder.bind(ApplicationConfig, to=create_app_configuration([rest_api_toolset]))
+        binder.bind(DialSettings, DialSettings(url="https://core"))
+        binder.bind(DIAL_BEARER, to=InstanceProvider(SecretStr("some_token")))
+        binder.bind(DIAL_API_KEY, SecretStr("some_api_key"))
+        binder.bind(AsyncDial, to=InstanceProvider(MagicMock(spec=AsyncDial)))
+        binder.bind(StageDisplayLevel, to=InstanceProvider(StageDisplayLevel.INFO))
+        binder.bind(ForwardedHeaders, to=InstanceProvider(None))
+        binder.bind(ACCEPT_LANGUAGE, to=InstanceProvider(None))
+        binder.multibind(list[ToolArgumentTransformer], to=[])
+
+    app = create_test_app([RestApiToolingModule, configure])
+
+    @app.get("/")
+    async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
+        assert [t.stage_name_component for t in tools] == ["Notion: a", "Notion: b"]
+        return {}
+
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+
+
 @pytest.mark.asyncio
 @patch("httpx.AsyncClient")
 async def test_http_status_error_can_forward_error_message_via_fallback(mock_async_client):

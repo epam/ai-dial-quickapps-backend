@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -5,9 +6,13 @@ import pytest
 from aidial_sdk.chat_completion import Message, Role
 
 from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
+from quickapp.agent_hooks._context_factory import HookContextFactory
+from quickapp.agent_hooks._dispatcher import HookDispatcher
+from quickapp.agent_hooks._handlers import HookHandlerRegistry
 from quickapp.common import ToolCallResult
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig, TTLRefreshCondition
+from tests.unit_tests.common.common import make_provider
 
 _TIME_MODULE = "quickapp.agent_hooks._config_driven_hooks.time"
 
@@ -39,7 +44,10 @@ def _make_hook(
         arguments=arguments or {},
         refresh_condition=TTLRefreshCondition(ttl_minutes=ttl) if ttl is not None else None,
     )
-    return _ConfigDrivenToolCallHook(tools or [], config)
+    factory = HookContextFactory(make_provider(SimpleNamespace(messages=[])))
+    registry = HookHandlerRegistry(make_provider(tools or []))
+    dispatcher = HookDispatcher(make_provider(SimpleNamespace(hooks=[config])), registry)
+    return _ConfigDrivenToolCallHook(config, dispatcher, factory)
 
 
 def _make_tool_msg(call_id: str) -> Message:
@@ -329,3 +337,102 @@ class TestTTLEndToEnd:
 
         assert result2 is result  # should_inject returned False → messages unchanged
         tool.arun.assert_awaited_once()  # only called once (first injection)
+
+
+# ---------------------------------------------------------------------------
+# Tests: templated arguments
+# ---------------------------------------------------------------------------
+
+
+def _assistant_of(messages: list[Message]) -> Message:
+    return next(m for m in messages if m.role == Role.ASSISTANT)
+
+
+def _displayed_arguments(messages: list[Message]) -> dict:
+    tool_calls = _assistant_of(messages).tool_calls
+    assert tool_calls is not None
+    return json.loads(tool_calls[0].function.arguments)
+
+
+def _call_id_of(messages: list[Message]) -> str:
+    tool_calls = _assistant_of(messages).tool_calls
+    assert tool_calls is not None
+    return tool_calls[0].id
+
+
+_TEMPLATE = {"q": "${last_user_message.content}"}
+
+
+class TestTemplatedArguments:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "frequency", [InjectionFrequency.ALWAYS, InjectionFrequency.APPEND_IF_CHANGED]
+    )
+    async def test_displays_rendered_arguments_and_identifies_by_template(
+        self, frequency: InjectionFrequency
+    ) -> None:
+        tool = _make_staged_tool("my_tool", "content")
+        hook = _make_hook("my_tool", frequency=frequency, arguments=_TEMPLATE, tools=[tool])
+
+        result = await hook.transform([Message(role=Role.USER, content="find cats")])
+
+        assert _displayed_arguments(result) == {"q": "find cats"}
+        assert _call_id_of(result).startswith(hook._make_call_id_prefix("my_tool", _TEMPLATE))
+        assert tool.arun.call_args.kwargs["q"] == "find cats"
+
+    @pytest.mark.asyncio
+    async def test_second_turn_replaces_pair_in_place_with_new_rendered_arguments(self) -> None:
+        tool = _make_staged_tool("my_tool", "same content")
+        hook = _make_hook(
+            "my_tool",
+            frequency=InjectionFrequency.APPEND_IF_CHANGED,
+            arguments=_TEMPLATE,
+            tools=[tool],
+        )
+        first = await hook.transform([Message(role=Role.USER, content="find cats")])
+
+        second = await hook.transform(first + [Message(role=Role.USER, content="find dogs")])
+
+        assert len(second) == len(first) + 1
+        assert _call_id_of(second) == _call_id_of(first)
+        assert _displayed_arguments(second) == {"q": "find dogs"}
+        assert tool.arun.await_count == 2
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "frequency", [InjectionFrequency.ALWAYS, InjectionFrequency.APPEND_IF_CHANGED]
+    )
+    async def test_tool_is_called_once_per_transform(self, frequency: InjectionFrequency) -> None:
+        tool = _make_staged_tool("my_tool", "content")
+        hook = _make_hook("my_tool", frequency=frequency, arguments=_TEMPLATE, tools=[tool])
+
+        await hook.transform([Message(role=Role.USER, content="find cats")])
+
+        assert tool.arun.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_unresolvable_template_skips_injection(self) -> None:
+        tool = _make_staged_tool("my_tool", "content")
+        hook = _make_hook(
+            "my_tool",
+            arguments={"q": "${last_assistant_message.content}"},
+            tools=[tool],
+        )
+        messages = [Message(role=Role.USER, content="first turn")]
+
+        result = await hook.transform(messages)
+
+        assert result == messages
+        tool.arun.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_context_build_failure_skips_injection(self) -> None:
+        config = ToolCallHookConfig(event=HookEvent.ON_REQUEST_START, tool_name="my_tool")
+        factory = MagicMock(spec=HookContextFactory)
+        factory.request_start.side_effect = RuntimeError("cannot convert")
+        dispatcher = MagicMock(spec=HookDispatcher)
+        dispatcher.run_hook = AsyncMock()
+        hook = _ConfigDrivenToolCallHook(config, dispatcher, factory)
+
+        assert await hook.get_content([]) is None
+        dispatcher.run_hook.assert_not_awaited()

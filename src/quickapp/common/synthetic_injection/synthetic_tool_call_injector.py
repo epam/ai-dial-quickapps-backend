@@ -76,6 +76,15 @@ class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
     async def get_arguments(self) -> dict:
         return {}
 
+    async def get_call_arguments(self, messages: list[Message]) -> dict:
+        """Arguments shown in the injected ``tool_calls``. Defaults to ``get_arguments()``.
+
+        ``get_arguments()`` stays the identity source (call-id hashing, TTL lookup); override
+        this when the arguments actually used differ from that stable identity, e.g. a
+        template rendered per request. Called once per transform, after ``get_content``.
+        """
+        return await self.get_arguments()
+
     async def should_inject(self, messages: list[Message]) -> bool:
         """Return False to skip injection entirely. Override to add preconditions."""
         return True
@@ -144,8 +153,9 @@ class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
         content = await self.get_content(messages)
         if content is None:
             return messages
+        call_arguments = await self.get_call_arguments(messages)
         call_id = self.make_call_id(tool_name, arguments, uuid4().hex[:12])
-        return self._inject_at(messages, len(messages), tool_name, call_id, arguments, content)
+        return self._inject_at(messages, len(messages), tool_name, call_id, call_arguments, content)
 
     async def _inject_append_if_changed(
         self, messages: list[Message], tool_name: str, arguments: dict
@@ -154,6 +164,7 @@ class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
         if content is None:
             return messages
 
+        call_arguments = await self.get_call_arguments(messages)
         call_id = self.make_call_id(tool_name, arguments, content)
         args_prefix = self._make_call_id_prefix(tool_name, arguments)
         # Prefix matching same tool+args+content, ignoring any _ttl_ suffix
@@ -164,12 +175,12 @@ class SyntheticToolCallInjector(BaseSyntheticInjector, ABC):
             pair_idx, _ = pair
             # Replace in place (re-stamps TTL when expiry changed, no-op when identical)
             state = self._enrich_state(call_id, content)
-            new_pair = _build_pair(tool_name, call_id, arguments, content, state)
+            new_pair = _build_pair(tool_name, call_id, call_arguments, content, state)
             return messages[:pair_idx] + list(new_pair) + messages[pair_idx + 2 :]
 
         has_prior_args = _has_any_pair_with_prefix(messages, args_prefix)
         idx = len(messages) if has_prior_args else after_first_user_idx(messages)
-        return self._inject_at(messages, idx, tool_name, call_id, arguments, content)
+        return self._inject_at(messages, idx, tool_name, call_id, call_arguments, content)
 
     def _inject_at(
         self,
