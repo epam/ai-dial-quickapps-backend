@@ -1973,6 +1973,21 @@ cryptography = ">=45.0.1"
 drafts = ["pycryptodome"]
 
 [[package]]
+name = "json-e"
+version = "4.8.4"
+description = "A data-structure parameterization system written for embedding context in JSON objects"
+optional = false
+python-versions = "*"
+groups = ["main"]
+files = [
+    {file = "json_e-4.8.4-py3-none-any.whl", hash = "sha256:698f6f3e56f04642176c4574bb0050e84fb5a8a9871da4034aa201f07001a7e2"},
+    {file = "json_e-4.8.4.tar.gz", hash = "sha256:d6cb9340008e09d454eda8ac0e4bf71d94c6b26f1a1d5ac3f5a3153600180f3d"},
+]
+
+[package.extras]
+release = ["towncrier"]
+
+[[package]]
 name = "jsonref"
 version = "1.1.0"
 description = "jsonref is a library for automatic dereferencing of JSON Reference objects for Python."
@@ -6003,4 +6018,4 @@ files = [
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.13,<3.14"
-content-hash = "558b84f406aa9eaf4bb8fa002bb03d96e7b1823b1afd13643fba6cd67ece78e7"
+content-hash = "12130fb367430e72a28fad25ef1fcd271588a17974c83a275a80dc725ba6b4b5"
