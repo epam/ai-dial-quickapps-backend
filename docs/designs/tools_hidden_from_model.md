@@ -1,8 +1,11 @@
 # Design: Tools Hidden from the Model
 
-- **Status:** Approved
+- **Status:** Implemented
+- **User-facing:** [CONFIGURATION - MCP tool set](../../CONFIGURATION.md#tool-sets-configuration) (`hidden_from_model`);
+  [docs/hooks.md](../hooks.md#tools-hidden-from-the-model)
 - **Phases:** Phase 1 (this iteration, specified in detail) covers MCP toolsets plus the type-agnostic
-  foundation. Phase 2 (REST, DIAL deployment, internal tools) is conditional — see [Phasing](#phasing)
+  foundation. Phase 2 (REST, DIAL deployment, internal tools) is conditional and not implemented — see
+  [Phasing](#phasing)
 - **Dependencies:**
   - [Hook Context, Parameter Templating, and Lifecycle Events](hook_context_and_lifecycle_events.md) — the
     hooks that consume these tools
