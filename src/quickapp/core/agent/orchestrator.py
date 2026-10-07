@@ -12,6 +12,7 @@ from openai import APIError, AsyncStream
 from openai.types.chat import ChatCompletionChunk
 
 from quickapp.common import EXTERNAL_TOOL_NAMES, DeploymentUsage
+from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_execution_history_policy import ToolExecutionHistoryPolicy
 from quickapp.common.chat_completion_recovery import (
     STREAM_ACCUMULATION_RETRY_SCOPE,
@@ -34,7 +35,7 @@ from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
@@ -79,6 +80,7 @@ class Orchestrator:
         tool_names: EXTERNAL_TOOL_NAMES,
         request_async_close_registry: RequestAsyncCloseRegistry,
         suppressed_attachment_registry: SuppressedAttachmentRegistry,
+        completion_hook_runners: list[CompletionHookRunner],
     ) -> None:
         self.__messages_context: MessagesMixin = messages_context
         self.__choice: Choice = choice
@@ -112,6 +114,7 @@ class Orchestrator:
             suppressed_attachment_registry
         )
         self.__propagated_attachment_urls: set[str] = set()
+        self.__completion_hook_runners: list[CompletionHookRunner] = completion_hook_runners
 
     @property
     def iteration_count(self) -> int:
@@ -163,6 +166,21 @@ class Orchestrator:
         async with self._persisting_state():
             while await self._run_iteration():
                 pass
+            await self._run_completion_hooks()
+
+    async def _run_completion_hooks(self) -> None:
+        if self.__completion_kind != "completed":
+            return
+        for runner in self.__completion_hook_runners:
+            try:
+                await runner.run(
+                    iteration_count=self.__iterations_counter,
+                    total_tool_calls=self.__total_tool_calls,
+                )
+            except Exception:
+                logger.warning(
+                    "Completion hook runner %s failed", type(runner).__name__, exc_info=True
+                )
 
     async def _run_iteration(self) -> bool:
         """Run a single orchestrator iteration. Returns True if the loop should continue."""
@@ -280,9 +298,7 @@ class Orchestrator:
                 if url is not None:
                     propagated_urls.add(url)
                     if url in self.__propagated_attachment_urls:
-                        logger.debug(
-                            "Skipping duplicate attachment URL %s", sanitize_url_for_log(url)
-                        )
+                        logger.debug("Skipping duplicate attachment URL %s", sanitize_url(url))
                         continue
                     self.__propagated_attachment_urls.add(url)
                 self.__choice.add_attachment(**attachment.model_dump(exclude={"index"}))

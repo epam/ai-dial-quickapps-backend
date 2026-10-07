@@ -7,7 +7,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.file_reference_pattern import FILE_PATTERN, MISSING_FILE_PREFIX_MESSAGE
 from quickapp.common.payload_logging import log_payload
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.file_transfer._file_loader_service import FileLoaderService
 from quickapp.file_transfer._file_prefix_handlers import FilePrefixHandlers
 
@@ -64,7 +64,7 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             logger.debug(
                 "Detected 'base64' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                sanitize_url_for_log(file_url_part),
+                sanitize_url(file_url_part),
             )
             return await FilePrefixHandlers.handle_base64(
                 file_url_part, self.__file_service, parameter_name=key
@@ -73,7 +73,7 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             logger.debug(
                 "Detected 'data' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                sanitize_url_for_log(file_url_part),
+                sanitize_url(file_url_part),
             )
             return await FilePrefixHandlers.handle_data(
                 file_url_part, self.__file_service, parameter_name=key
@@ -82,14 +82,14 @@ class _FileArgumentTransformer(ToolArgumentTransformer):
             logger.debug(
                 "Detected 'url' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                sanitize_url_for_log(file_url_part),
+                sanitize_url(file_url_part),
             )
             return file_url_part
         elif detected_prefix == "text":
             logger.debug(
                 "Detected 'text' prefix for key %s (url: %s) - placeholder handling",
                 key,
-                sanitize_url_for_log(file_url_part),
+                sanitize_url(file_url_part),
             )
             return await FilePrefixHandlers.handle_text(
                 file_url_part, self.__file_service, parameter_name=key

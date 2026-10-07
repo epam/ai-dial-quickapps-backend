@@ -119,6 +119,7 @@ async def test_invoke_no_tool_calls_processes_usage_and_sets_state():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -200,6 +201,7 @@ async def test_stream_phase_api_error_retries_after_recovery():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -260,6 +262,7 @@ async def test_stream_phase_api_error_raises_when_recovery_no_op():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(openai.APIError):
@@ -363,6 +366,7 @@ async def test_invoke_with_tool_calls_executes_tools_and_updates_state_and_messa
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -447,6 +451,7 @@ async def test_invoke_with_stream_state_puts_only_response_state_under_orchestra
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -536,6 +541,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(RuntimeError) as excinfo:
@@ -599,6 +605,7 @@ def _make_orchestrator(
         suppressed_attachment_registry=(
             suppressed_attachment_registry or SuppressedAttachmentRegistry()
         ),
+        completion_hook_runners=[],
     )
 
 
@@ -930,6 +937,7 @@ async def test_invoke_terminal_flow_strips_get_content_attachments_in_saved_hist
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     await orchestrator.invoke()
@@ -1043,6 +1051,7 @@ async def test_invoke_interrupted_flow_keeps_get_content_attachments_in_saved_hi
         tool_names=frozenset(),
         request_async_close_registry=RequestAsyncCloseRegistry(),
         suppressed_attachment_registry=SuppressedAttachmentRegistry(),
+        completion_hook_runners=[],
     )
 
     with pytest.raises(RuntimeError, match="interrupted"):
@@ -1127,6 +1136,34 @@ async def test_propagation_deduplicates_repeated_urls():
 
     urls = [kw.get("url") for kw in choice.add_attachment_kwargs]
     assert urls == [same_url, "files/bucket/other.pdf"]
+
+
+@pytest.mark.asyncio
+async def test_propagation_duplicate_data_uri_not_logged_verbatim(caplog):
+    """A duplicate data: URI attachment must not have its base64 payload logged verbatim at
+    DEBUG — sanitize_url collapses it to its header."""
+    choice = SpyChoice()
+    payload = "A" * 500
+    same_url = f"data:image/png;base64,{payload}"
+    tool_result = Mock()
+    tool_result.attachments = None
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.annotations = []
+    tool_result.propagate_to_choice = [
+        Attachment(url=same_url, type="image/png"),
+        Attachment(url=same_url, type="image/png"),
+    ]
+
+    orchestrator = _build_orchestrator_for_propagation(choice, tool_result)
+    with caplog.at_level("DEBUG", logger="quickapp.core.agent.orchestrator"):
+        await orchestrator.invoke()
+
+    logged_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert payload not in logged_text
+    assert "data:image/png;base64,…" in logged_text
 
 
 @pytest.mark.asyncio
