@@ -72,7 +72,8 @@ async def test_mcp_toolset_copies_fields_from_source():
 
 
 @pytest.mark.asyncio
-async def test_mcp_toolset_carries_hidden_from_model():
+async def test_mcp_toolset_carries_hidden_from_model(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
     toolset = DialAppToolSet(
         name="app",
         deployment_id="dep",
