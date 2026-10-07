@@ -115,23 +115,24 @@ services:
       AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
       AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
       DIAL_CORE_URL: "http://core:8080"
-      # CSP frame-ancestors + postMessage origin, both as the browser sees chat-new.
-      ALLOWED_FRAME_ANCESTORS: "http://localhost:3012"
       # chat-api derives CSP frame-ancestors from this list; origins allowed to embed the editor.
       ALLOWED_IFRAME_ORIGINS: "http://localhost:3012"
-      ALLOWED_ORIGIN: "http://localhost:3012"
-      DIAL_CHAT_URL: "http://localhost:3012"
-      # Must equal dial:applicationTypeDisplayName in
-      # docker_compose_files/core/configuration/application-schemas.json — it prefixes the
-      # postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
-      QUICK_APPS_APPLICATION_NAME: "Quick App 2.0"
-      # Editor toggles (Context & Tools / features). Web fetch and Add attachment are preview
-      # fields on the backend: need ENABLE_PREVIEW_FEATURES=true (web fetch also
-      # EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable interpreter
-      # on DIAL_URL or PY_INTERPRETER_URL.
-      CODE_INTERPRETER_ENABLED: "true"
-      WEB_FETCH_ENABLED: "true"
-      ADD_ATTACHMENT_ENABLED: "true"
+      # Editor settings, served to the SPA via GET /api/v1/client-config:
+      # - allowedOrigin / dialChatHost: postMessage origin and host, as the browser sees chat-new.
+      # - applicationName: must equal dial:applicationTypeDisplayName in
+      #   docker_compose_files/core/configuration/application-schemas.json — it prefixes the
+      #   postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
+      # - *Enabled: editor toggles (Context & Tools / features), JSON booleans. Web fetch and
+      #   Add attachment are preview fields on the backend: need ENABLE_PREVIEW_FEATURES=true
+      #   (web fetch also EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable
+      #   interpreter on DIAL_URL or PY_INTERPRETER_URL.
+      CUSTOM_CLIENT_VARIABLES: >-
+        {"allowedOrigin": "http://localhost:3012",
+        "dialChatHost": "http://localhost:3012",
+        "applicationName": "Quick App 2.0",
+        "codeInterpreterEnabled": true,
+        "webFetchEnabled": true,
+        "addAttachmentEnabled": true}
       THEMES_CONFIG_URL: "http://themes:8080"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:
@@ -182,13 +183,6 @@ services:
           "/opt/admin-export/out.json"
         ]
       'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
-      'aidial.identityProviders.keycloak.jwksUrl': "http://keycloak:8080/realms/dial-dev/protocol/openid-connect/certs"
-      'aidial.identityProviders.keycloak.rolePath': "realm_access.roles"
-      'aidial.identityProviders.keycloak.issuerPattern': '^https://keycloak\.localtest\.me:8443/realms/dial-dev$'
-      'aidial.identityProviders.keycloak.loggingKey': "sub"
-      'aidial.identityProviders.keycloak.loggingSalt': "loggingSalt"
-      'aidial.identityProviders.keycloak.userDisplayName': "name"
-
     depends_on:
       admin-export-init:
         condition: service_completed_successfully

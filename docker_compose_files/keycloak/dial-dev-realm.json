@@ -97,7 +97,7 @@
         "http://localhost:3010/api/auth/callback/keycloak",
         "http://localhost:3020/api/auth/callback/keycloak",
         "http://localhost:3012/api/v1/auth/callback/keycloak",
-        "http://localhost:4600/api/auth/callback/keycloak"
+        "http://localhost:4600/api/v1/auth/callback/keycloak"
       ],
       "webOrigins": [
         "http://localhost:3010",
