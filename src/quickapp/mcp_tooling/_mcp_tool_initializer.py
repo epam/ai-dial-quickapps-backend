@@ -273,6 +273,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 sorted(unknown_hidden),
             )
 
+        toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         model_hidden_tools: list[ModelHiddenTool] = []
         for tool in tools:
@@ -294,9 +295,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
                 ),
             )
-            mcp_tool.stage_name_component = resolve_localized(
-                resolved_toolset.name, self.__accept_language
-            )
+            mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
             # Routing precedes the deferral decision: a model-hidden tool is never deferred.
             if tool.name in hidden_names:
                 model_hidden_tools.append(mcp_tool)

@@ -12,7 +12,7 @@ from quickapp.common._di_types import CLIENT_CHANNEL_HEADER
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.payload_logging import log_payload
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services._login_result import LoginResult
 
@@ -171,9 +171,7 @@ class InteractiveLoginService:
     async def request_external_service_signin(self, url: str) -> LoginResult:
         """Request interactive sign-in for an external service via its signin url."""
         logger.info(
-            format_event(
-                "Interactive login requested", external_service_url=sanitize_url_for_log(url)
-            )
+            format_event("Interactive login requested", external_service_url=sanitize_url(url))
         )
         if self.__client_channel_id is None:
             return LoginResult.NO_CHANNEL
@@ -196,7 +194,7 @@ class InteractiveLoginService:
         except Exception:
             logger.warning(
                 "Interactive login failed for external service %s",
-                sanitize_url_for_log(url),
+                sanitize_url(url),
                 exc_info=True,
             )
             results = {url: LoginResult.ERROR}
