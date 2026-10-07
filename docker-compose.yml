@@ -106,14 +106,19 @@ services:
       - core
       - keycloak
     environment:
-      NEXTAUTH_SECRET: "0e5b1c4f9a2d47e8b3c6f1a894d2e7b5c0a3f6d9e2b5c8a1f4d7e0b3c6a9f2d5"
-      NEXTAUTH_URL: "http://localhost:4600"
-      AUTH_KEYCLOAK_ISSUER: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      # Must equal chat-new's AUTH_SESSION_SECRET: cookies are shared across localhost ports, so the
+      # editor iframe reuses the chat session cookie and has to decrypt it.
+      AUTH_SESSION_SECRET: "48c69bd559cffffb2cbee3951430f324e0cd0c79fd8a83de0a991648cae706c8"
+      AUTH_CALLBACK_BASE_URL: "http://localhost:4600"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_KEYCLOAK_HOST: "keycloak.localtest.me:8443/realms/dial-dev"
       AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
-      AUTH_KEYCLOAK_CLIENT_SECRET: "dial-local-dev-secret"
+      AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
       DIAL_CORE_URL: "http://core:8080"
       # CSP frame-ancestors + postMessage origin, both as the browser sees chat-new.
       ALLOWED_FRAME_ANCESTORS: "http://localhost:3012"
+      # chat-api derives CSP frame-ancestors from this list; origins allowed to embed the editor.
+      ALLOWED_IFRAME_ORIGINS: "http://localhost:3012"
       ALLOWED_ORIGIN: "http://localhost:3012"
       DIAL_CHAT_URL: "http://localhost:3012"
       # Must equal dial:applicationTypeDisplayName in
@@ -127,7 +132,7 @@ services:
       CODE_INTERPRETER_ENABLED: "true"
       WEB_FETCH_ENABLED: "true"
       ADD_ATTACHMENT_ENABLED: "true"
-      THEMES_URL: "http://themes:8080/config.json"
+      THEMES_CONFIG_URL: "http://themes:8080"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:
       - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro
@@ -177,6 +182,13 @@ services:
           "/opt/admin-export/out.json"
         ]
       'aidial.redis.singleServerConfig.address': 'redis://redis:6379'
+      'aidial.identityProviders.keycloak.jwksUrl': "http://keycloak:8080/realms/dial-dev/protocol/openid-connect/certs"
+      'aidial.identityProviders.keycloak.rolePath': "realm_access.roles"
+      'aidial.identityProviders.keycloak.issuerPattern': '^https://keycloak\.localtest\.me:8443/realms/dial-dev$'
+      'aidial.identityProviders.keycloak.loggingKey': "sub"
+      'aidial.identityProviders.keycloak.loggingSalt': "loggingSalt"
+      'aidial.identityProviders.keycloak.userDisplayName': "name"
+
     depends_on:
       admin-export-init:
         condition: service_completed_successfully
