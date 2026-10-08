@@ -261,18 +261,25 @@ class _MCPToolInitializer(CompletionInitializer):
     ) -> None:
         tools = await toolset_client.get_tools_list(session)
 
+        server_tool_names = {tool.name for tool in tools}
+        toolset_label = resolve_localized(resolved_toolset.name)
+        for field_name, requested in (
+            ("allowed_tools", resolved_toolset.allowed_tools),
+            ("hidden_from_model", resolved_toolset.hidden_from_model),
+        ):
+            unknown = set(requested or []) - server_tool_names
+            if unknown:
+                logger.warning(
+                    "%s of toolset '%s' names tools the server does not provide: %s",
+                    field_name,
+                    toolset_label,
+                    sorted(unknown),
+                )
+
         if resolved_toolset.allowed_tools:
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
         hidden_names = set(resolved_toolset.hidden_from_model or [])
-        unknown_hidden = hidden_names - {tool.name for tool in tools}
-        if unknown_hidden:
-            logger.warning(
-                "hidden_from_model of toolset '%s' names tools the server does not provide: %s",
-                resolve_localized(resolved_toolset.name),
-                sorted(unknown_hidden),
-            )
-
         toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         model_hidden_tools: list[ModelHiddenTool] = []

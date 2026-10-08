@@ -47,39 +47,33 @@ class ToolExecutor:
         adopted_tool_stages: dict[str, AdoptedToolStage] | None = None,
     ) -> list[ToolCallResult]:
         adopted = adopted_tool_stages if adopted_tool_stages is not None else {}
-        hidden_names = {
-            tc.name
-            for tc in tool_call_list
-            if tc.name not in self.__tools and tc.name in self.__model_hidden_names
-        }
+        hidden_names: set[str] = set()
+        unknown_names: set[str] = set()
+        tasks = []
+        for tc in tool_call_list:
+            tool = self.__tools.get(tc.name)
+            if tool is None:
+                if tc.name in self.__model_hidden_names:
+                    hidden_names.add(tc.name)
+                    tasks.append(self.__model_hidden_tool_result(tc))
+                else:
+                    unknown_names.add(tc.name)
+                    tasks.append(self.__unknown_tool_result(tc))
+                continue
+            args = json.loads(tc.arguments)
+            logger.debug("Making tool call: %s", tc.name)
+            log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
+            adopted_stage = adopted.pop(tc.id, None)
+            tasks.append(tool.arun(tool_call_id=tc.id, adopted_stage=adopted_stage, **args))
+
         if hidden_names:
             logger.warning("Model requested model-hidden tool(s) %s", sorted(hidden_names))
-        unknown_names = {
-            tc.name
-            for tc in tool_call_list
-            if tc.name not in self.__tools and tc.name not in self.__model_hidden_names
-        }
         if unknown_names:
             logger.error(
                 "Model requested unknown tool(s) %s; registered=%s",
                 sorted(unknown_names),
                 sorted(self.__tools),
             )
-
-        tasks = []
-        for tc in tool_call_list:
-            if tc.name not in self.__tools:
-                if tc.name in self.__model_hidden_names:
-                    tasks.append(self.__model_hidden_tool_result(tc))
-                else:
-                    tasks.append(self.__unknown_tool_result(tc))
-                continue
-            tool = self.__tools[tc.name]
-            args = json.loads(tc.arguments)
-            logger.debug("Making tool call: %s", tc.name)
-            log_payload(logger, "Making tool call: %s with args: %s", tc.name, args)
-            adopted_stage = adopted.pop(tc.id, None)
-            tasks.append(tool.arun(tool_call_id=tc.id, adopted_stage=adopted_stage, **args))
 
         results: list[ToolCallResult] = list(await asyncio.gather(*tasks))
         self.__enrich_all(results)

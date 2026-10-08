@@ -222,6 +222,8 @@ class AgentModule(Module):
         extra_tools = context.extra_tools
         if not extra_tools:
             return []
+        # Model-hidden tools count too: external tools are routed by name, so a client tool sharing
+        # a hidden tool's name would hijack the hook's synthetic tool-call pair in the history.
         server_names: set[str] = {
             tool.tool_config.open_ai_tool.function.name
             for tool in [*tools, *model_hidden_tools]
