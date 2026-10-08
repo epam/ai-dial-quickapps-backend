@@ -12,6 +12,7 @@ from .skill_initialization import (
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
+from .toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from .unsupported_reasoning_effort import UnsupportedReasoningEffortException
 from .tool_error import ToolErrorException
 
@@ -28,6 +29,8 @@ __all__ = [
     "SkillInitializationException",
     "ToolInitializationException",
     "ToolTimeoutError",
+    "ToolsetForbiddenException",
+    "ToolsetNotFoundException",
     "UnsupportedReasoningEffortException",
     "HookInitializationException",
     "ToolErrorException",

@@ -21,7 +21,7 @@ class UnsupportedReasoningEffortException(InitializationException):
         self.supported = supported
         # The deployment is deliberately not named: which model an application runs on is
         # not the end user's business, and every other user-facing message about it says
-        # "the AI model configured in this application" (`_exception_message_resolver`).
+        # "the AI model configured in this application" (`exception_message_resolver`).
         if supported:
             advertised = "supports " + ", ".join(f"`{value}`" for value in supported)
         else:
