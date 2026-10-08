@@ -12,6 +12,8 @@ from quickapp.common.exception_message_resolver import (
 )
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
+    HiddenToolErrorException,
+    InvalidToolCallParameterException,
     OrchestratorExceedMaxIterationsException,
     ToolErrorException,
     ToolTimeoutError,
@@ -308,6 +310,18 @@ class TestResolveToolModelWording:
 
 
 class TestResolveInternalError:
+    def test_invalid_tool_call_parameter_keeps_its_text(self) -> None:
+        resolved = resolve_exception(
+            InvalidToolCallParameterException("path", "path must be absolute")
+        )
+        assert resolved.message == "path must be absolute"
+        assert resolved.retryable is False
+
+    def test_hidden_tool_error_keeps_its_text(self) -> None:
+        resolved = resolve_exception(HiddenToolErrorException())
+        assert resolved.message == "An error occurred while executing the tool."
+        assert resolved.retryable is False
+
     def test_tool_timeout_keeps_its_cause_and_is_retryable(self) -> None:
         resolved = resolve_exception(ToolTimeoutError("image_generation_tool", 30))
         assert resolved.message == (

@@ -4,7 +4,8 @@ import openai
 from aidial_client import DialException
 
 from quickapp.common.exception_message_resolver import resolve_exception
-from quickapp.common.exceptions import ToolTimeoutError
+from quickapp.common.exceptions import HiddenToolErrorException, ToolTimeoutError
+from quickapp.common.url_classification import unsupported_scheme_error
 from quickapp.dial_deployment_tooling._deployment_tool_error_exception import (
     DeploymentToolErrorException,
 )
@@ -91,3 +92,22 @@ def test_attachment_dial_error_renders_service_wording_and_status():
         "A required service or resource could not be found. "
         "Please contact your administrator. (status code: 404)\n"
     )
+
+
+def test_hidden_error_renders_placeholder_as_is():
+    wrapper = _make_wrapper()
+
+    rendered = wrapper._build_debug_info_from_exception(HiddenToolErrorException())
+
+    assert rendered == "> #### Error:\nAn error occurred while executing the tool.\n"
+
+
+def test_invalid_parameter_renders_its_own_text():
+    """The agent retries these itself, so the stage must not send the user to an administrator."""
+    wrapper = _make_wrapper()
+    error = unsupported_scheme_error("ftp://host/file.pdf", parameter_name="attachment_urls")
+
+    rendered = wrapper._build_debug_info_from_exception(error)
+
+    assert rendered == f"> #### Error:\n{error.message}\n"
+    assert "administrator" not in rendered
