@@ -26,4 +26,6 @@ jobs:
       promote: ${{ github.event_name == 'workflow_dispatch' && inputs.promote }}
       python-version: "3.13"
       poetry-version: "2.3.2"
+      trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
+      trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
     secrets: inherit

@@ -1,62 +1,82 @@
 # Hooks
 
-> [!NOTE]
-> Preview feature: requires `ENABLE_PREVIEW_FEATURES=true` and may change without a major version bump.
-> Field reference: [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration).
+> **Preview** — requires `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 
-Hooks let the platform call a configured tool at fixed points of a request, without the model deciding to do so.
-Typical use: an agent-memory MCP server whose tools recall memories before the model answers and save the turn
-afterwards.
+Hooks run a configured tool at a fixed point of a request, without the model deciding to call it.
+This guide describes how that works at runtime. Fields and examples are in
+[CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration); the reasoning behind the design is in
+[hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md).
 
-## How hooks work
+## Request lifecycle
 
-The top-level `hooks` array lists tool calls. Each hook names a tool (`toolset_name` + `tool_name`, or the exact
-function name for DIAL deployment and internal tools), its `arguments`, and an `event`:
+```mermaid
+flowchart LR
+    A[Request] --> B["on_request_start hooks<br/>(result injected into history)"]
+    B --> C[Orchestrator loop<br/>LLM calls and tools]
+    C -->|finished normally| D["on_completion hooks<br/>(result discarded)"]
+    C -->|external tool calls| E[Response closed]
+    D --> E
+```
 
-| Event | When it fires | What happens to the result |
-|---|---|---|
-| `on_request_start` | Before the first LLM call of the request | Injected into the history as a synthetic assistant tool-call + tool-result pair, so the model sees it like any earlier tool call |
-| `on_completion` | After the turn has finished | Discarded: the hook runs for its side effect only and never reaches the user or the conversation |
+| Event | When | Result |
+|-------|------|--------|
+| `on_request_start` | Before the first LLM call of the request | Injected into the conversation as a synthetic tool-call pair |
+| `on_completion` | After the orchestrator loop ended normally, before the response is closed | Discarded; the hook exists for its side effect |
 
-Hooks of one event run one after another in manifest order.
+`on_completion` does not fire when the turn ends with external tool calls handed back to the client.
 
-### Which tool a hook calls
+## `on_request_start`
 
-A hook resolves its tool by the same name the model would use: the toolset name and the tool name joined and
-sanitized (`memory_server` + `search_memories` becomes `memory_server_search_memories`). Without `toolset_name`
-the `tool_name` is used verbatim. The tool is an ordinary initialized tool, so REST, MCP, DIAL deployment and
-internal tools all work, and a tool the model cannot see works too, see
-[Tools hidden from the model](#tools-hidden-from-the-model).
+- Each hook runs once per request, in the position of the hooks module in the message-transformer chain.
+  It sees the messages as they are at that point: the restored tool history plus pairs injected by earlier
+  transformers.
+- The tool result is added to the history as an assistant tool call plus a `tool` message, so the model reads
+  it as if it had called the tool itself. The call shows the **rendered** arguments.
+- The identity of the pair (its call id) is derived from the **unrendered** `arguments`, so it stays the same
+  from turn to turn even when the rendered values change. This is what `frequency` relies on:
+  - `append_if_changed` (default): an identical result replaces the earlier pair in place, a different
+    result is appended as a new pair.
+  - `always`: a pair is appended every turn.
+  - `refresh_condition` (TTL) finds the earlier pair by that identity, so it works only with static
+    `arguments`. Combining it with a template is rejected when the configuration is validated.
+- A hook that is skipped (see [Failures](#failures-and-timeouts)) injects nothing; pairs from earlier turns
+  stay in place.
 
-If no initialized tool matches, the request reports an initialization error `tool '<name>' not found in
-initialized tools` before the model is called.
+## `on_completion`
 
-### Arguments
+- Runs inside the request, after the final answer is streamed and before the response is closed, so
+  per-request MCP sessions are still open and the hook can reuse them.
+- Hooks run **sequentially in manifest order**. The response stays open until they finish, so the delay is
+  bounded by the sum of their timeouts.
+- The result is not added to the conversation and not stored, so the next turn does not see it.
 
-`arguments` is a JSON-e template rendered against the hook context when the hook fires
-([Argument templates](../CONFIGURATION.md#hook-argument-templates)). If an expression cannot be evaluated for
-the current request (for example `last_assistant_message.content` on the first turn), that hook is skipped for
-the request.
+## Hook context
 
-### Keeping injected results in the history (`on_request_start`)
+Arguments are rendered against a read-only snapshot of the conversation. The names and templating syntax are
+in [CONFIGURATION — Hook argument templates](../CONFIGURATION.md#hook-argument-templates). Behaviour to know:
 
-Each request starts again from the history the client sends, and earlier injected pairs are part of it.
-`frequency` decides what a new request does about them:
+- `messages` is a simplified view of the DIAL messages, not the raw objects: `content` is text (multimodal
+  parts are reduced to their text, attachments are not exposed), `tool_calls[].arguments` is a parsed object
+  rather than a JSON string, and a whitespace-only `content` becomes `""`.
+- `messages` is not only the dialog. It also holds the system prompt, tool results and pairs injected by other
+  features, so filter by role when you need only the utterances.
+- `last_assistant_message` is the last assistant message **without tool calls**, that is, the final answer of a
+  previous turn on `on_request_start` and the current answer on `on_completion`.
 
-| `frequency` | Behaviour |
-|---|---|
-| `append_if_changed` (default) | A new pair is added only if the tool returned different content than the pair already in the history for the same tool and arguments |
-| `always` | A new pair is added on every request; pairs accumulate across turns |
+## Failures and timeouts
 
-`refresh_condition` (`{"kind":"ttl","ttl_minutes":N}`) re-runs the hook only once the pair in the history is older
-than the TTL. It cannot be combined with templated `arguments`.
+A hook never fails the request. Every hook has a timeout (`timeout_seconds`, default 15 s for
+`on_request_start`, 30 s for `on_completion`).
 
-### Failure handling
+| Situation | Outcome |
+|-----------|---------|
+| Argument template cannot be rendered for this request (for example `last_assistant_message.content` on the first turn) | Hook is skipped for the request |
+| Hook exceeds its timeout | Hook is cancelled and skipped, a warning is logged |
+| Unexpected error while running the hook | Hook is skipped, the error is logged with a traceback |
+| Tool fails and its fallback strategy produces a message (the default) | The tool layer logs `Tool call failed`; for `on_completion` the fallback content is discarded, so a failed write shows up only in that log |
 
-A hook never fails the request. A hook that raises, times out (default 15 s for `on_request_start`, 30 s for
-`on_completion`, override with `timeout_seconds`) or cannot render its arguments is logged and skipped, and the
-turn continues without its result. Hook calls are shown as debug-level stages, so they do not clutter the default
-stage display.
+Logs name the hook (`name`, or the tool name) and the event. A successful run logs one `DEBUG` line with the
+elapsed time. Arguments and results are never logged.
 
 ## Tools hidden from the model
 
@@ -142,8 +162,9 @@ the turn's iterations and tool calls.
 | The model still sees the tool | Preview features are off, or the request ran on an older replica |
 | The model asks for the hidden tool and then continues without it | Expected: see [If the model calls a hidden tool anyway](#if-the-model-calls-a-hidden-tool-anyway) |
 
-## See also
+## Related
 
-- Design: [hook_context_and_lifecycle_events.md](./designs/hook_context_and_lifecycle_events.md),
-  [tools_hidden_from_model.md](./designs/tools_hidden_from_model.md)
-- Configuration: [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration)
+- [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) — fields, templates, examples
+- [Design: hook context and lifecycle events](./designs/hook_context_and_lifecycle_events.md) — rationale and
+  Phase 2 (background execution, hook-level `condition`, role-filtered message lists)
+- [Design: tools hidden from the model](./designs/tools_hidden_from_model.md)
