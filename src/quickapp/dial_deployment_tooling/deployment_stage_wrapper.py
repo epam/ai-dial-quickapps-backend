@@ -1,15 +1,10 @@
 from typing import Any
 
-from aidial_client import DialException
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
-from quickapp.common.error_details import (
-    MSG_AI_MODEL_RATE_LIMITED,
-    RETRY_SENTENCE,
-    extract_error_details,
-    sanitize_display_message,
-)
+from quickapp.common.exception_message_resolver import resolve_exception
+from quickapp.common.exceptions import ToolErrorException
 from quickapp.dial_deployment_tooling.constants import TOOLS_PARAM
 
 
@@ -24,19 +19,11 @@ class DeploymentStageWrapper(TimedStageWrapper):
         return self._render_config_map_parameters(visible)
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
-        if isinstance(exception, DialException):
-            return (
-                f"> #### Error:\n{exception.message}\n"
-                f"> #### Status Code:\n{exception.status_code}\n"
-            )
-        # Backfills the status from `code` for mid-stream errors, which carry no HTTP status.
-        details = extract_error_details(exception)
-        if details.status_code == 429:
-            message = sanitize_display_message(details.display_message or "") or (
-                f"{MSG_AI_MODEL_RATE_LIMITED} {RETRY_SENTENCE}"
-            )
-            return f"> #### Error:\n{message}\n> #### Status Code:\n{details.status_code}\n"
-        return "> #### Exception:\nGeneral exception occurred while calling other DIAL deployment\n"
+        # The stage is a user channel: tool errors carry the resolved cause; anything else
+        # gets the resolver's curated text, never the raw exception string.
+        if isinstance(exception, ToolErrorException):
+            return f"> #### Error:\n{exception.user_facing_message}\n"
+        return f"> #### Error:\n{resolve_exception(exception).message_with_status()}\n"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         # For Deployment tools we stream content into choice on the tool execution level

@@ -13,17 +13,23 @@ class ApplicableStrategyMixin:
         return True
 
     @staticmethod
-    def _matchable_text(error: Exception) -> str:
-        # Match trigger_on against the real tool error body (error_message), not the
+    def _matchable_texts(error: Exception) -> tuple[str, ...]:
+        # Match trigger_on against the real tool error texts (trigger_texts), not the
         # structural str(e): the exception's string form carries no response body under
         # the content rule (#436), but trigger matching must still see the error text.
         if isinstance(error, ToolErrorException):
-            return error.error_message
-        return str(error)
+            return error.trigger_texts
+        return (str(error),)
 
     @staticmethod
     def _is_applicable_by_trigger_on(trigger_on: TriggerOn, error: Exception) -> bool:
-        text = ApplicableStrategyMixin._matchable_text(error)
+        return any(
+            ApplicableStrategyMixin._matches(trigger_on, text)
+            for text in ApplicableStrategyMixin._matchable_texts(error)
+        )
+
+    @staticmethod
+    def _matches(trigger_on: TriggerOn, text: str) -> bool:
         if trigger_on.type == TriggerOnType.contains:
             return (
                 trigger_on.value in text

@@ -6,13 +6,14 @@ from typing import Any
 
 import httpx
 import openai
+from aidial_client import DialException
 from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from pydantic import BaseModel, ConfigDict
 
 logger = logging.getLogger(__name__)
 
-# Appended only to retryable-classified messages (by the resolver and the deployment tool
-# stage). No message constant carries it, so it is never stacked on top of conflicting advice.
+# Appended only to retryable-classified messages by the resolver. No message constant carries
+# it, so it is never stacked on top of conflicting advice.
 RETRY_SENTENCE = "Please try again later."
 
 # display_message is user-safe by DIAL contract but still untrusted text: capped so a
@@ -95,6 +96,16 @@ def _extract_from_aidial(e: AiDialHTTPException) -> ErrorDetails:
     )
 
 
+def _extract_from_dial_client(e: DialException) -> ErrorDetails:
+    return ErrorDetails(
+        status_code=e.status_code,
+        code=e.code,
+        error_type=e.type,
+        message=e.message,
+        display_message=e.display_message,
+    )
+
+
 def _extract_from_httpx(e: httpx.HTTPError) -> ErrorDetails:
     if not isinstance(e, httpx.HTTPStatusError):
         return ErrorDetails()
@@ -112,6 +123,8 @@ def extract_error_details(e: Exception) -> ErrorDetails:
             return _extract_from_openai(e)
         if isinstance(e, AiDialHTTPException):
             return _extract_from_aidial(e)
+        if isinstance(e, DialException):
+            return _extract_from_dial_client(e)
         if isinstance(e, httpx.HTTPError):
             return _extract_from_httpx(e)
     except Exception:

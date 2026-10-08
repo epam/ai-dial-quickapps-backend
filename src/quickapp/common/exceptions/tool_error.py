@@ -6,7 +6,8 @@ class ToolErrorException(Exception):
     pipeline. The body stays available on the :attr:`error_message` attribute, which the
     fallback machinery may forward to the LLM (``forward_tool_error_message``, #408) and
     the user channels (stage UI, error resolver) render via
-    :attr:`user_facing_message`; none of these is a log channel.
+    :attr:`user_facing_message`; none of these is a log channel. Fallback ``trigger_on``
+    matches :attr:`trigger_texts`.
 
     The structural string form is owned here so no subclass can accidentally embed the
     body: subclasses set :attr:`tool_kind` (the human label) and the base builds the
@@ -23,6 +24,11 @@ class ToolErrorException(Exception):
         )
         self.tool_name = tool_name
         self.error_message = error_message
+
+    @property
+    def trigger_texts(self) -> tuple[str, ...]:
+        """Texts a fallback ``trigger_on`` is matched against; any match wins."""
+        return (self.error_message,)
 
     @property
     def user_facing_message(self) -> str:
