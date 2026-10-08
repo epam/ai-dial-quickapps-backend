@@ -2,6 +2,7 @@
 
 - **Status:** Implemented
 - **Approved:** 2026-07-08
+- **User-facing:** [Error handling](../error_handling.md)
 - **Dependencies:**
   - None
 
@@ -164,9 +165,9 @@ class ErrorDetails(BaseModel):
     display_message: str | None # user-safe by DIAL contract
 ```
 
-**Owner:** `_exception_message_resolver` (private helper within the module).
+**Owner:** `common/exception_message_resolver.py` (a private helper of the public resolver module).
 
-**Semantics:** One extraction function understands the four shapes an error reaches us in:
+**Semantics:** One extraction function understands the five shapes an error reaches us in:
 
 | Source                                | Where the details live                                                      |
 |---------------------------------------|------------------------------------------------------------------------------|
@@ -174,6 +175,7 @@ class ErrorDetails(BaseModel):
 | plain `openai.APIError` (mid-stream)   | unwrapped body only (the SDK stores it pre-unwrapped); no status code        |
 | `aidial_sdk.exceptions.HTTPException`  | native attributes: `status_code`, `code`, `type`, `display_message`          |
 | `httpx.HTTPStatusError`                | `.response.status_code`; error JSON parsed best-effort from the response body |
+| `aidial_client.DialException`          | native attributes: `status_code`, `code`, `type`, `display_message`          |
 
 **Body unwrapping (openai shapes).** For both openai shapes, `code`, `error_type`, `message`, and
 `display_message` are read from `body.get("error", body)` — **never** from the exception's
@@ -215,7 +217,7 @@ class ResolvedError(BaseModel):
     details: ErrorDetails   # extracted internals, carried for the handler's log record only
 ```
 
-**Owner:** `_exception_message_resolver.resolve_exception` (the string-returning
+**Owner:** `exception_message_resolver.resolve_exception` (the string-returning
 `resolve_exception_message` is replaced; it has exactly one caller).
 
 **Semantics — precedence order:**
@@ -240,7 +242,10 @@ class ResolvedError(BaseModel):
    this is what lets a backfilled mid-stream 429/5xx resolve to the specific rate-limit/internal-error text
    here rather than degrading to rule 4. The status-less *type* branches that exist today (`APITimeoutError`,
    `APIConnectionError`) remain part of this rule and therefore resolve **before** rule 4 — they are never
-   misrouted to the stream-failure message.
+   misrouted to the stream-failure message. `aidial_client.DialException` (DIAL Core calls such as attachment
+   metadata lookups) shares the httpx service ladder. When the caller passes `tool_model=True` (an openai
+   error from a tool's own deployment call), 401/403/404/400/422/413 name "the AI model behind this tool"
+   instead of the app's model; 429, 5xx and the code map keep the shared wording.
 4. **Stream-failure rule** — a plain `openai.APIError` (mid-stream error) that was not resolved by rules
    1–3 — whether because it carries no HTTP status even after the extractor's numeric-code backfill, or
    because the backfilled status matched nothing in the status ladder — gets a new dedicated constant,
@@ -249,8 +254,14 @@ class ResolvedError(BaseModel):
    exactly once. This is the terminal rule for the mid-stream path: no mid-stream error can reach the generic
    fallback.
 5. **Internal exception map** — the existing `OrchestratorExceedMaxIterations` / toolset / initialization
-   branches, unchanged in structure.
-6. **Fallback** — the existing generic message.
+   branches, unchanged in structure, plus three entries that show their own text:
+   `ToolTimeoutError` (retryable), `HiddenToolErrorException` (the placeholder a stage shows when
+   `display_error_in_stage` is off) and `InvalidToolCallParameterException` (written for the model, which
+   retries the call on its own).
+6. **Tool errors** — a `ToolErrorException` that wraps an openai, httpx or `aidial_client.DialException` cause
+   resolves through that cause (openai with tool-model wording); one without a cause shows its own
+   `user_facing_message`.
+7. **Fallback** — the existing generic message.
 
 **Retryability mechanism.** Message constants are reworked along a simple split: **retryable-classified
 constants carry the cause only** — their advice *is* the appended retry sentence — while **non-retryable
@@ -265,7 +276,8 @@ misconfiguration (wrong endpoint, DNS, TLS). Consistent with the "false hope for
 critique in Problem Statement item 1, `_MSG_SERVICE_NO_CONNECTIVITY` keeps its admin-escalation advice
 ("…check connectivity or contact your administrator") instead of gaining the retry sentence. Raw
 `httpx.NetworkError` from service calls gets no such client-level retry, so it stays retryable (cause-only
-constant + appended sentence). Rules 5 and 6 are classified **non-retryable**: an internal invariant violation
+constant + appended sentence). Rules 5–7 are classified **non-retryable** (except `ToolTimeoutError`, and
+causes resolved through rule 6): an internal invariant violation
 or unknown bug will not be fixed by retrying, so the fallback becomes "Something went wrong with the
 execution of your request. Please contact your administrator." `ResolvedError.retryable` therefore has no further effect
 on the text in the handler — it is exposed so Component 3 can include it in the log record, and as the
@@ -497,7 +509,7 @@ and internal error message at the matching record.
 
 ## Summary of Changes
 
-**`core/application/_exception_message_resolver.py`**
+**`common/exception_message_resolver.py`**
 
 - Added: `ErrorDetails` value object + best-effort extractor over openai / aidial / httpx error shapes,
   including numeric-code → status backfill.
@@ -506,16 +518,21 @@ and internal error message at the matching record.
 - Added: `ResolvedError` (message + retryable + details) returned by the new `resolve_exception`;
   string-returning `resolve_exception_message` removed (single caller).
 - Changed: resolution precedence — display message → code map → status/type map → stream-failure rule →
-  internal map → fallback; per-shape ladders return unresolved (`None`) on a miss instead of terminating with
+  internal map → tool errors → fallback; per-shape ladders return unresolved (`None`) on a miss instead of terminating with
   the fallback string.
 - Changed: all message constants (including `_FALLBACK_MESSAGE` and the internal-map messages) reworked —
   retryable-classified constants to cause-only, non-retryable to cause + specific advice, none carrying the
   retry phrase; the retry sentence is appended by the resolver exactly once for retryable classifications;
-  internal-map and fallback resolutions are non-retryable; `display_message` resolutions are terminal and
-  never retry-suffixed.
+  internal-map and fallback resolutions are non-retryable (except `ToolTimeoutError`); `display_message`
+  resolutions are terminal and never retry-suffixed.
 - Changed: plain `openai.APIError` (mid-stream) resolved via its body instead of falling to the fallback.
 - Fixed: httpx 401 (new `_MSG_SERVICE_AUTH_FAILED` service-context constant), aidial 400, openai 409/413
   mappings; toolset id included in toolset messages; misleading subclass comment.
+- Added (#525): module moved from `core/application/` to `common/` so tool packages can use it;
+  `aidial_client.DialException` shape on the service ladder; `tool_model` wording for a tool's own deployment
+  call; tool errors resolved through openai and `DialException` causes; `ToolTimeoutError`,
+  `HiddenToolErrorException` and `InvalidToolCallParameterException` internal-map entries; `ResolvedError.message_with_status()` for the
+  `(status code: N)` suffix tool stages show.
 
 **`core/application/_quick_app_completion.py`**
 
