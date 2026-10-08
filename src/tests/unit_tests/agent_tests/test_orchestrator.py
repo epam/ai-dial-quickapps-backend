@@ -1139,6 +1139,34 @@ async def test_propagation_deduplicates_repeated_urls():
 
 
 @pytest.mark.asyncio
+async def test_propagation_duplicate_data_uri_not_logged_verbatim(caplog):
+    """A duplicate data: URI attachment must not have its base64 payload logged verbatim at
+    DEBUG — sanitize_url collapses it to its header."""
+    choice = SpyChoice()
+    payload = "A" * 500
+    same_url = f"data:image/png;base64,{payload}"
+    tool_result = Mock()
+    tool_result.attachments = None
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_result.usage = None
+    tool_result.annotations = []
+    tool_result.propagate_to_choice = [
+        Attachment(url=same_url, type="image/png"),
+        Attachment(url=same_url, type="image/png"),
+    ]
+
+    orchestrator = _build_orchestrator_for_propagation(choice, tool_result)
+    with caplog.at_level("DEBUG", logger="quickapp.core.agent.orchestrator"):
+        await orchestrator.invoke()
+
+    logged_text = "\n".join(record.getMessage() for record in caplog.records)
+    assert payload not in logged_text
+    assert "data:image/png;base64,…" in logged_text
+
+
+@pytest.mark.asyncio
 async def test_propagation_keeps_urlless_attachments():
     choice = SpyChoice()
     tool_result = Mock()

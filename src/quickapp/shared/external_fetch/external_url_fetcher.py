@@ -11,7 +11,7 @@ import httpx
 from injector import inject
 from pydantic import BaseModel, ConfigDict
 
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.common.utils import (
     filename_from_url_path,
     guess_attachment_extension,
@@ -361,7 +361,5 @@ class ExternalUrlFetcher:
             except httpx.TimeoutException as exc:
                 raise ExternalFetchError(reason="timeout", url=url, detail=str(exc)) from exc
             except httpx.HTTPError as exc:
-                logger.debug(
-                    "External fetch failed for %s", sanitize_url_for_log(url), exc_info=True
-                )
+                logger.debug("External fetch failed for %s", sanitize_url(url), exc_info=True)
                 raise ExternalFetchError(reason="transport", url=url, detail=str(exc)) from exc
