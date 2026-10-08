@@ -5,19 +5,13 @@ from aidial_sdk.exceptions import ContextLengthExceededError as AiDialContextLen
 from aidial_sdk.exceptions import InvalidRequestError as AiDialInvalidRequestError
 
 from quickapp.common.error_details import RETRY_SENTENCE
+from quickapp.common.exception_message_resolver import _MSG_FALLBACK_STOP, resolve_exception
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
     OrchestratorExceedMaxIterationsException,
     ToolErrorException,
 )
-from quickapp.core.application._exception_message_resolver import (
-    _MSG_FALLBACK_STOP,
-    resolve_exception,
-)
-from quickapp.dial_core_services.exceptions import (
-    ToolsetForbiddenException,
-    ToolsetNotFoundException,
-)
+from quickapp.common.exceptions.toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 
 

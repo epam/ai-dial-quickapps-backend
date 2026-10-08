@@ -6,8 +6,8 @@ import pytest
 from aidial_sdk.exceptions import HTTPException as DialHTTPException
 
 from quickapp.common.error_details import ErrorDetails
+from quickapp.common.exception_message_resolver import ResolvedError
 from quickapp.common.exceptions import FallbackAgentStopException
-from quickapp.core.application._exception_message_resolver import ResolvedError
 from quickapp.core.application._quick_app_completion import (
     _error_reference_for,
     _outgoing_status_code,

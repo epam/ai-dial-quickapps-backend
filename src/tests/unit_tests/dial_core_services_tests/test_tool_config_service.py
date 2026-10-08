@@ -6,11 +6,8 @@ from aidial_client import DialException, ToolsetInfo
 from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
+from quickapp.common.exceptions.toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from quickapp.config.tools.const import ALL_MIME_TYPES
-from quickapp.dial_core_services.exceptions import (
-    ToolsetForbiddenException,
-    ToolsetNotFoundException,
-)
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
 from tests.unit_tests.common.common import noop_timeout_resolver_provider
 
