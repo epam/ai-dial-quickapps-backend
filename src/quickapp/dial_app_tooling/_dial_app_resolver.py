@@ -16,6 +16,7 @@ from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
 from quickapp.config.toolsets.dial_app import DialAppToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services.tool_config_service import ToolConfigCoreService
+from quickapp.shared.user_access import ToolAccessFilter
 
 from ._dial_app_resolver_context import _DialAppResolverContext
 
@@ -40,6 +41,7 @@ class _DialAppResolver(CompletionInitializer):
         tool_config_service: ToolConfigCoreService,
         deployment_cache: DialDeploymentToolCacheService,
         context: _DialAppResolverContext,
+        access_filter: ToolAccessFilter,
     ):
         self.__app_config: ApplicationConfig = app_config
         self.__dial_settings: DialSettings = dial_settings
@@ -47,6 +49,7 @@ class _DialAppResolver(CompletionInitializer):
         self.__tool_config_service: ToolConfigCoreService = tool_config_service
         self.__deployment_cache: DialDeploymentToolCacheService = deployment_cache
         self.__context: _DialAppResolverContext = context
+        self.__access_filter: ToolAccessFilter = access_filter
         # Errors are intentionally un-cached so a sibling toolset in the same group can retry.
         self.__metadata_memo: dict[str, Deployment | Application] = {}
 
@@ -72,6 +75,12 @@ class _DialAppResolver(CompletionInitializer):
             await self._resolve_one(ts)
 
     async def _resolve_one(self, toolset: DialAppToolSet) -> None:
+        if not await self.__access_filter.is_accessible(toolset.deployment_id):
+            logger.debug(
+                "Skipping dial-app toolset %r: deployment is not accessible to the user",
+                toolset.name,
+            )
+            return
         try:
             if toolset.transport == "chat-completion":
                 await self._handle_chat_completion_branch(toolset)

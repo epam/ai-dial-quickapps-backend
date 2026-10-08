@@ -18,6 +18,7 @@ from quickapp.dial_deployment_tooling._deployment_deferred_tools_context import 
 )
 from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
 from quickapp.dial_deployment_tooling.deployment_tool import DeploymentTool
+from quickapp.shared.user_access import ToolAccessFilter
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
         deployment_cache: DialDeploymentToolCacheService,
         dial_tools_provider: ProviderOf[list[DialDeploymentTool]],
         app_config: ApplicationConfig,
+        access_filter: ToolAccessFilter,
     ):
         self.__deployment_context: _DeploymentToolingContext = context
         self.__deferred_context: _DeploymentDeferredToolsContext = deferred_context
@@ -45,6 +47,7 @@ class _DeploymentToolInitializer(CompletionInitializer):
         # they have no owning DeploymentToolSet in app_config.tool_sets and are always eager.
         self.__dial_tools_provider: ProviderOf[list[DialDeploymentTool]] = dial_tools_provider
         self.__app_config: ApplicationConfig = app_config
+        self.__access_filter: ToolAccessFilter = access_filter
 
     async def initialize(self) -> None:
         discovery_cfg = self.__app_config.orchestrator.tool_discovery
@@ -73,8 +76,15 @@ class _DeploymentToolInitializer(CompletionInitializer):
         tools: list[StagedBaseTool] = []
         for tool_config in toolset.tools:
             if isinstance(tool_config, DialDeploymentTool) and tool_config.enabled:
-                tools.append(self.__build_deployment_tool(tool_config))
+                if await self.__access_filter.is_accessible(tool_config.deployment.deployment_id):
+                    tools.append(self.__build_deployment_tool(tool_config))
+                else:
+                    logger.debug("Skipping a deployment tool the user cannot access")
             elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
+                # Checked before the metadata fetch, so inaccessible simple tools cost no round-trips.
+                if not await self.__access_filter.is_accessible(tool_config.deployment_id):
+                    logger.debug("Skipping a deployment tool the user cannot access")
+                    continue
                 built_simple_tool = await self.__build_simple_deployment_tool(tool_config)
                 if built_simple_tool is not None:
                     tools.append(built_simple_tool)

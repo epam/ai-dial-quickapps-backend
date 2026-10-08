@@ -26,7 +26,7 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _MCPToolInitializer,
 )
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
-from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import make_access_filter, make_provider, noop_timeout_resolver
 
 
 def _make_app_config_mock() -> MagicMock:
@@ -235,6 +235,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # login_service
             None,  # accept_language
             _make_app_config_mock(),  # app_config
+            make_access_filter(),  # access_filter
         )
         return initializer, mcp_context
 
@@ -323,6 +324,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
 
     await initializer.initialize()
@@ -413,6 +415,7 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
@@ -616,6 +619,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
 
     await initializer.initialize()

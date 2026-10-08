@@ -9,13 +9,20 @@ from aidial_client.types.deployment import Features
 from pydantic import SecretStr
 
 from quickapp.common.exceptions import ToolInitializationException
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
-from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_deployment_names_service,
+    make_provider,
+    noop_timeout_resolver,
+)
 
 
 def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
@@ -89,6 +96,7 @@ def _make_initializer(
     toolset_list,
     login_service=None,
     toolset_client_builder=None,
+    access_filter=None,
 ):
     mcp_context = MagicMock()
 
@@ -129,6 +137,7 @@ def _make_initializer(
         login_service=login_service,
         accept_language=None,
         app_config=MagicMock(),
+        access_filter=access_filter or make_access_filter(),
     )
     return initializer, mcp_context, login_service
 
@@ -324,3 +333,36 @@ async def test_no_channel_appends_exception():
     exc = mcp_context.append_exception.call_args[0][0]
     assert isinstance(exc, ToolInitializationException)
     assert "no client channel" in exc.message.lower()
+
+
+@pytest.mark.asyncio
+async def test_inaccessible_dial_toolset_is_skipped_before_any_fetch():
+    """A dial-mcp toolset missing from DIAL Core's accessible list is dropped silently."""
+    app_config = create_app_configuration([])
+    app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+    access_filter = make_access_filter(
+        app_config, make_deployment_names_service(["toolsets/public/allowed"])
+    )
+    conn = MagicMock()
+    conn.get_tools_list = AsyncMock(return_value=[])
+    _setup_open_init_session(conn)
+    conn_builder = MagicMock()
+    conn_builder.build.return_value = conn
+
+    initializer, mcp_context, login_service = _make_initializer(
+        [
+            _make_dial_toolset("toolsets/public/allowed", "allowed"),
+            _make_dial_toolset("toolsets/public/denied", "denied"),
+            _make_mcp_toolset(),
+        ],
+        toolset_client_builder=conn_builder,
+        access_filter=access_filter,
+    )
+    await initializer.initialize()
+
+    # allowed dial-mcp + plain mcp toolsets are processed, the denied one never reaches a client
+    assert conn_builder.build.call_count == 2
+    built_names = {c.kwargs["toolset_info"].name for c in conn_builder.build.call_args_list}
+    assert "denied" not in built_names
+    mcp_context.append_exception.assert_not_called()
+    login_service.request_signin_batch.assert_not_called()
