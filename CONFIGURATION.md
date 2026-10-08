@@ -705,6 +705,14 @@ Set to `{}` to enable with defaults.
 }
 ```
 
+`internal_representation_add_attachment` takes a `url` plus optional `title` and `type` (MIME type):
+
+- `title` defaults to the URL file name. A title without an extension gets the one matching the type.
+- `type` is inferred from the URL or title extension when omitted. If neither has one, the call fails and
+  the model is asked to pass `type`.
+- Each call renders an `Add attachment` stage at the `info` [stage display](#stage-display-configuration) level
+  (hidden at `error` / `none`), titled with the attached file name and listing its `url`, `title` and `type`.
+
 ### Skills configuration
 
 Optional top-level `skills` array. Merged with predefined skills at request time. See

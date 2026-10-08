@@ -3,6 +3,7 @@
 - **User-facing:** [CONFIGURATION - Representation tooling](../../CONFIGURATION.md#representation-tooling-configuration)
 - **Approved:** 2026-06-22
 - **Implemented:** 2026-07-01 (#348, commit b446370)
+- **Updated:** 2026-10-08 ([I#599](https://github.com/epam/ai-dial-quickapps-backend/issues/599)) — stage visible at `info` with the resolved title, url and type; `type` inferred from the extension ([PR#600](https://github.com/epam/ai-dial-quickapps-backend/pull/600))
 - **Dependencies:**
   - None
 
