@@ -10,7 +10,7 @@ from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 
 # noinspection PyProtectedMember
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
-from tests.unit_tests.common.common import make_provider
+from tests.unit_tests.common.common import make_access_filter, make_provider
 
 
 def _server_tool(name: str) -> MagicMock:
@@ -76,6 +76,7 @@ def _initializer(
         MagicMock(),
         None,
         app_config,
+        make_access_filter(),
     )
     return initializer, mcp_context, client_builder
 
