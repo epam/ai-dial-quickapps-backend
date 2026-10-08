@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.exceptions import (
     FallbackAgentStopException,
+    HiddenToolErrorException,
+    InvalidToolCallParameterException,
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
     ToolErrorException,
@@ -376,6 +378,11 @@ def _resolve_internal(e: Exception) -> _Resolution | None:
     if isinstance(e, ToolTimeoutError):
         # Its text is structural (tool name + seconds), so it is safe to show as-is.
         return str(e), True
+    if isinstance(e, HiddenToolErrorException):
+        return str(e), False
+    if isinstance(e, InvalidToolCallParameterException):
+        # Written for the model to fix its call; the agent retries on its own.
+        return str(e), False
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return str(e), False
     if isinstance(e, OrchestratorInitializationException):
