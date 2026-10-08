@@ -170,6 +170,14 @@ class TestResolveHttpxError:
         e.__cause__ = cause
         assert "timed out" in _resolve(e).lower()
 
+    def test_tool_error_with_openai_cause_uses_ai_model_message(self) -> None:
+        e = _make_tool_error_with_cause(_make_openai_status_error(openai.RateLimitError, 429))
+        resolved = resolve_exception(e)
+        assert resolved.message == (
+            "The request was rate-limited by the AI model service. Please try again later."
+        )
+        assert resolved.retryable is True
+
 
 class TestResolveInternalError:
     def test_orchestrator_exceed_max_iterations(self) -> None:
