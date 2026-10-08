@@ -13,7 +13,7 @@ Quick Apps surfaces failures in three distinct ways, each aimed at a different a
 |---|---|---|---|
 | **Request failure** | Something aborts the whole turn — the AI model call fails, a required service is unavailable, or the app hits an internal error | A true error state: an explanation of the cause plus an error reference, rendered by the client as an error rather than as a chat reply | This document |
 | **Initialization issues** | Some tools or skills fail to load, but the request can still proceed without them | A diagnostic *Initialization issues* stage above a normal, successful answer — aimed at the app builder fixing their manifest | [Agent Design §6](agent.md#6-error-handling) |
-| **Tool-execution fallbacks** | A single tool call fails mid-conversation and the tool's configured fallback strategy decides what happens next | Usually nothing directly — the agent is instructed to recover, retry, or explain the failure in its own words | [Agent Design — Tool System](agent.md#error-handling) |
+| **Tool-execution fallbacks** | A single tool call fails mid-conversation and the tool's configured fallback strategy decides what happens next | The tool's stage shows a short, safe cause (for example, a rate limit with its status code), and the agent gets the same cause so it can recover, retry, or explain the failure in its own words | [Agent Design — Tool System](agent.md#error-handling) |
 
 The rest of this document covers the first surface.
 
