@@ -9,6 +9,7 @@ from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.agent_hooks._context_factory import HookContextFactory
 from quickapp.agent_hooks._dispatcher import HookDispatcher
 from quickapp.agent_hooks._handlers import HookHandlerRegistry
+from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common import ToolCallResult
 from quickapp.common.synthetic_injection.injection_enums import InjectionFrequency
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig, TTLRefreshCondition
@@ -45,7 +46,7 @@ def _make_hook(
         refresh_condition=TTLRefreshCondition(ttl_minutes=ttl) if ttl is not None else None,
     )
     factory = HookContextFactory(make_provider(SimpleNamespace(messages=[])))
-    registry = HookHandlerRegistry(make_provider(tools or []))
+    registry = HookHandlerRegistry(HookToolRegistry(make_provider(tools or []), make_provider([])))
     dispatcher = HookDispatcher(make_provider(SimpleNamespace(hooks=[config])), registry)
     return _ConfigDrivenToolCallHook(config, dispatcher, factory)
 

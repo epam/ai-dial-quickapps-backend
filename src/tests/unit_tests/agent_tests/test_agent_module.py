@@ -61,7 +61,9 @@ def _make_context_with_extra_tools(tools: list) -> MagicMock:
 def test_provide_extra_openai_tools_returns_empty_when_no_extra_tools():
     module = AgentModule()
     context = _make_context_with_extra_tools([])
-    result = module.provide_extra_openai_tools(context, tools=[], static_tools=[])
+    result = module.provide_extra_openai_tools(
+        context, tools=[], model_hidden_tools=[], static_tools=[]
+    )
     assert result == []
 
 
@@ -69,7 +71,9 @@ def test_provide_extra_openai_tools_serializes_tool_correctly():
     module = AgentModule()
     tool = Tool(type="function", function=Function(name="ext_tool", description="Does something"))
     context = _make_context_with_extra_tools([tool])
-    result = module.provide_extra_openai_tools(context, tools=[], static_tools=[])
+    result = module.provide_extra_openai_tools(
+        context, tools=[], model_hidden_tools=[], static_tools=[]
+    )
     assert len(result) == 1
     assert result[0]["type"] == "function"
     assert result[0]["function"]["name"] == "ext_tool"
@@ -89,7 +93,9 @@ def test_provide_extra_openai_tools_raises_on_name_collision_with_server_tool():
     context = _make_context_with_extra_tools([extra_tool])
 
     with pytest.raises(InvalidRequestError, match="my_tool"):
-        module.provide_extra_openai_tools(context, tools=[server_staged_tool], static_tools=[])
+        module.provide_extra_openai_tools(
+            context, tools=[server_staged_tool], model_hidden_tools=[], static_tools=[]
+        )
 
 
 def test_provide_extra_openai_tools_raises_on_name_collision_with_static_tool():
@@ -100,7 +106,9 @@ def test_provide_extra_openai_tools_raises_on_name_collision_with_static_tool():
     context = _make_context_with_extra_tools([extra_tool])
 
     with pytest.raises(InvalidRequestError, match="my_tool"):
-        module.provide_extra_openai_tools(context, tools=[], static_tools=[static_tool])
+        module.provide_extra_openai_tools(
+            context, tools=[], model_hidden_tools=[], static_tools=[static_tool]
+        )
 
 
 def test_provide_tool_names_returns_frozenset_of_extra_tool_names():
@@ -120,3 +128,24 @@ def test_provide_tool_names_returns_empty_frozenset_when_no_extra_tools():
     context = _make_context_with_extra_tools([])
     result = module.provide_tool_names(context)
     assert result == frozenset()
+
+
+def test_provide_extra_openai_tools_raises_on_name_collision_with_model_hidden_tool():
+    module = AgentModule()
+    extra_tool = Tool(type="function", function=Function(name="prime_memories"))
+
+    open_ai_tool_mock = MagicMock()
+    open_ai_tool_mock.function.name = "prime_memories"
+    hidden_tool = MagicMock()
+    hidden_tool.tool_config = InternalTool.model_construct(open_ai_tool=open_ai_tool_mock)
+
+    context = _make_context_with_extra_tools([extra_tool])
+
+    with pytest.raises(InvalidRequestError, match="prime_memories"):
+        module.provide_extra_openai_tools(
+            context, tools=[], model_hidden_tools=[hidden_tool], static_tools=[]
+        )
+
+
+def test_provide_model_hidden_tools_defaults_to_empty():
+    assert AgentModule().provide_model_hidden_tools() == []

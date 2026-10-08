@@ -27,6 +27,7 @@ from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamH
 from quickapp.common.deferred_tool_types import DeferredToolName
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import InitializationException
+from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.request_async_close_registry import RequestAsyncCloseRegistry
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
@@ -215,14 +216,17 @@ class AgentModule(Module):
         self,
         context: _RequestContext,
         tools: list[StagedBaseTool],
+        model_hidden_tools: list[ModelHiddenTool],
         static_tools: list[StaticTool],
     ) -> list[OpenAiToolConfigDict]:
         extra_tools = context.extra_tools
         if not extra_tools:
             return []
+        # Model-hidden tools count too: external tools are routed by name, so a client tool sharing
+        # a hidden tool's name would hijack the hook's synthetic tool-call pair in the history.
         server_names: set[str] = {
             tool.tool_config.open_ai_tool.function.name
-            for tool in tools
+            for tool in [*tools, *model_hidden_tools]
             if isinstance(tool.tool_config, BaseOpenAITool)
         } | {st.static_function.name for st in static_tools}
         for t in extra_tools:
@@ -277,6 +281,10 @@ class AgentModule(Module):
 
     @multiprovider
     def provide_tool_execution_history_policies(self) -> list[ToolExecutionHistoryPolicy]:
+        return []
+
+    @multiprovider
+    def provide_model_hidden_tools(self) -> list[ModelHiddenTool]:
         return []
 
     @multiprovider

@@ -78,8 +78,93 @@ A hook never fails the request. Every hook has a timeout (`timeout_seconds`, def
 Logs name the hook (`name`, or the tool name) and the event. A successful run logs one `DEBUG` line with the
 elapsed time. Arguments and results are never logged.
 
+## Tools hidden from the model
+
+By default every tool a hook can call is also offered to the model. For a tool that only the platform should
+drive (for example `prime_memories` and `save_memory`) that is a problem: the model sees the schema, and starts
+calling the tool on its own. `hidden_from_model` fixes that on MCP-based toolsets (`mcp`, `dial-mcp`, and the MCP
+branch of `dial-app`).
+
+```json
+{
+  "tool_sets": [
+    {
+      "type": "dial-app",
+      "name": "AppMemory",
+      "deployment_id": "memory",
+      "transport": "mcp",
+      "allowed_tools": ["get_skill", "prime_memories", "save_memory", "search_memories"],
+      "hidden_from_model": ["get_skill", "prime_memories", "save_memory"]
+    }
+  ],
+  "hooks": [
+    {
+      "kind": "tool_call",
+      "event": "on_request_start",
+      "toolset_name": "AppMemory",
+      "tool_name": "prime_memories"
+    },
+    {
+      "kind": "tool_call",
+      "event": "on_completion",
+      "toolset_name": "AppMemory",
+      "tool_name": "save_memory",
+      "arguments": { "user_message": { "$eval": "last_user_message.content" } }
+    }
+  ]
+}
+```
+
+The model's `tools` contains `AppMemory_search_memories` only. Both hooks run.
+
+### What changes for a hidden tool
+
+| Aspect | Behaviour |
+|---|---|
+| Model's `tools` payload | The tool is absent |
+| `tool_search` catalog and deferral | The tool is absent; it is never deferred and does not count towards `min_tools_for_deferral`. A toolset whose tools are all hidden contributes nothing to discovery |
+| Hooks | Unchanged: same `toolset_name` + `tool_name` addressing, same argument templating |
+| Same toolset, other tools | Stay visible; one toolset and one MCP session serve both audiences |
+| Client-supplied tools | A client tool named like a hidden tool is rejected as a name conflict |
+
+### If the model calls a hidden tool anyway
+
+The synthetic pair injected by an `on_request_start` hook stays in the history with the hidden tool's name, so
+the model may imitate it and request the tool. Nothing runs. The model gets an ordinary tool response saying
+the tool is not available to it, that the platform calls it automatically, and that it must not call it; the loop
+then continues. The event is logged at warning level with the tool name only, and the call still counts towards
+the turn's iterations and tool calls.
+
+### Rules and pitfalls
+
+- Entries are raw tool names as the MCP server reports them (the same addressing as `allowed_tools`).
+- When `allowed_tools` is set, every `hidden_from_model` entry must be in it, otherwise the manifest is rejected:
+  a tool outside `allowed_tools` is dropped before routing and would be lost for the hook too.
+- A name the server does not provide is not an error: it is logged as a warning at initialization, and a hook that
+  references the tool reports `tool '...' not found in initialized tools`.
+- Hiding works by listing. A tool added to the server later is visible to the model unless `allowed_tools` pins
+  the set, so set both.
+- `None` and an empty list both mean every tool is visible.
+- The field is preview-gated. With `ENABLE_PREVIEW_FEATURES` off it is ignored and the tools stay model-visible,
+  consistent with no hooks running.
+- On the chat-completion branch of `dial-app` the field is ignored with a warning, like `allowed_tools`.
+- During a rolling upgrade or after a rollback, a replica running an older version ignores the unknown field and
+  exposes the tools to the model.
+- Only MCP-based toolsets support it today. REST, DIAL deployment and internal tools are a conditional later
+  phase.
+
+### Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `tool '...' not found in initialized tools` for a hidden tool | The name is missing from the server's tool list, or from `allowed_tools`; check the warning logged at initialization |
+| Manifest rejected: `hidden_from_model entries not present in allowed_tools` | Add the entry to `allowed_tools` or remove it from `hidden_from_model` |
+| The model still sees the tool | Preview features are off, or the request ran on an older replica |
+| The model asks for the hidden tool and then continues without it | Expected: see [If the model calls a hidden tool anyway](#if-the-model-calls-a-hidden-tool-anyway) |
+
 ## Related
 
 - [CONFIGURATION — Hooks](../CONFIGURATION.md#hooks-configuration) — fields, templates, examples
 - [Design: hook context and lifecycle events](./designs/hook_context_and_lifecycle_events.md) — rationale and
   Phase 2 (background execution, hook-level `condition`, role-filtered message lists)
+- [Design: tools hidden from the model](./designs/tools_hidden_from_model.md)

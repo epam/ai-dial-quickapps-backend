@@ -70,6 +70,7 @@ class TestToolExecutorProcessors:
         tool = _make_tool("my_tool", base_result)
         executor = ToolExecutor(
             tools=[tool],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!")],
@@ -88,6 +89,7 @@ class TestToolExecutorProcessors:
         tool = _make_tool("my_tool", base_result)
         executor = ToolExecutor(
             tools=[tool],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
@@ -103,6 +105,7 @@ class TestToolExecutorProcessors:
         tool = _make_tool("my_tool", base_result)
         executor = ToolExecutor(
             tools=[tool],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
@@ -127,6 +130,7 @@ class TestToolExecutorProcessors:
         tool = _make_tool("specific_tool", base_result)
         executor = ToolExecutor(
             tools=[tool],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_CaptureProcessor()],
@@ -141,6 +145,7 @@ class TestToolExecutorProcessors:
     async def test_unknown_tool_returns_synthetic_error_result(self):
         executor = ToolExecutor(
             tools=[],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
@@ -161,6 +166,7 @@ class TestToolExecutorProcessors:
         known = _make_tool("known_tool", ToolCallResult(content="ok", content_type="text/plain"))
         executor = ToolExecutor(
             tools=[known],
+            model_hidden_tools=[],
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
@@ -179,3 +185,54 @@ class TestToolExecutorProcessors:
         assert "missing_tool" in results[0].content
         assert results[1].tool_call_id == "k1"
         assert results[1].content == "ok"
+
+
+class TestToolExecutorModelHiddenTools:
+    @staticmethod
+    def _executor(tools: list, hidden: list) -> ToolExecutor:
+        return ToolExecutor(
+            tools=tools,
+            model_hidden_tools=hidden,
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+        )
+
+    @pytest.mark.asyncio
+    async def test_model_hidden_call_gets_reserved_reply_and_tool_does_not_run(self):
+        hidden = _make_tool(
+            "prime_memories", ToolCallResult(content="x", content_type="text/plain")
+        )
+        executor = self._executor([], [hidden])
+
+        results = await executor.execute([_make_tool_call("prime_memories", tc_id="call-1")])
+
+        hidden.arun.assert_not_called()
+        assert results[0].tool_call_id == "call-1"
+        assert "not available to you" in results[0].content
+        assert "do not call it" in results[0].content
+        assert "check the tool name" not in results[0].content.lower()
+
+    @pytest.mark.asyncio
+    async def test_unknown_name_keeps_unknown_tool_reply(self):
+        hidden = _make_tool("hidden", ToolCallResult(content="x", content_type="text/plain"))
+        executor = self._executor([], [hidden])
+
+        results = await executor.execute([_make_tool_call("nope")])
+
+        assert "does not exist" in results[0].content
+
+    @pytest.mark.asyncio
+    async def test_visible_tool_still_runs_next_to_hidden_one(self):
+        visible = _make_tool("search", ToolCallResult(content="found", content_type="text/plain"))
+        hidden = _make_tool("save", ToolCallResult(content="x", content_type="text/plain"))
+        executor = self._executor([visible], [hidden])
+
+        results = await executor.execute(
+            [_make_tool_call("search", tc_id="a"), _make_tool_call("save", tc_id="b")]
+        )
+
+        visible.arun.assert_awaited_once()
+        hidden.arun.assert_not_called()
+        assert results[0].content == "found"
+        assert "not available to you" in results[1].content
