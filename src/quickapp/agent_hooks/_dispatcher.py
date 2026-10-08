@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 
 from injector import ProviderOf, inject
 
@@ -37,9 +38,18 @@ class HookDispatcher:
     async def run_hook(self, hook: HookConfig, context: HookContext) -> HookResult | None:
         name = hook_display_name(hook)
         timeout = _resolve_timeout(hook)
+        started = time.monotonic()
         try:
             handler = self._registry.handler_for(hook)
-            return await asyncio.wait_for(handler.run(context), timeout)
+            result = await asyncio.wait_for(handler.run(context), timeout)
+            if result is not None:
+                logger.debug(
+                    "Hook %r completed (event=%s, elapsed=%.2fs)",
+                    name,
+                    hook.event.value,
+                    time.monotonic() - started,
+                )
+            return result
         except TimeoutError:
             logger.warning(
                 "Hook %r timed out (event=%s, timeout=%ss) - skipping",

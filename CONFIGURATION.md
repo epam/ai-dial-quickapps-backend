@@ -727,8 +727,9 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 ### Hooks configuration
 
 Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
-orchestrator seams. See
-[docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
+orchestrator seams. See [docs/hooks.md](docs/hooks.md) for behaviour and
+[docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md) for
+the design.
 
 | Field               | Required | Type   | Description | Default |
 |---------------------|----------|--------|-------------|---------|
