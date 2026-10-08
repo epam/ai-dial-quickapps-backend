@@ -31,6 +31,7 @@ from quickapp.config.tools.tool_fallback import RetryStrategyModel, ToolFallback
 
 from .exceptions import (
     FallbackAgentStopException,
+    HiddenToolErrorException,
     InvalidToolCallParameterException,
     ToolTimeoutError,
 )
@@ -246,7 +247,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
                 error_to_show = e
             else:
-                error_to_show = Exception("An error occurred while executing the tool.")
+                error_to_show = HiddenToolErrorException()
             self._report_error_to_stage(stage_wrapper, error_to_show, error_reference)
             return self.__process_fallback(fallback.strategies, tool_call_id, e, error_reference)
 
