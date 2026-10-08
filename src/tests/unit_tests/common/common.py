@@ -3,6 +3,8 @@ from collections.abc import Callable, Iterable
 from typing import TypeAlias
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import openai
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
 from injector import Binder, Injector, Module, ProviderOf
@@ -151,4 +153,15 @@ def make_resolved_skill(
         content=content,
         files=files,
         reader=reader,
+    )
+
+
+def make_openai_status_error(
+    cls: type[openai.APIStatusError], status_code: int, body: object = None
+) -> openai.APIStatusError:
+    """An openai status error as the deployment client raises it; the message is a raw detail
+    that must never reach the user."""
+    request = httpx.Request("POST", "http://dial-core/openai/deployments/model/chat/completions")
+    return cls(
+        "raw upstream detail", response=httpx.Response(status_code, request=request), body=body
     )

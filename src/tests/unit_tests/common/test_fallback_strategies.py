@@ -2,6 +2,7 @@ import logging
 
 import pytest
 
+from quickapp.common.exception_message_resolver import ErrorDetails, ResolvedError
 from quickapp.common.exceptions import ToolErrorException, ToolTimeoutError
 from quickapp.common.exceptions.fallback_agent_stop import FallbackAgentStopException
 from quickapp.common.tool_fallback.processor import FallbackProcessor
@@ -13,6 +14,20 @@ from quickapp.config.tools.tool_fallback import (
     TriggerOn,
     TriggerOnType,
 )
+from quickapp.dial_deployment_tooling._deployment_tool_error_exception import (
+    DeploymentToolErrorException,
+)
+
+_RAW_CONTENT_FILTER = "Error code: 400 - {'error': {'code': 'content_filter'}}"
+
+
+def _make_deployment_tool_error() -> DeploymentToolErrorException:
+    resolved = ResolvedError(
+        message="The request was blocked by the content management policy.",
+        retryable=False,
+        details=ErrorDetails(status_code=400, code="content_filter"),
+    )
+    return DeploymentToolErrorException("image_tool", resolved, _RAW_CONTENT_FILTER)
 
 
 def test_fallback_agent_stop_exception_is_exception():
@@ -247,3 +262,46 @@ def test_hard_stop_with_timeout_trigger_raises():
     ]
     with pytest.raises(FallbackAgentStopException):
         FallbackProcessor.process_fallback(strategies, "c", err)
+
+
+@pytest.mark.parametrize(
+    "trigger_on",
+    [
+        TriggerOn(type=TriggerOnType.contains, value="content_filter"),
+        TriggerOn(type=TriggerOnType.contains, value="status code: 400"),
+        TriggerOn(type=TriggerOnType.equals, value=_RAW_CONTENT_FILTER),
+    ],
+    ids=["raw-contains", "resolved-contains", "raw-equals"],
+)
+def test_deployment_tool_error_trigger_matches_resolved_or_raw_text(trigger_on: TriggerOn):
+    strategies = [HardStopStrategyModel(trigger_on=trigger_on), ContinueStrategyModel()]
+    with pytest.raises(FallbackAgentStopException):
+        FallbackProcessor.process_fallback(strategies, "c", _make_deployment_tool_error())
+
+
+def test_deployment_tool_error_forwards_resolved_text_not_raw():
+    strategies = [
+        ContinueStrategyModel(
+            trigger_on=TriggerOn(type=TriggerOnType.contains, value="content_filter"),
+            instructions="Rephrase the prompt.",
+        ),
+        ContinueStrategyModel(),
+    ]
+
+    result = FallbackProcessor.process_fallback(strategies, "c", _make_deployment_tool_error())
+
+    assert result.content == (
+        "The tool call failed with an error: The request was blocked by the content management "
+        "policy. (status code: 400)\n\nRephrase the prompt."
+    )
+
+
+def test_deployment_tool_error_non_matching_trigger_falls_through():
+    strategies = [
+        HardStopStrategyModel(trigger_on=TriggerOn(type=TriggerOnType.contains, value="quota")),
+        ContinueStrategyModel(),
+    ]
+
+    result = FallbackProcessor.process_fallback(strategies, "c", _make_deployment_tool_error())
+
+    assert "content_filter" not in result.content
