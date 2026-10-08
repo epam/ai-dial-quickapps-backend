@@ -1,7 +1,6 @@
 import httpx
 import pytest
 from aidial_client import AsyncDial
-from pydantic import ValidationError
 
 from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
 from tests.unit_tests.common.common import make_provider
@@ -60,5 +59,5 @@ async def test_http_error_status_raises(httpx_mock, status_code):
 async def test_unexpected_body_shape_raises_value_error(httpx_mock, body):
     httpx_mock.add_response(json=body)
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         await _service().list_names()

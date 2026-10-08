@@ -75,13 +75,13 @@ class _DialAppResolver(CompletionInitializer):
             await self._resolve_one(ts)
 
     async def _resolve_one(self, toolset: DialAppToolSet) -> None:
-        if not await self.__access_filter.is_accessible(toolset.deployment_id):
-            logger.debug(
-                "Skipping dial-app toolset %r: deployment is not accessible to the user",
-                toolset.name,
-            )
-            return
         try:
+            if not await self.__access_filter.is_accessible(toolset.deployment_id):
+                logger.debug(
+                    "Skipping a dial-app toolset the user cannot access: %s",
+                    toolset.deployment_id,
+                )
+                return
             if toolset.transport == "chat-completion":
                 await self._handle_chat_completion_branch(toolset)
                 return

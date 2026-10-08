@@ -9,7 +9,6 @@ _REQUESTED_KINDS = "model,application,toolset"
 
 class _DeploymentName(BaseModel):
     id: str
-    object: str
 
 
 _RESPONSE_ADAPTER: TypeAdapter[list[_DeploymentName]] = TypeAdapter(list[_DeploymentName])

@@ -198,7 +198,9 @@ class _MCPToolInitializer(CompletionInitializer):
             if isinstance(toolset, DialMCPToolSet) and not await self.__access_filter.is_accessible(
                 toolset.deployment_id
             ):
-                logger.debug("Skipping a dial-mcp toolset the user cannot access")
+                logger.debug(
+                    "Skipping a dial-mcp toolset the user cannot access: %s", toolset.deployment_id
+                )
                 continue
             accessible.append(toolset)
         return accessible

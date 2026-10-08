@@ -55,9 +55,10 @@ catalog, and from `tool_search` results.
 flowchart TD
     R[Chat request] --> D[_DeploymentToolInitializer]
     R --> A[_DialAppResolver]
+    R --> M[_MCPToolInitializer]
     D --> F[ToolAccessFilter.is_accessible]
     A --> F
-    M[_MCPToolInitializer] --> F
+    M --> F
     F -->|first call per request| L[GET /v1/deployment-names with the user's credentials]
     D --> T[Eager tools / deferred catalog]
 ```
@@ -106,6 +107,7 @@ Skips are logged at debug without any payload.
 
 | Item | Why deferred |
 |---|---|
+| Gating `read_mcp_resource` on accessible toolsets | `mcp_tooling_module._has_resources` reads the unfiltered config, so the tool can stay registered when the only resource-enabled toolset is an inaccessible `dial-mcp` one (same as when a toolset fails to initialize). |
 | Caching the accessible set | Deliberately removed: one call per request keeps entitlement changes effective immediately and avoids a per-user cache key (only a per-request credential is available). Revisit if the lookup latency matters. |
 | Filtering `MCPToolSet` (direct URL), REST and internal toolsets | They carry no DIAL id, so Core has no entitlement to check. |
 | Invalidate on call-time 403 | Core still blocks the call; only relevant once a cache exists. |

@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock
+
 import httpx
 import pytest
 from fastapi_injector import Injected
@@ -17,14 +19,14 @@ from tests.unit_tests.common.common import (
 )
 
 
-def _app_config(enabled: bool = True):
+def _app_config(enabled: bool = True) -> ApplicationConfig:
     config = create_app_configuration([])
     config.features.tool_access_filter = ToolAccessFilterConfig(enabled=enabled)
     return config
 
 
 @pytest.mark.asyncio
-async def test_disabled_filter_accepts_everything_and_never_calls_core():
+async def test_disabled_filter_accepts_everything_and_never_calls_core() -> None:
     service = make_deployment_names_service(["a"])
     access = make_access_filter(_app_config(enabled=False), service)
 
@@ -33,7 +35,7 @@ async def test_disabled_filter_accepts_everything_and_never_calls_core():
 
 
 @pytest.mark.asyncio
-async def test_unset_config_is_inert():
+async def test_unset_config_is_inert() -> None:
     service = make_deployment_names_service(["a"])
     access = make_access_filter(create_app_configuration([]), service)
 
@@ -42,7 +44,7 @@ async def test_unset_config_is_inert():
 
 
 @pytest.mark.asyncio
-async def test_only_listed_deployments_are_accessible():
+async def test_only_listed_deployments_are_accessible() -> None:
     access = make_access_filter(
         _app_config(), make_deployment_names_service(["model-a", "model-b"])
     )
@@ -53,7 +55,7 @@ async def test_only_listed_deployments_are_accessible():
 
 
 @pytest.mark.asyncio
-async def test_quoted_and_unquoted_ids_match():
+async def test_quoted_and_unquoted_ids_match() -> None:
     access = make_access_filter(
         _app_config(), make_deployment_names_service(["applications/bucket/my%20app"])
     )
@@ -78,14 +80,14 @@ async def test_quoted_and_unquoted_ids_match():
     ],
     ids=["transport", "403", "500", "bad-body"],
 )
-async def test_fails_open_when_core_cannot_be_queried(failure):
+async def test_fails_open_when_core_cannot_be_queried(failure: Exception) -> None:
     access = make_access_filter(_app_config(), make_deployment_names_service(failure))
 
     assert await access.is_accessible("anything")
 
 
 @pytest.mark.asyncio
-async def test_unexpected_errors_are_not_swallowed():
+async def test_unexpected_errors_are_not_swallowed() -> None:
     access = make_access_filter(
         _app_config(), make_deployment_names_service(RuntimeError("programming error"))
     )
@@ -95,7 +97,7 @@ async def test_unexpected_errors_are_not_swallowed():
 
 
 @pytest.mark.asyncio
-async def test_one_core_call_per_filter_instance():
+async def test_one_core_call_per_filter_instance() -> None:
     service = make_deployment_names_service(["a"])
     access = make_access_filter(_app_config(), service)
 
@@ -109,7 +111,7 @@ class TestRequestScope:
     """`ToolAccessFilter` resolved through a real request-scoped `Injector`."""
 
     @staticmethod
-    def _client(service) -> TestClient:
+    def _client(service: MagicMock) -> TestClient:
         config = _app_config()
 
         class _Deps(Module):
@@ -129,7 +131,7 @@ class TestRequestScope:
 
         return TestClient(app)
 
-    def test_one_core_call_per_request_and_none_shared_across_requests(self):
+    def test_one_core_call_per_request_and_none_shared_across_requests(self) -> None:
         service = make_deployment_names_service(["a"])
         client = self._client(service)
 

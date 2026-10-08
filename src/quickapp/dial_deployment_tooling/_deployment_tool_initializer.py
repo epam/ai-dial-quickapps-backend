@@ -76,14 +76,20 @@ class _DeploymentToolInitializer(CompletionInitializer):
         tools: list[StagedBaseTool] = []
         for tool_config in toolset.tools:
             if isinstance(tool_config, DialDeploymentTool) and tool_config.enabled:
-                if await self.__access_filter.is_accessible(tool_config.deployment.deployment_id):
-                    tools.append(self.__build_deployment_tool(tool_config))
-                else:
-                    logger.debug("Skipping a deployment tool the user cannot access")
+                deployment_id = tool_config.deployment.deployment_id
+                if not await self.__access_filter.is_accessible(deployment_id):
+                    logger.debug(
+                        "Skipping a deployment tool the user cannot access: %s", deployment_id
+                    )
+                    continue
+                tools.append(self.__build_deployment_tool(tool_config))
             elif isinstance(tool_config, DialDeploymentSimpleTool) and tool_config.enabled:
                 # Checked before the metadata fetch, so inaccessible simple tools cost no round-trips.
                 if not await self.__access_filter.is_accessible(tool_config.deployment_id):
-                    logger.debug("Skipping a deployment tool the user cannot access")
+                    logger.debug(
+                        "Skipping a deployment tool the user cannot access: %s",
+                        tool_config.deployment_id,
+                    )
                     continue
                 built_simple_tool = await self.__build_simple_deployment_tool(tool_config)
                 if built_simple_tool is not None:

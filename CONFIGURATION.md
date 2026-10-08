@@ -708,10 +708,11 @@ Set to `{}` to enable with defaults.
 
 #### Tool access filter configuration
 
-Disabled by default. When enabled, the configured DIAL tools (`DeploymentToolSet` entries,
-`DialAppToolSet` and `DialMCPToolSet`) are intersected with the models, applications and toolsets DIAL Core reports as accessible to the calling user
+Disabled by default. When enabled, the configured DIAL tools ([`DialDeploymentToolSet`](#dialdeploymenttoolset-configuration) entries,
+[`DialAppToolSet`](#dialapptoolset-configuration) and [`DialMCPToolSet`](#dialmcptoolset-configuration)) are
+intersected with the models, applications and toolsets DIAL Core reports as accessible to the calling user
 (`GET /v1/deployment-names`), so the model is never offered a tool the user cannot call. Useful for a single large app
-whose users have different DIAL Core entitlements. DIAL Core is queried once per request (no cross-request cache).
+whose users have different DIAL Core entitlements. DIAL Core is queried at most once per request, and only when a DIAL tool is configured (no cross-request cache).
 If DIAL Core cannot be queried (including a DIAL Core version without that endpoint), all configured tools are offered
 (DIAL Core still enforces access when a tool is called). Directly-addressed `mcp`, REST API and internal toolsets are not filtered.
 

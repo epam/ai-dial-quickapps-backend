@@ -10,12 +10,14 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.toolsets.authorization import (
     BasicAuthorization,
     BearerAuthorization,
     ClientIdSecretAuthorization,
     MCPApiKeyAuthorization,
 )
+from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 
@@ -26,7 +28,13 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _MCPToolInitializer,
 )
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
-from tests.unit_tests.common.common import make_access_filter, make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_deployment_names_service,
+    make_provider,
+    noop_timeout_resolver,
+)
 
 
 def _make_app_config_mock() -> MagicMock:
@@ -419,6 +427,54 @@ async def test_no_exception_if_toolset_list_is_empty():
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_inaccessible_dial_toolset_is_skipped_before_any_fetch() -> None:
+    app_config = create_app_configuration([])
+    app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+    access_filter = make_access_filter(
+        app_config, make_deployment_names_service(["toolsets/public/allowed"])
+    )
+    conn = MagicMock()
+    conn.get_tools_list = AsyncMock(return_value=[])
+    _setup_open_init_session(conn)
+    conn_builder = MagicMock()
+    conn_builder.build.return_value = conn
+    dial_mcp_cache = MagicMock()
+    dial_mcp_cache.get = AsyncMock(return_value=None)
+    mcp_context = MagicMock()
+    toolsets = [
+        DialMCPToolSet(deployment_id="toolsets/public/denied", name="denied"),
+        MCPToolSet(
+            mcp_server_info=MCPServerInfo(
+                url="https://ext-mcp", authorization=None, protocol=MCPProtocol.sse
+            ),
+            name="plain",
+        ),
+    ]
+    initializer = _MCPToolInitializer(
+        make_provider(toolsets),
+        mcp_context,
+        MagicMock(),  # dial_setting
+        MagicMock(),  # api_key_provider
+        MagicMock(),  # tool_builder
+        conn_builder,
+        dial_mcp_cache,
+        MagicMock(),  # tool_config_service
+        MagicMock(),  # login_service
+        None,  # accept_language
+        _make_app_config_mock(),  # app_config
+        access_filter,
+    )
+
+    await initializer.initialize()
+
+    # the denied dial-mcp toolset never reaches the metadata cache or a client; the plain one does
+    dial_mcp_cache.get.assert_not_called()
+    assert conn_builder.build.call_count == 1
+    assert conn_builder.build.call_args.kwargs["toolset_info"].name == "plain"
+    mcp_context.append_exception.assert_not_called()
 
 
 def test_convert_to_openai_tool_dereferences_refs():
