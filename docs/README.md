@@ -42,7 +42,7 @@ See [Feature Lifecycle](../README.md#feature-lifecycle) in the root README.
 | File transfer (`file:{prefix}::`) | — | [file_transfer.md](./file_transfer.md) | — |
 | External URL egress | [CONFIGURATION — External URL fetch](../CONFIGURATION.md#external-url-fetch-configuration) | [file_transfer.md](./file_transfer.md) | [external_url_attachments.md](./designs/external_url_attachments.md) |
 | DIAL files tools | [CONFIGURATION — DIAL files](../CONFIGURATION.md#dial-files-configuration) | — | [dial_files_tools.md](./designs/dial_files_tools.md) |
-| Tool access filter | [CONFIGURATION — Tool access filter](../CONFIGURATION.md#tool-access-filter-configuration) | — | [access_aware_tool_availability.md](./designs/access_aware_tool_availability.md) |
+| Tool access filter | [CONFIGURATION — Tool access filter](../CONFIGURATION.md#tool-access-filter-configuration) | [agent.md](./agent.md#tool-access-filter) | [access_aware_tool_availability.md](./designs/access_aware_tool_availability.md) |
 | Stage display | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [stage_display_level.md](./designs/stage_display_level.md) |
 | Nested sub-stage propagation | [CONFIGURATION — Stage display](../CONFIGURATION.md#stage-display-configuration) | — | [sub-stage-propagation.md](./designs/sub-stage-propagation.md) |
 | Time awareness | [CONFIGURATION — Timestamp](../CONFIGURATION.md#timestamp-configuration) | [time_awareness.md](./time_awareness.md) | [time_awareness.md](./designs/time_awareness.md) |
