@@ -9,6 +9,7 @@ from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.config.application import StageDisplayLevel
@@ -357,6 +358,36 @@ async def test_extract_resolves_request_attachments():
     awaited_args, awaited_kwargs = mock_resolver.resolve_attachment_urls.await_args
     assert awaited_args[0] == ["files/xyz/doc.pdf"]
     assert "supports_url_attachments" in awaited_kwargs
+
+
+@pytest.mark.asyncio
+async def test_extract_skips_unresolvable_past_attachments():
+    """A past call's bad attachment reference must not fail history replay for later calls."""
+    mock_resolver = MagicMock()
+    mock_resolver.resolve_attachment_urls = AsyncMock(
+        side_effect=InvalidToolCallParameterException(
+            parameter_name="attachment_urls", message="URL scheme not supported"
+        )
+    )
+
+    messages: list[Message] = [
+        Message(role=Role.USER, content=StrictStr("Hello")),
+        _make_assistant_with_tool_calls(
+            [
+                _make_tool_call(
+                    "tc1", "my_tool", "summarize this", attachment_urls=["file:files/xyz/doc.pdf"]
+                ),
+            ]
+        ),
+        _make_tool_result("tc1", "Error: missing file prefix"),
+    ]
+
+    tool = _build_tool(messages, attachment_resolver=mock_resolver)
+    history = await tool._extract_tool_history("my_tool")
+
+    assert len(history) == 2
+    assert history[0]["content"] == "summarize this"
+    assert "custom_content" not in history[0]
 
 
 def _make_tool_config(
@@ -931,6 +962,46 @@ async def test_pre_process_params_forwards_reasoning_effort():
     result = await tool._pre_process_params(query="think")
 
     assert result["reasoning_effort"] == "high"
+
+
+class _UppercasingArgumentTransformer:
+    """Stub transformer that mutates every string kwarg, to prove attachment_urls is protected."""
+
+    async def transform(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        return {k: (v.upper() if isinstance(v, str) else v) for k, v in kwargs.items()}
+
+
+def _build_tool_with_transformers(
+    tool_config: DialDeploymentTool,
+    argument_transformers: list[Any],
+) -> BaseDeploymentTool:
+    return BaseDeploymentTool(
+        application_id="test-app",
+        application_name="Test App",
+        tool_config=tool_config,
+        content_propagation=None,
+        dial_completion_service=MagicMock(),
+        attachment_resolver=MagicMock(),
+        messages_mixin=_make_messages_mixin([]),
+        perf_timer=MagicMock(),
+        stage_wrapper_builder=MagicMock(),
+        stage_display_level=StageDisplayLevel.INFO,
+        argument_transformers=argument_transformers,
+    )
+
+
+@pytest.mark.asyncio
+async def test_pre_process_params_shields_attachment_urls_from_transformers():
+    """attachment_urls is a reference channel for AttachmentResolver — it must bypass the
+    argument-transformer chain even though every other string kwarg goes through it."""
+    tool = _build_tool_with_transformers(
+        _make_tool_config(), argument_transformers=[_UppercasingArgumentTransformer()]
+    )
+
+    result = await tool._pre_process_params(query="draw", attachment_urls=["file:url::files/a.pdf"])
+
+    assert result["query"] == "DRAW"
+    assert result["attachment_urls"] == ["file:url::files/a.pdf"]
 
 
 @pytest.mark.asyncio

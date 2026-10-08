@@ -16,6 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -39,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 class BaseDeploymentTool(StagedBaseTool):
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.CONFIG_MAP
+    # AttachmentResolver resolves these itself, from the raw file:*:: reference.
+    reference_only_params: ClassVar[frozenset[str]] = frozenset({ATTACHMENT_PARAM})
 
     def __init__(
         self,
@@ -251,10 +254,16 @@ class BaseDeploymentTool(StagedBaseTool):
         user_msg = UserMessageParam(role="user", content=query or "")
         if attachment_urls:
             tool_config = cast(DialDeploymentTool, self.tool_config)
-            resolved = await self.__attachment_resolver.resolve_attachment_urls(
-                attachment_urls,
-                supports_url_attachments=tool_config.supports_url_attachments,
-            )
+            # A past call's bad reference was already reported to the model when it ran;
+            # replaying it must not fail the current call.
+            try:
+                resolved = await self.__attachment_resolver.resolve_attachment_urls(
+                    attachment_urls,
+                    supports_url_attachments=tool_config.supports_url_attachments,
+                )
+            except InvalidToolCallParameterException:
+                logger.warning("Skipping unresolvable attachments of a past tool call in history")
+                resolved = []
             if resolved:
                 user_msg["custom_content"] = CustomContentParam(attachments=resolved)
         return user_msg
