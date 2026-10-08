@@ -3,6 +3,7 @@ from typing import Any
 
 import httpx
 import openai
+from aidial_client import DialException
 from aidial_sdk.exceptions import HTTPException as AiDialHTTPException
 from pydantic import BaseModel, ConfigDict
 
@@ -13,6 +14,7 @@ from quickapp.common.exceptions import (
     ToolErrorException,
     ToolsetForbiddenException,
     ToolsetNotFoundException,
+    ToolTimeoutError,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,6 +65,24 @@ _MSG_AI_MODEL_CONTEXT_LENGTH = (
 )
 _MSG_AI_MODEL_PAYLOAD_TOO_LARGE = (
     "The request payload is too large. Please reduce the size of your message or attachments."
+)
+
+# --- Tool-model wording (a tool's own deployment call) ---
+_MSG_TOOL_MODEL_AUTH_FAILED = (
+    "Authentication failed when accessing the AI model behind this tool. "
+    "Please contact your administrator."
+)
+_MSG_TOOL_MODEL_NO_PERMISSION = (
+    "You don't have permission to use the AI model behind this tool. "
+    "Please contact your administrator."
+)
+_MSG_TOOL_MODEL_NOT_FOUND = (
+    "The AI model behind this tool could not be found. Please contact your administrator."
+)
+_MSG_TOOL_MODEL_INVALID_REQUEST = "The AI model behind this tool rejected the request as invalid."
+_MSG_TOOL_MODEL_PAYLOAD_TOO_LARGE = (
+    "The request to the AI model behind this tool is too large. "
+    "Please reduce the size of the input or attachments."
 )
 
 # --- Service wording (DIAL core service calls surfaced as httpx errors) ---
@@ -125,6 +145,12 @@ class ResolvedError(BaseModel):
     retryable: bool  # classification — logged by the handler; not re-applied to the text
     details: ErrorDetails  # extracted internals, carried for the handler's log record
 
+    def message_with_status(self) -> str:
+        """``message`` plus ``(status code: N)`` when the upstream status is known."""
+        if self.details.status_code is None:
+            return self.message
+        return f"{self.message} (status code: {self.details.status_code})"
+
 
 # A resolved (cause message, retryable) pair, before the retry sentence is composed in.
 _Resolution = tuple[str, bool]
@@ -185,6 +211,16 @@ def _extract_from_aidial(e: AiDialHTTPException) -> ErrorDetails:
     )
 
 
+def _extract_from_dial_client(e: DialException) -> ErrorDetails:
+    return ErrorDetails(
+        status_code=e.status_code,
+        code=e.code,
+        error_type=e.type,
+        message=e.message,
+        display_message=e.display_message,
+    )
+
+
 def _extract_from_httpx(e: httpx.HTTPError) -> ErrorDetails:
     if not isinstance(e, httpx.HTTPStatusError):
         return ErrorDetails()
@@ -202,6 +238,8 @@ def _extract_error_details(e: Exception) -> ErrorDetails:
             return _extract_from_openai(e)
         if isinstance(e, AiDialHTTPException):
             return _extract_from_aidial(e)
+        if isinstance(e, DialException):
+            return _extract_from_dial_client(e)
         if isinstance(e, httpx.HTTPError):
             return _extract_from_httpx(e)
     except Exception:
@@ -216,9 +254,28 @@ def _resolve_by_code(details: ErrorDetails) -> _Resolution | None:
     return (message, False) if message is not None else None
 
 
-def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
+def _resolve_tool_model_status(status: int) -> _Resolution | None:
+    # Only non-retryable statuses name the tool's model; the rest share the AI-model wording.
+    if status == 401:
+        return _MSG_TOOL_MODEL_AUTH_FAILED, False
+    if status == 403:
+        return _MSG_TOOL_MODEL_NO_PERMISSION, False
+    if status == 404:
+        return _MSG_TOOL_MODEL_NOT_FOUND, False
+    if status == 413:
+        return _MSG_TOOL_MODEL_PAYLOAD_TOO_LARGE, False
+    if status in (400, 422):
+        return _MSG_TOOL_MODEL_INVALID_REQUEST, False
+    return None
+
+
+def _resolve_ai_model_status(status: int | None, tool_model: bool) -> _Resolution | None:
     if status is None:
         return None
+    if tool_model:
+        resolution = _resolve_tool_model_status(status)
+        if resolution is not None:
+            return resolution
     if status == 401:
         return _MSG_AI_MODEL_AUTH_FAILED, False
     if status == 403:
@@ -238,7 +295,9 @@ def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
     return None
 
 
-def _resolve_openai_status_or_type(e: openai.APIError, details: ErrorDetails) -> _Resolution | None:
+def _resolve_openai_status_or_type(
+    e: openai.APIError, details: ErrorDetails, tool_model: bool
+) -> _Resolution | None:
     # Type branches carry no HTTP status. APITimeoutError must precede APIConnectionError
     # (it is a subclass), and both must precede the stream-failure rule.
     if isinstance(e, openai.APITimeoutError):
@@ -247,7 +306,21 @@ def _resolve_openai_status_or_type(e: openai.APIError, details: ErrorDetails) ->
         # The openai client already retried this; a lingering failure is deterministic
         # (wrong endpoint / DNS / TLS), so it is non-retryable with admin-escalation advice.
         return _MSG_SERVICE_NO_CONNECTIVITY, False
-    return _resolve_ai_model_status(details.status_code)
+    return _resolve_ai_model_status(details.status_code, tool_model)
+
+
+def _resolve_service_status(status: int | None) -> _Resolution:
+    if status == 401:
+        return _MSG_SERVICE_AUTH_FAILED, False
+    if status == 403:
+        return _MSG_SERVICE_NO_PERMISSION, False
+    if status == 404:
+        return _MSG_SERVICE_NOT_FOUND, False
+    if status == 429:
+        return _MSG_SERVICE_RATE_LIMITED, True
+    if status is not None and status >= 500:
+        return _MSG_SERVICE_INTERNAL_ERROR, True
+    return _MSG_HTTP_UNEXPECTED, False
 
 
 def _resolve_httpx_status_or_type(e: httpx.HTTPError, details: ErrorDetails) -> _Resolution:
@@ -257,44 +330,40 @@ def _resolve_httpx_status_or_type(e: httpx.HTTPError, details: ErrorDetails) -> 
     if isinstance(e, httpx.NetworkError):
         return _MSG_SERVICE_NETWORK_ERROR, True
     if isinstance(e, httpx.HTTPStatusError):
-        status = details.status_code
-        if status == 401:
-            return _MSG_SERVICE_AUTH_FAILED, False
-        if status == 403:
-            return _MSG_SERVICE_NO_PERMISSION, False
-        if status == 404:
-            return _MSG_SERVICE_NOT_FOUND, False
-        if status == 429:
-            return _MSG_SERVICE_RATE_LIMITED, True
-        if status is not None and status >= 500:
-            return _MSG_SERVICE_INTERNAL_ERROR, True
-        return _MSG_HTTP_UNEXPECTED, False
+        return _resolve_service_status(details.status_code)
     return _MSG_HTTP_GENERIC, False
 
 
-def _resolve_status_or_type(e: Exception, details: ErrorDetails) -> _Resolution | None:
+def _resolve_status_or_type(
+    e: Exception, details: ErrorDetails, tool_model: bool
+) -> _Resolution | None:
     if isinstance(e, openai.APIError):
-        return _resolve_openai_status_or_type(e, details)
+        return _resolve_openai_status_or_type(e, details, tool_model)
     if isinstance(e, AiDialHTTPException):
-        return _resolve_ai_model_status(details.status_code)
+        return _resolve_ai_model_status(details.status_code, tool_model=False)
     if isinstance(e, httpx.HTTPError):
         return _resolve_httpx_status_or_type(e, details)
+    if isinstance(e, DialException):
+        # aidial_client calls to DIAL Core (e.g. attachment metadata lookups).
+        return _resolve_service_status(details.status_code)
     return None
 
 
 def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
     """Resolve a ToolErrorException.
 
-    - If it wraps an httpx or openai cause, delegate to the cause's resolution so the
-      caller gets the appropriate HTTP-specific message (e.g. permission-denied, timeout).
+    - If it wraps an httpx, aidial_client or openai cause, delegate to the cause's resolution so
+      the caller gets the appropriate HTTP-specific message (e.g. permission-denied, timeout).
+      An openai cause is the tool's own model call, so it gets the tool-model wording.
     - If there is no cause, expose the tool error text directly via
       ``user_facing_message`` rather than ``str(e)``: the exception's string form is
       structural by the content rule (issue #436), while the user channel keeps the real
       text.
-    - If the cause is something other than an httpx error, return None to fall through
-      to the generic fallback.
+    - If the cause is anything else, return None to fall through to the generic fallback.
     """
-    if isinstance(e.__cause__, (httpx.HTTPError, openai.APIError)):
+    if isinstance(e.__cause__, openai.APIError):
+        return resolve_exception(e.__cause__, tool_model=True)
+    if isinstance(e.__cause__, (httpx.HTTPError, DialException)):
         return resolve_exception(e.__cause__)
     if e.__cause__ is None:
         return _compose(e.user_facing_message, False, ErrorDetails())
@@ -304,6 +373,9 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 def _resolve_internal(e: Exception) -> _Resolution | None:
     if isinstance(e, FallbackAgentStopException):
         return _MSG_FALLBACK_STOP, False
+    if isinstance(e, ToolTimeoutError):
+        # Its text is structural (tool name + seconds), so it is safe to show as-is.
+        return str(e), True
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return str(e), False
     if isinstance(e, OrchestratorInitializationException):
@@ -353,8 +425,11 @@ def _compose(message: str, retryable: bool, details: ErrorDetails) -> ResolvedEr
     return ResolvedError(message=text, retryable=retryable, details=details)
 
 
-def resolve_exception(e: Exception) -> ResolvedError:
+def resolve_exception(e: Exception, *, tool_model: bool = False) -> ResolvedError:
     """Resolve any exception into user-facing text plus a retryability classification.
+
+    ``tool_model`` marks an openai error raised by a tool's own deployment call, so
+    non-retryable statuses name the tool's model rather than the app's.
 
     Precedence: display_message -> code map -> status/type map -> stream-failure rule ->
     internal map -> tool-error -> fallback. Never leaks raw internal detail: only
@@ -380,7 +455,7 @@ def resolve_exception(e: Exception) -> ResolvedError:
         return _compose(*resolution, details)
 
     # 3. Status / type ladders (source-specific wording; unmatched -> None to continue).
-    resolution = _resolve_status_or_type(e, details)
+    resolution = _resolve_status_or_type(e, details, tool_model)
     if resolution is not None:
         return _compose(*resolution, details)
 
