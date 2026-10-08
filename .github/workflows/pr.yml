@@ -19,3 +19,5 @@ jobs:
     with:
       python-version: "3.13"
       poetry-version: "2.3.2"
+      trivy-severity: "CRITICAL,HIGH,MEDIUM,LOW"
+      trivy-severity-for-sarif: "CRITICAL,HIGH,MEDIUM,LOW"
