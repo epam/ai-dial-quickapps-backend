@@ -506,6 +506,6 @@ wall-clock time when the interactive login wait occurs, so the tool will appear 
 
 | Component                                          | Change                                                                                                                        |
 |----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------|
-| `dial_core_services/interactive_login_service.py`  | Add `request_external_service_signin(url)`, sending a single `external-service/signin` RPC entry; logs the url through `sanitize_url_for_log` |
+| `dial_core_services/interactive_login_service.py`  | Add `request_external_service_signin(url)`, sending a single `external-service/signin` RPC entry; logs the url through `sanitize_url` |
 | `mcp_tooling/_mcp_toolset_client.py`                | Unchanged — `call_mcp_tool()` remains a single call, no retry |
 | `mcp_tooling/_mcp_tool.py`                          | Add `__extract_external_service_signin_scope()` and `__call_tool_with_signin()`, unifying `toolset/signin` (transport-401) and `external-service/signin` retry-once handling in one method |

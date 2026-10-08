@@ -10,7 +10,7 @@ from injector import inject
 from pydantic import BaseModel, ConfigDict
 
 from quickapp.common.state_holder import StateHolder
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.shared.config_resolvers.file_loading_size_limit_resolver import (
     FileLoadingSizeLimitResolver,
 )
@@ -69,7 +69,7 @@ class DialFileService:
             self._reraise_404_as_not_found(e)
 
     async def download_file(self, file_url: str) -> tuple[bytes, FileMetadata | None]:
-        safe_url = sanitize_url_for_log(file_url)
+        safe_url = sanitize_url(file_url)
         logger.debug("File url to download: %s", safe_url)
         file_data = self.__state_holder.get_file_data(url=file_url)
         if file_data is not None:
@@ -236,7 +236,7 @@ class DialFileService:
         try:
             logger.debug(
                 "Granting permissions to files: %s",
-                [sanitize_url_for_log(f) for f in files_to_share],
+                [sanitize_url(f) for f in files_to_share],
             )
             await self.__dial_client.resource_permissions.grant(
                 resources=files_to_share,
