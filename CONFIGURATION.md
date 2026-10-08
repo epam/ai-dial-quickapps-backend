@@ -479,6 +479,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `timestamp`              | No       | Object or null | No      | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
 | `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
 | `external_url_fetch`     | No       | Object         | No      | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `tool_access_filter`     | No       | Object or null | No      | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | No      | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
 | `dial_files`             | No       | Object or null | No      | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
 | `web_fetch`              | No       | Object or null | **Yes** | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
@@ -704,6 +705,40 @@ Set to `{}` to enable with defaults.
   }
 }
 ```
+
+#### Tool access filter configuration
+
+Disabled by default. When enabled, the configured DIAL tools ([`DialDeploymentToolSet`](#dialdeploymenttoolset-configuration) entries,
+[`DialAppToolSet`](#dialapptoolset-configuration) and [`DialMCPToolSet`](#dialmcptoolset-configuration)) are
+intersected with the models, applications and toolsets DIAL Core reports as accessible to the calling user
+(`GET /v1/deployment-names`), so the model is never offered a tool the user cannot call. Useful for a single large app
+whose users have different DIAL Core entitlements. DIAL Core is queried at most once per request, and only when a DIAL tool is configured (no cross-request cache).
+If DIAL Core cannot be queried (including a DIAL Core version without that endpoint), all configured tools are offered
+(DIAL Core still enforces access when a tool is called). Directly-addressed `mcp`, REST API and internal toolsets are not filtered.
+
+DIAL Core lists custom (user-owned) applications only when its `includeCustomApps` setting is on. With it off, a
+configured tool that points at a custom application is treated as inaccessible and hidden.
+
+| Field   | Required | Type    | Description                       | Available Values | Default Value |
+|---------|----------|---------|-----------------------------------|------------------|---------------|
+| enabled | No       | Boolean | Enable per-user access filtering. | -                | `false`       |
+
+<details>
+<summary><b>Tool access filter configuration JSON sample</b></summary>
+
+```json
+{
+  "features": {
+    "tool_access_filter": {
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+See [Access-Aware Tool Availability design doc](docs/designs/access_aware_tool_availability.md) for the full behavioral reference.
 
 ### Skills configuration
 

@@ -35,6 +35,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
+from quickapp.shared.user_access import ToolAccessFilter
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -135,6 +136,7 @@ class _MCPToolInitializer(CompletionInitializer):
         login_service: InteractiveLoginService,
         accept_language: ACCEPT_LANGUAGE,
         app_config: ApplicationConfig,
+        access_filter: ToolAccessFilter,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -151,6 +153,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__login_service: InteractiveLoginService = login_service
         self.__accept_language: ACCEPT_LANGUAGE = accept_language
         self.__app_config: ApplicationConfig = app_config
+        self.__access_filter: ToolAccessFilter = access_filter
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -170,7 +173,7 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        toolsets = self.__toolset_list_provider.get()
+        toolsets = await self.__filter_accessible(self.__toolset_list_provider.get())
         if not toolsets:
             return
 
@@ -182,6 +185,26 @@ class _MCPToolInitializer(CompletionInitializer):
             return
 
         await self._interactive_login_and_retry(unauthorized)
+
+    async def __filter_accessible(
+        self, toolsets: list[MCPToolSet | DialMCPToolSet]
+    ) -> list[MCPToolSet | DialMCPToolSet]:
+        """Drop DIAL toolsets the user cannot access, before any metadata fetch or MCP session.
+
+        Only ``DialMCPToolSet`` carries a DIAL id; plain ``MCPToolSet`` entries (including the
+        ones ``_DialAppResolver`` already filtered) are always kept.
+        """
+        accessible: list[MCPToolSet | DialMCPToolSet] = []
+        for toolset in toolsets:
+            if isinstance(toolset, DialMCPToolSet) and not await self.__access_filter.is_accessible(
+                toolset.deployment_id
+            ):
+                logger.debug(
+                    "Skipping a dial-mcp toolset the user cannot access: %s", toolset.deployment_id
+                )
+                continue
+            accessible.append(toolset)
+        return accessible
 
     def _classify_initialization_results(
         self,

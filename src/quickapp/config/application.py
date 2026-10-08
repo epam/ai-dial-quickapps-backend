@@ -22,6 +22,7 @@ from quickapp.config.prompt import AgentSystemPromptConfig, CustomSystemPromptCo
 from quickapp.config.skill import SkillConfig
 from quickapp.config.starters import ConversationStartersConfig
 from quickapp.config.timestamp import TimestampConfig, ToolCallTimestampConfig
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.web_fetch import WebFetchConfig
@@ -207,6 +208,10 @@ class Features(BaseModel):
             "Per-app override for fetching external (non-DIAL) URLs. "
             "Operates within the admin cap set by `EXTERNAL_URL_FETCH_ENABLED`."
         ),
+    )
+    tool_access_filter: ToolAccessFilterConfig | None = Field(
+        default=None,
+        description="Per-user tool access filtering. When enabled, configured DIAL deployment tools, DIAL applications and `dial-mcp` toolsets are intersected with the ones DIAL Core reports as accessible to the calling user. Disabled by default.",
     )
     stage_display: StageDisplayConfig = Field(
         default_factory=StageDisplayConfig,

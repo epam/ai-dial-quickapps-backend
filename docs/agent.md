@@ -262,6 +262,27 @@ Quick Apps supports several tool types:
   tools (`internal_attachments_available_context`, and when gated `internal_attachments_get_content`) are registered
   conditionally (see [Attachment Notification](#attachment-notification)).
 
+### Tool Access Filter
+
+Opt-in (`features.tool_access_filter.enabled`, default off). When on, tools backed by a DIAL resource are checked
+against what DIAL Core says the calling user can access, so the model is not offered tools that would fail with a 403
+at call time. See [CONFIGURATION — Tool access filter](../CONFIGURATION.md#tool-access-filter-configuration).
+
+- **Where:** `ToolAccessFilter` (`shared/user_access/`) is injected into `_DeploymentToolInitializer`
+  (`DialDeploymentTool`, `DialDeploymentSimpleTool`), `_DialAppResolver` (`DialAppToolSet`) and `_MCPToolInitializer`
+  (`DialMCPToolSet`). Inaccessible entries are skipped while tools are built, before any metadata fetch, MCP session or
+  interactive login, so the deferred-tool catalog and `tool_search` never list them.
+- **Lookup:** the first `is_accessible` call in a request issues `GET /v1/deployment-names` (models, applications,
+  toolsets) with the user's own credentials; later callers in the same request share the result. Nothing is cached
+  across requests, and a request with no DIAL tools never calls Core.
+- **Fail-open:** if the lookup fails (transport/HTTP error, unexpected body, or a Core without the endpoint), a warning
+  is logged and all configured tools are offered. Core still enforces access on execution; this is not a security
+  boundary.
+- **Not filtered:** directly-addressed `mcp`, REST API and internal toolsets (no DIAL id to check). Custom applications
+  are hidden unless Core's `includeCustomApps` is on.
+
+Design: [access_aware_tool_availability.md](./designs/access_aware_tool_availability.md).
+
 ### Parallel Execution
 
 When the LLM requests multiple tools, the Tool Executor runs them concurrently using async gathering. Each tool call is:
@@ -572,7 +593,9 @@ individually, `app_factory` splices in two package-level arrays:
   modules join by appending. Today it holds `ConfigResolversModule`, `ExternalFetchModule` (the
   external-URL fetch egress envelope, see module 11), and `HomePathModule` (`HomePathResolver` in
   `shared/home_path/` — resolves agent-home-relative file paths to DIAL `files/` URLs and back, shared
-  by the DIAL-files tools, the path-argument transformer, and the `internal_attachments_get_content` tool).
+  by the DIAL-files tools, the path-argument transformer, and the `internal_attachments_get_content` tool), and
+  `UserAccessModule` (`ToolAccessFilter` in `shared/user_access/` — per-request check of configured DIAL tools against
+  the user's accessible deployments, see [Tool Access Filter](#tool-access-filter)).
 
 1. **App Module**: Core application, request context, FastAPI setup
 2. **Agent Module**: Orchestrator, assistant invoker, message transformers
@@ -589,7 +612,8 @@ individually, `app_factory` splices in two package-level arrays:
 9. **Configuration Support API Module**: Configuration validation endpoints
 10. **DIAL Core Services Module**: DIAL Core integration (`InteractiveLoginService`, `InteractiveLoginSettings`,
     `DialDownloader` for DIAL file bytes, `DialFilePromoter` for "URL → durable DIAL file" — DIAL metadata fetch for
-    DIAL URLs, and bytes-then-upload via `AttachmentService` for external URLs).
+    DIAL URLs, and bytes-then-upload via `AttachmentService` for external URLs; `DeploymentNamesCoreService` for the
+    user's accessible deployment ids).
 11. **File Transfer Module**: `ToolArgumentTransformer` for `file:` prefix resolution, file transfer instruction
     injection. Owns `FileLoaderService` (scheme-aware bytes loader). The external-fetch security envelope —
     `ExternalUrlFetcher`, `ExternalFetchSettings`, `ExternalUrlFetchPolicyResolver` — lives in
