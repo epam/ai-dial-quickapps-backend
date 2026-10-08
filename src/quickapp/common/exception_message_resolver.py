@@ -13,6 +13,7 @@ from quickapp.common.exceptions import (
     ToolErrorException,
     ToolsetForbiddenException,
     ToolsetNotFoundException,
+    ToolTimeoutError,
 )
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,19 @@ _MSG_AI_MODEL_CONTEXT_LENGTH = (
 _MSG_AI_MODEL_PAYLOAD_TOO_LARGE = (
     "The request payload is too large. Please reduce the size of your message or attachments."
 )
+
+# --- Tool-model wording (a tool's own deployment call) ---
+_TOOL_MODEL_STATUS_MESSAGES: dict[int, str] = {
+    401: "Authentication failed when accessing the AI model behind this tool. "
+    "Please contact your administrator.",
+    403: "You don't have permission to use the AI model behind this tool. "
+    "Please contact your administrator.",
+    404: "The AI model behind this tool could not be found. Please contact your administrator.",
+    400: "The AI model behind this tool rejected the request as invalid.",
+    422: "The AI model behind this tool rejected the request as invalid.",
+    413: "The request to the AI model behind this tool is too large. "
+    "Please reduce the size of the input or attachments.",
+}
 
 # --- Service wording (DIAL core service calls surfaced as httpx errors) ---
 _MSG_SERVICE_RATE_LIMITED = "A required service is currently rate-limiting requests."
@@ -216,9 +230,11 @@ def _resolve_by_code(details: ErrorDetails) -> _Resolution | None:
     return (message, False) if message is not None else None
 
 
-def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
+def _resolve_ai_model_status(status: int | None, tool_model: bool = False) -> _Resolution | None:
     if status is None:
         return None
+    if tool_model and status in _TOOL_MODEL_STATUS_MESSAGES:
+        return _TOOL_MODEL_STATUS_MESSAGES[status], False
     if status == 401:
         return _MSG_AI_MODEL_AUTH_FAILED, False
     if status == 403:
@@ -238,7 +254,9 @@ def _resolve_ai_model_status(status: int | None) -> _Resolution | None:
     return None
 
 
-def _resolve_openai_status_or_type(e: openai.APIError, details: ErrorDetails) -> _Resolution | None:
+def _resolve_openai_status_or_type(
+    e: openai.APIError, details: ErrorDetails, tool_model: bool
+) -> _Resolution | None:
     # Type branches carry no HTTP status. APITimeoutError must precede APIConnectionError
     # (it is a subclass), and both must precede the stream-failure rule.
     if isinstance(e, openai.APITimeoutError):
@@ -247,7 +265,7 @@ def _resolve_openai_status_or_type(e: openai.APIError, details: ErrorDetails) ->
         # The openai client already retried this; a lingering failure is deterministic
         # (wrong endpoint / DNS / TLS), so it is non-retryable with admin-escalation advice.
         return _MSG_SERVICE_NO_CONNECTIVITY, False
-    return _resolve_ai_model_status(details.status_code)
+    return _resolve_ai_model_status(details.status_code, tool_model)
 
 
 def _resolve_httpx_status_or_type(e: httpx.HTTPError, details: ErrorDetails) -> _Resolution:
@@ -272,9 +290,11 @@ def _resolve_httpx_status_or_type(e: httpx.HTTPError, details: ErrorDetails) -> 
     return _MSG_HTTP_GENERIC, False
 
 
-def _resolve_status_or_type(e: Exception, details: ErrorDetails) -> _Resolution | None:
+def _resolve_status_or_type(
+    e: Exception, details: ErrorDetails, tool_model: bool
+) -> _Resolution | None:
     if isinstance(e, openai.APIError):
-        return _resolve_openai_status_or_type(e, details)
+        return _resolve_openai_status_or_type(e, details, tool_model)
     if isinstance(e, AiDialHTTPException):
         return _resolve_ai_model_status(details.status_code)
     if isinstance(e, httpx.HTTPError):
@@ -287,14 +307,16 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 
     - If it wraps an httpx or openai cause, delegate to the cause's resolution so the
       caller gets the appropriate HTTP-specific message (e.g. permission-denied, timeout).
+      An openai cause is the tool's own model call, so it gets the tool-model wording.
     - If there is no cause, expose the tool error text directly via
       ``user_facing_message`` rather than ``str(e)``: the exception's string form is
       structural by the content rule (issue #436), while the user channel keeps the real
       text.
-    - If the cause is something other than an httpx error, return None to fall through
-      to the generic fallback.
+    - If the cause is anything else, return None to fall through to the generic fallback.
     """
-    if isinstance(e.__cause__, (httpx.HTTPError, openai.APIError)):
+    if isinstance(e.__cause__, openai.APIError):
+        return resolve_exception(e.__cause__, tool_model=True)
+    if isinstance(e.__cause__, httpx.HTTPError):
         return resolve_exception(e.__cause__)
     if e.__cause__ is None:
         return _compose(e.user_facing_message, False, ErrorDetails())
@@ -304,6 +326,9 @@ def _resolve_tool_error(e: ToolErrorException) -> ResolvedError | None:
 def _resolve_internal(e: Exception) -> _Resolution | None:
     if isinstance(e, FallbackAgentStopException):
         return _MSG_FALLBACK_STOP, False
+    if isinstance(e, ToolTimeoutError):
+        # Its text is structural (tool name + seconds), so it is safe to show as-is.
+        return str(e), True
     if isinstance(e, OrchestratorExceedMaxIterationsException):
         return str(e), False
     if isinstance(e, OrchestratorInitializationException):
@@ -353,8 +378,11 @@ def _compose(message: str, retryable: bool, details: ErrorDetails) -> ResolvedEr
     return ResolvedError(message=text, retryable=retryable, details=details)
 
 
-def resolve_exception(e: Exception) -> ResolvedError:
+def resolve_exception(e: Exception, *, tool_model: bool = False) -> ResolvedError:
     """Resolve any exception into user-facing text plus a retryability classification.
+
+    ``tool_model`` marks an openai error raised by a tool's own deployment call, so
+    non-retryable statuses name the tool's model rather than the app's.
 
     Precedence: display_message -> code map -> status/type map -> stream-failure rule ->
     internal map -> tool-error -> fallback. Never leaks raw internal detail: only
@@ -380,7 +408,7 @@ def resolve_exception(e: Exception) -> ResolvedError:
         return _compose(*resolution, details)
 
     # 3. Status / type ladders (source-specific wording; unmatched -> None to continue).
-    resolution = _resolve_status_or_type(e, details)
+    resolution = _resolve_status_or_type(e, details, tool_model)
     if resolution is not None:
         return _compose(*resolution, details)
 
