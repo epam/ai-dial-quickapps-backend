@@ -82,9 +82,8 @@ Require `ENABLE_PREVIEW_FEATURES=true`. May change without a major version bump.
 | [ChatHub](./chathub.md) | ChatHub variants — structure, authoring, recipes |
 | [Error Handling](./error_handling.md) | User-facing errors, correlation, DIAL protocol delivery |
 | [File Transfer](./file_transfer.md) | `file:{prefix}::` convention and preprocessing pipeline |
-| [Hooks](./hooks.md) | Config-driven hooks (Preview): events, context, failure and timeout handling |
+| [Hooks](./hooks.md) | Config-driven hooks (Preview): events, context, failure and timeout handling, tools hidden from the model |
 | [Logging](./logging.md) | Console log modes, OTEL correlation, OTLP export |
-| [Hooks](./hooks.md) | Config-driven hooks, injection into history, tools hidden from the model |
 | [Agent Skills](./skills.md) | Skill layout, metadata, DIAL sources, invocation |
 | [Time Awareness](./time_awareness.md) | Current time and data freshness |
 | [Custom CA Certificates](./custom_ca_certificates.md) | Trust private/corporate Root CA (`USE_SYSTEM_CA_CERTS`) |
