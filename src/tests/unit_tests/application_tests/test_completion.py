@@ -159,6 +159,7 @@ def make_request_completion():
                 contexts=[],
             ),
             list[quick_app_completion.StagedBaseTool]: [],
+            list[quick_app_completion.ModelHiddenTool]: [],
             quick_app_completion.AgentSkillsProvider: SimpleNamespace(get_all_skills=lambda: []),
         }
         if orchestrator is not None:

@@ -762,7 +762,8 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 ### Hooks configuration
 
 Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
-orchestrator seams. See
+orchestrator seams. For how hooks behave end to end (injection, failure handling, tools hidden from the
+model) see [docs/hooks.md](docs/hooks.md); the design is in
 [docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
 
 | Field               | Required | Type   | Description | Default |
@@ -1032,6 +1033,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | type                   | Yes      | String             | The type of the tool set.                                                | `mcp`         |
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
+| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
@@ -1055,6 +1057,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | dial_id                | Yes      | String                 | The Dial ID associated with this MCP toolset.                         | -             |
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
+| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
@@ -1083,6 +1086,7 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
 | transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
+| hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |

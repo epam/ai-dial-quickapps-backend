@@ -135,6 +135,7 @@ class _DialAppResolver(CompletionInitializer):
             description=toolset.description,
             enabled=toolset.enabled,
             allowed_tools=toolset.allowed_tools,
+            hidden_from_model=toolset.hidden_from_model,
             attachment=toolset.attachment,
             fallback_configuration=toolset.fallback_configuration,
             mcp_server_info=MCPServerInfo(
@@ -151,6 +152,12 @@ class _DialAppResolver(CompletionInitializer):
         if toolset.allowed_tools:
             logger.warning(
                 "allowed_tools set on DialAppToolSet '%s' is ignored on the chat-completion "
+                "fallback branch (single synthetic tool).",
+                resolve_localized(toolset.name),
+            )
+        if toolset.hidden_from_model:
+            logger.warning(
+                "hidden_from_model set on DialAppToolSet '%s' is ignored on the chat-completion "
                 "fallback branch (single synthetic tool).",
                 resolve_localized(toolset.name),
             )

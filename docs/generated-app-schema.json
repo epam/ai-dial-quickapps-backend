@@ -827,6 +827,23 @@
           "description": "MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.",
           "title": "Allowed Tools"
         },
+        "hidden_from_model": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only. MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Hidden From Model",
+          "x-preview": true
+        },
         "attachment": {
           "$ref": "#/$defs/AttachmentConfig",
           "description": "Configuration for toolset attachments."
@@ -1566,6 +1583,23 @@
           "default": null,
           "description": "Allowed MCP tool names from the server",
           "title": "Allowed Tools"
+        },
+        "hidden_from_model": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
+          "title": "Hidden From Model",
+          "x-preview": true
         },
         "attachment": {
           "$ref": "#/$defs/AttachmentConfig",
@@ -2610,6 +2644,23 @@
           "default": null,
           "description": "Allowed MCP tool names from the server",
           "title": "Allowed Tools"
+        },
+        "hidden_from_model": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
+          "title": "Hidden From Model",
+          "x-preview": true
         },
         "attachment": {
           "$ref": "#/$defs/AttachmentConfig",

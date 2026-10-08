@@ -1,12 +1,16 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
-from quickapp.common.base_config import DialResourceConfigField
+from quickapp.common.base_config import DialResourceConfigField, PreviewField
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
+from quickapp.config.toolsets.hidden_from_model import (
+    HIDDEN_FROM_MODEL_DESCRIPTION,
+    validate_hidden_from_model,
+)
 
 
 class DialAppToolSet(BaseToolSet):
@@ -32,6 +36,13 @@ class DialAppToolSet(BaseToolSet):
             "Ignored (with a warning) on the chat-completion fallback branch."
         ),
     )
+    hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
+        default=None,
+        description=(
+            f"MCP branch only. {HIDDEN_FROM_MODEL_DESCRIPTION} "
+            "Ignored (with a warning) on the chat-completion fallback branch."
+        ),
+    )
     attachment: AttachmentConfig = Field(
         default_factory=AttachmentConfig, description="Configuration for toolset attachments."
     )
@@ -46,3 +57,8 @@ class DialAppToolSet(BaseToolSet):
             "to MCP."
         ),
     )
+
+    @model_validator(mode="after")
+    def _validate_hidden_from_model(self) -> Self:
+        validate_hidden_from_model(self.allowed_tools, self.hidden_from_model)
+        return self

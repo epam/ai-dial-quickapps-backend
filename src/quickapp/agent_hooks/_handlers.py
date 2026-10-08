@@ -1,8 +1,9 @@
 import logging
 from abc import ABC, abstractmethod
 
-from injector import ProviderOf, inject
+from injector import inject
 
+from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.hook_context.context import HookContext, HookResult
 from quickapp.common.hook_context.templating import TemplateResolutionError, render_arguments
 from quickapp.common.staged_base_tool import StagedBaseTool
@@ -67,8 +68,8 @@ class ToolCallHookHandler(HookHandler):
 class HookHandlerRegistry:
     """Builds one handler per configured hook, lazily, and reuses it for the request."""
 
-    def __init__(self, tools_provider: ProviderOf[list[StagedBaseTool]]) -> None:
-        self._tools_provider = tools_provider
+    def __init__(self, tool_registry: HookToolRegistry) -> None:
+        self._tool_registry = tool_registry
         self._handlers: dict[int, HookHandler] = {}
 
     def handler_for(self, hook: HookConfig) -> HookHandler:
@@ -82,4 +83,4 @@ class HookHandlerRegistry:
     def _build(self, hook: HookConfig) -> HookHandler:
         match hook:
             case ToolCallHookConfig():
-                return ToolCallHookHandler(hook, self._tools_provider.get())
+                return ToolCallHookHandler(hook, self._tool_registry.tools)
