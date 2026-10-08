@@ -11,8 +11,6 @@ from quickapp.common.exceptions import (
     OrchestratorExceedMaxIterationsException,
     OrchestratorInitializationException,
     ToolErrorException,
-)
-from quickapp.dial_core_services.exceptions import (
     ToolsetForbiddenException,
     ToolsetNotFoundException,
 )
