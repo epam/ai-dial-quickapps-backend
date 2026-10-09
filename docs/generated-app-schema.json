@@ -593,7 +593,6 @@
       "type": "object"
     },
     "CustomFieldsConfig": {
-      "additionalProperties": true,
       "properties": {
         "configuration": {
           "anyOf": [
@@ -1049,7 +1048,7 @@
             }
           ],
           "default": null,
-          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint. Other keys the deployment supports (e.g. `cache_breakpoint`) are forwarded as-is."
+          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint"
         }
       },
       "title": "DialDeploymentParameters",
@@ -1406,7 +1405,7 @@
             }
           ],
           "default": null,
-          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint. Other keys the deployment supports (e.g. `cache_breakpoint`) are forwarded as-is."
+          "description": "The configuration parameters for the DIAL deployment. Schema is defined for specific deployment via configuration endpoint"
         },
         "tools": {
           "anyOf": [

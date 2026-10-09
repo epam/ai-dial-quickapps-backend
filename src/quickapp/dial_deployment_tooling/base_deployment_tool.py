@@ -16,11 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
-from quickapp.common.dial_request_fields import (
-    CONFIGURATION,
-    CUSTOM_FIELDS,
-    to_custom_fields_payload,
-)
+from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -289,7 +285,6 @@ class BaseDeploymentTool(StagedBaseTool):
         # If tool config defines defaults, normalize them first
         params = tool_config.deployment.parameters
         self._merge_to_prepared_params(params, prepared)
-        self._apply_custom_fields(params, prepared)
 
         # Split LLM kwargs: configuration params vs standard params
         config_kwargs: dict[str, Any] = {}
@@ -330,22 +325,9 @@ class BaseDeploymentTool(StagedBaseTool):
         params_dict = to_plain_dict(params)
         if isinstance(params_dict, dict):
             for key, value in params_dict.items():
-                if key == CUSTOM_FIELDS or value is None or value == {}:
+                if value is None or value == {}:
                     continue
                 prepared[key] = value
-
-    @staticmethod
-    def _apply_custom_fields(params: DialDeploymentParameters, prepared: dict[str, Any]) -> None:
-        """Put the configured custom fields into the params.
-
-        Not part of the `_merge_to_prepared_params` dump for the same reason as static tools:
-        `to_plain_dict` would drop a meaningful empty value such as `cache_breakpoint: {}`.
-        """
-        if not params.custom_fields:
-            return
-        custom_fields = to_custom_fields_payload(params.custom_fields.model_dump(exclude_none=True))
-        if custom_fields:
-            prepared[CUSTOM_FIELDS] = custom_fields
 
     @staticmethod
     def _apply_static_tools(params: DialDeploymentToolParameters, prepared: dict[str, Any]) -> None:

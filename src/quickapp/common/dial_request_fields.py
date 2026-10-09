@@ -7,9 +7,5 @@ CONFIGURATION = "configuration"
 
 
 def to_custom_fields_payload(custom_fields: dict[str, Any]) -> dict[str, Any]:
-    """Drop an empty `configuration`; keep other keys as-is, since e.g. `cache_breakpoint: {}` is meaningful."""
-    return {
-        key: value
-        for key, value in custom_fields.items()
-        if not (key == CONFIGURATION and not value)
-    }
+    configuration = custom_fields.get(CONFIGURATION)
+    return {CONFIGURATION: configuration} if configuration else {}
