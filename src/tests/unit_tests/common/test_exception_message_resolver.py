@@ -4,20 +4,18 @@ import pytest
 from aidial_sdk.exceptions import ContextLengthExceededError as AiDialContextLengthError
 from aidial_sdk.exceptions import InvalidRequestError as AiDialInvalidRequestError
 
-from quickapp.common.exceptions import (
-    FallbackAgentStopException,
-    OrchestratorExceedMaxIterationsException,
-    ToolErrorException,
-)
-from quickapp.core.application._exception_message_resolver import (
+from quickapp.common.exception_message_resolver import (
     _MSG_FALLBACK_STOP,
     _RETRY_SENTENCE,
     resolve_exception,
 )
-from quickapp.dial_core_services.exceptions import (
-    ToolsetForbiddenException,
-    ToolsetNotFoundException,
+from quickapp.common.exceptions import (
+    FallbackAgentStopException,
+    OrchestratorExceedMaxIterationsException,
+    ToolErrorException,
+    ToolTimeoutError,
 )
+from quickapp.common.exceptions.toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
 
 
@@ -173,8 +171,87 @@ class TestResolveHttpxError:
         e.__cause__ = cause
         assert "timed out" in _resolve(e).lower()
 
+    def test_tool_error_with_openai_cause_uses_ai_model_message(self) -> None:
+        e = _make_tool_error_with_cause(_make_openai_status_error(openai.RateLimitError, 429))
+        resolved = resolve_exception(e)
+        assert resolved.message == (
+            "The request was rate-limited by the AI model service. Please try again later."
+        )
+        assert resolved.retryable is True
+
+    def test_tool_error_with_openai_cause_names_the_tool_model(self) -> None:
+        e = _make_tool_error_with_cause(_make_openai_status_error(openai.NotFoundError, 404))
+        assert _resolve(e) == (
+            "The AI model behind this tool could not be found. Please contact your administrator."
+        )
+
+
+class TestResolveToolModelWording:
+    @pytest.mark.parametrize(
+        "cls, status, expected",
+        [
+            (
+                openai.AuthenticationError,
+                401,
+                "Authentication failed when accessing the AI model behind this tool. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.PermissionDeniedError,
+                403,
+                "You don't have permission to use the AI model behind this tool. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.NotFoundError,
+                404,
+                "The AI model behind this tool could not be found. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.BadRequestError,
+                400,
+                "The AI model behind this tool rejected the request as invalid.",
+            ),
+            (
+                openai.UnprocessableEntityError,
+                422,
+                "The AI model behind this tool rejected the request as invalid.",
+            ),
+        ],
+    )
+    def test_non_retryable_status_names_the_tool_model(
+        self, cls: type[openai.APIStatusError], status: int, expected: str
+    ) -> None:
+        resolved = resolve_exception(_make_openai_status_error(cls, status), tool_model=True)
+        assert resolved.message == expected
+        assert resolved.retryable is False
+
+    def test_rate_limit_keeps_shared_wording(self) -> None:
+        resolved = resolve_exception(
+            _make_openai_status_error(openai.RateLimitError, 429), tool_model=True
+        )
+        assert resolved.message == (
+            "The request was rate-limited by the AI model service. Please try again later."
+        )
+        assert resolved.retryable is True
+
+    def test_default_keeps_app_model_wording(self) -> None:
+        message = _resolve(_make_openai_status_error(openai.NotFoundError, 404))
+        assert message == (
+            "The AI model configured in this application could not be found. "
+            "Please contact your administrator."
+        )
+
 
 class TestResolveInternalError:
+    def test_tool_timeout_keeps_its_cause_and_is_retryable(self) -> None:
+        resolved = resolve_exception(ToolTimeoutError("image_generation_tool", 30))
+        assert resolved.message == (
+            "Tool call 'image_generation_tool' timed out after 30 seconds. Please try again later."
+        )
+        assert resolved.retryable is True
+
     def test_orchestrator_exceed_max_iterations(self) -> None:
         e = OrchestratorExceedMaxIterationsException()
         assert "max iterations" in _resolve(e).lower()

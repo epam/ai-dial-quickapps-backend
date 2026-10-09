@@ -5,7 +5,7 @@ import openai
 import pytest
 from aidial_sdk.exceptions import HTTPException as DialHTTPException
 
-from quickapp.core.application._exception_message_resolver import ErrorDetails, ResolvedError
+from quickapp.common.exception_message_resolver import ErrorDetails, ResolvedError
 from quickapp.core.application._quick_app_completion import (
     _outgoing_status_code,
     _QuickAppCompletion,

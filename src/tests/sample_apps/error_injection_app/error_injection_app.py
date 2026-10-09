@@ -3,7 +3,7 @@
 This is a *sample* DIAL application built directly on the installed ``aidial-sdk``. It is
 meant to be registered in DIAL Core as a model and wired as the orchestrator deployment
 of a QuickApp so that QuickApps' error-handling pipeline
-(``_exception_message_resolver`` -> ``_quick_app_completion``) can be exercised
+(``exception_message_resolver`` -> ``_quick_app_completion``) can be exercised
 end-to-end.
 
 The scenario registry lives in ``scenarios.py`` and the request handler in

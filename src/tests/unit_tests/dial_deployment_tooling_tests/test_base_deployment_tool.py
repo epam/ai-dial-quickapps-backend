@@ -3,14 +3,18 @@ import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
+import openai
 import pytest
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import Attachment as SdkAttachment
 from aidial_sdk.chat_completion.request import CustomContent, FunctionCall, ToolCall
 from pydantic import StrictStr
 
+from quickapp.common.exception_message_resolver import resolve_exception
+from quickapp.common.exceptions import ToolTimeoutError
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.tool_call_result import ToolCallResult
+from quickapp.common.tool_fallback.utils import compose_fallback_content
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.dial_deployment import (
     CustomFieldsConfig,
@@ -31,7 +35,11 @@ from quickapp.config.tools.deployment import (
     ConversationMode,
     DialDeploymentTool,
 )
+from quickapp.dial_deployment_tooling._deployment_tool_error_exception import (
+    DeploymentToolErrorException,
+)
 from quickapp.dial_deployment_tooling.base_deployment_tool import BaseDeploymentTool
+from tests.unit_tests.common.common import make_openai_status_error
 
 
 def _make_messages_mixin(messages: list[Message]) -> MessagesMixin:
@@ -957,3 +965,81 @@ async def test_pre_process_params_llm_kwargs_do_not_replace_static_tools():
     assert result["tools"] == [
         {"type": "static_function", "static_function": {"name": "web_search"}}
     ]
+
+
+# ---------------------------------------------------------------------------
+# _run_in_stage_async: upstream errors are resolved into DeploymentToolErrorException
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_wraps_upstream_error_with_resolved_cause():
+    svc = AsyncMock()
+    upstream = make_openai_status_error(openai.RateLimitError, 429)
+    svc.complete_request_async.side_effect = upstream
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+
+    with pytest.raises(DeploymentToolErrorException) as excinfo:
+        await tool._run_in_stage_async(stage_wrapper=None, query="draw a cat")
+
+    error = excinfo.value
+    assert error.__cause__ is upstream
+    assert error.error_message == (
+        "The request was rate-limited by the AI model service. Please try again later. "
+        "(status code: 429)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_prefers_upstream_display_message():
+    svc = AsyncMock()
+    svc.complete_request_async.side_effect = make_openai_status_error(
+        openai.RateLimitError,
+        429,
+        body={"error": {"message": "internal", "display_message": "Daily limit 3000 exceeded"}},
+    )
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+
+    with pytest.raises(DeploymentToolErrorException) as excinfo:
+        await tool._run_in_stage_async(stage_wrapper=None, query="draw a cat")
+
+    assert excinfo.value.error_message == "Daily limit 3000 exceeded (status code: 429)"
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_names_the_tool_model_on_not_found():
+    svc = AsyncMock()
+    svc.complete_request_async.side_effect = make_openai_status_error(openai.NotFoundError, 404)
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+
+    with pytest.raises(DeploymentToolErrorException) as excinfo:
+        await tool._run_in_stage_async(stage_wrapper=None, query="draw a cat")
+
+    assert excinfo.value.error_message == (
+        "The AI model behind this tool could not be found. Please contact your administrator. "
+        "(status code: 404)"
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_in_stage_leaves_tool_timeout_unwrapped():
+    svc = AsyncMock()
+    svc.complete_request_async.side_effect = ToolTimeoutError("image", 30)
+    tool = _build_tool_with_propagation(messages=[], dial_completion_service=svc)
+
+    with pytest.raises(ToolTimeoutError):
+        await tool._run_in_stage_async(stage_wrapper=None, query="draw a cat")
+
+
+def test_fallback_content_carries_resolved_cause_not_raw_body():
+    error = DeploymentToolErrorException(
+        "image_generation_tool",
+        resolve_exception(make_openai_status_error(openai.RateLimitError, 429)),
+    )
+
+    content = compose_fallback_content(error)
+
+    assert content == (
+        "The tool call failed with an error: The request was rate-limited by the AI model "
+        "service. Please try again later. (status code: 429)"
+    )

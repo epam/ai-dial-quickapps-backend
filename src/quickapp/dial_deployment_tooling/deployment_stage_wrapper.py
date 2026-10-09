@@ -1,9 +1,10 @@
 from typing import Any
 
-from aidial_client import DialException
 from injector import inject
 
 from quickapp.common import TimedStageWrapper, ToolCallResult
+from quickapp.common.exception_message_resolver import resolve_exception
+from quickapp.common.exceptions import ToolErrorException
 from quickapp.dial_deployment_tooling.constants import TOOLS_PARAM
 
 
@@ -18,12 +19,11 @@ class DeploymentStageWrapper(TimedStageWrapper):
         return self._render_config_map_parameters(visible)
 
     def _build_debug_info_from_exception(self, exception: Exception) -> str:
-        if isinstance(exception, DialException):
-            return (
-                f"> #### Error:\n{exception.message}\n"
-                f"> #### Status Code:\n{exception.status_code}\n"
-            )
-        return "> #### Exception:\nGeneral exception occurred while calling other DIAL deployment\n"
+        # The stage is a user channel: tool errors carry the resolved cause; anything else
+        # gets the resolver's curated text, never the raw exception string.
+        if isinstance(exception, ToolErrorException):
+            return f"> #### Error:\n{exception.user_facing_message}\n"
+        return f"> #### Error:\n{resolve_exception(exception).message}\n"
 
     def _build_debug_info_from_result(self, result: ToolCallResult) -> str:
         # For Deployment tools we stream content into choice on the tool execution level

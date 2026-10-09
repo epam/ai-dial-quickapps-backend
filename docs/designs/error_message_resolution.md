@@ -164,7 +164,7 @@ class ErrorDetails(BaseModel):
     display_message: str | None # user-safe by DIAL contract
 ```
 
-**Owner:** `_exception_message_resolver` (private helper within the module).
+**Owner:** `exception_message_resolver` (private helper within the module).
 
 **Semantics:** One extraction function understands the four shapes an error reaches us in:
 
@@ -215,7 +215,7 @@ class ResolvedError(BaseModel):
     details: ErrorDetails   # extracted internals, carried for the handler's log record only
 ```
 
-**Owner:** `_exception_message_resolver.resolve_exception` (the string-returning
+**Owner:** `exception_message_resolver.resolve_exception` (the string-returning
 `resolve_exception_message` is replaced; it has exactly one caller).
 
 **Semantics — precedence order:**
@@ -497,7 +497,7 @@ and internal error message at the matching record.
 
 ## Summary of Changes
 
-**`core/application/_exception_message_resolver.py`**
+**`common/exception_message_resolver.py`**
 
 - Added: `ErrorDetails` value object + best-effort extractor over openai / aidial / httpx error shapes,
   including numeric-code → status backfill.

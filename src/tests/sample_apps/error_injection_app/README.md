@@ -2,7 +2,7 @@
 
 A tiny standalone **DIAL chat-completion** app (built on `aidial-sdk`) whose only job is
 to **deterministically reproduce every failure mode** that QuickApps' error resolver
-(`src/quickapp/core/application/_exception_message_resolver.py`) distinguishes.
+(`src/quickapp/common/exception_message_resolver.py`) distinguishes.
 
 Register it in DIAL Core as a model, wire it as a QuickApp's **orchestrator deployment**,
 and use DIAL Chat conversation-starter buttons to trigger each scenario with one click.
