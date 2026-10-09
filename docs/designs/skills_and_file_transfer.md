@@ -176,11 +176,9 @@ fragments that `_AddSystemPromptTransformer` joins with `\n\n` into the final sy
 This decouples prompt assembly from individual content sources. Adding a new prompt contributor requires only
 implementing the interface and registering the provider via DI.
 
-**Precondition:** `_AddSystemPromptTransformer` only inserts a new system message when `messages[0]` is not already a
-system message. If a system message exists at index 0 (e.g. from packed-state replay of a prior turn), the transformer
-returns messages unchanged and the assembled prompt parts are not re-injected. This is the correct behavior for
-multi-turn conversations where the system prompt is already present in history, but it means the transformer must run
-before any other transformer that might prepend a system message.
+**Inbound system message:** `_AddSystemPromptTransformer` strips a leading system message from the request and always
+prepends the assembled prompt. By default the inbound message is discarded; with `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`
+its text replaces only the `ConfigBasedPromptProvider` part, so the other parts (skills, etc.) are still appended.
 
 #### `_SkillReaderTool` — on-demand skill retrieval
 
