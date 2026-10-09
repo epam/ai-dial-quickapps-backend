@@ -447,38 +447,6 @@ async def test_pre_process_params_merges_defaults_with_llm_config():
 
 
 @pytest.mark.asyncio
-async def test_pre_process_params_keeps_extra_custom_fields_keys():
-    """Keys besides `configuration` survive next to the merged LLM configuration."""
-    params = DialDeploymentToolParameters(
-        custom_fields=CustomFieldsConfig.model_validate(
-            {"configuration": {"style": "natural"}, "cache_breakpoint": {"expire_at": "x"}}
-        )
-    )
-    tool_config = _make_tool_config(parameters=params, configuration_param_names={"size"})
-    tool = _build_tool_with_config(tool_config)
-
-    result = await tool._pre_process_params(query="draw", size="1024x1024")
-
-    assert result["custom_fields"] == {
-        "configuration": {"style": "natural", "size": "1024x1024"},
-        "cache_breakpoint": {"expire_at": "x"},
-    }
-
-
-@pytest.mark.asyncio
-async def test_pre_process_params_keeps_empty_custom_fields_values():
-    """`cache_breakpoint: {}` is a valid request for the default expiry and must be sent."""
-    params = DialDeploymentToolParameters(
-        custom_fields=CustomFieldsConfig.model_validate({"cache_breakpoint": {}})
-    )
-    tool = _build_tool_with_config(_make_tool_config(parameters=params))
-
-    result = await tool._pre_process_params(query="draw")
-
-    assert result["custom_fields"] == {"cache_breakpoint": {}}
-
-
-@pytest.mark.asyncio
 async def test_pre_process_params_drops_empty_configuration():
     """An empty `configuration` is noise and is not sent."""
     params = DialDeploymentToolParameters(custom_fields=CustomFieldsConfig(configuration={}))

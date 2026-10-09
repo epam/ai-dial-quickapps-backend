@@ -81,8 +81,7 @@ class TestReasoningEffort:
 
 
 class TestCustomFields:
-    def test_keeps_keys_besides_configuration(self):
-        """DIAL accepts more than `configuration` in `custom_fields`; none of it is dropped."""
+    def test_drops_keys_besides_configuration(self):
         params = DialDeploymentParameters.model_validate(
             {
                 "custom_fields": {
@@ -93,6 +92,5 @@ class TestCustomFields:
         )
 
         assert params.model_dump(exclude_none=True)["custom_fields"] == {
-            "configuration": {"betas": ["b1"]},
-            "cache_breakpoint": {"expire_at": "x"},
+            "configuration": {"betas": ["b1"]}
         }

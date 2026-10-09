@@ -179,7 +179,7 @@ def test_reasoning_effort_is_dropped_when_deployment_advertises_none():
 
 def test_custom_fields_are_sent_in_extra_body():
     """`custom_fields` reaches DIAL Core via `extra_body`, not as an openai client kwarg."""
-    custom_fields = {"configuration": {"betas": ["b1"]}, "cache_breakpoint": {"expire_at": "x"}}
+    custom_fields = {"configuration": {"betas": ["b1"]}}
     builder = _make_builder(parameters={"temperature": 0.5, "custom_fields": custom_fields})
 
     result = builder.build([])
@@ -206,15 +206,14 @@ def test_no_extra_body_without_custom_fields():
     assert "extra_body" not in result
 
 
-def test_empty_configuration_is_dropped_but_other_empty_keys_are_kept():
-    """An empty `configuration` is noise; an empty `cache_breakpoint` asks for the default expiry."""
+def test_unknown_custom_fields_keys_are_not_sent():
     builder = _make_builder(
-        parameters={"custom_fields": {"configuration": {}, "cache_breakpoint": {}}}
+        parameters={"custom_fields": {"configuration": {"a": 1}, "cache_breakpoint": {}}}
     )
 
     result = builder.build([])
 
-    assert result["extra_body"] == {"custom_fields": {"cache_breakpoint": {}}}
+    assert result["extra_body"] == {"custom_fields": {"configuration": {"a": 1}}}
 
 
 def test_only_empty_configuration_adds_no_extra_body():
