@@ -71,43 +71,55 @@ class DIALModelPricing(DIALBaseModel):
     completion: str | None = Field(description="The pricing completion", default=None)
 
 
-class DIALModelFeatures(DIALBaseModel):
-    rate: bool = False
-    tokenize: bool = False
-    truncate_prompt: bool = False
-    configuration: bool = False
-    system_prompt: bool = False
-    tools: bool = False
-    seed: bool = False
-    url_attachments: bool = False
-    folder_attachments: bool = False
+# Listing features that are not config features: endpoint flags we don't proxy, and flags Core derives itself.
+SKIPPED_FEATURES = {
+    "rate",
+    "tokenize",
+    "truncate_prompt",
+    "chat_completion",
+    "responses_api",
+    "mcp",
+    "accessible_by_per_request_key",
+}
+# Listing features whose config name is the same, without the "Supported" suffix.
+VERBATIM_FEATURES = {"allow_resume"}
 
-    def to_config(self, base_url: str, deployment_id: str) -> dict:
-        value: dict[str, Any] = {
-            "systemPromptSupported": self.system_prompt,
-            "toolsSupported": self.tools,
-            "urlAttachmentsSupported": self.url_attachments,
-            "folderAttachmentsSupported": self.folder_attachments,
-        }
-        if self.configuration:
-            value["configurationEndpoint"] = (
-                f"{base_url}/openai/deployments/{deployment_id}/configuration"
-            )
-        return {key: value for key, value in value.items() if value}
+
+def to_config_features(features: dict[str, Any], base_url: str, deployment_id: str) -> dict:
+    """Map listing features (`/openai/models`) to Core config features, e.g. `tools` -> `toolsSupported`."""
+    config: dict[str, Any] = {}
+    for key, value in features.items():
+        if key in SKIPPED_FEATURES or value is None or value == []:
+            continue
+        if key == "configuration":
+            if value:
+                config["configurationEndpoint"] = (
+                    f"{base_url}/openai/deployments/{deployment_id}/configuration"
+                )
+            continue
+        name = to_camel(key)
+        if (
+            isinstance(value, bool)
+            and not key.endswith("_supported")
+            and key not in VERBATIM_FEATURES
+        ):
+            name += "Supported"
+        config[name] = value
+    return config
 
 
 class DIALModel(DIALDeploymentBase):
     tokenizer_model: str | None = Field(description="The model tokenizer model", default=None)
     capabilities: DIALModelCapabilities = Field(description="The model capabilities")
     limits: DIALLimits | None = Field(None, description="The model limits")
-    features: DIALModelFeatures = Field(description="The model features")
+    features: dict[str, Any] = Field(description="The model features")
     pricing: DIALModelPricing | None = Field(None, description="The model pricing")
     defaults: dict[str, Any] | None = Field(None, description="The model defaults")
 
 
 class DIALApplication(DIALDeploymentBase):
     application: str = Field(description="The application name")
-    features: DIALModelFeatures = Field(description="The model features")
+    features: dict[str, Any] | None = Field(None, description="The application features")
 
 
 def get_dial_models() -> list[dict]:
@@ -201,7 +213,8 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
                 if value:
                     model_config[field] = value
         if parsed_model.features:
-            model_config["features"] = parsed_model.features.to_config(
+            model_config["features"] = to_config_features(
+                parsed_model.features,
                 base_url="http://adapter-dial:5000",
                 deployment_id=parsed_model.id,
             )
