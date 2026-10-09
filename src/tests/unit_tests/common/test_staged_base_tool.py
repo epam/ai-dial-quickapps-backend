@@ -1,3 +1,4 @@
+import logging
 import time
 from typing import Any
 from unittest.mock import Mock
@@ -427,6 +428,26 @@ async def test_suppressed_arun_discards_adopted_stage(mock_stage_wrapper_factory
 
     mock_stage_wrapper_factory.build.assert_not_called()
     adopted_stage_obj.close.assert_called_once_with(status=Status.COMPLETED)
+
+
+@pytest.mark.asyncio
+async def test_discarding_adopted_stage_warns_about_level_mismatch(
+    mock_stage_wrapper_factory, mock_tool_config, caplog
+):
+    # The sink opened the stage (INFO is visible) but the call runs at DEBUG: the stage
+    # cannot be removed, so the mismatch is logged.
+    tool = CustomTestStagedBaseTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=mock_tool_config,
+        perf_timer=Mock(),
+    )
+    assert not tool.should_suppress_info_stage()
+    adopted = AdoptedToolStage(stage=Mock(), start_time=time.perf_counter())
+
+    with caplog.at_level(logging.WARNING, logger="quickapp.common.staged_base_tool"):
+        await tool.arun("call-1", adopted_stage=adopted, stage_level=StageDisplayLevel.DEBUG)
+
+    assert "Discarding a tool stage opened during streaming" in caplog.text
 
 
 @pytest.mark.asyncio
