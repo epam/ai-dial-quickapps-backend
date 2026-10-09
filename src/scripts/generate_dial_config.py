@@ -1,6 +1,5 @@
 import argparse
 import json
-import logging
 import os
 from typing import Any
 
@@ -20,9 +19,6 @@ MODEL_TYPE_TO_PATH = {
     "chat": "/chat/completions",
     "embedding": "/embeddings",
 }
-
-logger = logging.getLogger(__name__)
-
 
 REMOTE_DIAL_URL = os.getenv("REMOTE_DIAL_URL")
 REMOTE_DIAL_API_KEY = os.getenv("REMOTE_DIAL_API_KEY")
@@ -49,10 +45,14 @@ class DIALModelCapabilities(DIALBaseModel):
 
 class DIALDeploymentBase(DIALBaseModel):
     id: str = Field(description="The deployment ID")
-    display_name: str | None = Field(None, description="The deployment display name")
+    display_name: str | dict[str, str] | None = Field(
+        None, description="The deployment display name, or a per-locale dict"
+    )
     display_version: str | None = Field(None, description="The model display version")
     icon_url: str | None = Field(None, description="The deployment icon URL")
-    description: str | None = Field(None, description="The deployment description")
+    description: str | dict[str, str] | None = Field(
+        None, description="The deployment description, or a per-locale dict"
+    )
     description_keywords: list[str] | None = Field(
         None, description="The deployment description keywords"
     )
@@ -71,43 +71,55 @@ class DIALModelPricing(DIALBaseModel):
     completion: str | None = Field(description="The pricing completion", default=None)
 
 
-class DIALModelFeatures(DIALBaseModel):
-    rate: bool = False
-    tokenize: bool = False
-    truncate_prompt: bool = False
-    configuration: bool = False
-    system_prompt: bool = False
-    tools: bool = False
-    seed: bool = False
-    url_attachments: bool = False
-    folder_attachments: bool = False
+# Listing features that are not config features: endpoint flags we don't proxy, and flags Core derives itself.
+SKIPPED_FEATURES = {
+    "rate",
+    "tokenize",
+    "truncate_prompt",
+    "chat_completion",
+    "responses_api",
+    "mcp",
+    "accessible_by_per_request_key",
+}
+# Listing features whose config name is the same, without the "Supported" suffix.
+VERBATIM_FEATURES = {"allow_resume"}
 
-    def to_config(self, base_url: str, deployment_id: str) -> dict:
-        value: dict[str, Any] = {
-            "systemPromptSupported": self.system_prompt,
-            "toolsSupported": self.tools,
-            "urlAttachmentsSupported": self.url_attachments,
-            "folderAttachmentsSupported": self.folder_attachments,
-        }
-        if self.configuration:
-            value["configurationEndpoint"] = (
-                f"{base_url}/openai/deployments/{deployment_id}/configuration"
-            )
-        return {key: value for key, value in value.items() if value}
+
+def to_config_features(features: dict[str, Any], base_url: str, deployment_id: str) -> dict:
+    """Map listing features (`/openai/models`) to Core config features, e.g. `tools` -> `toolsSupported`."""
+    config: dict[str, Any] = {}
+    for key, value in features.items():
+        if key in SKIPPED_FEATURES or value is None or value == []:
+            continue
+        if key == "configuration":
+            if value:
+                config["configurationEndpoint"] = (
+                    f"{base_url}/openai/deployments/{deployment_id}/configuration"
+                )
+            continue
+        name = to_camel(key)
+        if (
+            isinstance(value, bool)
+            and not key.endswith("_supported")
+            and key not in VERBATIM_FEATURES
+        ):
+            name += "Supported"
+        config[name] = value
+    return config
 
 
 class DIALModel(DIALDeploymentBase):
     tokenizer_model: str | None = Field(description="The model tokenizer model", default=None)
     capabilities: DIALModelCapabilities = Field(description="The model capabilities")
     limits: DIALLimits | None = Field(None, description="The model limits")
-    features: DIALModelFeatures = Field(description="The model features")
+    features: dict[str, Any] = Field(description="The model features")
     pricing: DIALModelPricing | None = Field(None, description="The model pricing")
     defaults: dict[str, Any] | None = Field(None, description="The model defaults")
 
 
 class DIALApplication(DIALDeploymentBase):
     application: str = Field(description="The application name")
-    features: DIALModelFeatures = Field(description="The model features")
+    features: dict[str, Any] | None = Field(None, description="The application features")
 
 
 def get_dial_models() -> list[dict]:
@@ -157,7 +169,12 @@ def replace_envs(config_models: dict):
     return config_models
 
 
-def to_config_model(model: dict) -> tuple[str, dict] | None:
+def validation_reason(error: ValidationError) -> str:
+    fields = sorted({".".join(map(str, err["loc"])) for err in error.errors()})
+    return f"validation failed for {', '.join(fields)}"
+
+
+def to_config_model(model: dict, skipped: dict[str, str]) -> tuple[str, dict] | None:
     try:
         parsed_model = DIALModel.model_validate(model)
 
@@ -167,9 +184,7 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
         elif capabilities.embeddings:
             type_ = "embedding"
         else:
-            print(
-                f"Skipping model={parsed_model.id}: unsupported deployment type, capabilities: {parsed_model.capabilities}"
-            )
+            skipped[parsed_model.id] = "neither chat_completion nor embeddings capability"
             return None
         model_config: dict[str, Any] = {
             "type": type_,
@@ -201,18 +216,23 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
                 if value:
                     model_config[field] = value
         if parsed_model.features:
-            model_config["features"] = parsed_model.features.to_config(
+            model_config["features"] = to_config_features(
+                parsed_model.features,
                 base_url="http://adapter-dial:5000",
                 deployment_id=parsed_model.id,
             )
         return parsed_model.id, model_config
-    except ValidationError:
-        logger.exception(f"Validation failed for: {str(model)}")
+    except ValidationError as e:
+        skipped[model.get("id", "<no id>")] = validation_reason(e)
     return None
 
 
-def to_config_application(application: dict) -> tuple[str, dict]:
-    parsed_application = DIALApplication.model_validate(application)
+def to_config_application(application: dict, skipped: dict[str, str]) -> tuple[str, dict] | None:
+    try:
+        parsed_application = DIALApplication.model_validate(application)
+    except ValidationError as e:
+        skipped[application.get("id", "<no id>")] = validation_reason(e)
+        return None
     application_config = {
         "type": "chat",
         "endpoint": f"http://adapter-dial:5000/openai/deployments/{parsed_application.id}/chat/completions",
@@ -249,22 +269,24 @@ def get_config_template(path: str) -> dict:
 def generate_config(models: bool, template_path: str, config_path: str, app_ids: set[str]):
     config_template = get_config_template(template_path)
     replace_envs(config_template["models"])
+    skipped: dict[str, str] = {}
+    missing_app_ids: set[str] = set()
     if models:
         dial_models = get_dial_models()
-        config_models = [to_config_model(model) for model in dial_models]
+        config_models = [to_config_model(model, skipped) for model in dial_models]
         config_models = [model for model in config_models if model]
         config_models = {model_id: config_model for model_id, config_model in config_models}  # type: ignore
         config_template["models"].update(config_models)
     if app_ids:
         dial_applications = get_dial_applications()
-        config_applications = {
-            application_id: config_application
-            for application_id, config_application in (
-                to_config_application(application) for application in dial_applications
-            )
-            if application_id in app_ids
-        }
+        config_applications = [
+            to_config_application(application, skipped)
+            for application in dial_applications
+            if application.get("id") in app_ids
+        ]
+        config_applications = {app_id: app_config for app_id, app_config in filter(None, config_applications)}  # type: ignore
         config_template["models"].update(config_applications)
+        missing_app_ids = app_ids - {application.get("id") for application in dial_applications}
     limits: dict = config_template["roles"]["default"]["limits"]
     limits.clear()
     limits.update(
@@ -277,6 +299,17 @@ def generate_config(models: bool, template_path: str, config_path: str, app_ids:
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w") as fout:
         json.dump(config_template, fout, indent=2, skipkeys=True)
+    print_report(skipped, missing_app_ids)
+
+
+def print_report(skipped: dict[str, str], missing_app_ids: set[str]) -> None:
+    # Deployments the API key has no access to are absent from the listing and can't be reported here.
+    if skipped:
+        print(f"Skipped {len(skipped)} deployment(s):")
+        for deployment_id, reason in sorted(skipped.items()):
+            print(f"  {deployment_id}: {reason}")
+    if missing_app_ids:
+        print(f"Requested applications not found upstream: {', '.join(sorted(missing_app_ids))}")
 
 
 if __name__ == "__main__":
