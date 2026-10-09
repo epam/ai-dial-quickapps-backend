@@ -58,7 +58,7 @@ class _AddSystemPromptTransformer(MessagesTransformer):
         if inbound_system is None:
             return None
         if not self.__settings.allow_override_system_message:
-            logger.debug("Inbound system message ignored: ALLOW_OVERRIDE_SYSTEM_MESSAGE is false")
+            logger.warning("Inbound system message ignored: ALLOW_OVERRIDE_SYSTEM_MESSAGE is false")
             return None
         content = inbound_system.content
         if isinstance(content, list):
