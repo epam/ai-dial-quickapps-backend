@@ -23,6 +23,15 @@ class AgentSettings(BaseSettings):
         alias="DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID",
     )
 
+    allow_override_system_message: bool = Field(
+        default=False,
+        description=(
+            "Allow a system message in the inbound request to replace the system prompt "
+            "configured in the application. When false, inbound system messages are discarded."
+        ),
+        alias="ALLOW_OVERRIDE_SYSTEM_MESSAGE",
+    )
+
     @field_validator("default_orchestrator_deployment_id", mode="after")
     @classmethod
     def _blank_to_none(cls, value: str | None) -> str | None:
