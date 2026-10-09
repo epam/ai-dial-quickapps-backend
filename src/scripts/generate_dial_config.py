@@ -1,6 +1,5 @@
 import argparse
 import json
-import logging
 import os
 from typing import Any
 
@@ -20,9 +19,6 @@ MODEL_TYPE_TO_PATH = {
     "chat": "/chat/completions",
     "embedding": "/embeddings",
 }
-
-logger = logging.getLogger(__name__)
-
 
 REMOTE_DIAL_URL = os.getenv("REMOTE_DIAL_URL")
 REMOTE_DIAL_API_KEY = os.getenv("REMOTE_DIAL_API_KEY")
@@ -173,7 +169,12 @@ def replace_envs(config_models: dict):
     return config_models
 
 
-def to_config_model(model: dict) -> tuple[str, dict] | None:
+def validation_reason(error: ValidationError) -> str:
+    fields = sorted({".".join(map(str, err["loc"])) for err in error.errors()})
+    return f"validation failed for {', '.join(fields)}"
+
+
+def to_config_model(model: dict, skipped: dict[str, str]) -> tuple[str, dict] | None:
     try:
         parsed_model = DIALModel.model_validate(model)
 
@@ -183,9 +184,7 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
         elif capabilities.embeddings:
             type_ = "embedding"
         else:
-            print(
-                f"Skipping model={parsed_model.id}: unsupported deployment type, capabilities: {parsed_model.capabilities}"
-            )
+            skipped[parsed_model.id] = "neither chat_completion nor embeddings capability"
             return None
         model_config: dict[str, Any] = {
             "type": type_,
@@ -223,16 +222,16 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
                 deployment_id=parsed_model.id,
             )
         return parsed_model.id, model_config
-    except ValidationError:
-        logger.exception(f"Validation failed for: {str(model)}")
+    except ValidationError as e:
+        skipped[model.get("id", "<no id>")] = validation_reason(e)
     return None
 
 
-def to_config_application(application: dict) -> tuple[str, dict] | None:
+def to_config_application(application: dict, skipped: dict[str, str]) -> tuple[str, dict] | None:
     try:
         parsed_application = DIALApplication.model_validate(application)
-    except ValidationError:
-        logger.exception(f"Validation failed for application: {application.get('id')}")
+    except ValidationError as e:
+        skipped[application.get("id", "<no id>")] = validation_reason(e)
         return None
     application_config = {
         "type": "chat",
@@ -270,21 +269,24 @@ def get_config_template(path: str) -> dict:
 def generate_config(models: bool, template_path: str, config_path: str, app_ids: set[str]):
     config_template = get_config_template(template_path)
     replace_envs(config_template["models"])
+    skipped: dict[str, str] = {}
+    missing_app_ids: set[str] = set()
     if models:
         dial_models = get_dial_models()
-        config_models = [to_config_model(model) for model in dial_models]
+        config_models = [to_config_model(model, skipped) for model in dial_models]
         config_models = [model for model in config_models if model]
         config_models = {model_id: config_model for model_id, config_model in config_models}  # type: ignore
         config_template["models"].update(config_models)
     if app_ids:
         dial_applications = get_dial_applications()
         config_applications = [
-            to_config_application(application)
+            to_config_application(application, skipped)
             for application in dial_applications
             if application.get("id") in app_ids
         ]
         config_applications = {app_id: app_config for app_id, app_config in filter(None, config_applications)}  # type: ignore
         config_template["models"].update(config_applications)
+        missing_app_ids = app_ids - {application.get("id") for application in dial_applications}
     limits: dict = config_template["roles"]["default"]["limits"]
     limits.clear()
     limits.update(
@@ -297,6 +299,17 @@ def generate_config(models: bool, template_path: str, config_path: str, app_ids:
     os.makedirs(os.path.dirname(config_path), exist_ok=True)
     with open(config_path, "w") as fout:
         json.dump(config_template, fout, indent=2, skipkeys=True)
+    print_report(skipped, missing_app_ids)
+
+
+def print_report(skipped: dict[str, str], missing_app_ids: set[str]) -> None:
+    # Deployments the API key has no access to are absent from the listing and can't be reported here.
+    if skipped:
+        print(f"Skipped {len(skipped)} deployment(s):")
+        for deployment_id, reason in sorted(skipped.items()):
+            print(f"  {deployment_id}: {reason}")
+    if missing_app_ids:
+        print(f"Requested applications not found upstream: {', '.join(sorted(missing_app_ids))}")
 
 
 if __name__ == "__main__":
