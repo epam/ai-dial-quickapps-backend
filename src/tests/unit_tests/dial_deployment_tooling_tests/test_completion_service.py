@@ -9,8 +9,9 @@ from aidial_client.types.chat.request_param import (
 )
 
 from quickapp.common.chat_completion_stream.handler import ChatCompletionStreamHandler
+from quickapp.common.dial_request_fields import EXTRA_BODY
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
-from quickapp.dial_deployment_tooling.constants import EXTRA_BODY, EXTRA_HEADERS
+from quickapp.dial_deployment_tooling.constants import EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 from tests.unit_tests.common.common import noop_timeout_resolver
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper
