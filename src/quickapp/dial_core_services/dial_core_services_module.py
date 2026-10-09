@@ -8,6 +8,7 @@ from quickapp.dial_core_services._folder_listing_provider import DialFolderListi
 from quickapp.dial_core_services._interactive_login_service import InteractiveLoginService
 from quickapp.dial_core_services._interactive_login_settings import InteractiveLoginSettings
 from quickapp.dial_core_services.attachment_service import AttachmentService
+from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
 from quickapp.dial_core_services.dial_downloader import DialDownloader
 from quickapp.dial_core_services.dial_file_promoter import DialFilePromoter
 from quickapp.dial_core_services.dial_file_service import DialFileService
@@ -19,6 +20,7 @@ logger = logging.getLogger(__name__)
 class DialCoreServicesModule(Module):
     def configure(self, binder: Binder) -> None:
         binder.bind(ToolConfigCoreService, ToolConfigCoreService, scope=singleton)
+        binder.bind(DeploymentNamesCoreService, DeploymentNamesCoreService, scope=singleton)
         binder.bind(AttachmentService, AttachmentService, scope=request_scope)
         binder.bind(DialFileService, DialFileService, scope=request_scope)
         binder.bind(DialDownloader, DialDownloader, scope=request_scope)

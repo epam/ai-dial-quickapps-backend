@@ -1,6 +1,12 @@
 import pytest
 
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.toolsets.dial_app import DialAppToolSet
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_deployment_names_service,
+)
 
 from ._helpers import make_metadata, make_resolver, make_tool_config
 
@@ -103,3 +109,21 @@ async def test_non_dial_app_toolsets_are_ignored():
 def test_transport_defaults_to_auto():
     toolset = DialAppToolSet(name="app", deployment_id="dep")
     assert toolset.transport == "auto"
+
+
+@pytest.mark.asyncio
+async def test_inaccessible_deployment_is_skipped_without_metadata_fetch():
+    app_config = create_app_configuration([])
+    app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+    names_service = make_deployment_names_service(["other-app"])
+    resolver, context, tool_config_service, _ = make_resolver(
+        toolsets=[DialAppToolSet(name="app", deployment_id="denied-app")],
+        access_filter=make_access_filter(app_config, names_service),
+    )
+
+    await resolver.resolve()
+
+    tool_config_service.get_deployment_metadata.assert_not_called()
+    assert context.resolved_mcp_toolsets == []
+    assert context.resolved_deployment_tools == []
+    assert context.exceptions == []

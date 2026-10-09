@@ -6,7 +6,7 @@ from aidial_client.types.metadata import FileItem
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
-from quickapp.common.url_sanitization import sanitize_url_for_log
+from quickapp.common.url_sanitization import sanitize_url
 from quickapp.common.utils import generate_attachment_filename
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ class AttachmentService:
         logger.debug(
             "Uploading attachment: %s, url: %s, data present: %s",
             attachment.title,
-            sanitize_url_for_log(attachment.url) if attachment.url else None,
+            sanitize_url(attachment.url) if attachment.url else None,
             attachment.data is not None,
         )
         if attachment.url is None and attachment.data:
@@ -48,7 +48,7 @@ class AttachmentService:
                 logger.debug(
                     "Uploaded attachment %s to %s",
                     attachment_name,
-                    sanitize_url_for_log(attachment.url),
+                    sanitize_url(attachment.url),
                 )
             except Exception:
                 logger.exception(

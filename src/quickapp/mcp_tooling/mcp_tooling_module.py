@@ -14,6 +14,7 @@ from quickapp.common.deferred_tool_types import (
     DeferredToolsetSummary,
 )
 from quickapp.common.exceptions import InitializationException
+from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.tool_names import INTERNAL_MCP_READ_RESOURCE_TOOL_NAME
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
@@ -79,6 +80,12 @@ class MCPToolingModule(Module):
     @multiprovider
     def _provide_mcp_tools(self, mcp_context: _MCPToolingContext) -> list[StagedBaseTool]:
         return mcp_context.tools
+
+    @multiprovider
+    def _provide_mcp_model_hidden_tools(
+        self, mcp_context: _MCPToolingContext
+    ) -> list[ModelHiddenTool]:
+        return mcp_context.model_hidden_tools
 
     @multiprovider
     def _provide_deferred_tool_names(

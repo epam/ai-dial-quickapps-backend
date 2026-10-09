@@ -15,7 +15,7 @@ from quickapp.dial_core_services._login_result import LoginResult
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 from quickapp.mcp_tooling._mcp_tool_initializer import _MCPToolInitializer
 from quickapp.mcp_tooling._mcp_unauthorized_exception import MCPUnauthorizedException
-from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import make_access_filter, make_provider, noop_timeout_resolver
 
 
 def _setup_open_init_session(conn: MagicMock, supports_tools: bool = True) -> MagicMock:
@@ -129,6 +129,7 @@ def _make_initializer(
         login_service=login_service,
         accept_language=None,
         app_config=MagicMock(),
+        access_filter=make_access_filter(),
     )
     return initializer, mcp_context, login_service
 

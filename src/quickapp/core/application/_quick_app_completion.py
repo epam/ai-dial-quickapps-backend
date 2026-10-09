@@ -12,6 +12,7 @@ from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.lifecycle_logging import format_duration, format_event
+from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
@@ -137,6 +138,7 @@ class _QuickAppCompletion(ChatCompletion):
     def __log_request_initialized(self) -> None:
         app_config = self.__injector.get(ApplicationConfig)
         tools = self.__injector.get(list[StagedBaseTool])
+        model_hidden_tools = self.__injector.get(list[ModelHiddenTool])
         tool_types = Counter(
             str(getattr(tool.tool_config, "type", "unknown")).removesuffix("-tool")
             for tool in tools
@@ -149,6 +151,7 @@ class _QuickAppCompletion(ChatCompletion):
                 "Request initialized",
                 tools=len(tools),
                 tool_types=tool_types or None,
+                model_hidden_tools=len(model_hidden_tools) or None,
                 skills=skill_count,
                 contexts=len(app_config.contexts),
             )

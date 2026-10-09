@@ -1,7 +1,7 @@
 import json
 from collections.abc import Callable, Iterable
 from typing import TypeAlias
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 from fastapi import FastAPI
 from fastapi_injector import InjectorMiddleware, RequestScopeOptions, attach_injector
@@ -13,6 +13,8 @@ from quickapp.config.dial_deployment import DialDeploymentConfig, DialDeployment
 from quickapp.config.prompt import CustomSystemPromptConfig
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from quickapp.dial_core_services.deployment_names_service import DeploymentNamesCoreService
+from quickapp.shared.user_access import ToolAccessFilter
 from quickapp.skills import ResolvedSkill, SkillFileReader
 from quickapp.skills.skill_metadata import SkillMetadata
 
@@ -94,6 +96,27 @@ def build_tool_expected_result(tool_result: ToolCallResult):
     result_dict = tool_result.model_dump()
     result_dict["propagate_to_choice"] = AttachmentConfig()
     return result_dict
+
+
+def make_deployment_names_service(names: list[str] | Exception) -> MagicMock:
+    """`DeploymentNamesCoreService` double whose ``list_names`` returns ``names`` (or raises it if an Exception)."""
+    service = MagicMock(spec=DeploymentNamesCoreService)
+    if isinstance(names, Exception):
+        service.list_names = AsyncMock(side_effect=names)
+    else:
+        service.list_names = AsyncMock(return_value=names)
+    return service
+
+
+def make_access_filter(
+    app_config: ApplicationConfig | None = None,
+    deployment_names_service: MagicMock | None = None,
+) -> ToolAccessFilter:
+    """Real `ToolAccessFilter`; inert unless ``app_config`` enables ``features.tool_access_filter``."""
+    return ToolAccessFilter(
+        app_config=app_config or create_app_configuration([]),
+        deployment_names_service=deployment_names_service or make_deployment_names_service([]),
+    )
 
 
 def noop_timeout_resolver(value: float = 300.0) -> MagicMock:

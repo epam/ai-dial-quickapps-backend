@@ -10,12 +10,14 @@ from pydantic import SecretStr
 
 from quickapp.common.dial_settings import DialSettings
 from quickapp.common.oauth_token_fetcher import OAuthTokenFetcher
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.toolsets.authorization import (
     BasicAuthorization,
     BearerAuthorization,
     ClientIdSecretAuthorization,
     MCPApiKeyAuthorization,
 )
+from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from quickapp.mcp_tooling._mcp_tool import _MCPTool
 
@@ -26,7 +28,13 @@ from quickapp.mcp_tooling._mcp_tool_initializer import (
     _MCPToolInitializer,
 )
 from quickapp.mcp_tooling._mcp_toolset_client import _MCPToolsetClient
-from tests.unit_tests.common.common import make_provider, noop_timeout_resolver
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_deployment_names_service,
+    make_provider,
+    noop_timeout_resolver,
+)
 
 
 def _make_app_config_mock() -> MagicMock:
@@ -140,7 +148,7 @@ def mcp_tool1(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
-    tool.stage_name_component = "test_toolset"
+    tool.stage_name_component = "test_toolset: tool1"
     return tool
 
 
@@ -169,7 +177,7 @@ def mcp_tool2(
         timeout_resolver=noop_timeout_resolver(),
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
-    tool.stage_name_component = "test_toolset"
+    tool.stage_name_component = "test_toolset: tool2"
     return tool
 
 
@@ -235,6 +243,7 @@ def initializer_factory(builder_mock, toolset_client_builder):
             MagicMock(),  # login_service
             None,  # accept_language
             _make_app_config_mock(),  # app_config
+            make_access_filter(),  # access_filter
         )
         return initializer, mcp_context
 
@@ -323,6 +332,7 @@ async def test_initialize_multiple_toolsets(tool1, tool2, builder_mock):
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
 
     await initializer.initialize()
@@ -413,9 +423,58 @@ async def test_no_exception_if_toolset_list_is_empty():
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
     await initializer.initialize()
     mcp_context.append_tool.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_inaccessible_dial_toolset_is_skipped_before_any_fetch() -> None:
+    app_config = create_app_configuration([])
+    app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+    access_filter = make_access_filter(
+        app_config, make_deployment_names_service(["toolsets/public/allowed"])
+    )
+    conn = MagicMock()
+    conn.get_tools_list = AsyncMock(return_value=[])
+    _setup_open_init_session(conn)
+    conn_builder = MagicMock()
+    conn_builder.build.return_value = conn
+    dial_mcp_cache = MagicMock()
+    dial_mcp_cache.get = AsyncMock(return_value=None)
+    mcp_context = MagicMock()
+    toolsets = [
+        DialMCPToolSet(deployment_id="toolsets/public/denied", name="denied"),
+        MCPToolSet(
+            mcp_server_info=MCPServerInfo(
+                url="https://ext-mcp", authorization=None, protocol=MCPProtocol.sse
+            ),
+            name="plain",
+        ),
+    ]
+    initializer = _MCPToolInitializer(
+        make_provider(toolsets),
+        mcp_context,
+        MagicMock(),  # dial_setting
+        MagicMock(),  # api_key_provider
+        MagicMock(),  # tool_builder
+        conn_builder,
+        dial_mcp_cache,
+        MagicMock(),  # tool_config_service
+        MagicMock(),  # login_service
+        None,  # accept_language
+        _make_app_config_mock(),  # app_config
+        access_filter,
+    )
+
+    await initializer.initialize()
+
+    # the denied dial-mcp toolset never reaches the metadata cache or a client; the plain one does
+    dial_mcp_cache.get.assert_not_called()
+    assert conn_builder.build.call_count == 1
+    assert conn_builder.build.call_args.kwargs["toolset_info"].name == "plain"
+    mcp_context.append_exception.assert_not_called()
 
 
 def test_convert_to_openai_tool_dereferences_refs():
@@ -444,6 +503,17 @@ async def test_tool_names_prefixed_with_toolset_name(initializer_factory, builde
     assert len(calls) == 2
     names = [c.kwargs["tool_config"].open_ai_tool.function.name for c in calls]
     assert names == ["mcp-local-toolset_tool1", "mcp-local-toolset_tool2"]
+
+
+@pytest.mark.asyncio
+async def test_stage_name_includes_toolset_and_tool_name(initializer_factory):
+    initializer, mcp_context = initializer_factory(
+        protocol=MCPProtocol.streamable_http, name="Notion"
+    )
+    await initializer.initialize()
+
+    created = mcp_context.extend_tools.call_args.args[0]
+    assert [t.stage_name_component for t in created] == ["Notion: tool1", "Notion: tool2"]
 
 
 @pytest.mark.asyncio
@@ -605,6 +675,7 @@ async def test_initialize_surfaces_session_terminated_through_nested_exception_g
         MagicMock(),  # login_service
         None,  # accept_language
         _make_app_config_mock(),  # app_config
+        make_access_filter(),  # access_filter
     )
 
     await initializer.initialize()
