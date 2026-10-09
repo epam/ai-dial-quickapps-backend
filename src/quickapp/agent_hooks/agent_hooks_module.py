@@ -9,6 +9,7 @@ from quickapp.agent_hooks._config_driven_hooks import _ConfigDrivenToolCallHook
 from quickapp.agent_hooks._context_factory import HookContextFactory
 from quickapp.agent_hooks._dispatcher import HookDispatcher
 from quickapp.agent_hooks._handlers import HookHandlerRegistry
+from quickapp.agent_hooks._hook_tool_registry import HookToolRegistry
 from quickapp.common.abstract.base_transformer import MessagesTransformer
 from quickapp.common.abstract.completion_hook_runner import CompletionHookRunner
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
@@ -26,6 +27,7 @@ class AgentHooksModule(Module):
     def configure(self, binder: Binder) -> None:
         binder.bind(_AgentHooksContext, to=_AgentHooksContext, scope=request_scope)
         binder.bind(HookContextFactory, to=HookContextFactory, scope=request_scope)
+        binder.bind(HookToolRegistry, to=HookToolRegistry, scope=request_scope)
         binder.bind(HookHandlerRegistry, to=HookHandlerRegistry, scope=request_scope)
         binder.bind(HookDispatcher, to=HookDispatcher, scope=request_scope)
         binder.bind(_CompletionHookRunner, to=_CompletionHookRunner, scope=request_scope)

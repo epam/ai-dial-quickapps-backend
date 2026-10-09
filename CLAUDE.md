@@ -47,7 +47,8 @@ Cross-cutting shared code lives in `common/` (a flat utility bag). Three package
 registering each entry separately: `core/` exposes `core_module` (the app's central modules —
 `AppModule` + `AgentModule`), `shared/` exposes `shared_module` (cross-cutting utility modules with
 their own DI wiring; e.g. `ExternalFetchModule` in `shared/external_fetch/` and `HomePathModule`
-(the shared agent-home path resolver) in `shared/home_path/`), and `skills/` exposes `skills_module`
+(the shared agent-home path resolver) in `shared/home_path/`, and `UserAccessModule` (the per-user tool
+access filter) in `shared/user_access/`), and `skills/` exposes `skills_module`
 (the skills registry plus one module per skill source).
 
 → Deep dive: [`docs/agent.md`](docs/agent.md) | [`docs/skills.md`](docs/skills.md) | [`docs/file_transfer.md`](docs/file_transfer.md) | [`docs/error_handling.md`](docs/error_handling.md)

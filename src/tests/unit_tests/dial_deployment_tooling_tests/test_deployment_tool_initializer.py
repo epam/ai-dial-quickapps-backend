@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from quickapp.config.dial_deployment import DialDeploymentToolConfig, DialDeploymentToolParameters
+from quickapp.config.tool_access_filter import ToolAccessFilterConfig
 from quickapp.config.tool_discovery import ToolDiscoveryConfig
 from quickapp.config.tools.base import (
     JsonTypeEnum,
@@ -18,7 +19,12 @@ from quickapp.dial_deployment_tooling._deployment_deferred_tools_context import 
 )
 from quickapp.dial_deployment_tooling._deployment_tool_context import _DeploymentToolingContext
 from quickapp.dial_deployment_tooling._deployment_tool_initializer import _DeploymentToolInitializer
-from tests.unit_tests.common.common import create_app_configuration, make_provider
+from tests.unit_tests.common.common import (
+    create_app_configuration,
+    make_access_filter,
+    make_deployment_names_service,
+    make_provider,
+)
 
 
 def _make_deployment_tool(name: str) -> DialDeploymentTool:
@@ -48,6 +54,7 @@ def _make_initializer(toolset: DeploymentToolSet, builder: MagicMock) -> _Deploy
         deployment_cache=MagicMock(),
         dial_tools_provider=make_provider([]),
         app_config=create_app_configuration([toolset]),
+        access_filter=make_access_filter(),
     )
 
 
@@ -102,6 +109,7 @@ def _make_simple_initializer(
         deployment_cache=deployment_cache,
         dial_tools_provider=make_provider([]),
         app_config=app_config,
+        access_filter=make_access_filter(),
     )
 
 
@@ -209,6 +217,7 @@ def _make_initializer_with_discovery(
         deployment_cache=MagicMock(),
         dial_tools_provider=make_provider([]),
         app_config=app_config,
+        access_filter=make_access_filter(),
     )
 
 
@@ -269,3 +278,36 @@ class TestDeferredDeploymentTools:
 
         assert len(context.tools) == 2
         deferred_context.register_deferred_tools.assert_not_called()
+
+
+class TestToolAccessFiltering:
+    @pytest.mark.asyncio
+    async def test_inaccessible_tools_are_not_built_and_simple_tools_skip_metadata_fetch(self):
+        allowed = _make_deployment_tool("allowed_tool")
+        allowed.deployment.deployment_id = "allowed-app"
+        denied = _make_deployment_tool("denied_tool")
+        denied.deployment.deployment_id = "denied-app"
+        denied_simple = DialDeploymentSimpleTool(deployment_id="denied-simple")
+        toolset = DeploymentToolSet(name="ts", tools=[allowed, denied, denied_simple])
+
+        app_config = create_app_configuration([toolset])
+        app_config.features.tool_access_filter = ToolAccessFilterConfig(enabled=True)
+        names_service = make_deployment_names_service(["allowed-app"])
+        builder = MagicMock()
+        deployment_cache = MagicMock()
+        deployment_cache.fetch_basic_tool_config = AsyncMock()
+
+        await _DeploymentToolInitializer(
+            context=MagicMock(),
+            deferred_context=MagicMock(),
+            tool_config_service=MagicMock(),
+            builder=builder,
+            deployment_cache=deployment_cache,
+            dial_tools_provider=make_provider([]),
+            app_config=app_config,
+            access_filter=make_access_filter(app_config, names_service),
+        ).initialize()
+
+        builder.build.assert_called_once()
+        assert builder.build.call_args.kwargs["application_id"] == "allowed-app"
+        deployment_cache.fetch_basic_tool_config.assert_not_called()

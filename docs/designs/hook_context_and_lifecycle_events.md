@@ -1,8 +1,9 @@
 # Design: Hook Context, Parameter Templating, and Lifecycle Events
 
 - **Status:** Implemented
-- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution and a
-  hook-level `condition`, conditional) — see [Phasing](#phasing)
+- **User-facing:** [CONFIGURATION - Hooks](../../CONFIGURATION.md#hooks-configuration) / [Hooks guide](../hooks.md)
+- **Phases:** Phase 1 (this iteration, specified in detail) and Phase 2 (background execution, a
+  hook-level `condition` and role-filtered message lists, conditional) — see [Phasing](#phasing)
 - **Dependencies:**
   - [Config-Driven Synthetic Tool Call Injection](config_driven_hooks.md) — supersedes its runtime once implemented
   - [Generic Synthetic Tool-Call Injector](generic_synthetic_toolcall_injector.md)
@@ -57,12 +58,14 @@ HTTP call), has nowhere to plug in.
 | Phase | Scope | Status |
 |---|---|---|
 | **1** | `on_completion` (blocking), hook context, JSON-e argument templating with best-effort config validation, handler / dispatcher / seam-adapter split | Specified in this document |
-| **2** | `execution: background` for `on_completion`; hook-level `condition` | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
+| **2** | `execution: background` for `on_completion`; hook-level `condition`; role-filtered message lists in the context | Conditional — see [Phase 2](#phase-2-background-execution-conditional) |
 
-Phase 2 holds two independent items. Background execution starts only if Phase 1 proves the hook model
+Phase 2 holds three independent items. Background execution starts only if Phase 1 proves the hook model
 worthwhile **and** the memory PoC shows that blocking `on_completion` latency is a real problem; it may
 never be built. The hook-level [`condition`](#hook-level-condition) has no latency precondition and is
-built when the PoC needs to gate a hook on the conversation state.
+built when the PoC needs to gate a hook on the conversation state. The
+[role-filtered message lists](#role-filtered-message-lists) are built when manifests need them often
+enough that the `$map` + `$if` filter becomes boilerplate.
 
 Phase 1 is shaped so that Phase 2 is additive, but implements none of it: no `execution` field, no
 `condition` field, no background registry, no stage-less tool call. The rules below cost nothing in
@@ -755,6 +758,33 @@ to today's behavior (Phasing rule 5).
   object>` is non-breaking, but the alternative of starting with `{"kind": "expression", "expression": ...}`
   (consistent with `refresh_condition`) should be decided before implementation.
 
+### Role-filtered message lists
+
+Independent of the other Phase 2 items: no latency precondition, works for every event.
+
+**Problem.** `messages` holds every role (system prompt, tool results, synthetic pairs). To take only the
+user's messages a manifest author writes a `$map` + `$if` filter (see `CONFIGURATION.md`), and the
+`last_*` fields cover only the final item of two roles.
+
+**Proposal.** Computed fields on `HookContext`, next to `last_user_message` / `last_assistant_message`, so
+the last item is reachable as `[-1]` and earlier ones as `[-2]`:
+
+| Field | Type | Content |
+|---|---|---|
+| `user_messages` | `list[HookMessage]` | Entries with `role == "user"` |
+| `assistant_messages` | `list[HookMessage]` | Entries with `role == "assistant"` and no `tool_calls` (final answers; same definition as `last_assistant_message`) |
+| `tool_messages` | `list[HookMessage]` | Entries with `role == "tool"` |
+
+**Why Phase 2 is additive.** New computed fields do not change existing paths, and the load-time path
+check already covers computed fields (Phasing rule 5).
+
+**Open questions.**
+
+- The `last_*` fields stay: they return `null` on an empty history, while `xxx_messages[-1]` on an empty
+  list is an error that skips the hook.
+- `assistant_messages` as final answers only hides intermediate assistant steps (which carry
+  `tool_calls`); they stay reachable through `messages[...]`. Confirm this is the wanted default.
+
 ---
 
 ## Security considerations
@@ -947,39 +977,3 @@ uses the earlier custom `${path}` grammar and nothing has to be deprecated or co
 ### `CONFIGURATION.md` — MODIFIED (at implementation time)
 
 ### `docs/README.md` — MODIFIED (at implementation time, when marking the predecessor Superseded)
-
----
-
-## Review Notes — Round 1
-
-- **Reviewer:** Claude (quickapps-design-review skill)
-- **Date:** 2026-10-01
-- **Follow-up:** all 4 suggestions and 3 nits were applied in the revision after this round.
-
-### Verdict
-
-Ready for approval pending minor suggestions.
-
-Strong design. Every non-trivial code claim checked against the codebase held up: the `_persisting_state` placement, the `completion_kind` guard, the `_make_call_id_prefix` identity-stability argument, the `ContinueStrategyModel` default-fallback semantics, and the `content=stream_result.content or " "` whitespace issue are all accurately described. The handler/dispatcher/seam layering is well-motivated, the Phase-1-to-Phase-2 compatibility rules are concrete and verifiable, and the schema evolution rules are sound. No blocking issues found.
-
-### Suggestions
-
-1. **[Component 5 — `get_call_arguments` integration]** — The design says `SyntheticToolCallInjector` gains `get_call_arguments(messages)` defaulting to `get_arguments()`, and that it is "used when building the pair." The current `_inject_always`, `_inject_append_if_changed`, and `_inject_at` all pass the same `arguments` variable (from `get_arguments()`) to both `make_call_id` (identity) and `_build_pair` (display). A sentence or two clarifying where `get_call_arguments` is called inside the `_inject_*` flow — e.g. "each `_inject_*` method calls `await self.get_call_arguments(messages)` for the arguments passed to `_build_pair`, while continuing to use `get_arguments()` for `make_call_id` and `_make_call_id_prefix`" — would close the gap between the intent and the existing method signatures, since `_inject_at` currently has no `messages` parameter and would need one (or the method signature needs to change).
-   **Suggestion:** Add one sentence to Component 5 describing the exact substitution point in the `_inject_*` methods, so implementers do not have to reverse-engineer the threading.
-
-2. **[Component 2 — `last_assistant_message` with empty `tool_calls`]** — The definition is "Last `messages` entry with `role == 'assistant'` **and no `tool_calls`**." The orchestrator appends the final answer with `tool_calls=AccumulatedToolCall.to_sdk_tool_calls(tool_calls)` where `tool_calls` is `[]`. Whether this produces `tool_calls=[]` or `tool_calls=None` depends on `to_sdk_tool_calls`. If `[]`, the implementation's truthiness check (`not msg.tool_calls`) works correctly, but the text "no `tool_calls`" is ambiguous between "field is `None`/absent" and "field is falsy." Clarify that the check is `not tool_calls` (falsy), not `tool_calls is None`.
-   **Suggestion:** Add a parenthetical: "no `tool_calls` (i.e. falsy: `None` or `[]`)".
-
-3. **[Component 4 — handler construction ownership]** — The design says handler construction "maps `kind` to a handler class (`match` on the config type), the same shape as today's `AgentHooksModule._build_on_request_message_transformers`." For `on_request_start`, selection stays in `AgentHooksModule`; for `on_completion`, `dispatch()` selects and runs hooks. Who constructs the handler instance for `dispatch()`-driven events? If it is the dispatcher, say so. If it is the module (pre-built at DI time and handed to the dispatcher), that is a different lifetime. The current text leaves this to inference.
-   **Suggestion:** One sentence clarifying whether the dispatcher constructs handlers on the fly or receives pre-built ones.
-
-4. **[Phase 2 resource table]** — The table lists resources that survive the response lifetime. The constraint that `choice`, stages, and usage statistics are unavailable is specific to `on_completion` background mode. If tool-call seams (`on_pre/post_tool_use`) later gain `background` support, the same resource constraints would apply. A brief note ("these constraints apply to any future event's `background` mode, not only `on_completion`") would prevent the table from becoming stale when tool-call seams arrive.
-   **Suggestion:** Generalize the scope note.
-
-### Nits
-
-1. **[Architecture overview table + Component 5]** — The chain-preservation explanation ("For `on_request_start`, selection stays in `AgentHooksModule` (one `MessagesTransformer` per hook) so chain order is preserved; the adapter calls `run_hook` for that one hook") appears almost verbatim in both the Architecture overview table and Component 5 (`on_request_start` adapter). One location could cross-reference the other to avoid the duplication.
-
-2. **[Migration — Non-breaking changes]** — "Template syntax and root-path checks happen earlier, at config validation (Component 3)" is listed under non-breaking changes. This is correct for valid configs, but it changes when errors surface: an existing manifest containing `${unknown_root}` in `arguments` that previously passed validation (because the current runtime treats it as a literal string) would now fail at config validation. The migration "breaking changes" section already mentions this (`"${` is now parsed as a placeholder"), so the non-breaking section could avoid restating it as though it is purely additive.
-
-3. **[Mermaid diagram]** — The "future: on_pre/post_tool_use (ToolExecutor)" node is shown in the diagram but these events are not part of this design. Consider using a dashed border or a distinct style to visually separate it from the Phase 1 components, or remove it entirely since the Out of Scope section already documents them.

@@ -16,6 +16,7 @@ from quickapp.common.dial_settings import DialSettings
 from quickapp.common.exceptions import ToolInitializationException
 from quickapp.common.json_schema_converter import JsonSchemaConverter
 from quickapp.common.localized_string import resolve_localized
+from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.utils import posix_path_last_segment, sanitize_toolname
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.tools.base import (
@@ -34,6 +35,7 @@ from quickapp.dial_core_services.tool_config_service import ToolConfigCoreServic
 from quickapp.mcp_tooling._mcp_eager_resource import MCPEagerTextResource
 from quickapp.mcp_tooling._mcp_resource_meta import MCPResourceMeta
 from quickapp.mcp_tooling._mcp_server_capabilities import MCPServerCapabilities
+from quickapp.shared.user_access import ToolAccessFilter
 
 from ._di_types import DialToolsetCacheService
 from ._mcp_tool import _MCPTool
@@ -134,6 +136,7 @@ class _MCPToolInitializer(CompletionInitializer):
         login_service: InteractiveLoginService,
         accept_language: ACCEPT_LANGUAGE,
         app_config: ApplicationConfig,
+        access_filter: ToolAccessFilter,
     ):
         # Resolved lazily in initialize() because dial_app_tooling contributes
         # to this multibinder only after _DialAppResolver runs.
@@ -150,6 +153,7 @@ class _MCPToolInitializer(CompletionInitializer):
         self.__login_service: InteractiveLoginService = login_service
         self.__accept_language: ACCEPT_LANGUAGE = accept_language
         self.__app_config: ApplicationConfig = app_config
+        self.__access_filter: ToolAccessFilter = access_filter
 
     @staticmethod
     # todo add Title to config so that we could use it in stage name
@@ -169,7 +173,7 @@ class _MCPToolInitializer(CompletionInitializer):
         )
 
     async def initialize(self) -> None:
-        toolsets = self.__toolset_list_provider.get()
+        toolsets = await self.__filter_accessible(self.__toolset_list_provider.get())
         if not toolsets:
             return
 
@@ -181,6 +185,26 @@ class _MCPToolInitializer(CompletionInitializer):
             return
 
         await self._interactive_login_and_retry(unauthorized)
+
+    async def __filter_accessible(
+        self, toolsets: list[MCPToolSet | DialMCPToolSet]
+    ) -> list[MCPToolSet | DialMCPToolSet]:
+        """Drop DIAL toolsets the user cannot access, before any metadata fetch or MCP session.
+
+        Only ``DialMCPToolSet`` carries a DIAL id; plain ``MCPToolSet`` entries (including the
+        ones ``_DialAppResolver`` already filtered) are always kept.
+        """
+        accessible: list[MCPToolSet | DialMCPToolSet] = []
+        for toolset in toolsets:
+            if isinstance(toolset, DialMCPToolSet) and not await self.__access_filter.is_accessible(
+                toolset.deployment_id
+            ):
+                logger.debug(
+                    "Skipping a dial-mcp toolset the user cannot access: %s", toolset.deployment_id
+                )
+                continue
+            accessible.append(toolset)
+        return accessible
 
     def _classify_initialization_results(
         self,
@@ -260,11 +284,28 @@ class _MCPToolInitializer(CompletionInitializer):
     ) -> None:
         tools = await toolset_client.get_tools_list(session)
 
+        server_tool_names = {tool.name for tool in tools}
+        toolset_label = resolve_localized(resolved_toolset.name)
+        for field_name, requested in (
+            ("allowed_tools", resolved_toolset.allowed_tools),
+            ("hidden_from_model", resolved_toolset.hidden_from_model),
+        ):
+            unknown = set(requested or []) - server_tool_names
+            if unknown:
+                logger.warning(
+                    "%s of toolset '%s' names tools the server does not provide: %s",
+                    field_name,
+                    toolset_label,
+                    sorted(unknown),
+                )
+
         if resolved_toolset.allowed_tools:
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
+        hidden_names = set(resolved_toolset.hidden_from_model or [])
         toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
+        model_hidden_tools: list[ModelHiddenTool] = []
         for tool in tools:
             mcp_tool = self.__tool_builder.build(
                 tool=tool,
@@ -285,7 +326,13 @@ class _MCPToolInitializer(CompletionInitializer):
                 ),
             )
             mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
-            created_tools.append(mcp_tool)
+            # Routing precedes the deferral decision: a model-hidden tool is never deferred.
+            if tool.name in hidden_names:
+                model_hidden_tools.append(mcp_tool)
+            else:
+                created_tools.append(mcp_tool)
+        if model_hidden_tools:
+            self.__mcp_context.extend_model_hidden_tools(model_hidden_tools)
         if created_tools:
             discovery_cfg = self.__app_config.orchestrator.tool_discovery
             if is_toolset_deferred(toolset_info, discovery_cfg, len(created_tools)):
@@ -409,6 +456,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     description=dial_toolset_info.description,
                     enabled=toolset_info.enabled,
                     allowed_tools=toolset_info.allowed_tools,
+                    hidden_from_model=toolset_info.hidden_from_model,
                     attachment=toolset_info.attachment,
                     fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(

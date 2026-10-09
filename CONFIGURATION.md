@@ -479,6 +479,7 @@ external-fetch overrides; stage display falls back to `info` unless `DEFAULT_STA
 | `timestamp`              | No       | Object or null | No      | Time awareness - the agent knows the current time and tool results carry production timestamps. `null` disables it. See [Timestamp configuration](#timestamp-configuration). | `{"injection_strategy": "tool_call"}` |
 | `file_loading`           | No       | Object         | No      | Per-app file download size limit. See [File loading configuration](#file-loading-configuration).                                                                           | `{}`                                   |
 | `external_url_fetch`     | No       | Object         | No      | Per-app override for fetching external (non-DIAL) URLs. See [External URL fetch configuration](#external-url-fetch-configuration).                                           | `{}`                                   |
+| `tool_access_filter`     | No       | Object or null | No      | Per-user tool access filtering: hide DIAL deployment, application and `dial-mcp` toolset tools the calling user cannot access. See [Tool access filter configuration](#tool-access-filter-configuration). | `null`                                 |
 | `stage_display`          | No       | Object         | No      | Which tool-execution stages appear in the DIAL UI. See [Stage display configuration](#stage-display-configuration).                                                          | `{"level": "info"}`                    |
 | `dial_files`             | No       | Object or null | No      | Built-in DIAL workspace file tools. `null` (default) disables them. See [DIAL files configuration](#dial-files-configuration).                                               | `null`                                 |
 | `web_fetch`              | No       | Object or null | **Yes** | Built-in `internal_web_fetch` tool. See [Web fetch configuration](#web-fetch-configuration).                                                                                 | `null`                                 |
@@ -705,6 +706,48 @@ Set to `{}` to enable with defaults.
 }
 ```
 
+`internal_representation_add_attachment` takes a `url` plus optional `title` and `type` (MIME type):
+
+- `title` defaults to the URL file name. A title without an extension gets the one matching the type.
+- `type` is inferred from the URL or title extension when omitted. If neither has one, the call fails and
+  the model is asked to pass `type`.
+- Each call renders an `Add attachment` stage at the `info` [stage display](#stage-display-configuration) level
+  (hidden at `error` / `none`), titled with the attached file name and listing its `url`, `title` and `type`.
+
+#### Tool access filter configuration
+
+Disabled by default. When enabled, the configured DIAL tools ([`DialDeploymentToolSet`](#dialdeploymenttoolset-configuration) entries,
+[`DialAppToolSet`](#dialapptoolset-configuration) and [`DialMCPToolSet`](#dialmcptoolset-configuration)) are
+intersected with the models, applications and toolsets DIAL Core reports as accessible to the calling user
+(`GET /v1/deployment-names`), so the model is never offered a tool the user cannot call. Useful for a single large app
+whose users have different DIAL Core entitlements. DIAL Core is queried at most once per request, and only when a DIAL tool is configured (no cross-request cache).
+If DIAL Core cannot be queried (including a DIAL Core version without that endpoint), all configured tools are offered
+(DIAL Core still enforces access when a tool is called). Directly-addressed `mcp`, REST API and internal toolsets are not filtered.
+
+DIAL Core lists custom (user-owned) applications only when its `includeCustomApps` setting is on. With it off, a
+configured tool that points at a custom application is treated as inaccessible and hidden.
+
+| Field   | Required | Type    | Description                       | Available Values | Default Value |
+|---------|----------|---------|-----------------------------------|------------------|---------------|
+| enabled | No       | Boolean | Enable per-user access filtering. | -                | `false`       |
+
+<details>
+<summary><b>Tool access filter configuration JSON sample</b></summary>
+
+```json
+{
+  "features": {
+    "tool_access_filter": {
+      "enabled": true
+    }
+  }
+}
+```
+
+</details>
+
+See [Access-Aware Tool Availability design doc](docs/designs/access_aware_tool_availability.md) for the full behavioral reference.
+
 ### Skills configuration
 
 Optional top-level `skills` array. Merged with predefined skills at request time. See
@@ -727,7 +770,8 @@ Optional top-level `skills` array. Merged with predefined skills at request time
 ### Hooks configuration
 
 Requires `ENABLE_PREVIEW_FEATURES=true`. The top-level `hooks` array runs a configured tool at named
-orchestrator seams. See
+orchestrator seams. For how hooks behave end to end (injection, failure handling, tools hidden from the
+model) see [docs/hooks.md](docs/hooks.md); the design is in
 [docs/designs/hook_context_and_lifecycle_events.md](docs/designs/hook_context_and_lifecycle_events.md).
 
 | Field               | Required | Type   | Description | Default |
@@ -997,6 +1041,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | type                   | Yes      | String             | The type of the tool set.                                                | `mcp`         |
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
+| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
@@ -1020,6 +1065,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | dial_id                | Yes      | String                 | The Dial ID associated with this MCP toolset.                         | -             |
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
+| hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
@@ -1048,6 +1094,7 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | deployment_id          | Yes      | String             | The DIAL deployment or application id.                                                                                                                                                     | -             |
 | transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
+| hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
