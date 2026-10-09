@@ -106,28 +106,38 @@ services:
       - core
       - keycloak
     environment:
-      NEXTAUTH_SECRET: "0e5b1c4f9a2d47e8b3c6f1a894d2e7b5c0a3f6d9e2b5c8a1f4d7e0b3c6a9f2d5"
-      NEXTAUTH_URL: "http://localhost:4600"
-      AUTH_KEYCLOAK_ISSUER: "https://keycloak.localtest.me:8443/realms/dial-dev"
+      # Must equal chat-new's AUTH_SESSION_SECRET: cookies are shared across localhost ports, so the
+      # editor iframe reuses the chat session cookie and has to decrypt it.
+      AUTH_SESSION_SECRET: "48c69bd559cffffb2cbee3951430f324e0cd0c79fd8a83de0a991648cae706c8"
+      AUTH_CALLBACK_BASE_URL: "http://localhost:4600"
+      AUTH_COOKIE_SECURE: "false"
+      AUTH_KEYCLOAK_HOST: "keycloak.localtest.me:8443/realms/dial-dev"
       AUTH_KEYCLOAK_CLIENT_ID: "dial-local"
-      AUTH_KEYCLOAK_CLIENT_SECRET: "dial-local-dev-secret"
+      AUTH_KEYCLOAK_SECRET: "dial-local-dev-secret"
       DIAL_CORE_URL: "http://core:8080"
-      # CSP frame-ancestors + postMessage origin, both as the browser sees chat-new.
-      ALLOWED_FRAME_ANCESTORS: "http://localhost:3012"
-      ALLOWED_ORIGIN: "http://localhost:3012"
-      DIAL_CHAT_URL: "http://localhost:3012"
-      # Must equal dial:applicationTypeDisplayName in
-      # docker_compose_files/core/configuration/application-schemas.json — it prefixes the
-      # postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
-      QUICK_APPS_APPLICATION_NAME: "Quick App 2.0"
-      # Editor toggles (Context & Tools / features). Web fetch and Add attachment are preview
-      # fields on the backend: need ENABLE_PREVIEW_FEATURES=true (web fetch also
-      # EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable interpreter
-      # on DIAL_URL or PY_INTERPRETER_URL.
-      CODE_INTERPRETER_ENABLED: "true"
-      WEB_FETCH_ENABLED: "true"
-      ADD_ATTACHMENT_ENABLED: "true"
-      THEMES_URL: "http://themes:8080/config.json"
+      # chat-api derives CSP frame-ancestors from this list; origins allowed to embed the editor.
+      ALLOWED_IFRAME_ORIGINS: "http://localhost:3012"
+      # Editor settings, served to the SPA via GET /api/v1/client-config:
+      # - allowedOrigin / dialChatHost: postMessage origin and host, as the browser sees chat-new.
+      # - applicationName: must equal dial:applicationTypeDisplayName in
+      #   docker_compose_files/core/configuration/application-schemas.json — it prefixes the
+      #   postMessage events (`<name>/readyToSave`) that enable chat's Save & Exit / Preview buttons.
+      # - *Enabled: editor toggles (Context & Tools / features), JSON booleans. Web fetch and
+      #   Add attachment are preview fields on the backend: need ENABLE_PREVIEW_FEATURES=true
+      #   (web fetch also EXTERNAL_URL_FETCH_ENABLED=true). Code interpreter needs a reachable
+      #   interpreter on DIAL_URL or PY_INTERPRETER_URL.
+      CUSTOM_CLIENT_VARIABLES: >-
+        {"allowedOrigin": "http://localhost:3012",
+        "dialChatHost": "http://localhost:3012",
+        "applicationName": "Quick App 2.0",
+        "codeInterpreterEnabled": true,
+        "webFetchEnabled": true,
+        "addAttachmentEnabled": true}
+      # Model pre-selected for a new app. The editor ignores the schema `default` that the backend
+      # derives from DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID, so reuse that value from .env here. When
+      # unset, the editor falls back to gpt-4o, which fails its "supports tools" validation locally.
+      DEFAULT_DEPLOYMENT: "${DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID:-}"
+      THEMES_CONFIG_URL: "http://themes:8080"
       NODE_EXTRA_CA_CERTS: "/certs/ca.crt"
     volumes:
       - ./docker_compose_files/keycloak/certs/ca.crt:/certs/ca.crt:ro

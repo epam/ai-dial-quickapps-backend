@@ -108,18 +108,25 @@ Navigation: [Documentation hub](./README.md) · [Configuration / env vars](../CO
       | https://keycloak.localtest.me:8443      | Keycloak (dev users: `admin-dev`/`admin-dev`, `user-dev`/`user-dev`)     |
 
     - Notes on authoring a Quick App through the UI:
-        - Set `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID` in your `.env` to a tool-calling deployment. It is
-          what puts a `default` on `orchestrator.deployment` in the generated schema; without it the
-          editor cannot pre-fill that required field and creating an application fails with
-          `400 Custom application validation failed`.
+        - Set `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID` in your `.env` to a tool-calling deployment. The
+          backend puts it as the `default` on `orchestrator.deployment` in the generated schema, and
+          docker compose passes the same value to the editor as `DEFAULT_DEPLOYMENT` (the editor
+          does not read the schema default). Without it the editor pre-selects `gpt-4o`, which the
+          local DIAL Core does not mark as tool-capable, so the form fails validation with
+          "Selected model does not support tools" and nothing can be saved.
         - The chat at :3012 finds the editor through `DEV_QUICKAPPS_EDITOR_URL`, and is allowed to
           frame it by `ALLOWED_IFRAME_ORIGINS` — both already set on the `chat-new` service. The
           editor in turn only accepts being framed by the origin in its own
-          `ALLOWED_FRAME_ANCESTORS`, so both sides must name each other.
-        - The editor's `QUICK_APPS_APPLICATION_NAME` must equal the schema's
-          `dial:applicationTypeDisplayName` (`Quick App 2.0`). Chat only enables **Save & Exit** and
+          `ALLOWED_IFRAME_ORIGINS`, so both sides must name each other.
+        - The editor's settings travel in its `CUSTOM_CLIENT_VARIABLES` JSON. Its `applicationName`
+          must equal the schema's `dial:applicationTypeDisplayName` (`Quick App 2.0`), and
+          `dialChatHost` must name the chat origin. Chat only enables **Save & Exit** and
           **Preview** once it receives the editor's `<name>/readyToSave` message; with a missing or
-          mismatched name, the buttons stay disabled without any error.
+          mismatched value, the buttons stay disabled without any error.
+        - The editor and chat at :3012 share one session: both run with the same
+          `AUTH_SESSION_SECRET`, and browsers send `localhost` cookies to every port. If chat
+          answers `431 Request Header Fields Too Large`, clear the `localhost` cookies (session
+          cookies are large and other local tools add their own).
 
     - Optional — DIAL Admin (UI + backend API, embedded H2 database):
 

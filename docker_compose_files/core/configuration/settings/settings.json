@@ -10,7 +10,10 @@
     "keycloak": {
       "jwksUrl": "http://keycloak:8080/realms/dial-dev/protocol/openid-connect/certs",
       "rolePath": "realm_access.roles",
-      "issuerPattern": "^https://keycloak\\.localtest\\.me:8443/realms/dial-dev$"
+      "issuerPattern": "^https://keycloak\\.localtest\\.me:8443/realms/dial-dev$",
+      "loggingKey": "sub",
+      "loggingSalt": "loggingSalt",
+      "userDisplayName": "name"
     }
   },
   "encryption": {
