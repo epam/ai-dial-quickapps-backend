@@ -9,7 +9,7 @@ in ``app_factory.py``), but this is incidental — each injector picks its own
 insertion site (``InjectionFrequency.ALWAYS`` end-append vs. after-last-USER),
 so the final list ordering is invariant to execution order.
 
-- ``_AddSystemPromptTransformer`` ensures a system message exists at the start of the conversation.
+- ``_AddSystemPromptTransformer`` builds the system message from all prompt parts and places it at the start of the conversation.
 - ``_AttachmentGetContentInjector`` injects synthetic ``internal_attachments_get_content``
   ASSISTANT/TOOL pairs for the last USER message's attachments (lazy strategy only).
 - ``_AttachmentNotificationInjector`` injects a synthetic
