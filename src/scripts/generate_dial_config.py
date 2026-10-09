@@ -49,10 +49,14 @@ class DIALModelCapabilities(DIALBaseModel):
 
 class DIALDeploymentBase(DIALBaseModel):
     id: str = Field(description="The deployment ID")
-    display_name: str | None = Field(None, description="The deployment display name")
+    display_name: str | dict[str, str] | None = Field(
+        None, description="The deployment display name, or a per-locale dict"
+    )
     display_version: str | None = Field(None, description="The model display version")
     icon_url: str | None = Field(None, description="The deployment icon URL")
-    description: str | None = Field(None, description="The deployment description")
+    description: str | dict[str, str] | None = Field(
+        None, description="The deployment description, or a per-locale dict"
+    )
     description_keywords: list[str] | None = Field(
         None, description="The deployment description keywords"
     )
@@ -224,8 +228,12 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
     return None
 
 
-def to_config_application(application: dict) -> tuple[str, dict]:
-    parsed_application = DIALApplication.model_validate(application)
+def to_config_application(application: dict) -> tuple[str, dict] | None:
+    try:
+        parsed_application = DIALApplication.model_validate(application)
+    except ValidationError:
+        logger.exception(f"Validation failed for application: {application.get('id')}")
+        return None
     application_config = {
         "type": "chat",
         "endpoint": f"http://adapter-dial:5000/openai/deployments/{parsed_application.id}/chat/completions",
@@ -270,13 +278,12 @@ def generate_config(models: bool, template_path: str, config_path: str, app_ids:
         config_template["models"].update(config_models)
     if app_ids:
         dial_applications = get_dial_applications()
-        config_applications = {
-            application_id: config_application
-            for application_id, config_application in (
-                to_config_application(application) for application in dial_applications
-            )
-            if application_id in app_ids
-        }
+        config_applications = [
+            to_config_application(application)
+            for application in dial_applications
+            if application.get("id") in app_ids
+        ]
+        config_applications = {app_id: app_config for app_id, app_config in filter(None, config_applications)}  # type: ignore
         config_template["models"].update(config_applications)
     limits: dict = config_template["roles"]["default"]["limits"]
     limits.clear()
