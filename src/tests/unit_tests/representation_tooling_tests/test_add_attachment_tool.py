@@ -2,6 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.config.application import StageDisplayLevel
 from quickapp.representation_tooling._add_attachment_stage_wrapper import _AddAttachmentStageWrapper
@@ -186,21 +187,66 @@ class TestAddAttachmentTool:
         title = wrapper._get_stage_title_from_params({"url": "files/bucket/path/sample_test.md"})
         assert title == " `sample_test.md`"
 
-    def test_stage_title_prefers_title_over_url(self):
+    def test_stage_title_shows_resolved_title(self):
+        # The stage names the file as attached, with the extension inferred from the url.
         wrapper = _AddAttachmentStageWrapper(stage=MagicMock())
         title = wrapper._get_stage_title_from_params(
             {"url": "files/bucket/path/sample_test.md", "title": "My Report"}
         )
-        assert title == " `My Report`"
+        assert title == " `My Report.md`"
+
+    def test_stage_title_falls_back_to_raw_name_when_type_unknown(self):
+        wrapper = _AddAttachmentStageWrapper(stage=MagicMock())
+        title = wrapper._get_stage_title_from_params(
+            {"url": "files/bucket/blob", "title": "Report"}
+        )
+        assert title == " `Report`"
+
+    def test_stage_title_empty_without_url_or_title(self):
+        wrapper = _AddAttachmentStageWrapper(stage=MagicMock())
+        assert wrapper._get_stage_title_from_params({}) == ""
+
+    def test_stage_parameters_are_not_rendered(self):
+        wrapper = _AddAttachmentStageWrapper(stage=MagicMock())
+        assert wrapper._get_formatted_parameters({"url": "files/a.csv", "title": "A"}) == ""
 
     @pytest.mark.asyncio
-    async def test_stage_suppressed_at_info_display_level(self):
-        # The tool forces a debug-level stage, so at INFO display no stage is rendered
-        # (no stage wrapper is built) while the attachment still propagates to the response.
-        builder = MagicMock()
-        tool = _build_tool(
-            stage_wrapper_builder=builder, stage_display_level=StageDisplayLevel.INFO
+    async def test_stage_body_shows_resolved_attachment(self):
+        tool = _build_tool()
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, url="files/bucket/path/report.md", title="Sales Report"
         )
+        wrapper = _AddAttachmentStageWrapper(stage=MagicMock())
+
+        body = wrapper._build_debug_info_from_result(result)
+
+        assert "`files/bucket/path/report.md`" in body
+        assert "`Sales Report.md`" in body
+        assert "`text/markdown`" in body
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("display_level", [StageDisplayLevel.INFO, StageDisplayLevel.DEBUG])
+    async def test_stage_rendered_at_info_and_debug_display_level(
+        self, display_level: StageDisplayLevel
+    ):
+        stage_wrapper = MagicMock()
+        builder = MagicMock()
+        builder.build.return_value = stage_wrapper
+        tool = _build_tool(stage_wrapper_builder=builder, stage_display_level=display_level)
+
+        result = await tool.arun(tool_call_id="tc-1", url="files/a.csv")
+
+        builder.build.assert_called_once()
+        stage_wrapper.add_result.assert_called_once_with(result)
+        assert len(result.propagate_to_choice) == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("display_level", [StageDisplayLevel.ERROR, StageDisplayLevel.NONE])
+    async def test_stage_suppressed_at_error_and_none_display_level(
+        self, display_level: StageDisplayLevel
+    ):
+        builder = MagicMock()
+        tool = _build_tool(stage_wrapper_builder=builder, stage_display_level=display_level)
 
         result = await tool.arun(tool_call_id="tc-1", url="files/a.csv")
 
@@ -208,15 +254,20 @@ class TestAddAttachmentTool:
         assert len(result.propagate_to_choice) == 1
 
     @pytest.mark.asyncio
-    async def test_stage_rendered_at_debug_display_level(self):
-        # At DEBUG display the stage is built and receives the result.
-        stage_wrapper = MagicMock()
+    async def test_stage_opened_while_streaming_is_adopted_at_info(self):
+        # The stream sink opens the stage at INFO (should_suppress_info_stage() is False);
+        # the tool must take it over instead of closing it empty.
+        adopted_stage = MagicMock()
         builder = MagicMock()
-        builder.build.return_value = stage_wrapper
-        tool = _build_tool(
-            stage_wrapper_builder=builder, stage_display_level=StageDisplayLevel.DEBUG
+        tool = _build_tool(stage_wrapper_builder=builder)
+        assert not tool.should_suppress_info_stage()
+
+        await tool.arun(
+            tool_call_id="tc-1",
+            adopted_stage=AdoptedToolStage(stage=adopted_stage, start_time=0.0),
+            url="files/a.csv",
         )
 
-        await tool.arun(tool_call_id="tc-1", url="files/a.csv")
-
-        builder.build.assert_called_once()
+        assert builder.build.call_args.kwargs["stage"] is adopted_stage
+        assert builder.build.call_args.kwargs["already_open"] is True
+        adopted_stage.close.assert_not_called()

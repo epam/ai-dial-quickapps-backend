@@ -8,6 +8,7 @@ from injector import inject
 
 from quickapp.common import RESPONSE_FORMAT, ForwardedHeaders
 from quickapp.common.abstract.base_transformer import PreInvocationTransformer
+from quickapp.common.dial_request_fields import CUSTOM_FIELDS, EXTRA_BODY, to_custom_fields_payload
 from quickapp.common.payload_logging import log_payload, payloads_enabled, summarize_roles
 from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.config.application import ApplicationConfig
@@ -50,6 +51,7 @@ class _ChatCompletionConfigBuilder:
             exclude_none=True
         )
         self._drop_unsupported_reasoning_effort(chat_completion_config)
+        self._move_custom_fields_to_extra_body(chat_completion_config)
         prepared_messages = self._prepare_messages(messages)
         all_tools = self._merge_tools()
         payload: dict[str, Any] = {
@@ -141,6 +143,15 @@ class _ChatCompletionConfigBuilder:
         ):
             return
         del chat_completion_config[REASONING_EFFORT_PARAM]
+
+    @staticmethod
+    def _move_custom_fields_to_extra_body(chat_completion_config: dict[str, Any]) -> None:
+        """`custom_fields` is a DIAL extension the openai client rejects as a kwarg."""
+        custom_fields = to_custom_fields_payload(
+            chat_completion_config.pop(CUSTOM_FIELDS, None) or {}
+        )
+        if custom_fields:
+            chat_completion_config[EXTRA_BODY] = {CUSTOM_FIELDS: custom_fields}
 
     def _apply_tool_choice(self, payload: dict[str, Any]) -> None:
         tool_choice = self.__tool_choice_holder.consume()

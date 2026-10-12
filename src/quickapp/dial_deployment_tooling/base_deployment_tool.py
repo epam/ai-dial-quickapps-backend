@@ -16,6 +16,7 @@ from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
+from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -24,12 +25,7 @@ from quickapp.config.dial_deployment import DialDeploymentParameters, DialDeploy
 from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
 from quickapp.config.tools.deployment import ContentPropagation, DialDeploymentTool
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
-from quickapp.dial_deployment_tooling.constants import (
-    ATTACHMENT_PARAM,
-    CONFIGURATION,
-    CONTENT_PARAM,
-    TOOLS_PARAM,
-)
+from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM, TOOLS_PARAM
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
 from .deployment_stage_wrapper import DeploymentStageWrapper
@@ -301,7 +297,7 @@ class BaseDeploymentTool(StagedBaseTool):
 
         # Wrap configuration params into custom_fields.configuration, merging with defaults
         if config_kwargs:
-            custom_fields = prepared.get("custom_fields", {})
+            custom_fields = prepared.get(CUSTOM_FIELDS, {})
             if not isinstance(custom_fields, dict):
                 custom_fields = {}
             configuration = custom_fields.get(CONFIGURATION, {})
@@ -309,7 +305,7 @@ class BaseDeploymentTool(StagedBaseTool):
                 configuration = {}
             configuration.update(config_kwargs)
             custom_fields[CONFIGURATION] = configuration
-            prepared["custom_fields"] = custom_fields
+            prepared[CUSTOM_FIELDS] = custom_fields
 
         # Standard params override defaults as flat keys
         prepared.update(other_kwargs)

@@ -78,3 +78,19 @@ class TestReasoningEffort:
             DialDeploymentToolConfig.model_validate(
                 {"deployment_id": "gpt-5", "parameters": {"reasoning_effort": "xhigh"}}
             )
+
+
+class TestCustomFields:
+    def test_drops_keys_besides_configuration(self):
+        params = DialDeploymentParameters.model_validate(
+            {
+                "custom_fields": {
+                    "configuration": {"betas": ["b1"]},
+                    "cache_breakpoint": {"expire_at": "x"},
+                }
+            }
+        )
+
+        assert params.model_dump(exclude_none=True)["custom_fields"] == {
+            "configuration": {"betas": ["b1"]}
+        }

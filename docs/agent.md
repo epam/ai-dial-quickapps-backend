@@ -391,8 +391,11 @@ The setup pipeline runs the following steps in order:
    them (`allow_extra_request_fields`), but SDK-based model adapters reject them with `400`. Features that read them
    use the request's own messages.
 
-3. **System Prompt Transformer** (`_AddSystemPromptTransformer`): Ensures a system message exists at the start of the
-   conversation, combining the configured system prompt with any agent instructions.
+3. **System Prompt Transformer** (`_AddSystemPromptTransformer`): Builds the system message from all
+   `PromptPartProvider`s (configured system prompt, skills, MCP resources, ...) and places it at the start of the
+   conversation. An inbound system message is never passed through: by default it is discarded; with
+   `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true` its text replaces only the configured system prompt part, and the other parts
+   are still appended.
 
 4. **Attachment Notification Injector** (`_AttachmentNotificationInjector`): Always included in the pipeline
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used

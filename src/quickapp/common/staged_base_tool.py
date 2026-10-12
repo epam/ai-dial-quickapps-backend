@@ -183,10 +183,21 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                     **kwargs,
                 )
 
-    @staticmethod
-    def _discard_adopted_stage(adopted_stage: AdoptedToolStage | None) -> None:
+    def _discard_adopted_stage(self, adopted_stage: AdoptedToolStage | None) -> None:
+        """Close a stage the stream sink opened for a call whose stage is suppressed.
+
+        A DIAL stage cannot be removed once opened, so this leaves an empty completed
+        stage in the UI. It only happens when the sink's ``should_suppress_info_stage()``
+        and the ``stage_level`` passed to ``arun`` disagree, hence the warning.
+        """
         if adopted_stage is None:
             return
+        logger.warning(
+            format_event(
+                "Discarding a tool stage opened during streaming",
+                tool=self._resolve_tool_name(),
+            )
+        )
         try:
             adopted_stage.stage.close(status=Status.COMPLETED)
         except Exception as exc:

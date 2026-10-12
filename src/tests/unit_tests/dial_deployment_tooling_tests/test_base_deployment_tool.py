@@ -447,6 +447,17 @@ async def test_pre_process_params_merges_defaults_with_llm_config():
 
 
 @pytest.mark.asyncio
+async def test_pre_process_params_drops_empty_configuration():
+    """An empty `configuration` is noise and is not sent."""
+    params = DialDeploymentToolParameters(custom_fields=CustomFieldsConfig(configuration={}))
+    tool = _build_tool_with_config(_make_tool_config(parameters=params))
+
+    result = await tool._pre_process_params(query="draw")
+
+    assert "custom_fields" not in result
+
+
+@pytest.mark.asyncio
 async def test_pre_process_params_no_config_names_stays_flat():
     """With no configuration_param_names, all kwargs remain flat (backward compat)."""
     tool_config = _make_tool_config()

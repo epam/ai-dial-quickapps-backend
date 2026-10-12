@@ -175,3 +175,50 @@ def test_reasoning_effort_is_dropped_when_deployment_advertises_none():
     result = builder.build([])
 
     assert "reasoning_effort" not in result
+
+
+def test_custom_fields_are_sent_in_extra_body():
+    """`custom_fields` reaches DIAL Core via `extra_body`, not as an openai client kwarg."""
+    custom_fields = {"configuration": {"betas": ["b1"]}}
+    builder = _make_builder(parameters={"temperature": 0.5, "custom_fields": custom_fields})
+
+    result = builder.build([])
+
+    assert "custom_fields" not in result
+    assert result["extra_body"] == {"custom_fields": custom_fields}
+    assert result["temperature"] == 0.5
+
+
+def test_empty_custom_fields_add_no_extra_body():
+    builder = _make_builder(parameters={"custom_fields": {}})
+
+    result = builder.build([])
+
+    assert "custom_fields" not in result
+    assert "extra_body" not in result
+
+
+def test_no_extra_body_without_custom_fields():
+    builder = _make_builder(parameters={"temperature": 0.5})
+
+    result = builder.build([])
+
+    assert "extra_body" not in result
+
+
+def test_unknown_custom_fields_keys_are_not_sent():
+    builder = _make_builder(
+        parameters={"custom_fields": {"configuration": {"a": 1}, "cache_breakpoint": {}}}
+    )
+
+    result = builder.build([])
+
+    assert result["extra_body"] == {"custom_fields": {"configuration": {"a": 1}}}
+
+
+def test_only_empty_configuration_adds_no_extra_body():
+    builder = _make_builder(parameters={"custom_fields": {"configuration": {}}})
+
+    result = builder.build([])
+
+    assert "extra_body" not in result

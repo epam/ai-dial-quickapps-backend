@@ -5,7 +5,5 @@ CONTENT_PARAM = "query"
 ATTACHMENT_PARAM = "attachment_urls"
 TOOLS_PARAM = "tools"
 
-# Extra body / custom fields keys
-EXTRA_BODY = "extra_body"
+# Client request options
 EXTRA_HEADERS = "extra_headers"
-CONFIGURATION = "configuration"

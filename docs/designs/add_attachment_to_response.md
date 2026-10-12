@@ -3,6 +3,7 @@
 - **User-facing:** [CONFIGURATION - Representation tooling](../../CONFIGURATION.md#representation-tooling-configuration)
 - **Approved:** 2026-06-22
 - **Implemented:** 2026-07-01 (#348, commit b446370)
+- **Updated:** 2026-10-08 ([I#599](https://github.com/epam/ai-dial-quickapps-backend/issues/599)) — stage visible at `info` with the resolved title, url and type; `type` inferred from the extension ([PR#600](https://github.com/epam/ai-dial-quickapps-backend/pull/600))
 - **Dependencies:**
   - None
 
@@ -123,11 +124,17 @@ ADD_ATTACHMENT_TOOL_CONFIG = InternalTool(
                     ),
                     "title": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="Display name shown to the user. Optional.",
+                        description=(
+                            "Display file name shown to the user, including the extension "
+                            "(e.g. report.html). Optional; defaults to the URL file name."
+                        ),
                     ),
                     "type": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.string,
-                        description="MIME type (e.g. text/csv, application/pdf). Default: text/plain.",
+                        description=(
+                            "MIME type (e.g. text/html, text/markdown, application/pdf). "
+                            "Optional when the url or title has a file extension; required otherwise."
+                        ),
                     ),
                 },
                 required=["url"],
@@ -150,18 +157,23 @@ lives alongside it in `_add_attachment_stage_wrapper.py` to render the stage.
 | Name | Type | Required | Description |
 |------|------|----------|-------------|
 | `url` | string | yes | File URL — DIAL or external |
-| `title` | string | no | Display name shown to the user |
-| `type` | string | no | MIME type. Default: `text/plain` — a deliberate choice matching `internal_file_write`, not the SDK's `text/markdown` default (see Out of Scope for the inference limitation) |
+| `title` | string | no | Display file name shown to the user; defaults to the URL file name |
+| `type` | string | no | MIME type. Inferred from the URL or title extension when omitted; required when neither has one |
 
 **Runtime behaviour:**
 
-1. Builds `Attachment(url=url, title=title, type=type or "text/plain")`.
+1. Builds the attachment via `build_attachment(url, title, type)` (`_attachment_resolution.py`): the title defaults to the
+   URL file name, the type is inferred from the URL or title extension when omitted (the call fails with
+   `InvalidToolCallParameterException` when it cannot be), and a title without an extension gets the type's one.
 2. Returns `ToolCallResult` with:
    - `content`: `"The file is now attached to the response."` (neutral; no filename echo)
    - `content_type`: `"text/plain"`
    - `propagate_to_choice`: `[attachment]` — forwarded to the final response
    - `attachments`: omitted — the attachment surfaces only in the response, not in the stage
-3. A minimal stage named "Add attachment" is emitted at DEBUG level; it is suppressed unless the app's stage display level is DEBUG. No network I/O occurs.
+3. A stage named "Add attachment" is emitted at INFO level, so it shows at the default stage display level and
+   is hidden at `error` / `none`. Its title carries the resolved file name (e.g. ``Add attachment `report.md` ``) and
+   its body lists the resolved `url`, `title` and `type`, both taken from `build_attachment` so the stage shows what
+   is actually attached, not the raw model arguments. No network I/O occurs.
 
 The attachment is surfaced solely via `propagate_to_choice`, which promotes it to the response. `content` is a neutral status that never echoes the file name/path, so there is nothing for the model to parrot back into its reply; guidance on not restating the attachment lives in the tool description. The `propagate_types_to_choice=[]` config (§3) stops `StagedBaseTool._run_in_stage_report_success` from auto-appending an attachment on top of the explicit `propagate_to_choice`. Duplicates that span multiple tool calls are handled by the orchestrator-level URL dedup in §6, which is the authoritative guard.
 
@@ -225,7 +237,7 @@ This is a single, source-agnostic guard: it covers the new tool, the automatic p
 - **`data` field support** — passing raw base64 data through the LLM is impractical for files of any size. Deferred until there is a concrete use case.
 - **`reference_url` / `reference_type`** — niche fields not needed for the primary use case.
 - **Validating that the URL is accessible** — the tool does not verify the URL is reachable before adding it. Silently adding an unreachable URL results in a broken attachment in the response; a future `verify` flag could guard against this.
-- **MIME type inference** — when `type` is omitted the attachment defaults to `text/plain` (see §4 parameter table), even for files whose extension implies another type (e.g. `.csv`, `.pdf`). The LLM is expected to supply the correct MIME type; automatic inference from the URL extension is deferred.
+- **Content-based MIME type detection** — when `type` is omitted it is inferred from the URL or title extension only (§4); the file content is never inspected.
 - **External URL access control** — the tool accepts any URL including external links; it makes no network request itself (unlike `ExternalUrlFetcher`), so `EXTERNAL_URL_FETCH_ENABLED` does not apply. Whether the DIAL client can render or download an external URL is outside the backend's responsibility.
 
 ---
@@ -301,6 +313,7 @@ None.
 | `src/quickapp/representation_tooling/_add_attachment_tool_config.py` | New file — `ADD_ATTACHMENT_TOOL_CONFIG` (`InternalTool` definition with OpenAI function schema) |
 | `src/quickapp/representation_tooling/_add_attachment_tool.py` | New file — `_AddAttachmentTool` implementation |
 | `src/quickapp/representation_tooling/_add_attachment_stage_wrapper.py` | New file — `_AddAttachmentStageWrapper` |
+| `src/quickapp/representation_tooling/_attachment_resolution.py` | New file — `build_attachment`, the url/title/type inference shared by the tool and the stage wrapper |
 | `src/quickapp/representation_tooling/representation_tooling_module.py` | New file — `@preview_module RepresentationToolingModule` with `configure()` binding + `@multiprovider _provide_representation_tools` |
 | `src/quickapp/app_factory.py` | Register `RepresentationToolingModule` |
 | `src/quickapp/core/agent/orchestrator.py` | Add per-request `__propagated_attachment_urls` set; dedup by URL in the `propagate_to_choice` loop |

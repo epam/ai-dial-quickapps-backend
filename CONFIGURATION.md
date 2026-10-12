@@ -706,6 +706,14 @@ Set to `{}` to enable with defaults.
 }
 ```
 
+`internal_representation_add_attachment` takes a `url` plus optional `title` and `type` (MIME type):
+
+- `title` defaults to the URL file name. A title without an extension gets the one matching the type.
+- `type` is inferred from the URL or title extension when omitted. If neither has one, the call fails and
+  the model is asked to pass `type`.
+- Each call renders an `Add attachment` stage at the `info` [stage display](#stage-display-configuration) level
+  (hidden at `error` / `none`), titled with the attached file name and listing its `url`, `title` and `type`.
+
 #### Tool access filter configuration
 
 Disabled by default. When enabled, the configured DIAL tools ([`DialDeploymentToolSet`](#dialdeploymenttoolset-configuration) entries,
@@ -1727,6 +1735,7 @@ your gateways or downstream services expect.
 | `DEFAULT_ORCHESTRATOR_DEPLOYMENT_ID`       | —                                                               | Yes      | Default DIAL deployment id used as the orchestrator model when a QuickApp manifest omits `orchestrator.deployment`. Also surfaces as the JSON-schema `default` for that field so DIAL Core can pre-fill new manifests. Apps can override per-app. |
 | `SHOW_USAGE_STATISTICS`                    | `false`                                                         | No       | Include usage statistics in chat completion stream                                                           |
 | `SHOW_EXECUTION_TIME_STAGE`                | `false`                                                         | No       | Show execution time stage in the UI                                                                          |
+| `ALLOW_OVERRIDE_SYSTEM_MESSAGE`            | `false`                                                         | No       | Security switch (deployment-wide; apps cannot opt out once enabled). When `false` (default), a `system` message in the inbound request is discarded and the system prompt configured in the application is used. When `true`, the inbound system message replaces only the configured prompt; other injected parts (skills, MCP resources, etc.) are still appended. |
 | **Python Interpreter**                     |                                                                 |          |                                                                                                              |
 | `PY_INTERPRETER_LOCAL_RUN`                 | `false`                                                         | No       | Run PyInterpreter locally instead of via DIAL Core API                                                       |
 | `PY_INTERPRETER_URL`                       | *(falls back to DIAL_URL)*                                      | No       | URL of the PyInterpreter service                                                                             |
