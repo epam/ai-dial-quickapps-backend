@@ -552,7 +552,7 @@ async def test_invoke_tool_calls_returns_no_results_raises_runtime_error():
 
 
 def _mock_tool_executor(*, execute=None):
-    m = Mock()
+    m = Mock(resolve_tool_name=Mock(return_value=None))
     if execute is not None:
         m.execute = execute
     return m
@@ -1325,3 +1325,81 @@ async def test_accumulate_stream_filters_suppressed_attachment_urls():
     assert attachment_filter is not None
     assert attachment_filter(Attachment(url=suppressed_url, type="application/json")) is False
     assert attachment_filter(Attachment(url="files/bucket/other.json", type="application/json"))
+
+
+@pytest.mark.asyncio
+async def test_unprefixed_tool_name_is_resolved_before_history_and_execution():
+    def _result(tool_calls):
+        return SimpleNamespace(
+            content="c",
+            attachments=[],
+            tool_calls=tool_calls,
+            usage=None,
+            state=None,
+            adopted_tool_stages={},
+            close_remaining_adopted_tool_stages=Mock(),
+        )
+
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        side_effect=[
+            _result([_make_accumulated_tool_call(id="tc-1", name="validate_sql")]),
+            _result([]),
+        ]
+    )
+    assistant_invoker = Mock(invoke=AsyncMock(return_value="stream"))
+
+    tool_result = Mock(attachments=None, usage=None, annotations=[], propagate_to_choice=[])
+    tool_result.to_tool_message = Mock(
+        return_value=Message(role=Role.TOOL, content="out", tool_call_id="tc-1")
+    )
+    tool_executor = _mock_tool_executor(execute=AsyncMock(return_value=[tool_result]))
+    tool_executor.resolve_tool_name = Mock(
+        side_effect=lambda name: "My_MCP_validate_sql" if name == "validate_sql" else None
+    )
+
+    messages_list: list[Message] = [Message(role=Role.USER, content="hello")]
+    orchestrator = _make_orchestrator(
+        messages_list,
+        choice=SpyChoice(),
+        tool_executor=tool_executor,
+        stream_handler=stream_handler,
+        assistant_invoker_provider=Mock(get=Mock(return_value=assistant_invoker)),
+    )
+
+    await orchestrator.invoke()
+
+    assert messages_list[1].tool_calls[0].function.name == "My_MCP_validate_sql"
+    executed = tool_executor.execute.call_args[0][0]
+    assert [tc.name for tc in executed] == ["My_MCP_validate_sql"]
+
+
+@pytest.mark.asyncio
+async def test_external_tool_name_is_not_resolved():
+    stream_handler = Mock()
+    stream_handler.process_stream = AsyncMock(
+        return_value=SimpleNamespace(
+            content="c",
+            attachments=[],
+            tool_calls=[_make_accumulated_tool_call(id="tc-1", name="client_tool")],
+            usage=None,
+            state=None,
+            adopted_tool_stages={},
+            close_remaining_adopted_tool_stages=Mock(),
+        )
+    )
+    tool_executor = _mock_tool_executor()
+    orchestrator = _make_orchestrator(
+        [Message(role=Role.USER, content="hello")],
+        choice=SpyChoice(),
+        tool_executor=tool_executor,
+        stream_handler=stream_handler,
+        assistant_invoker_provider=Mock(
+            get=Mock(return_value=Mock(invoke=AsyncMock(return_value="stream")))
+        ),
+        tool_names=frozenset({"client_tool"}),
+    )
+
+    await orchestrator.invoke()
+
+    tool_executor.resolve_tool_name.assert_not_called()

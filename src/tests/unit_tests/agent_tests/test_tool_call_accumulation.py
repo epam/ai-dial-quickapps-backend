@@ -189,3 +189,20 @@ def test_arguments_accumulated_across_deltas():
         )
     )
     assert tc.arguments == '{"a": 1}'
+
+
+def test_rename_changes_name_and_sdk_tool_call():
+    tc = AccumulatedToolCall()
+    tc.append_delta(
+        ChoiceDeltaToolCall(
+            index=0,
+            id="call_1",
+            function=ChoiceDeltaToolCallFunction(name="validate_sql", arguments="{}"),
+            type="function",
+        )
+    )
+
+    tc.rename("My_MCP_validate_sql")
+
+    assert tc.name == "My_MCP_validate_sql"
+    assert tc.to_sdk_tool_call().function.name == "My_MCP_validate_sql"

@@ -271,3 +271,51 @@ class TestToolExecutorModelHiddenTools:
         hidden.arun.assert_not_called()
         assert results[0].content == "found"
         assert "not available to you" in results[1].content
+
+
+class TestToolExecutorResolveToolName:
+    @staticmethod
+    def _executor(names: list[str], hidden: list[str] | None = None) -> ToolExecutor:
+        def _tools(tool_names: list[str]) -> list:
+            return [
+                _make_tool(name, ToolCallResult(content="x", content_type="text/plain"))
+                for name in tool_names
+            ]
+
+        return ToolExecutor(
+            tools=_tools(names),
+            model_hidden_tools=_tools(hidden or []),
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+        )
+
+    def test_unique_suffix_match_resolves(self):
+        executor = self._executor(["My_MCP_validate_sql", "My_MCP_describe_entity"])
+
+        assert executor.resolve_tool_name("validate_sql") == "My_MCP_validate_sql"
+
+    def test_ambiguous_suffix_match_is_not_resolved(self):
+        executor = self._executor(["A_search", "B_search"])
+
+        assert executor.resolve_tool_name("search") is None
+
+    def test_exact_name_is_not_resolved(self):
+        executor = self._executor(["search", "A_search"])
+
+        assert executor.resolve_tool_name("search") is None
+
+    def test_model_hidden_tool_is_not_a_candidate(self):
+        executor = self._executor(["search"], hidden=["My_MCP_save"])
+
+        assert executor.resolve_tool_name("save") is None
+
+    def test_unmatched_name_is_not_resolved(self):
+        executor = self._executor(["My_MCP_validate_sql"])
+
+        assert executor.resolve_tool_name("describe_entity") is None
+
+    def test_suffix_must_follow_an_underscore(self):
+        executor = self._executor(["validatesql"])
+
+        assert executor.resolve_tool_name("sql") is None
