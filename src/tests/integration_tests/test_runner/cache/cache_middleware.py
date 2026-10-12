@@ -85,6 +85,7 @@ class CacheMiddlewareApp(FastAPI):
             enable_cache=True,
         )
         self.used_cache_responses = set()
+        self.recorded_requests: list[dict] = []
         self._background_tasks: List[asyncio.Task] = []
 
         super().__init__(lifespan=self._lifespan)
@@ -237,7 +238,9 @@ class CacheMiddlewareApp(FastAPI):
 
     async def handle_post(self, request: Request) -> Response:
         body = await request.body()
-        messages = json.loads(body).get("messages", [])
+        parsed_body = json.loads(body)
+        self.recorded_requests.append(parsed_body)
+        messages = parsed_body.get("messages", [])
         if messages[0].get("role", "").lower() == "system" and messages[0].get("content", None):
             messages[0]["content"] = messages[0]["content"][:30] + "..."
         logger.info(f"Receive POST request to {request.url.path}:")

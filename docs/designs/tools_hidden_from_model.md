@@ -304,14 +304,15 @@ tool configuration:
 - **History references a function that is absent from `tools`.** Synthetic pairs from hooks stay in history
   with the name of a model-hidden tool, while the request's `tools` does not declare it. The project already
   sends such history for deferred tools discovered on an earlier turn, and the executor reply in Component 5
-  covers a model that imitates the pair. Whether a given provider (in particular Anthropic and Bedrock models
-  behind DIAL) rejects such history is not established from the code and is verified with the integration
-  tests during implementation. If a provider rejects it, the mitigation is to inject model-hidden results as a
-  context message instead of a synthetic tool-call pair, an additive configuration change.
+  covers a model that imitates the pair. Verified by the integration tests (`test_hidden_from_model.py`):
+  Gemini (`gemini-3.5-flash-lite`), Anthropic (`anthropic.claude-opus-5`) and GPT (`gpt-5.6-luna-2026-07-09`)
+  accept such history. None of those runs had a model repeat the call, so the executor reply is covered by unit
+  tests only. Should a provider reject it, the mitigation is to inject model-hidden results as a context
+  message instead of a synthetic tool-call pair, an additive configuration change.
 - **No visible tools at all.** `tools` is always sent, even when empty. An application whose only tools are
   model-hidden, with no timestamp, `dial_files` or other model-visible tool, may be rejected by some providers
-  when history holds tool-call blocks. Typical applications always have a visible tool; verified together
-  with the item above.
+  when history holds tool-call blocks. Typical applications always have a visible tool. Not covered by the
+  integration tests, which always keep a visible tool.
 - **Fail-open on a forgotten copy.** A new field that is not copied in a hand-written toolset conversion
   leaves tools visible to the model. Component 1 requires a test per conversion path.
 
