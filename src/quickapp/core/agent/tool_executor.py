@@ -36,6 +36,7 @@ class ToolExecutor:
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
         )
+        self.__unknown_tool_instructions = self.__build_unknown_tool_instructions(self.__tools)
         self.__enrichers = enrichers
         self.__processors = sorted(processors, key=lambda p: p.order)
         self.__perf_timer: PerformanceTimer = perf_timer
@@ -79,17 +80,20 @@ class ToolExecutor:
         self.__enrich_all(results)
         return [await self.__process_result(r, tc) for r, tc in zip(results, tool_call_list)]
 
-    @staticmethod
-    async def __unknown_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
+    async def __unknown_tool_result(self, tc: AccumulatedToolCall) -> ToolCallResult:
         return FallbackProcessor.process_fallback(
-            [
-                ContinueStrategyModel(
-                    instructions="This tool does not exist. Check the tool name and try again."
-                )
-            ],
+            [ContinueStrategyModel(instructions=self.__unknown_tool_instructions)],
             tc.id,
             RuntimeError(f"Unknown tool '{tc.name}'."),
         )
+
+    @staticmethod
+    def __build_unknown_tool_instructions(tools: dict[str, StagedBaseTool]) -> str:
+        # Model-hidden tools are left out: the model must not call them.
+        if not tools:
+            return "This tool does not exist. Check the tool name and try again."
+        names = ", ".join(f"`{name}`" for name in sorted(tools))
+        return f"This tool does not exist. Use one of the available tools: {names}."
 
     @staticmethod
     async def __model_hidden_tool_result(tc: AccumulatedToolCall) -> ToolCallResult:
