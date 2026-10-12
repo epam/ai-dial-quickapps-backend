@@ -138,5 +138,7 @@ class RestApiToolingModule(Module):
             tool.stage_name_component = (
                 f"{toolset_stage_name}: {tool_label}" if tool_label else toolset_stage_name
             )
+            if tool_label:
+                tool.unprefixed_name = sanitize_toolname(tool_label)
             result.append(tool)
         return result

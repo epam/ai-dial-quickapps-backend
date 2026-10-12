@@ -36,6 +36,7 @@ class ToolExecutor:
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
         )
+        self.__unprefixed_to_names = self.__build_unprefixed_dict(tools)
         self.__unknown_tool_instructions = self.__build_unknown_tool_instructions(self.__tools)
         self.__enrichers = enrichers
         self.__processors = sorted(processors, key=lambda p: p.order)
@@ -43,15 +44,14 @@ class ToolExecutor:
         self.__period_name = "tool_execution"
 
     def resolve_tool_name(self, name: str) -> str | None:
-        """Return the only registered tool named ``<prefix>_<name>``, or None if there isn't one.
+        """Return the only registered tool whose unprefixed name is ``name``, or None.
 
         Recovers calls where the model dropped the toolset prefix. Exact and model-hidden names
         are never resolved.
         """
         if name in self.__tools or name in self.__model_hidden_names:
             return None
-        suffix = f"_{name}"
-        matches = [registered for registered in self.__tools if registered.endswith(suffix)]
+        matches = self.__unprefixed_to_names.get(name, [])
         return matches[0] if len(matches) == 1 else None
 
     async def execute(
@@ -134,6 +134,15 @@ class ToolExecutor:
         for processor in self.__processors:
             result = await processor.process(result, ctx)
         return result
+
+    @staticmethod
+    def __build_unprefixed_dict(tools: list[StagedBaseTool]) -> dict[str, list[str]]:
+        unprefixed: dict[str, list[str]] = {}
+        for tool in tools:
+            name = tool.openai_function_name()
+            if name and tool.unprefixed_name:
+                unprefixed.setdefault(tool.unprefixed_name, []).append(name)
+        return unprefixed
 
     @staticmethod
     def __build_tool_dict(tools: list[StagedBaseTool]) -> dict[str, StagedBaseTool]:

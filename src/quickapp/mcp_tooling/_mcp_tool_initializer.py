@@ -326,6 +326,7 @@ class _MCPToolInitializer(CompletionInitializer):
                 ),
             )
             mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
+            mcp_tool.unprefixed_name = sanitize_toolname(tool.name)
             # Routing precedes the deferral decision: a model-hidden tool is never deferred.
             if tool.name in hidden_names:
                 model_hidden_tools.append(mcp_tool)

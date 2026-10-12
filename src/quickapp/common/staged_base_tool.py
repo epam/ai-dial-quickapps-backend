@@ -39,6 +39,8 @@ logger = logging.getLogger(__name__)
 
 class StagedBaseTool(ABC, BaseModel, extra='allow'):
     stage_name_component: str | None = Field(None)
+    # Tool name without the toolset prefix; set only for tools whose name carries one.
+    unprefixed_name: str | None = Field(None)
     # Opt-in: when set, orchestrator streams argument bodies into the tool stage.
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = None
 
