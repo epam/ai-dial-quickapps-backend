@@ -4,7 +4,7 @@ import logging
 
 from injector import inject
 
-from quickapp.common import StagedBaseTool, ToolCallResult
+from quickapp.common import EXTERNAL_TOOL_NAMES, StagedBaseTool, ToolCallResult
 from quickapp.common.abstract.tool_call_result_enricher import ToolCallResultEnricher
 from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
@@ -31,13 +31,16 @@ class ToolExecutor:
         enrichers: list[ToolCallResultEnricher],
         perf_timer: PerformanceTimer,
         processors: list[ToolCallResultProcessor],
+        external_tool_names: EXTERNAL_TOOL_NAMES,
     ):
         self.__tools: dict[str, StagedBaseTool] = self.__build_tool_dict(tools)
         self.__model_hidden_names: frozenset[str] = frozenset(
             self.__build_tool_dict(model_hidden_tools)
         )
         self.__unprefixed_to_names = self.__build_unprefixed_dict(tools)
-        self.__unknown_tool_instructions = self.__build_unknown_tool_instructions(self.__tools)
+        self.__unknown_tool_instructions = self.__build_unknown_tool_instructions(
+            self.__tools.keys() | external_tool_names
+        )
         self.__enrichers = enrichers
         self.__processors = sorted(processors, key=lambda p: p.order)
         self.__perf_timer: PerformanceTimer = perf_timer
@@ -100,11 +103,11 @@ class ToolExecutor:
         )
 
     @staticmethod
-    def __build_unknown_tool_instructions(tools: dict[str, StagedBaseTool]) -> str:
-        # Model-hidden tools are left out: the model must not call them.
-        if not tools:
+    def __build_unknown_tool_instructions(tool_names: set[str]) -> str:
+        # Client tools are included; model-hidden tools are left out: the model must not call them.
+        if not tool_names:
             return "This tool does not exist. Check the tool name and try again."
-        names = ", ".join(f"`{name}`" for name in sorted(tools))
+        names = ", ".join(f"`{name}`" for name in sorted(tool_names))
         return f"This tool does not exist. Use one of the available tools: {names}."
 
     @staticmethod
