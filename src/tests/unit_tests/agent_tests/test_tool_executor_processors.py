@@ -186,6 +186,28 @@ class TestToolExecutorProcessors:
         assert results[1].tool_call_id == "k1"
         assert results[1].content == "ok"
 
+    @pytest.mark.asyncio
+    async def test_unknown_tool_reply_lists_available_tools(self):
+        tools = [
+            _make_tool(name, ToolCallResult(content="ok", content_type="text/plain"))
+            for name in ("My_MCP_validate_sql", "My_MCP_describe_entity")
+        ]
+        executor = ToolExecutor(
+            tools=tools,
+            model_hidden_tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+        )
+
+        results = await executor.execute([_make_tool_call("validate_sql")])
+
+        assert results[0].content == (
+            "The tool call failed with an error: Unknown tool 'validate_sql'.\n\n"
+            "This tool does not exist. Use one of the available tools: "
+            "`My_MCP_describe_entity`, `My_MCP_validate_sql`."
+        )
+
 
 class TestToolExecutorModelHiddenTools:
     @staticmethod
@@ -221,6 +243,19 @@ class TestToolExecutorModelHiddenTools:
         results = await executor.execute([_make_tool_call("nope")])
 
         assert "does not exist" in results[0].content
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_reply_does_not_list_hidden_tools(self):
+        visible = _make_tool("search", ToolCallResult(content="found", content_type="text/plain"))
+        hidden = _make_tool("save", ToolCallResult(content="x", content_type="text/plain"))
+        executor = self._executor([visible], [hidden])
+
+        results = await executor.execute([_make_tool_call("nope")])
+
+        assert results[0].content == (
+            "The tool call failed with an error: Unknown tool 'nope'.\n\n"
+            "This tool does not exist. Use one of the available tools: `search`."
+        )
 
     @pytest.mark.asyncio
     async def test_visible_tool_still_runs_next_to_hidden_one(self):
