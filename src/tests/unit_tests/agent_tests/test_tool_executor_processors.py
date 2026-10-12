@@ -75,6 +75,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!")],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -94,6 +95,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_AppendProcessor("!"), _DoubleProcessor()],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -110,6 +112,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute([_make_tool_call("my_tool")])
@@ -135,6 +138,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[_CaptureProcessor()],
+            external_tool_names=frozenset(),
         )
 
         await executor.execute([_make_tool_call("specific_tool", tc_id="call_abc")])
@@ -150,6 +154,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute(
@@ -171,6 +176,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute(
@@ -199,6 +205,7 @@ class TestToolExecutorProcessors:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
         results = await executor.execute([_make_tool_call("validate_sql")])
@@ -207,6 +214,26 @@ class TestToolExecutorProcessors:
             "The tool call failed with an error: Unknown tool 'validate_sql'.\n\n"
             "This tool does not exist. Use one of the available tools: "
             "`My_MCP_describe_entity`, `My_MCP_validate_sql`."
+        )
+
+    @pytest.mark.asyncio
+    async def test_unknown_tool_reply_lists_client_tools(self):
+        server = _make_tool("My_MCP_search", ToolCallResult(content="x", content_type="text/plain"))
+        executor = ToolExecutor(
+            tools=[server],
+            model_hidden_tools=[],
+            enrichers=[],
+            perf_timer=MagicMock(),
+            processors=[],
+            external_tool_names=frozenset({"get_weather"}),
+        )
+
+        results = await executor.execute([_make_tool_call("get_weathr")])
+
+        assert results[0].content == (
+            "The tool call failed with an error: Unknown tool 'get_weathr'.\n\n"
+            "This tool does not exist. Use one of the available tools: "
+            "`My_MCP_search`, `get_weather`."
         )
 
 
@@ -219,6 +246,7 @@ class TestToolExecutorModelHiddenTools:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
     @pytest.mark.asyncio
@@ -293,6 +321,7 @@ class TestToolExecutorResolveToolName:
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
+            external_tool_names=frozenset(),
         )
 
     def test_missing_prefix_resolves(self):
