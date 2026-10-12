@@ -85,3 +85,18 @@ async def test_mcp_toolset_carries_hidden_from_model(monkeypatch: pytest.MonkeyP
     await resolver.resolve()
 
     assert context.resolved_mcp_toolsets[0].hidden_from_model == ["get_skill"]
+
+
+@pytest.mark.asyncio
+async def test_mcp_toolset_carries_fixed_arguments(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("ENABLE_PREVIEW_FEATURES", "true")
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        fixed_arguments={"search": {"project_key": "DIAL"}},
+    )
+    resolver, context, _, _ = make_resolver(toolsets=[toolset], metadata=make_metadata(mcp=True))
+
+    await resolver.resolve()
+
+    assert context.resolved_mcp_toolsets[0].fixed_arguments == {"search": {"project_key": "DIAL"}}
