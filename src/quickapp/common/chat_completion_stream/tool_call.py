@@ -44,6 +44,9 @@ class AccumulatedToolCall:
             self._name = append_field(self._name, delta.function.name)
             self._arguments = append_field(self._arguments, delta.function.arguments)
 
+    def rename(self, name: str) -> None:
+        self._name = name
+
     def to_sdk_tool_call(self) -> ToolCall:
         return ToolCall(
             id=self.id,

@@ -196,6 +196,8 @@ class Orchestrator:
         model_call_duration = time.perf_counter() - model_call_start
 
         tool_calls = stream_result.tool_calls
+        if tool_calls:
+            self.__resolve_tool_names(tool_calls)
 
         usage = stream_result.usage
         logger.info(
@@ -326,6 +328,16 @@ class Orchestrator:
                 }
             )
         )
+
+    def __resolve_tool_names(self, tool_calls: list[AccumulatedToolCall]) -> None:
+        # Runs before the assistant message is saved, so history carries the registered name.
+        for tc in tool_calls:
+            if tc.name in self.__tool_names:
+                continue
+            resolved = self.__tool_executor.resolve_tool_name(tc.name)
+            if resolved:
+                logger.warning("Resolved tool name %s to %s", tc.name, resolved)
+                tc.rename(resolved)
 
     def _surface_external_tool_calls(
         self, tool_calls: list[AccumulatedToolCall], period: str

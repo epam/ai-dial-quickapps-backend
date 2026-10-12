@@ -42,6 +42,18 @@ class ToolExecutor:
         self.__perf_timer: PerformanceTimer = perf_timer
         self.__period_name = "tool_execution"
 
+    def resolve_tool_name(self, name: str) -> str | None:
+        """Return the only registered tool named ``<prefix>_<name>``, or None if there isn't one.
+
+        Recovers calls where the model dropped the toolset prefix. Exact and model-hidden names
+        are never resolved.
+        """
+        if name in self.__tools or name in self.__model_hidden_names:
+            return None
+        suffix = f"_{name}"
+        matches = [registered for registered in self.__tools if registered.endswith(suffix)]
+        return matches[0] if len(matches) == 1 else None
+
     async def execute(
         self,
         tool_call_list: list[AccumulatedToolCall],
