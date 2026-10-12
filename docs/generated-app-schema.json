@@ -844,6 +844,24 @@
           "title": "Hidden From Model",
           "x-preview": true
         },
+        "fixed_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only. Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Fixed Arguments",
+          "x-preview": true
+        },
         "attachment": {
           "$ref": "#/$defs/AttachmentConfig",
           "description": "Configuration for toolset attachments."
@@ -1599,6 +1617,24 @@
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
           "title": "Hidden From Model",
+          "x-preview": true
+        },
+        "fixed_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets.",
+          "title": "Fixed Arguments",
           "x-preview": true
         },
         "attachment": {
@@ -2660,6 +2696,24 @@
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
           "title": "Hidden From Model",
+          "x-preview": true
+        },
+        "fixed_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets.",
+          "title": "Fixed Arguments",
           "x-preview": true
         },
         "attachment": {

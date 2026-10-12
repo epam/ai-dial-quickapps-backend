@@ -24,6 +24,7 @@ from quickapp.config.tools.base import (
     OpenAiToolConfig,
     OpenAiToolFunction,
     OpenAiToolFunctionParameters,
+    remove_schema_params,
 )
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.authorization import MCPApiKeyAuthorization
@@ -275,6 +276,29 @@ class _MCPToolInitializer(CompletionInitializer):
                 )
             )
 
+    def _strip_fixed_arguments(
+        self,
+        open_ai_tool: OpenAiToolConfig,
+        fixed: dict[str, Any],
+        input_schema: dict[str, Any],
+        tool_name: str,
+        toolset_name: str,
+    ) -> None:
+        """Remove fixed arguments from the model-facing schema; _MCPTool injects them on call."""
+        parameters = open_ai_tool.function.parameters
+        unknown = sorted(name for name in fixed if name not in parameters.properties)
+        if unknown and input_schema.get("additionalProperties") is not True:
+            # The tool stays available and the value is still sent; the server decides.
+            self.__mcp_context.append_exception(
+                ToolInitializationException(
+                    message=f"fixed_arguments references arguments missing from the tool schema: "
+                    f"{', '.join(unknown)}",
+                    tool_name=tool_name,
+                    toolset_name=toolset_name,
+                )
+            )
+        remove_schema_params(parameters, fixed.keys())
+
     async def _load_tools(
         self,
         resolved_toolset: MCPToolSet,
@@ -289,6 +313,7 @@ class _MCPToolInitializer(CompletionInitializer):
         for field_name, requested in (
             ("allowed_tools", resolved_toolset.allowed_tools),
             ("hidden_from_model", resolved_toolset.hidden_from_model),
+            ("fixed_arguments", list(resolved_toolset.fixed_arguments or {})),
         ):
             unknown = set(requested or []) - server_tool_names
             if unknown:
@@ -303,27 +328,37 @@ class _MCPToolInitializer(CompletionInitializer):
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
         hidden_names = set(resolved_toolset.hidden_from_model or [])
+        fixed_arguments = resolved_toolset.fixed_arguments or {}
         toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         model_hidden_tools: list[ModelHiddenTool] = []
         for tool in tools:
+            open_ai_tool = self._convert_to_openai_tool(
+                sanitize_toolname(f"{toolset_label}_{tool.name}"),
+                tool.description,
+                tool.inputSchema,
+            )
+            tool_fixed_arguments = fixed_arguments.get(tool.name)
+            if tool_fixed_arguments:
+                self._strip_fixed_arguments(
+                    open_ai_tool,
+                    tool_fixed_arguments,
+                    tool.inputSchema,
+                    tool_name=tool.name,
+                    toolset_name=toolset_label,
+                )
             mcp_tool = self.__tool_builder.build(
                 tool=tool,
                 tool_config=MCPTool(
                     attachment=resolved_toolset.attachment,
                     fallback_configuration=resolved_toolset.fallback_configuration,
-                    open_ai_tool=self._convert_to_openai_tool(
-                        sanitize_toolname(
-                            f"{resolve_localized(resolved_toolset.name)}_{tool.name}"
-                        ),
-                        tool.description,
-                        tool.inputSchema,
-                    ),
+                    open_ai_tool=open_ai_tool,
                 ),
                 toolset_client=toolset_client,
                 dial_toolset_id=(
                     toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
                 ),
+                fixed_arguments=tool_fixed_arguments,
             )
             mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
             # Routing precedes the deferral decision: a model-hidden tool is never deferred.
@@ -457,6 +492,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     enabled=toolset_info.enabled,
                     allowed_tools=toolset_info.allowed_tools,
                     hidden_from_model=toolset_info.hidden_from_model,
+                    fixed_arguments=toolset_info.fixed_arguments,
                     attachment=toolset_info.attachment,
                     fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(

@@ -1042,6 +1042,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
 | hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| fixed_arguments        | No       | Object             | `[Preview]` Argument values fixed per MCP tool: `{tool_name: {argument: value}}`. Hidden from the model and added to every call. Not for secrets. See [MCP fixed arguments](#mcp-fixed-arguments). | `null`        |
 | resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
@@ -1066,6 +1067,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
 | hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| fixed_arguments        | No       | Object             | `[Preview]` Argument values fixed per MCP tool: `{tool_name: {argument: value}}`. Hidden from the model and added to every call. Not for secrets. See [MCP fixed arguments](#mcp-fixed-arguments). | `null`        |
 | resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
@@ -1095,9 +1097,39 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
 | hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| fixed_arguments        | No       | Object             | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` Argument values fixed per MCP tool: `{tool_name: {argument: value}}`. Hidden from the model and added to every call. Not for secrets. See [MCP fixed arguments](#mcp-fixed-arguments). | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
+
+#### MCP fixed arguments
+
+`[Preview]` Applies to `MCPToolSet`, `DialMCPToolSet` and the MCP branch of `DialAppToolSet`. Use
+`fixed_arguments` to scope an MCP tool to a fixed context, for example a Jira toolset that only works on
+project `DIAL`:
+
+```json
+{
+  "type": "dial-mcp",
+  "name": "jira",
+  "dial_id": "toolsets/jira-mcp",
+  "allowed_tools": ["search_issues", "create_issue"],
+  "fixed_arguments": {
+    "search_issues": { "project_key": "DIAL", "max_results": 50 },
+    "create_issue": { "project_key": "DIAL", "issue_type": "Task" }
+  }
+}
+```
+
+- Keys are tool names as the MCP server reports them, not the `<toolset>_<tool>` name the model sees.
+- Fixed arguments are removed from the tool schema the model sees (including the `tool_search` catalog) and
+  added to every call, including hook calls. A fixed value always overrides what the caller sends.
+- Top-level arguments only; any JSON value. Fixing an object argument replaces the whole object.
+- When `allowed_tools` is set, every key must be listed there, otherwise the manifest is rejected.
+- An argument missing from the tool's schema is reported under "Initialization issues", unless the schema
+  sets `additionalProperties: true`. Either way the tool stays available and the value is still sent.
+- The tool stage does not show fixed values, and they are logged only with [payload logging](#payload-logging) on.
+- **Not for secrets:** values are stored in plain text in the app config.
 
 #### MCP resources configuration
 
