@@ -473,6 +473,7 @@ def test_stage_names_include_toolset_and_tool_name():
     @app.get("/")
     async def get_method(tools: list[StagedBaseTool] = Injected(list[StagedBaseTool])):
         assert [t.stage_name_component for t in tools] == ["Notion: a", "Notion: b"]
+        assert [t.unprefixed_name for t in tools] == ["a", "b"]
         return {}
 
     response = TestClient(app).get("/")

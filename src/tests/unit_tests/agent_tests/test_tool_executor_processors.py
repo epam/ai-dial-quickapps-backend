@@ -6,6 +6,7 @@ from quickapp.common.abstract.tool_call_result_processor import (
     ProcessingContext,
     ToolCallResultProcessor,
 )
+from quickapp.common.staged_base_tool import StagedBaseTool
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.core.agent.tool_executor import ToolExecutor
 
@@ -275,47 +276,71 @@ class TestToolExecutorModelHiddenTools:
 
 class TestToolExecutorResolveToolName:
     @staticmethod
-    def _executor(names: list[str], hidden: list[str] | None = None) -> ToolExecutor:
-        def _tools(tool_names: list[str]) -> list:
-            return [
-                _make_tool(name, ToolCallResult(content="x", content_type="text/plain"))
-                for name in tool_names
-            ]
+    def _tools(names: dict[str, str | None]) -> list[StagedBaseTool]:
+        tools = []
+        for name, unprefixed in names.items():
+            tool = _make_tool(name, ToolCallResult(content="x", content_type="text/plain"))
+            tool.unprefixed_name = unprefixed
+            tools.append(tool)
+        return tools
 
+    def _executor(
+        self, names: dict[str, str | None], hidden: dict[str, str | None] | None = None
+    ) -> ToolExecutor:
         return ToolExecutor(
-            tools=_tools(names),
-            model_hidden_tools=_tools(hidden or []),
+            tools=self._tools(names),
+            model_hidden_tools=self._tools(hidden or {}),
             enrichers=[],
             perf_timer=MagicMock(),
             processors=[],
         )
 
-    def test_unique_suffix_match_resolves(self):
-        executor = self._executor(["My_MCP_validate_sql", "My_MCP_describe_entity"])
+    def test_missing_prefix_resolves(self):
+        executor = self._executor(
+            {
+                "My_MCP_validate_sql": "validate_sql",
+                "My_MCP_describe_entity": "describe_entity",
+            }
+        )
 
         assert executor.resolve_tool_name("validate_sql") == "My_MCP_validate_sql"
 
-    def test_ambiguous_suffix_match_is_not_resolved(self):
-        executor = self._executor(["A_search", "B_search"])
+    def test_same_tool_in_two_toolsets_is_not_resolved(self):
+        executor = self._executor({"A_search": "search", "B_search": "search"})
 
         assert executor.resolve_tool_name("search") is None
 
     def test_exact_name_is_not_resolved(self):
-        executor = self._executor(["search", "A_search"])
+        executor = self._executor({"search": None, "A_search": "search"})
 
         assert executor.resolve_tool_name("search") is None
 
     def test_model_hidden_tool_is_not_a_candidate(self):
-        executor = self._executor(["search"], hidden=["My_MCP_save"])
+        executor = self._executor({"search": None}, hidden={"My_MCP_save": "save"})
+
+        assert executor.resolve_tool_name("save") is None
+
+    def test_exact_model_hidden_name_is_not_resolved(self):
+        executor = self._executor({"My_MCP_save": "save"}, hidden={"save": None})
 
         assert executor.resolve_tool_name("save") is None
 
     def test_unmatched_name_is_not_resolved(self):
-        executor = self._executor(["My_MCP_validate_sql"])
+        executor = self._executor({"My_MCP_validate_sql": "validate_sql"})
 
         assert executor.resolve_tool_name("describe_entity") is None
 
-    def test_suffix_must_follow_an_underscore(self):
-        executor = self._executor(["validatesql"])
+    def test_part_of_the_tool_name_is_not_resolved(self):
+        executor = self._executor({"My_MCP_validate_sql": "validate_sql"})
 
         assert executor.resolve_tool_name("sql") is None
+
+    def test_partly_dropped_prefix_is_not_resolved(self):
+        executor = self._executor({"My_MCP_validate_sql": "validate_sql"})
+
+        assert executor.resolve_tool_name("MCP_validate_sql") is None
+
+    def test_tool_without_unprefixed_name_is_never_resolved(self):
+        executor = self._executor({"internal_skills_read_skill": None})
+
+        assert executor.resolve_tool_name("read_skill") is None

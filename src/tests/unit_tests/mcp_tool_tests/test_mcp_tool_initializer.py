@@ -149,6 +149,7 @@ def mcp_tool1(
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
     tool.stage_name_component = "test_toolset: tool1"
+    tool.unprefixed_name = "tool1"
     return tool
 
 
@@ -178,6 +179,7 @@ def mcp_tool2(
         dial_settings=MagicMock(url="https://dial.example.com"),
     )
     tool.stage_name_component = "test_toolset: tool2"
+    tool.unprefixed_name = "tool2"
     return tool
 
 
@@ -514,6 +516,7 @@ async def test_stage_name_includes_toolset_and_tool_name(initializer_factory):
 
     created = mcp_context.extend_tools.call_args.args[0]
     assert [t.stage_name_component for t in created] == ["Notion: tool1", "Notion: tool2"]
+    assert [t.unprefixed_name for t in created] == ["tool1", "tool2"]
 
 
 @pytest.mark.asyncio
