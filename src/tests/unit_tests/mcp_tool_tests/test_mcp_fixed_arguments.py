@@ -21,6 +21,7 @@ from quickapp.config.tools.base import (
 from quickapp.config.tools.mcp import MCPTool
 from quickapp.config.toolsets.dial_mcp import DialMCPToolSet
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
+from quickapp.config.toolsets.mcp_tools_config import MCPToolConfig
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_core_services.dial_file_service import DialFileService
 
@@ -127,7 +128,9 @@ def _built_open_ai_tool(tool_builder: MagicMock, server_tool_name: str) -> OpenA
 class TestInitializer:
     @pytest.mark.asyncio
     async def test_fixed_argument_is_removed_from_schema_and_passed_to_tool(self) -> None:
-        toolset = _mcp_toolset(fixed_arguments={"search": {"project_key": "DIAL"}})
+        toolset = _mcp_toolset(
+            tools_config={"search": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})}
+        )
         initializer, ctx, _, tool_builder = _initializer(
             [toolset], _toolset_client(_SEARCH_SCHEMA, "search")
         )
@@ -143,7 +146,9 @@ class TestInitializer:
 
     @pytest.mark.asyncio
     async def test_other_tools_are_untouched(self) -> None:
-        toolset = _mcp_toolset(fixed_arguments={"search": {"project_key": "DIAL"}})
+        toolset = _mcp_toolset(
+            tools_config={"search": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})}
+        )
         initializer, _, _, tool_builder = _initializer(
             [toolset], _toolset_client(_SEARCH_SCHEMA, "search", "create")
         )
@@ -158,7 +163,9 @@ class TestInitializer:
 
     @pytest.mark.asyncio
     async def test_unknown_argument_is_reported_and_tool_kept(self) -> None:
-        toolset = _mcp_toolset(fixed_arguments={"search": {"projectKey": "DIAL"}})
+        toolset = _mcp_toolset(
+            tools_config={"search": MCPToolConfig(fixed_arguments={"projectKey": "DIAL"})}
+        )
         initializer, ctx, _, tool_builder = _initializer(
             [toolset], _toolset_client(_SEARCH_SCHEMA, "search")
         )
@@ -175,7 +182,7 @@ class TestInitializer:
     @pytest.mark.asyncio
     async def test_unknown_argument_allowed_by_additional_properties(self) -> None:
         schema = {**_SEARCH_SCHEMA, "additionalProperties": True}
-        toolset = _mcp_toolset(fixed_arguments={"search": {"extra": 1}})
+        toolset = _mcp_toolset(tools_config={"search": MCPToolConfig(fixed_arguments={"extra": 1})})
         initializer, ctx, _, _ = _initializer([toolset], _toolset_client(schema, "search"))
 
         await initializer.initialize()
@@ -186,22 +193,24 @@ class TestInitializer:
     async def test_unknown_tool_is_warned_not_failed(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
-        toolset = _mcp_toolset(fixed_arguments={"typo": {"project_key": "DIAL"}})
+        toolset = _mcp_toolset(
+            tools_config={"typo": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})}
+        )
         initializer, ctx, _, _ = _initializer([toolset], _toolset_client(_SEARCH_SCHEMA, "search"))
 
         with caplog.at_level(logging.WARNING):
             await initializer.initialize()
 
-        assert "fixed_arguments" in caplog.text
+        assert "tools_config" in caplog.text
         assert "typo" in caplog.text
         ctx.append_exception.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_dial_mcp_toolset_resolution_carries_fixed_arguments(self) -> None:
+    async def test_dial_mcp_toolset_resolution_carries_tools_config(self) -> None:
         toolset = DialMCPToolSet(
             name="jira",
             deployment_id="toolsets/jira",
-            fixed_arguments={"search": {"project_key": "DIAL"}},
+            tools_config={"search": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})},
         )
         cache = MagicMock()
         cache.get = AsyncMock(
@@ -214,7 +223,9 @@ class TestInitializer:
         await initializer.initialize()
 
         resolved = client_builder.build.call_args.kwargs["toolset_info"]
-        assert resolved.fixed_arguments == {"search": {"project_key": "DIAL"}}
+        assert resolved.tools_config == {
+            "search": MCPToolConfig(fixed_arguments={"project_key": "DIAL"})
+        }
         props = _built_open_ai_tool(tool_builder, "search").function.parameters.properties
         assert "project_key" not in props
 
