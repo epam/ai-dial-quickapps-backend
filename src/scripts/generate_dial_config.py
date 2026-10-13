@@ -67,8 +67,13 @@ class DIALLimits(DIALBaseModel):
 
 class DIALModelPricing(DIALBaseModel):
     unit: str | None = Field(default=None, description="The pricing unit")
-    prompt: str | None = Field(default=None, description="The pricing prompt")
-    completion: str | None = Field(description="The pricing completion", default=None)
+    prompt: str | dict[str, Any] | None = Field(default=None, description="The pricing prompt")
+    completion: str | dict[str, Any] | None = Field(
+        description="The pricing completion", default=None
+    )
+
+    def is_flat(self) -> bool:
+        return all(isinstance(v, str) or v is None for v in (self.prompt, self.completion))
 
 
 class DIALModelFeatures(DIALBaseModel):
@@ -196,6 +201,8 @@ def to_config_model(model: dict) -> tuple[str, dict] | None:
             "limits",
             "pricing",
         ]:
+            if field == "pricing" and parsed_model.pricing and not parsed_model.pricing.is_flat():
+                continue  # tiered pricing isn't needed for the local Core config
             if field in serialized:
                 value = serialized[field]
                 if value:
