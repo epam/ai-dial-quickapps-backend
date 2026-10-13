@@ -844,12 +844,11 @@
           "title": "Hidden From Model",
           "x-preview": true
         },
-        "fixed_arguments": {
+        "tools_config": {
           "anyOf": [
             {
               "additionalProperties": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/$defs/MCPToolConfig"
               },
               "type": "object"
             },
@@ -858,8 +857,8 @@
             }
           ],
           "default": null,
-          "description": "MCP branch only. Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets. Ignored (with a warning) on the chat-completion fallback branch.",
-          "title": "Fixed Arguments",
+          "description": "MCP branch only. Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Tools Config",
           "x-preview": true
         },
         "attachment": {
@@ -1619,12 +1618,11 @@
           "title": "Hidden From Model",
           "x-preview": true
         },
-        "fixed_arguments": {
+        "tools_config": {
           "anyOf": [
             {
               "additionalProperties": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/$defs/MCPToolConfig"
               },
               "type": "object"
             },
@@ -1633,8 +1631,8 @@
             }
           ],
           "default": null,
-          "description": "Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets.",
-          "title": "Fixed Arguments",
+          "description": "Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there.",
+          "title": "Tools Config",
           "x-preview": true
         },
         "attachment": {
@@ -2599,6 +2597,27 @@
       "title": "MCPServerInfo",
       "type": "object"
     },
+    "MCPToolConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "fixed_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Argument values fixed for this tool: {argument: value}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. Values are stored in plain text in the app config: do not use this for secrets.",
+          "title": "Fixed Arguments"
+        }
+      },
+      "title": "MCPToolConfig",
+      "type": "object"
+    },
     "MCPToolSet": {
       "properties": {
         "name": {
@@ -2698,12 +2717,11 @@
           "title": "Hidden From Model",
           "x-preview": true
         },
-        "fixed_arguments": {
+        "tools_config": {
           "anyOf": [
             {
               "additionalProperties": {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/$defs/MCPToolConfig"
               },
               "type": "object"
             },
@@ -2712,8 +2730,8 @@
             }
           ],
           "default": null,
-          "description": "Argument values fixed per MCP tool, keyed by tool name (as the server reports it): {tool_name: {argument: value}}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. When allowed_tools is set, every key must be listed there. Values are stored in plain text in the app config: do not use this for secrets.",
-          "title": "Fixed Arguments",
+          "description": "Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there.",
+          "title": "Tools Config",
           "x-preview": true
         },
         "attachment": {

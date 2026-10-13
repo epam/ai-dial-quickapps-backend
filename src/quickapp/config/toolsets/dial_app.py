@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -7,13 +7,14 @@ from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
-from quickapp.config.toolsets.fixed_arguments import (
-    FIXED_ARGUMENTS_DESCRIPTION,
-    validate_fixed_arguments,
-)
 from quickapp.config.toolsets.hidden_from_model import (
     HIDDEN_FROM_MODEL_DESCRIPTION,
     validate_hidden_from_model,
+)
+from quickapp.config.toolsets.mcp_tools_config import (
+    TOOLS_CONFIG_DESCRIPTION,
+    MCPToolConfig,
+    validate_tools_config,
 )
 
 
@@ -47,10 +48,10 @@ class DialAppToolSet(BaseToolSet):
             "Ignored (with a warning) on the chat-completion fallback branch."
         ),
     )
-    fixed_arguments: dict[str, dict[str, Any]] | None = PreviewField(  # type: ignore[assignment]
+    tools_config: dict[str, MCPToolConfig] | None = PreviewField(  # type: ignore[assignment]
         default=None,
         description=(
-            f"MCP branch only. {FIXED_ARGUMENTS_DESCRIPTION} "
+            f"MCP branch only. {TOOLS_CONFIG_DESCRIPTION} "
             "Ignored (with a warning) on the chat-completion fallback branch."
         ),
     )
@@ -75,6 +76,6 @@ class DialAppToolSet(BaseToolSet):
         return self
 
     @model_validator(mode="after")
-    def _validate_fixed_arguments(self) -> Self:
-        validate_fixed_arguments(self.allowed_tools, self.fixed_arguments)
+    def _validate_tools_config(self) -> Self:
+        validate_tools_config(self.allowed_tools, self.tools_config)
         return self

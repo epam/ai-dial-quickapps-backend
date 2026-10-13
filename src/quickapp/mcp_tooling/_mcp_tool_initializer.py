@@ -313,7 +313,7 @@ class _MCPToolInitializer(CompletionInitializer):
         for field_name, requested in (
             ("allowed_tools", resolved_toolset.allowed_tools),
             ("hidden_from_model", resolved_toolset.hidden_from_model),
-            ("fixed_arguments", list(resolved_toolset.fixed_arguments or {})),
+            ("tools_config", list(resolved_toolset.tools_config or {})),
         ):
             unknown = set(requested or []) - server_tool_names
             if unknown:
@@ -328,7 +328,7 @@ class _MCPToolInitializer(CompletionInitializer):
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
         hidden_names = set(resolved_toolset.hidden_from_model or [])
-        fixed_arguments = resolved_toolset.fixed_arguments or {}
+        tools_config = resolved_toolset.tools_config or {}
         toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         model_hidden_tools: list[ModelHiddenTool] = []
@@ -338,7 +338,8 @@ class _MCPToolInitializer(CompletionInitializer):
                 tool.description,
                 tool.inputSchema,
             )
-            tool_fixed_arguments = fixed_arguments.get(tool.name)
+            tool_settings = tools_config.get(tool.name)
+            tool_fixed_arguments = tool_settings.fixed_arguments if tool_settings else None
             if tool_fixed_arguments:
                 self._strip_fixed_arguments(
                     open_ai_tool,
@@ -492,7 +493,7 @@ class _MCPToolInitializer(CompletionInitializer):
                     enabled=toolset_info.enabled,
                     allowed_tools=toolset_info.allowed_tools,
                     hidden_from_model=toolset_info.hidden_from_model,
-                    fixed_arguments=toolset_info.fixed_arguments,
+                    tools_config=toolset_info.tools_config,
                     attachment=toolset_info.attachment,
                     fallback_configuration=toolset_info.fallback_configuration,
                     mcp_server_info=MCPServerInfo(

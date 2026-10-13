@@ -1,4 +1,4 @@
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, model_validator
 
@@ -11,15 +11,16 @@ from quickapp.common.base_config import (
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
 from quickapp.config.toolsets.base import BaseToolSet
-from quickapp.config.toolsets.fixed_arguments import (
-    FIXED_ARGUMENTS_DESCRIPTION,
-    validate_fixed_arguments,
-)
 from quickapp.config.toolsets.hidden_from_model import (
     HIDDEN_FROM_MODEL_DESCRIPTION,
     validate_hidden_from_model,
 )
 from quickapp.config.toolsets.mcp import MCPResourcesConfig
+from quickapp.config.toolsets.mcp_tools_config import (
+    TOOLS_CONFIG_DESCRIPTION,
+    MCPToolConfig,
+    validate_tools_config,
+)
 
 
 class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
@@ -43,8 +44,8 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
     hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
         default=None, description=HIDDEN_FROM_MODEL_DESCRIPTION
     )
-    fixed_arguments: dict[str, dict[str, Any]] | None = PreviewField(  # type: ignore[assignment]
-        default=None, description=FIXED_ARGUMENTS_DESCRIPTION
+    tools_config: dict[str, MCPToolConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None, description=TOOLS_CONFIG_DESCRIPTION
     )
     attachment: AttachmentConfig = Field(
         default_factory=AttachmentConfig, description="Configuration for toolset attachments."
@@ -60,6 +61,6 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
         return self
 
     @model_validator(mode="after")
-    def _validate_fixed_arguments(self) -> Self:
-        validate_fixed_arguments(self.allowed_tools, self.fixed_arguments)
+    def _validate_tools_config(self) -> Self:
+        validate_tools_config(self.allowed_tools, self.tools_config)
         return self

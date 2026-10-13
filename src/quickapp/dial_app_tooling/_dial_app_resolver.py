@@ -136,7 +136,7 @@ class _DialAppResolver(CompletionInitializer):
             enabled=toolset.enabled,
             allowed_tools=toolset.allowed_tools,
             hidden_from_model=toolset.hidden_from_model,
-            fixed_arguments=toolset.fixed_arguments,
+            tools_config=toolset.tools_config,
             attachment=toolset.attachment,
             fallback_configuration=toolset.fallback_configuration,
             mcp_server_info=MCPServerInfo(
@@ -150,24 +150,18 @@ class _DialAppResolver(CompletionInitializer):
         self.__context.append_mcp_toolset(mcp_toolset)
 
     async def _handle_chat_completion_branch(self, toolset: DialAppToolSet) -> None:
-        if toolset.allowed_tools:
-            logger.warning(
-                "allowed_tools set on DialAppToolSet '%s' is ignored on the chat-completion "
-                "fallback branch (single synthetic tool).",
-                resolve_localized(toolset.name),
-            )
-        if toolset.hidden_from_model:
-            logger.warning(
-                "hidden_from_model set on DialAppToolSet '%s' is ignored on the chat-completion "
-                "fallback branch (single synthetic tool).",
-                resolve_localized(toolset.name),
-            )
-        if toolset.fixed_arguments:
-            logger.warning(
-                "fixed_arguments set on DialAppToolSet '%s' is ignored on the chat-completion "
-                "fallback branch (single synthetic tool).",
-                resolve_localized(toolset.name),
-            )
+        for field_name, value in (
+            ("allowed_tools", toolset.allowed_tools),
+            ("hidden_from_model", toolset.hidden_from_model),
+            ("tools_config", toolset.tools_config),
+        ):
+            if value:
+                logger.warning(
+                    "%s set on DialAppToolSet '%s' is ignored on the chat-completion "
+                    "fallback branch (single synthetic tool).",
+                    field_name,
+                    resolve_localized(toolset.name),
+                )
         tool_config = await self.__deployment_cache.fetch_basic_tool_config(
             self.__tool_config_service.get_basic_tool_config,
             toolset.deployment_id,
