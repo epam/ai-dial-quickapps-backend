@@ -1,11 +1,11 @@
 import logging
 
 from aidial_sdk.chat_completion import Message, Role
-from aidial_sdk.chat_completion.request import MessageContentTextPart
 from injector import inject
 
 from quickapp.common.abstract.base_prompt_provider import PromptPartProvider
 from quickapp.common.abstract.base_transformer import MessagesTransformer
+from quickapp.common.message_text import message_text
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 
@@ -15,9 +15,11 @@ logger = logging.getLogger(__name__)
 class _AddSystemPromptTransformer(MessagesTransformer):
     """Builds the system message and places it at the start of the conversation.
 
-    An inbound system message is never passed through as is. By default it is discarded; with
+    An inbound system message is never passed through as is. With
     ``ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`` its content replaces only the prompt configured in the
     application, while all other prompt parts (skills, MCP resources, etc.) are still appended.
+    Otherwise the request validator rejects it with 400 before it gets here, so one that still
+    arrives raises. A system message without text overrides nothing and is dropped.
     """
 
     @inject
@@ -57,16 +59,16 @@ class _AddSystemPromptTransformer(MessagesTransformer):
     def __get_override(self, inbound_system: Message | None) -> str | None:
         if inbound_system is None:
             return None
-        if not self.__settings.allow_override_system_message:
-            logger.warning("Inbound system message ignored: ALLOW_OVERRIDE_SYSTEM_MESSAGE is false")
+        text = message_text(inbound_system)
+        if not text:
+            logger.warning("Inbound system message ignored: it has no text content")
             return None
-        content = inbound_system.content
-        if isinstance(content, list):
-            content = "\n".join(
-                part.text for part in content if isinstance(part, MessageContentTextPart)
+        if not self.__settings.allow_override_system_message:
+            # validate_system_message_policy rejects this request with 400 before setup; reaching
+            # here means an entry point skipped it. Fail loudly instead of dropping the prompt.
+            raise RuntimeError(
+                "Inbound system message reached the system prompt transformer although "
+                "ALLOW_OVERRIDE_SYSTEM_MESSAGE is disabled; the request validator was skipped"
             )
-        if content:
-            logger.debug("Inbound system message overrides the configured system prompt")
-            return content
-        logger.warning("Inbound system message ignored: it has no text content")
-        return None
+        logger.debug("Inbound system message overrides the configured system prompt")
+        return text
