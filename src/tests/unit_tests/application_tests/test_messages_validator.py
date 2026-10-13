@@ -1,10 +1,11 @@
-"""Tests for `validate_messages_shape` — enforces message sequence contract."""
+"""Tests for `validate_messages_shape` (message sequence contract) and
+`validate_system_message_policy` (ALLOW_OVERRIDE_SYSTEM_MESSAGE)."""
 
 import pytest
-from aidial_sdk.chat_completion import FunctionCall, Message, Role, ToolCall
+from aidial_sdk.chat_completion import FunctionCall, Message, MessageContentTextPart, Role, ToolCall
 from aidial_sdk.exceptions import InvalidRequestError
 
-from quickapp.core.application import validate_messages_shape
+from quickapp.core.application import validate_messages_shape, validate_system_message_policy
 
 
 def _msg(role: Role, content: str = "x") -> Message:
@@ -214,3 +215,30 @@ class TestMultipleViolations:
         assert "must end with a user or tool message" in msg
         assert msg.startswith("Invalid messages array:\n- ")
         assert msg.count("\n- ") >= 2
+
+
+class TestSystemMessagePolicy:
+    @pytest.mark.parametrize(
+        "content", ["Answer in French.", [MessageContentTextPart(type="text", text="A")]]
+    )
+    def test_system_message_with_text_rejected_when_override_disabled(self, content):
+        messages = [Message(role=Role.SYSTEM, content=content), _msg(Role.USER)]
+
+        with pytest.raises(InvalidRequestError) as exc:
+            validate_system_message_policy(messages, allow_override=False)
+
+        msg = exc.value.display_message or ""
+        assert "Message at index 0: role 'system' is not accepted by this application" in msg
+        assert "ALLOW_OVERRIDE_SYSTEM_MESSAGE" not in msg
+
+    def test_system_message_accepted_when_override_enabled(self):
+        validate_system_message_policy([_msg(Role.SYSTEM), _msg(Role.USER)], allow_override=True)
+
+    @pytest.mark.parametrize("content", ["", "   ", None])
+    def test_system_message_without_text_accepted_when_override_disabled(self, content):
+        validate_system_message_policy(
+            [Message(role=Role.SYSTEM, content=content), _msg(Role.USER)], allow_override=False
+        )
+
+    def test_no_system_message_accepted_when_override_disabled(self):
+        validate_system_message_policy([_msg(Role.USER)], allow_override=False)

@@ -13,6 +13,7 @@ from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
 )
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.config_template_resolver import ConfigResolver
 from quickapp.core.application import _MessagesSetup, _RequestContext
 from quickapp.core.application._proxy_settings import ProxySettings
@@ -111,6 +112,7 @@ def make_request_completion():
         messages=None,
         config_resolver=None,
         init_handler=None,
+        allow_override_system_message=False,
     ):
         if messages is None:
             messages = [
@@ -172,7 +174,14 @@ def make_request_completion():
         mapping[quick_app_completion.PresentationSettings] = presentation_settings
 
         injector = FakeInjector(mapping, has_binding=has_binding)
-        completion = quick_app_completion._QuickAppCompletion(injector, presentation_settings)
+        completion = quick_app_completion._QuickAppCompletion(
+            injector,
+            presentation_settings,
+            # Explicit, so the developer's shell env cannot change the tests' behaviour.
+            AgentSettings(
+                ALLOW_OVERRIDE_SYSTEM_MESSAGE=allow_override_system_message  # type: ignore[call-arg]
+            ),
+        )
         return request, completion, injector
 
     return _make
@@ -469,3 +478,62 @@ async def test_chat_completion_invalid_messages_raises_invalid_request_error(
     assert "expected role 'assistant'" in display
     # The error must NOT be swallowed into the streamed choice content
     assert choice.contents == []
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_rejects_system_message_before_setup_when_override_disabled(
+    make_request_completion,
+):
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+    messages = [
+        Message(content="Answer only in French.", role=Role.SYSTEM),
+        Message(content="hi", role=Role.USER),
+    ]
+    setup = Mock(spec=_RequestContextSetup)
+    request, completion, _ = make_request_completion(
+        None, messages=messages, extra_mapping={_RequestContextSetup: setup}
+    )
+
+    with pytest.raises(InvalidRequestError) as exc:
+        await completion.chat_completion(request, response)
+
+    display = exc.value.display_message
+    assert display is not None
+    assert "role 'system' is not accepted by this application" in display
+    # The client sees no deployment config, only that its prompt is not used
+    assert "ALLOW_OVERRIDE_SYSTEM_MESSAGE" not in display
+    # Rejected before any setup ran, so the transformers never see the message
+    setup.setup_context.assert_not_called()
+    setup.setup_messages.assert_not_called()
+    assert choice.contents == []
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_accepts_system_message_when_override_enabled(
+    make_request_completion,
+):
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    class OrchestratorFake:
+        iteration_count = 1
+        total_tool_calls = 0
+        completion_kind = "completed"
+
+        async def invoke(self):
+            pass
+
+    messages = [
+        Message(content="Answer only in French.", role=Role.SYSTEM),
+        Message(content="hi", role=Role.USER),
+    ]
+    request, completion, injector = make_request_completion(
+        OrchestratorFake(), messages=messages, allow_override_system_message=True
+    )
+
+    await completion.chat_completion(request, response)
+
+    # The system message passed the policy check and reached message setup
+    context = injector.get(_RequestContext)
+    assert context.messages[0].role == Role.SYSTEM
