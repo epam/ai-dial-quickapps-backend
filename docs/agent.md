@@ -52,6 +52,11 @@ a single pass and returned together in `display_message`, so clients see every p
 than one at a time. Tool messages and misplaced system messages are rejected here because they are
 orchestrator-internal and must never arrive from the client.
 
+Once the shape is valid, `validate_system_message_policy` applies the `ALLOW_OVERRIDE_SYSTEM_MESSAGE` policy as a
+separate check (so its violation is reported on its own, not with the shape violations): unless it is `true`, a leading
+system message with text is rejected with HTTP 400 too, so the client learns its prompt is not used instead of being
+silently ignored. A system message without text overrides nothing and is accepted.
+
 ### 3. Context Setup
 
 A request-scoped context is created to hold:
@@ -393,9 +398,10 @@ The setup pipeline runs the following steps in order:
 
 3. **System Prompt Transformer** (`_AddSystemPromptTransformer`): Builds the system message from all
    `PromptPartProvider`s (configured system prompt, skills, MCP resources, ...) and places it at the start of the
-   conversation. An inbound system message is never passed through: by default it is discarded; with
-   `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true` its text replaces only the configured system prompt part, and the other parts
-   are still appended.
+   conversation. An inbound system message is never passed through. With `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true` its text
+   replaces only the configured system prompt part, and the other parts are still appended. Otherwise a request with
+   one was already rejected with 400 (see [Messages Shape Validation](#2-messages-shape-validation)); if one with text
+   still reaches the transformer, the validator was bypassed and it raises `RuntimeError` rather than drop the prompt.
 
 4. **Attachment Notification Injector** (`_AttachmentNotificationInjector`): Always included in the pipeline
    unconditionally. Self-detects whether the context tool should be active (file contexts exist or context tool was used
