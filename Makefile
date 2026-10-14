@@ -132,7 +132,7 @@ generate_dial_config: install_dev
 	$(POETRY) run python src/scripts/generate_dial_config.py --models \
 	--template docker_compose_files/core/configuration/models-template.json \
 	--config docker_compose_files/core/configuration/generated/models.json \
-	--applications dial-rag,dial-web-rag
+	--applications dial-rag
 
 # TLS certificate for the local Keycloak used by the docker-compose stack.
 generate_certs:
