@@ -50,12 +50,22 @@ async def test_prepends_system_when_none_inbound(allow_override):
 
 
 @pytest.mark.asyncio
-async def test_inbound_system_discarded_by_default():
-    result = await _make_transformer().transform([_system(), _user()])
+@pytest.mark.parametrize(
+    "content", ["INBOUND", [MessageContentTextPart(type="text", text="INBOUND")]]
+)
+async def test_inbound_system_with_text_raises_when_override_disabled(content):
+    # validate_system_message_policy rejects such a request before setup; reaching the
+    # transformer means an entry point skipped it, so it must fail instead of dropping the prompt.
+    with pytest.raises(RuntimeError, match="request validator was skipped"):
+        await _make_transformer().transform([_system(content), _user()])
+
+
+@pytest.mark.asyncio
+async def test_empty_inbound_system_dropped_when_override_disabled():
+    result = await _make_transformer().transform([_system("  "), _user()])
 
     assert [m.role for m in result] == [Role.SYSTEM, Role.USER]
     assert result[0].content == "CONFIG\n\nSKILLS"
-    assert "INBOUND" not in result[0].content
 
 
 @pytest.mark.asyncio
@@ -82,15 +92,6 @@ async def test_text_parts_inbound_system_are_joined_when_allowed():
 
 
 @pytest.mark.asyncio
-async def test_text_parts_inbound_system_discarded_by_default():
-    inbound = _system([MessageContentTextPart(type="text", text="A")])
-
-    result = await _make_transformer().transform([inbound, _user()])
-
-    assert result[0].content == "CONFIG\n\nSKILLS"
-
-
-@pytest.mark.asyncio
 async def test_non_text_parts_inbound_system_falls_back_to_config_and_warns(caplog):
     inbound = _system(
         [MessageContentImagePart(type="image_url", image_url={"url": "http://x/y.png"})]
@@ -112,7 +113,9 @@ async def test_empty_inbound_system_falls_back_to_config_when_allowed():
 
 @pytest.mark.asyncio
 async def test_inbound_system_dropped_when_generated_prompt_empty():
-    result = await _make_transformer(config_part="", extra_part="").transform([_system(), _user()])
+    result = await _make_transformer(config_part="", extra_part="").transform(
+        [_system(""), _user()]
+    )
 
     assert [m.role for m in result] == [Role.USER]
 

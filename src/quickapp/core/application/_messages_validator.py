@@ -1,6 +1,8 @@
 from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.exceptions import InvalidRequestError
 
+from quickapp.common.message_text import message_text
+
 # Expected raw shape (pseudo-regex):
 #   (System)? (User Assistant Tool*)* (User | Tool+)
 #
@@ -120,6 +122,24 @@ def _collect_tool_message_violations(messages: list[Message]) -> list[str]:
             preceding_tool_call_ids = set()
 
     return violations
+
+
+def validate_system_message_policy(messages: list[Message], *, allow_override: bool) -> None:
+    """Reject a leading system message when the deployment does not let it override the prompt.
+
+    A deployment policy (``ALLOW_OVERRIDE_SYSTEM_MESSAGE``), kept apart from the fixed shape
+    contract above. Rejecting with 400, rather than discarding, tells the client its prompt is not
+    used. A system message without text overrides nothing, so it is accepted and dropped later.
+    """
+    if allow_override or not messages or messages[0].role != Role.SYSTEM:
+        return
+    if message_text(messages[0]):
+        _raise_violations(
+            [
+                f"Message at index 0: role '{Role.SYSTEM.value}' is not accepted by this "
+                f"application; it uses its own system prompt."
+            ]
+        )
 
 
 def _raise_violations(violations: list[str]) -> None:
