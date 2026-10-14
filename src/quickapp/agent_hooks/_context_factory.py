@@ -1,7 +1,7 @@
 import json
 from typing import Any
 
-from aidial_sdk.chat_completion import Message, MessageContentTextPart, Role
+from aidial_sdk.chat_completion import Message, Role
 from aidial_sdk.chat_completion.request import ToolCall
 from injector import ProviderOf, inject
 
@@ -11,6 +11,7 @@ from quickapp.common.hook_context.context import (
     HookToolCall,
     RequestStartHookContext,
 )
+from quickapp.common.message_text import message_text
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.config.hooks import HookEvent
 
@@ -42,20 +43,10 @@ class HookContextFactory:
 def _to_hook_message(message: Message) -> HookMessage:
     return HookMessage(
         role=Role(message.role).value,
-        content=_text_of(message.content),
+        content=None if message.content is None else message_text(message),
         tool_calls=[_to_hook_tool_call(call) for call in message.tool_calls or []],
         tool_call_id=message.tool_call_id,
     )
-
-
-def _text_of(content: Any) -> str | None:
-    if content is None:
-        return None
-    if isinstance(content, str):
-        text = content
-    else:
-        text = "\n".join(part.text for part in content if isinstance(part, MessageContentTextPart))
-    return text if text.strip() else ""
 
 
 def _to_hook_tool_call(call: ToolCall) -> HookToolCall:

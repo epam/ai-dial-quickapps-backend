@@ -27,7 +27,8 @@ class AgentSettings(BaseSettings):
         default=False,
         description=(
             "Allow a system message in the inbound request to replace the system prompt "
-            "configured in the application. When false, inbound system messages are discarded."
+            "configured in the application. When false, a request whose system message has text is "
+            "rejected with HTTP 400."
         ),
         alias="ALLOW_OVERRIDE_SYSTEM_MESSAGE",
     )

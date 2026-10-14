@@ -15,13 +15,14 @@ from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.model_hidden_tool import ModelHiddenTool
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.presentation_settings import PresentationSettings
+from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent import Orchestrator
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 
 from ._exception_message_resolver import ResolvedError, resolve_exception
 from ._initialization_error_handler import _InitializationErrorHandler
-from ._messages_validator import validate_messages_shape
+from ._messages_validator import validate_messages_shape, validate_system_message_policy
 from ._request_context_setup import _RequestContextSetup
 from .configuration import Configuration
 
@@ -53,13 +54,18 @@ class _QuickAppCompletion(ChatCompletion):
         self,
         injector: Injector,
         presentation_settings: PresentationSettings,
+        agent_settings: AgentSettings,
     ):
         self.__injector: Injector = injector
         self.__presentation_settings: PresentationSettings = presentation_settings
+        self.__allow_override_system_message: bool = agent_settings.allow_override_system_message
         self.__timer_period_name = "chat_completion"
 
     async def chat_completion(self, request: Request, response: Response) -> None:
         validate_messages_shape(request.messages)
+        validate_system_message_policy(
+            request.messages, allow_override=self.__allow_override_system_message
+        )
         timer_service = self.__injector.get(PerformanceTimer)
         timer_service.start_period(self.__timer_period_name, level=1)
         request_start = time.perf_counter()
