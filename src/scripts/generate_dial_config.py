@@ -65,10 +65,16 @@ class DIALLimits(DIALBaseModel):
     max_total_tokens: int | None = Field(None, description="The maximum total tokens")
 
 
+# A flat rate string, or a `{test, ifTrue, ifFalse}` decision tree; Core uses the same shape in listing and config.
+PricingRate = str | dict[str, Any]
+
+
 class DIALModelPricing(DIALBaseModel):
     unit: str | None = Field(default=None, description="The pricing unit")
-    prompt: str | None = Field(default=None, description="The pricing prompt")
-    completion: str | None = Field(description="The pricing completion", default=None)
+    prompt: PricingRate | None = Field(default=None, description="The pricing prompt")
+    completion: PricingRate | None = Field(default=None, description="The pricing completion")
+    cache_read: PricingRate | None = Field(default=None, description="The pricing cache read")
+    cache_write: PricingRate | None = Field(default=None, description="The pricing cache write")
 
 
 # Listing features that are not config features: endpoint flags we don't proxy, and flags Core derives itself.
