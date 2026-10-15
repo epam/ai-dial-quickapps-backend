@@ -21,14 +21,3 @@ class MCPToolConfig(BaseModel):
     fixed_arguments: dict[str, Any] | None = Field(
         default=None, description=FIXED_ARGUMENTS_DESCRIPTION
     )
-
-
-def validate_tools_config(
-    allowed_tools: list[str] | None, tools_config: dict[str, MCPToolConfig] | None
-) -> None:
-    """Reject ``tools_config`` keys that ``allowed_tools`` would drop before routing."""
-    if not tools_config or not allowed_tools:
-        return
-    missing = [name for name in tools_config if name not in allowed_tools]
-    if missing:
-        raise ValueError(f"tools_config entries not present in allowed_tools: {', '.join(missing)}")

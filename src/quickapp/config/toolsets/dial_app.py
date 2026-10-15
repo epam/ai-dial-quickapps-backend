@@ -6,16 +6,10 @@ from quickapp.common.base_config import DialResourceConfigField, PreviewField
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.deployment import ConversationMode
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.config.toolsets.allowed_tools import validate_listed_in_allowed_tools
 from quickapp.config.toolsets.base import BaseToolSet
-from quickapp.config.toolsets.hidden_from_model import (
-    HIDDEN_FROM_MODEL_DESCRIPTION,
-    validate_hidden_from_model,
-)
-from quickapp.config.toolsets.mcp_tools_config import (
-    TOOLS_CONFIG_DESCRIPTION,
-    MCPToolConfig,
-    validate_tools_config,
-)
+from quickapp.config.toolsets.hidden_from_model import HIDDEN_FROM_MODEL_DESCRIPTION
+from quickapp.config.toolsets.mcp_tools_config import TOOLS_CONFIG_DESCRIPTION, MCPToolConfig
 
 
 class DialAppToolSet(BaseToolSet):
@@ -71,11 +65,9 @@ class DialAppToolSet(BaseToolSet):
     )
 
     @model_validator(mode="after")
-    def _validate_hidden_from_model(self) -> Self:
-        validate_hidden_from_model(self.allowed_tools, self.hidden_from_model)
-        return self
-
-    @model_validator(mode="after")
-    def _validate_tools_config(self) -> Self:
-        validate_tools_config(self.allowed_tools, self.tools_config)
+    def _validate_against_allowed_tools(self) -> Self:
+        validate_listed_in_allowed_tools(
+            "hidden_from_model", self.allowed_tools, self.hidden_from_model
+        )
+        validate_listed_in_allowed_tools("tools_config", self.allowed_tools, self.tools_config)
         return self
