@@ -60,6 +60,10 @@ def _optional_call(name: str) -> ToolCall:
 
 BOTH_TOOLS = [LOOKUP_STOCK, LIST_WAREHOUSES]
 
+# Opus 4.6 ignores a hook result of a hidden tool (docs/hooks.md#known-issues), so the tests that need the model
+# to use that result run on Sonnet 5 instead when the matrix model is Opus 4.6.
+_HOOK_RESULT_MODEL_SUBSTITUTIONS = {"anthropic.claude-opus-4-6-v1": "anthropic.claude-sonnet-5"}
+
 # The test harness enables every DIAL file tool (enabled_tools="all"), so the model may reach for any of them.
 FILE_TOOL_FUNCTIONS = [
     f"{INTERNAL_FILE_TOOL_NAME_PREFIX}{name}" for name in get_args(DialFilesToolName)
@@ -74,6 +78,7 @@ FILE_TOOL_FUNCTIONS = [
 @e2e_test(
     config_file_set="empty",
     no_cache=True,
+    model_substitutions=_HOOK_RESULT_MODEL_SUBSTITUTIONS,
     toolsets=[_toolset(BOTH_TOOLS, hidden_from_model=[LOOKUP_STOCK])],
     hooks=[_stock_hook()],
     test_case=TstCase(
@@ -97,6 +102,7 @@ def test_hidden_tool_is_callable_by_hook(client):
 @e2e_test(
     config_file_set="empty",
     no_cache=True,
+    model_substitutions=_HOOK_RESULT_MODEL_SUBSTITUTIONS,
     toolsets=[_toolset(BOTH_TOOLS, hidden_from_model=[LOOKUP_STOCK])],
     hooks=[_stock_hook()],
     test_case=TstCase(

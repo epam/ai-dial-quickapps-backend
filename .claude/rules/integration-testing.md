@@ -85,6 +85,7 @@ The test function body is almost always empty — assertions happen in the decor
 | `model` | None | Override model for this specific test |
 | `models_applicable_for_test` | None | Whitelist of models this test applies to |
 | `runs` | `3` | Number of times to repeat the test |
+| `model_substitutions` | None | `{cli_model: replacement}`: run on the replacement when `--model` equals the key; other models run unchanged |
 | `no_cache` | `False` | Bypass cache for this test |
 | `refresh` | env `REFRESH` | Override cache refresh for this test |
 | `app_config_path` | None | Custom app config path |

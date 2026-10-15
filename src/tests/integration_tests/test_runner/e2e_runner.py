@@ -441,6 +441,7 @@ def e2e_test(
     test_case: TstCase = None,
     model: str = None,
     models_applicable_for_test: list[str] | None = None,
+    model_substitutions: dict[str, str] | None = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
@@ -484,7 +485,7 @@ def e2e_test(
                     or len(models_applicable_for_test) == 0
                     or cli_model in models_applicable_for_test
                 ):
-                    model_to_use = cli_model
+                    model_to_use = (model_substitutions or {}).get(cli_model, cli_model)
                     logger.debug(f"Using model from CLI option: {model_to_use}")
                 else:
                     logger.debug(
