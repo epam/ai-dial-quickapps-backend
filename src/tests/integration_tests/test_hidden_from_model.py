@@ -1,5 +1,9 @@
+from typing import get_args
+
 import pytest
 
+from quickapp.common.tool_names import INTERNAL_FILE_TOOL_NAME_PREFIX
+from quickapp.config.dial_files import DialFilesToolName
 from quickapp.config.hooks import HookEvent, ToolCallHookConfig
 from quickapp.config.toolsets.mcp import MCPProtocol, MCPServerInfo, MCPToolSet
 from tests.integration_tests.test_runner.config import SimilarityThreshold
@@ -55,6 +59,11 @@ def _optional_call(name: str) -> ToolCall:
 
 
 BOTH_TOOLS = [LOOKUP_STOCK, LIST_WAREHOUSES]
+
+# The test harness enables every DIAL file tool (enabled_tools="all"), so the model may reach for any of them.
+FILE_TOOL_FUNCTIONS = [
+    f"{INTERNAL_FILE_TOOL_NAME_PREFIX}{name}" for name in get_args(DialFilesToolName)
+]
 
 # test_visible_tool_is_called_by_model and test_hidden_tool_without_hook_is_unreachable are controls:
 # they keep the hook tests from passing by accident.
@@ -145,8 +154,7 @@ def test_visible_tool_is_called_by_model(client):
         tool_calls=[
             _hidden_stock_call(),
             _optional_call(LIST_WAREHOUSES_FUNCTION),
-            _optional_call("internal_file_find"),
-            _optional_call("internal_file_search"),
+            *[_optional_call(name) for name in FILE_TOOL_FUNCTIONS],
         ],
         answer_not_contains=["137"],
     )
