@@ -132,7 +132,7 @@ def __init__(self, ..., agent_settings: AgentSettings) -> None:
 ## 6. Code organization and imports
 
 - **Logical separation**: Group related classes and functions into modules. Each module should have a clear purpose or feature.
-- **Small focused methods**: A method (or a loop body) should do one job. When it runs several distinct phases in a row (e.g. validate → build → route/register, or a side-effect block like logging next to the main flow), extract each phase into a named `_private` method so the caller reads as a short sequence of steps. When extending an existing method, check the result as a whole and extract the new or the old part rather than appending inline. Don't split into one-liners for the sake of it.
+- **Small focused functions**: A function or method should do one job and be readable without scrolling. If it is long or runs several distinct phases in a row (e.g. validate → build → route/register, a side-effect block like logging next to the main flow, a large loop or branch body), extract each phase into a named `_private` function/method so the caller reads as a short sequence of steps. When extending an existing function, judge the result as a whole and extract the new or the old part rather than appending inline. Don't split into one-liners for the sake of it.
 - **Explicit imports**: Avoid `from module import *`. Import only what you use.
 - **Import order**: Standard library → third-party → local/project modules, with a blank line between each group.
 
@@ -205,4 +205,4 @@ Pick the level from what the record *means for the service*, not from how it rea
 - **Naming**: Module class `XxxModule`, settings class `XxxSettings`, env names preserved via `Field(alias="ENV_VAR_NAME")`.
 - **Visibility**: Prefer protected (`_`) for internals; public only for the intended API.
 - **Types**: Use type hints and modern generics; use Pydantic for validation and complex arguments (not `@dataclass`); avoid mutable defaults in Pydantic fields.
-- **Structure**: Clear module boundaries, explicit imports, no complex logic in class bodies, logging instead of print, declared dependencies, methods and loop bodies that do one job (no multi-phase "noodle" methods).
+- **Structure**: Clear module boundaries, explicit imports, no complex logic in class bodies, logging instead of print, declared dependencies, functions and methods that do one job (no long multi-phase "noodle" functions).

@@ -119,9 +119,9 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] Referencing a field on a typed object? Verify it actually exists on the type (LSP `hover`).
 
 ### 10. Decomposition
-- [ ] Method handles 2+ distinct phases? Extract each into a named method. **Applies to methods the diff extends, not only new ones** — read the whole resulting method, not just the added lines; if the addition pushed it past one job, extract the new (or old) part.
-- [ ] Loop body that converts + transforms + builds + routes, or runs more than a handful of lines? Extract a `_build_x(...)` helper so the loop reads as "build, then collect". Side-effect-only blocks (warnings/logging, registration) next to the main flow go into their own method.
-- [ ] Calibration: flag real multi-phase methods, not every long-ish one. Don't ask for one-liner wrappers or splits that only move code around.
+- [ ] Long function/method (roughly more than a screen) or one handling 2+ distinct phases (validate → build → route/register)? Extract each phase into a named `_private` method so the body reads as a short sequence of steps. **Applies to functions the diff extends, not only new ones** — read the whole resulting function, not just the added lines; if the addition pushed it past one job, extract the new (or old) part.
+- [ ] Side-effect-only blocks (warnings/logging, registration) or a large loop/branch body sitting inside a bigger function? Give them their own method (e.g. `_build_x(...)` for a loop body).
+- [ ] Calibration: flag genuinely long or multi-phase functions, not every slightly long one. Don't ask for one-liner wrappers or splits that only move code around.
 - [ ] Class doing 2+ jobs or accumulating many constructor dependencies (e.g. invocation *and* config building)? Split the responsibilities into separate classes.
 - [ ] Same non-trivial logic appears in two places (even if it covers "different phases")? Either unify it or leave a comment justifying the intentional duplication.
 - [ ] Passing a collaborator into a free function that could be a method on that collaborator? Move it.
