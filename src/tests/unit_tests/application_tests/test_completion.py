@@ -46,9 +46,13 @@ class FakeResponse:
     def __init__(self, choice: FakeChoice):
         self._choice = choice
         self.usage_per_model: list[tuple[str, int, int]] = []
+        self.usage: tuple[int, int] | None = None
 
     def add_usage_per_model(self, model: str, prompt_tokens: int = 0, completion_tokens: int = 0):
         self.usage_per_model.append((model, prompt_tokens, completion_tokens))
+
+    def set_usage(self, prompt_tokens: int = 0, completion_tokens: int = 0):
+        self.usage = (prompt_tokens, completion_tokens)
 
     def create_single_choice(self):
         # synchronous context manager used inside async method
@@ -581,3 +585,4 @@ async def test_chat_completion_reports_usage_per_model(make_request_completion):
     await completion.chat_completion(request, response)
 
     assert response.usage_per_model == [("gpt-5", 120, 12), ("gpt-image-1", 5, 40)]
+    assert response.usage == (125, 52)
