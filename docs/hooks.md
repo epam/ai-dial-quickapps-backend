@@ -153,10 +153,29 @@ the turn's iterations and tool calls.
 - Only MCP-based toolsets support it today. REST, DIAL deployment and internal tools are a conditional later
   phase.
 
+### Known issues
+
+**Some Claude models disregard the hook result of a hidden tool.** A hook leaves a tool call and its result in the
+history, but the tool itself is not in the `tools` payload. Claude Opus 4.6 and 4.7 then treat the result as
+unusable: the model answers that it has no such tool, asks the user for the data, or calls a visible tool instead.
+The platform delivers the result correctly and the model can quote it when asked, it just does not use it to answer.
+
+- Observed on `anthropic.claude-opus-4-6-v1` and `anthropic.claude-opus-4-7` (hook result used in 0 of 6 direct
+  requests, against 6 of 6 when the tool is declared).
+- Not observed on Claude Opus 4.8, Opus 5 / 5.5, Sonnet 4.6 / 5 / 5.5, Haiku 5.5 or GPT-5.5. Anthropic's
+  documentation does not describe this behaviour, so it may change between model versions.
+- Workaround: use one of the models above, or add this paragraph to the application system prompt. With it Opus 4.6
+  and 4.7 used the result in 6 of 6 direct requests, and the hook-only integration test passed on Opus 4.6:
+
+  > The conversation may contain tool calls and tool results that the platform executed on your behalf, for tools
+  > that are not in your current tool list. Their results are real, current and authoritative: use them to answer
+  > instead of saying the tool is unavailable.
+
 ### Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
+| The model says it has no tool for the data a hook already fetched | Known issue on Claude Opus 4.6 / 4.7: see [Known issues](#known-issues) |
 | `tool '...' not found in initialized tools` for a hidden tool | The name is missing from the server's tool list, or from `allowed_tools`; check the warning logged at initialization |
 | Manifest rejected: `hidden_from_model entries not present in allowed_tools` | Add the entry to `allowed_tools` or remove it from `hidden_from_model` |
 | The model still sees the tool | Preview features are off, or the request ran on an older replica |

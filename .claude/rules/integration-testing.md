@@ -46,6 +46,7 @@ REMOTE_DIAL_API_KEY=...
 | `test_simple_tool.py` | Single-tool scenarios (image gen, web search, RAG, PyInterpreter, REST API, MCP) |
 | `test_multi_tool.py` | Multi-tool chaining and multi-turn conversations |
 | `test_e2e.py` | Happy-path smoke tests (always live, no cache) |
+| `test_hidden_from_model.py` | MCP tools listed in `hidden_from_model`: callable by hooks, absent from the `tools` sent to the LLM, `requires_mcp`, live (`no_cache=True`) |
 
 ## Writing a New Test
 
@@ -84,9 +85,12 @@ The test function body is almost always empty — assertions happen in the decor
 | `model` | None | Override model for this specific test |
 | `models_applicable_for_test` | None | Whitelist of models this test applies to |
 | `runs` | `3` | Number of times to repeat the test |
+| `model_substitutions` | None | `{cli_model: replacement}`: run on the replacement when `--model` equals the key; other models run unchanged |
 | `no_cache` | `False` | Bypass cache for this test |
 | `refresh` | env `REFRESH` | Override cache refresh for this test |
 | `app_config_path` | None | Custom app config path |
+| `hooks` | None | `list[HookConfig]` placed in the app config (`ApplicationConfig.hooks`) |
+| `toolsets` | None | Extra `ToolSet` objects appended after the `config_file_set` toolsets |
 
 ### `config_file_set` Values
 
@@ -95,6 +99,7 @@ The test function body is almost always empty — assertions happen in the decor
 | `"integration"` | chat_hub (RAG, image gen, web search) + py_interpreter + MCP + REST API |
 | `"integration_simple"` | chat_hub only |
 | `"e2e"` | chat_hub + py_interpreter |
+| `"empty"` | nothing; combine with `toolsets=[...]` to test a hand-built toolset in isolation |
 
 ### `TstCase` Construction (Builder Pattern)
 
@@ -104,14 +109,20 @@ TstCase(name="...", description="...", similarity_threshold=0.9, response_format
         user_message="...",
         tool_calls=[...],            # expected tool invocations
         answer=["alt1", "alt2"],     # acceptable response alternatives
+        answer_not_contains=["x"],   # substrings the response must not contain
         attachments=[Path(...)],     # files to upload
         attachment_checks=[...],     # expected attachments in response
     )
     .add_mock_date(date_obj)         # for date-dependent tests
     .add_py_interpreter_session_flow()  # reuse interpreter session across turns
+    .add_tools_payload_check(absent=["fn"], present=["fn"])  # function names in the LLM `tools` payload
 ```
 
 Multi-turn: chain multiple `.add_user_message()` calls. Each message gets its own tool call and answer expectations.
+
+`add_tools_payload_check` inspects every orchestrator request recorded by `CacheMiddlewareApp.recorded_requests`
+that carries a `tools` list: no such request may contain an `absent` name, every one must contain each `present`
+name. Failures are counted as `FailureReason.TOOLS_PAYLOAD`.
 
 ### Argument Check Types
 
@@ -120,6 +131,14 @@ Multi-turn: chain multiple `.add_user_message()` calls. Each message gets its ow
 | `.add_strict_argument_check(key, value)` | Exact string equality |
 | `.add_soft_argument_check(key, [alternatives], threshold=0.9)` | Cosine similarity (BAAI/bge-small-en-v1.5) against any alternative |
 | `.add_custom_function_argument_check(key, [values], func)` | Custom predicate (`CustomFunction.contains` or `CustomFunction.not_contains`) |
+
+### Tool Call Expectations
+
+| Construct | Behaviour |
+|-----------|-----------|
+| `ToolCall(name, min_calls=1, max_calls=1)` | Allowed call count range |
+| `ToolCall(name, min_calls=0, ...)` | Optional call: zero calls is not a failure (argument checks apply only when it was called) |
+| `.add_result_check(contains="text")` | Every **model-initiated** call of the tool must have a result containing the text; calls injected by the platform (hook results, call id prefix `synth_`) are skipped |
 
 ### Similarity Thresholds
 
@@ -255,6 +274,7 @@ When to refresh:
 - `ATTACHMENT` / `CITATION` — missing expected attachments
 - `ROLE` / `HTTP_STATUS` — response structure errors
 - `LLM_CACHE_MISSING` — no cached response found
+- `TOOLS_PAYLOAD` — function names in the LLM `tools` payload differ from `add_tools_payload_check`
 
 ## ResponseValidator Behavior
 

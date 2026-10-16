@@ -4,6 +4,9 @@ from typing import Any, NamedTuple
 
 from aidial_sdk.chat_completion.request import Message, Role
 
+from quickapp.common.synthetic_injection.synthetic_tool_call_injector import (
+    SyntheticToolCallInjector,
+)
 from quickapp.core.agent.models import TOOL_EXECUTION_HISTORY
 from tests.integration_tests.conftest import FailureReason, TestStats
 from tests.integration_tests.test_runner.models import Argument, AttachmentCheck, Failure, ToolCall
@@ -15,6 +18,8 @@ from tests.integration_tests.test_runner.utils.string_utils import truncate_stri
 
 logger = logging.getLogger(__name__)
 
+SYNTHETIC_CALL_ID_PREFIX = SyntheticToolCallInjector.call_id_prefix
+
 
 class ParsedToolCall(NamedTuple):
     """A simple data structure to hold the essential information from a tool call."""
@@ -22,8 +27,14 @@ class ParsedToolCall(NamedTuple):
     name: str
     args: dict[str, Any]
     result: str
+    call_id: str = ""
 
     _LOG_RESULT_MAX_LEN = 50
+
+    @property
+    def is_platform_injected(self) -> bool:
+        """True for a synthetic pair the platform injected (a hook result), not a model call."""
+        return self.call_id.startswith(SYNTHETIC_CALL_ID_PREFIX)
 
     def __str__(self) -> str:
         result_preview = truncate_string(self.result, self._LOG_RESULT_MAX_LEN)
@@ -234,6 +245,7 @@ class ResponseValidator:
                                 name=tc.function.name,
                                 args=args,
                                 result=pending_results.get(tc.id, ""),
+                                call_id=tc.id or "",
                             )
                         )
 
@@ -296,10 +308,65 @@ class ResponseValidator:
             )
         )
 
+        # Validate tool results
+        failures.extend(
+            ResponseValidator._validate_tool_call_results(
+                tool_call_history, expected_tool_calls, ts
+            )
+        )
+
         # Check for unexpected tool calls
         failures.extend(
             ResponseValidator._check_unexpected_tools(tool_call_history, expected_tool_calls, ts)
         )
+
+        return failures
+
+    @staticmethod
+    def check_tools_payload(
+        recorded_requests: list[dict[str, Any]],
+        absent: list[str],
+        present: list[str],
+        ts: TestStats,
+    ) -> list[Failure]:
+        """Checks the function names in the `tools` list of every request sent to the LLM.
+
+        Requests without a `tools` list (for example calls to other deployments) are ignored.
+        """
+        failures = []
+        requests_with_tools = [
+            [
+                tool.get("function", {}).get("name")
+                for tool in request["tools"]
+                if isinstance(tool, dict)
+            ]
+            for request in recorded_requests
+            if isinstance(request.get("tools"), list)
+        ]
+
+        for name in absent:
+            leaked_in = sum(1 for names in requests_with_tools if name in names)
+            if leaked_in:
+                failures.append(
+                    Failure(
+                        actual=f"present in {leaked_in} of {len(requests_with_tools)} requests",
+                        expected=f"'{name}' absent from the tools sent to the LLM",
+                        comment="Tool leaked into the tools payload.",
+                    )
+                )
+                ts.increment_failure(FailureReason.TOOLS_PAYLOAD)
+
+        for name in present:
+            missing_in = sum(1 for names in requests_with_tools if name not in names)
+            if missing_in or not requests_with_tools:
+                failures.append(
+                    Failure(
+                        actual=f"missing in {missing_in} of {len(requests_with_tools)} requests",
+                        expected=f"'{name}' present in the tools sent to the LLM",
+                        comment="Tool missing from the tools payload.",
+                    )
+                )
+                ts.increment_failure(FailureReason.TOOLS_PAYLOAD)
 
         return failures
 
@@ -371,6 +438,11 @@ class ResponseValidator:
         """
         failures = []
         for expected in expected_tool_calls:
+            if expected.min_calls == 0 and not any(
+                actual.name == expected.name for actual in tool_call_history
+            ):
+                # An optional call that did not happen has no arguments to check.
+                continue
             found_match = False
             # Find at least one actual call that satisfies the expected argument checks
             for actual in tool_call_history:
@@ -393,6 +465,34 @@ class ResponseValidator:
                     )
                 )
                 ts.increment_failure(FailureReason.ARGUMENTS)
+        return failures
+
+    @staticmethod
+    def _validate_tool_call_results(
+        tool_call_history: list[ParsedToolCall],
+        expected_tool_calls: list[ToolCall],
+        ts: TestStats,
+    ) -> list[Failure]:
+        """
+        Checks that every model-initiated call of a tool returned a result containing each
+        expected substring. Calls injected by the platform (hook results) are skipped, they
+        carry the real tool output rather than what the model received.
+        """
+        failures = []
+        for expected in expected_tool_calls:
+            for actual in tool_call_history:
+                if actual.name != expected.name or actual.is_platform_injected:
+                    continue
+                for substring in expected.result_contains:
+                    if substring not in actual.result:
+                        failures.append(
+                            Failure(
+                                actual=truncate_string(actual.result, 200),
+                                expected=substring,
+                                comment=f"Result of '{expected.name}' does not contain the expected text.",
+                            )
+                        )
+                        ts.increment_failure(FailureReason.TOOL_CALL_MISMATCH)
         return failures
 
     @staticmethod

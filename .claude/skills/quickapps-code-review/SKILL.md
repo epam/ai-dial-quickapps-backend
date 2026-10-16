@@ -119,7 +119,9 @@ The single most common review comment is some form of **"why is this here?"** �
 - [ ] Referencing a field on a typed object? Verify it actually exists on the type (LSP `hover`).
 
 ### 10. Decomposition
-- [ ] Method handles 2+ distinct phases? Extract each into a named method.
+- [ ] Long function/method (roughly more than a screen) or one handling 2+ distinct phases (validate → build → route/register)? Extract each phase into a named `_private` method so the body reads as a short sequence of steps. **Applies to functions the diff extends, not only new ones** — read the whole resulting function, not just the added lines; if the addition pushed it past one job, extract the new (or old) part.
+- [ ] Side-effect-only blocks (warnings/logging, registration) or a large loop/branch body sitting inside a bigger function? Give them their own method (e.g. `_build_x(...)` for a loop body).
+- [ ] Calibration: flag genuinely long or multi-phase functions, not every slightly long one. Don't ask for one-liner wrappers or splits that only move code around.
 - [ ] Class doing 2+ jobs or accumulating many constructor dependencies (e.g. invocation *and* config building)? Split the responsibilities into separate classes.
 - [ ] Same non-trivial logic appears in two places (even if it covers "different phases")? Either unify it or leave a comment justifying the intentional duplication.
 - [ ] Passing a collaborator into a free function that could be a method on that collaborator? Move it.
@@ -186,6 +188,7 @@ If you find yourself thinking any of these while reviewing your own change, trea
 | "Optional `None` default makes tests easier" | Injector always provides it in prod — require the type. |
 | "The param defaults to `None`, so omitting it is safe" | Not under `@inject` — injector ignores the default and materializes the annotation (`float()` → `0.0`). Mark per-call data `@noninjectable`. |
 | "The builder is mocked in tests, that covers it" | A mocked `AssistedBuilder` never runs DI resolution. Build through a real `Injector` at least once. |
+| "I'll just add this block to the existing method" | Re-read the whole method. If it now does several jobs, extract (§10). |
 | "I'll add a helper now in case we need it later" | Grep for callers first — dead code gets "is it used anywhere?" |
 | "Special-case preview strip in the validator" | Extend `nullify_preview_fields` / shared preview machinery instead. |
 | "PR description is close enough" | Every bullet must match the diff after any revert/split. |
