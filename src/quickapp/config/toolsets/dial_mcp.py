@@ -10,12 +10,11 @@ from quickapp.common.base_config import (
 )
 from quickapp.config.tools.base import AttachmentConfig
 from quickapp.config.tools.tool_fallback import ToolFallbackConfig
+from quickapp.config.toolsets.allowed_tools import validate_listed_in_allowed_tools
 from quickapp.config.toolsets.base import BaseToolSet
-from quickapp.config.toolsets.hidden_from_model import (
-    HIDDEN_FROM_MODEL_DESCRIPTION,
-    validate_hidden_from_model,
-)
+from quickapp.config.toolsets.hidden_from_model import HIDDEN_FROM_MODEL_DESCRIPTION
 from quickapp.config.toolsets.mcp import MCPResourcesConfig
+from quickapp.config.toolsets.mcp_tools_config import TOOLS_CONFIG_DESCRIPTION, MCPToolConfig
 
 
 class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
@@ -39,6 +38,9 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
     hidden_from_model: list[str] | None = PreviewField(  # type: ignore[assignment]
         default=None, description=HIDDEN_FROM_MODEL_DESCRIPTION
     )
+    tools_config: dict[str, MCPToolConfig] | None = PreviewField(  # type: ignore[assignment]
+        default=None, description=TOOLS_CONFIG_DESCRIPTION
+    )
     attachment: AttachmentConfig = Field(
         default_factory=AttachmentConfig, description="Configuration for toolset attachments."
     )
@@ -48,6 +50,9 @@ class DialMCPToolSet(BaseToolSet, LegacyAliasModel):
     resources: MCPResourcesConfig | None = Field(default=None)
 
     @model_validator(mode="after")
-    def _validate_hidden_from_model(self) -> Self:
-        validate_hidden_from_model(self.allowed_tools, self.hidden_from_model)
+    def _validate_against_allowed_tools(self) -> Self:
+        validate_listed_in_allowed_tools(
+            "hidden_from_model", self.allowed_tools, self.hidden_from_model
+        )
+        validate_listed_in_allowed_tools("tools_config", self.allowed_tools, self.tools_config)
         return self

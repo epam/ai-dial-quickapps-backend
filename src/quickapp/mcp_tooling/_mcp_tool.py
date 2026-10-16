@@ -3,7 +3,7 @@ import logging
 from typing import Any, ClassVar
 
 from aidial_sdk.chat_completion import Attachment
-from injector import AssistedBuilder, inject
+from injector import AssistedBuilder, inject, noninjectable
 from mcp.types import BlobResourceContents, CallToolResult, TextResourceContents, Tool
 
 from quickapp.common import StagedBaseTool, ToolCallResult
@@ -46,6 +46,7 @@ _EXTERNAL_SERVICE_SIGNIN_METHOD = "external-service/signin"
 class _MCPTool(StagedBaseTool):
     argument_stream_mode: ClassVar[ArgumentStreamMode | None] = ArgumentStreamMode.JSON_OBJECT
 
+    @noninjectable("fixed_arguments")
     def __init__(
         self,
         tool: Tool,
@@ -62,6 +63,7 @@ class _MCPTool(StagedBaseTool):
         dial_settings: DialSettings,
         stage_display_level: StageDisplayLevel = StageDisplayLevel.INFO,
         argument_transformers: list[ToolArgumentTransformer] | None = None,
+        fixed_arguments: dict[str, Any] | None = None,
     ):
         super().__init__(
             name=tool.name or "MCP Tool",
@@ -83,9 +85,11 @@ class _MCPTool(StagedBaseTool):
         self.__login_service: InteractiveLoginService = login_service
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__dial_url: str = dial_settings.url
+        self.__fixed_arguments: dict[str, Any] = fixed_arguments or {}
 
     async def _pre_process_params(self, **kwargs: Any) -> dict[str, Any]:
-        kwargs = await super()._pre_process_params(**kwargs)
+        # Fixed values win over the caller and go through the transformers like any argument.
+        kwargs = await super()._pre_process_params(**{**kwargs, **self.__fixed_arguments})
 
         # Grant permissions for dial_url-flagged parameters (MCP-specific)
         files_to_share = self._collect_dial_url_files(kwargs)
@@ -103,6 +107,9 @@ class _MCPTool(StagedBaseTool):
             )
 
         return kwargs
+
+    def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:
+        return {k: v for k, v in params.items() if k not in self.__fixed_arguments}
 
     def _collect_dial_url_files(self, kwargs: dict[str, Any]) -> list[str]:
         """Collect the values of ``dial_url``-flagged parameters as DIAL file paths.
