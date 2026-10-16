@@ -2,6 +2,8 @@ import json
 import logging
 from typing import Any, ClassVar, cast
 
+import openai
+from aidial_client import DialException
 from aidial_client.types.chat.request_param import (
     AssistantMessageParam,
     AttachmentParam,
@@ -17,6 +19,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.argument_stream_presentation import ArgumentStreamMode
 from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
+from quickapp.common.exception_message_resolver import resolve_exception
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
@@ -28,6 +31,7 @@ from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentReso
 from quickapp.dial_deployment_tooling.constants import ATTACHMENT_PARAM, CONTENT_PARAM, TOOLS_PARAM
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 
+from ._deployment_tool_error_exception import DeploymentToolErrorException
 from .deployment_stage_wrapper import DeploymentStageWrapper
 
 logger = logging.getLogger(__name__)
@@ -121,22 +125,32 @@ class BaseDeploymentTool(StagedBaseTool):
     ) -> ToolCallResult:
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
-        history = await self._resolve_history(tool_config, session_id)
         parent_stage = (
             stage_wrapper.stage
             if self.__propagate_sub_stages and stage_wrapper is not None
             else None
         )
-        result = await self.__dial_completion_service.complete_request_async(
-            kwargs,
-            self.__application_id,
-            self.__application_name,
-            stage_wrapper,
-            attachment_urls,
-            history=history,
-            supports_url_attachments=tool_config.supports_url_attachments,
-            parent_stage=parent_stage,
-        )
+        try:
+            # History replay resolves earlier attachments, so it shares the error handling below.
+            history = await self._resolve_history(tool_config, session_id)
+            result = await self.__dial_completion_service.complete_request_async(
+                kwargs,
+                self.__application_id,
+                self.__application_name,
+                stage_wrapper,
+                attachment_urls,
+                history=history,
+                supports_url_attachments=tool_config.supports_url_attachments,
+                parent_stage=parent_stage,
+            )
+        except (openai.APIError, DialException) as e:
+            # DialException comes from attachment lookups. Timeouts were already turned into
+            # ToolTimeoutError inside the service.
+            raise DeploymentToolErrorException(
+                tool_config.open_ai_tool.function.name,
+                resolve_exception(e, tool_model=True),
+                upstream_message=str(e),
+            ) from e
         if is_first_call and session_id:
             result.content = result.content + f"\n\n[session_id: {session_id}]"
         if not tool_config.propagate_annotations_to_choice:

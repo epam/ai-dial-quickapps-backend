@@ -10,6 +10,7 @@ from injector import Injector, inject
 
 from quickapp.common import InitializerType, StagedBaseTool
 from quickapp.common.base_initializer import invoke_initializers
+from quickapp.common.exception_message_resolver import ResolvedError, resolve_exception
 from quickapp.common.exceptions import ConfigResolutionException
 from quickapp.common.lifecycle_logging import format_duration, format_event
 from quickapp.common.model_hidden_tool import ModelHiddenTool
@@ -20,7 +21,6 @@ from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent import Orchestrator
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
 
-from ._exception_message_resolver import ResolvedError, resolve_exception
 from ._initialization_error_handler import _InitializationErrorHandler
 from ._messages_validator import validate_messages_shape, validate_system_message_policy
 from ._request_context_setup import _RequestContextSetup

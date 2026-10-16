@@ -95,7 +95,7 @@ class StopStrategyHandler(BaseStrategy[StopStrategyModel]):
 The exception propagates through `FallbackProcessor`, through `StagedBaseTool.arun`, through the
 orchestrator loop, and is caught by `_quick_app_completion.py`'s exception handler alongside the
 other application exceptions. The completion handler returns a safe generic message to the user
-via `_exception_message_resolver`:
+via `exception_message_resolver`:
 
 ```
 A tool encountered an error and the agent was stopped.
@@ -349,7 +349,7 @@ Any tool failure terminates the agent loop unconditionally.
 ### Added
 
 - `common/exceptions/__init__.py` — re-export `FallbackAgentStopException`
-- `core/application/_exception_message_resolver.py` — `FallbackAgentStopException` branch →
+- `common/exception_message_resolver.py` — `FallbackAgentStopException` branch →
   generic user-facing stop message
 - `common/tool_fallback/utils.py` — `extract_error_content(error: Exception) -> str`
 

@@ -1,24 +1,26 @@
 import httpx
 import openai
 import pytest
+from aidial_client import DialException, ResourceNotFoundError
 from aidial_sdk.exceptions import ContextLengthExceededError as AiDialContextLengthError
 from aidial_sdk.exceptions import InvalidRequestError as AiDialInvalidRequestError
 
-from quickapp.common.exceptions import (
-    FallbackAgentStopException,
-    OrchestratorExceedMaxIterationsException,
-    ToolErrorException,
-)
-from quickapp.core.application._exception_message_resolver import (
+from quickapp.common.exception_message_resolver import (
     _MSG_FALLBACK_STOP,
     _RETRY_SENTENCE,
     resolve_exception,
 )
-from quickapp.dial_core_services.exceptions import (
-    ToolsetForbiddenException,
-    ToolsetNotFoundException,
+from quickapp.common.exceptions import (
+    FallbackAgentStopException,
+    HiddenToolErrorException,
+    InvalidToolCallParameterException,
+    OrchestratorExceedMaxIterationsException,
+    ToolErrorException,
+    ToolTimeoutError,
 )
+from quickapp.common.exceptions.toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from quickapp.mcp_tooling._mcp_tool_error_exception import MCPToolErrorException
+from tests.unit_tests.common.common import make_openai_status_error
 
 
 def _make_httpx_request() -> httpx.Request:
@@ -29,14 +31,8 @@ def _make_httpx_response(status_code: int) -> httpx.Response:
     return httpx.Response(status_code, request=_make_httpx_request())
 
 
-def _make_openai_status_error(
-    cls: type[openai.APIStatusError], status_code: int, body: object = None
-) -> openai.APIStatusError:
-    return cls("raw error detail", response=_make_httpx_response(status_code), body=body)
-
-
 def _make_openai_api_error(body: object) -> openai.APIError:
-    return openai.APIError("raw error detail", request=_make_httpx_request(), body=body)
+    return openai.APIError("raw upstream detail", request=_make_httpx_request(), body=body)
 
 
 def _resolve(e: Exception) -> str:
@@ -51,27 +47,27 @@ def _make_tool_error_with_cause(cause: Exception) -> ToolErrorException:
 
 class TestResolveOpenAIError:
     def test_permission_denied(self) -> None:
-        e = _make_openai_status_error(openai.PermissionDeniedError, 403)
+        e = make_openai_status_error(openai.PermissionDeniedError, 403)
         assert "permission" in _resolve(e).lower()
 
     def test_authentication_error(self) -> None:
-        e = _make_openai_status_error(openai.AuthenticationError, 401)
+        e = make_openai_status_error(openai.AuthenticationError, 401)
         assert "authentication" in _resolve(e).lower()
 
     def test_not_found_error(self) -> None:
-        e = _make_openai_status_error(openai.NotFoundError, 404)
+        e = make_openai_status_error(openai.NotFoundError, 404)
         assert "could not be found" in _resolve(e).lower()
 
     def test_rate_limit_error(self) -> None:
-        e = _make_openai_status_error(openai.RateLimitError, 429)
+        e = make_openai_status_error(openai.RateLimitError, 429)
         assert "rate-limited" in _resolve(e).lower()
 
     def test_bad_request_error(self) -> None:
-        e = _make_openai_status_error(openai.BadRequestError, 400)
+        e = make_openai_status_error(openai.BadRequestError, 400)
         assert "rejected" in _resolve(e).lower()
 
     def test_internal_server_error(self) -> None:
-        e = _make_openai_status_error(openai.InternalServerError, 500)
+        e = make_openai_status_error(openai.InternalServerError, 500)
         assert "internal error" in _resolve(e).lower()
 
     def test_api_timeout_error(self) -> None:
@@ -90,13 +86,13 @@ class TestResolveOpenAIError:
         assert "connect" not in _resolve(e).lower()
 
     def test_conflict_is_retryable(self) -> None:
-        e = _make_openai_status_error(openai.ConflictError, 409)
+        e = make_openai_status_error(openai.ConflictError, 409)
         resolved = resolve_exception(e)
         assert resolved.retryable is True
         assert resolved.message.endswith(_RETRY_SENTENCE)
 
     def test_payload_too_large(self) -> None:
-        e = _make_openai_status_error(openai.APIStatusError, 413)
+        e = make_openai_status_error(openai.APIStatusError, 413)
         resolved = resolve_exception(e)
         assert "payload is too large" in resolved.message.lower()
         assert resolved.retryable is False
@@ -173,8 +169,166 @@ class TestResolveHttpxError:
         e.__cause__ = cause
         assert "timed out" in _resolve(e).lower()
 
+    def test_tool_error_with_openai_cause_uses_ai_model_message(self) -> None:
+        e = _make_tool_error_with_cause(make_openai_status_error(openai.RateLimitError, 429))
+        resolved = resolve_exception(e)
+        assert resolved.message == (
+            "The request was rate-limited by the AI model service. Please try again later."
+        )
+        assert resolved.retryable is True
+
+    def test_tool_error_with_openai_cause_names_the_tool_model(self) -> None:
+        e = _make_tool_error_with_cause(make_openai_status_error(openai.NotFoundError, 404))
+        assert _resolve(e) == (
+            "The AI model behind this tool could not be found. Please contact your administrator."
+        )
+
+
+class TestResolveDialClientError:
+    @pytest.mark.parametrize(
+        ("status_code", "expected", "retryable"),
+        [
+            (
+                401,
+                "Authentication failed when accessing a required service. "
+                "Please contact your administrator.",
+                False,
+            ),
+            (
+                403,
+                "You don't have permission to access a required service. "
+                "Please contact your administrator.",
+                False,
+            ),
+            (
+                404,
+                "A required service or resource could not be found. "
+                "Please contact your administrator.",
+                False,
+            ),
+            (
+                429,
+                "A required service is currently rate-limiting requests. Please try again later.",
+                True,
+            ),
+            (
+                500,
+                "A required service encountered an internal error. Please try again later.",
+                True,
+            ),
+        ],
+    )
+    def test_status_uses_service_wording(
+        self, status_code: int, expected: str, retryable: bool
+    ) -> None:
+        resolved = resolve_exception(
+            DialException(message="raw error detail", status_code=status_code)
+        )
+        assert resolved.message == expected
+        assert resolved.retryable is retryable
+        assert "raw error detail" not in resolved.message
+
+    def test_subclass_resolves_by_its_status(self) -> None:
+        assert "could not be found" in _resolve(ResourceNotFoundError("raw error detail"))
+
+    def test_tool_error_with_dial_client_cause_uses_service_wording(self) -> None:
+        e = _make_tool_error_with_cause(DialException(message="raw error detail", status_code=403))
+        assert _resolve(e) == (
+            "You don't have permission to access a required service. "
+            "Please contact your administrator."
+        )
+
+    def test_display_message_wins(self) -> None:
+        e = DialException(
+            message="raw error detail", status_code=403, display_message="Ask the file owner."
+        )
+        assert _resolve(e) == "Ask the file owner."
+
+
+class TestResolveToolModelWording:
+    @pytest.mark.parametrize(
+        "cls, status, expected",
+        [
+            (
+                openai.AuthenticationError,
+                401,
+                "Authentication failed when accessing the AI model behind this tool. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.PermissionDeniedError,
+                403,
+                "You don't have permission to use the AI model behind this tool. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.NotFoundError,
+                404,
+                "The AI model behind this tool could not be found. "
+                "Please contact your administrator.",
+            ),
+            (
+                openai.BadRequestError,
+                400,
+                "The AI model behind this tool rejected the request as invalid.",
+            ),
+            (
+                openai.UnprocessableEntityError,
+                422,
+                "The AI model behind this tool rejected the request as invalid.",
+            ),
+            (
+                openai.APIStatusError,
+                413,
+                "The request to the AI model behind this tool is too large. "
+                "Please reduce the size of the input or attachments.",
+            ),
+        ],
+    )
+    def test_non_retryable_status_names_the_tool_model(
+        self, cls: type[openai.APIStatusError], status: int, expected: str
+    ) -> None:
+        resolved = resolve_exception(make_openai_status_error(cls, status), tool_model=True)
+        assert resolved.message == expected
+        assert resolved.retryable is False
+
+    def test_rate_limit_keeps_shared_wording(self) -> None:
+        resolved = resolve_exception(
+            make_openai_status_error(openai.RateLimitError, 429), tool_model=True
+        )
+        assert resolved.message == (
+            "The request was rate-limited by the AI model service. Please try again later."
+        )
+        assert resolved.retryable is True
+
+    def test_default_keeps_app_model_wording(self) -> None:
+        message = _resolve(make_openai_status_error(openai.NotFoundError, 404))
+        assert message == (
+            "The AI model configured in this application could not be found. "
+            "Please contact your administrator."
+        )
+
 
 class TestResolveInternalError:
+    def test_invalid_tool_call_parameter_keeps_its_text(self) -> None:
+        resolved = resolve_exception(
+            InvalidToolCallParameterException("path", "path must be absolute")
+        )
+        assert resolved.message == "path must be absolute"
+        assert resolved.retryable is False
+
+    def test_hidden_tool_error_keeps_its_text(self) -> None:
+        resolved = resolve_exception(HiddenToolErrorException())
+        assert resolved.message == "An error occurred while executing the tool."
+        assert resolved.retryable is False
+
+    def test_tool_timeout_keeps_its_cause_and_is_retryable(self) -> None:
+        resolved = resolve_exception(ToolTimeoutError("image_generation_tool", 30))
+        assert resolved.message == (
+            "Tool call 'image_generation_tool' timed out after 30 seconds. Please try again later."
+        )
+        assert resolved.retryable is True
+
     def test_orchestrator_exceed_max_iterations(self) -> None:
         e = OrchestratorExceedMaxIterationsException()
         assert "max iterations" in _resolve(e).lower()
@@ -198,7 +352,7 @@ class TestResolveInternalError:
 
 class TestDisplayMessagePreference:
     def test_openai_display_message_used_over_canned(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.InternalServerError,
             500,
             body={"error": {"display_message": "Daily token budget exhausted for this key."}},
@@ -207,7 +361,7 @@ class TestDisplayMessagePreference:
         assert resolved.message == "Daily token budget exhausted for this key."
 
     def test_display_message_never_retry_suffixed_even_when_retryable(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.InternalServerError,
             500,
             body={"error": {"display_message": "Upstream is down."}},
@@ -219,7 +373,7 @@ class TestDisplayMessagePreference:
         assert not resolved.message.endswith(_RETRY_SENTENCE)
 
     def test_whitespace_only_display_message_falls_through(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.InternalServerError, 500, body={"error": {"display_message": "   "}}
         )
         resolved = resolve_exception(e)
@@ -229,7 +383,7 @@ class TestDisplayMessagePreference:
 
     def test_display_message_truncated(self) -> None:
         long_text = "x" * 900
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.BadRequestError, 400, body={"error": {"display_message": long_text}}
         )
         resolved = resolve_exception(e)
@@ -243,7 +397,7 @@ class TestDisplayMessagePreference:
 
 class TestCodeMap:
     def test_content_filter(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.BadRequestError, 400, body={"error": {"code": "content_filter"}}
         )
         resolved = resolve_exception(e)
@@ -251,7 +405,7 @@ class TestCodeMap:
         assert resolved.retryable is False
 
     def test_context_length_exceeded_on_openai_bad_request(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.BadRequestError, 400, body={"error": {"code": "context_length_exceeded"}}
         )
         resolved = resolve_exception(e)
@@ -284,13 +438,13 @@ class TestStreamFailure:
 
 class TestRetryabilityComposition:
     def test_retryable_appends_retry_sentence_once(self) -> None:
-        resolved = resolve_exception(_make_openai_status_error(openai.InternalServerError, 500))
+        resolved = resolve_exception(make_openai_status_error(openai.InternalServerError, 500))
         assert resolved.retryable is True
         assert resolved.message.endswith(_RETRY_SENTENCE)
         assert resolved.message.count(_RETRY_SENTENCE) == 1
 
     def test_non_retryable_has_no_retry_sentence(self) -> None:
-        resolved = resolve_exception(_make_openai_status_error(openai.PermissionDeniedError, 403))
+        resolved = resolve_exception(make_openai_status_error(openai.PermissionDeniedError, 403))
         assert resolved.retryable is False
         assert not resolved.message.endswith(_RETRY_SENTENCE)
 
@@ -306,7 +460,7 @@ class TestRetryabilityComposition:
 
 class TestExtraction:
     def test_details_carried_on_resolved_error(self) -> None:
-        e = _make_openai_status_error(
+        e = make_openai_status_error(
             openai.BadRequestError,
             400,
             body={"error": {"code": "content_filter", "type": "invalid_request_error"}},
@@ -315,6 +469,16 @@ class TestExtraction:
         assert resolved.details.status_code == 400
         assert resolved.details.code == "content_filter"
         assert resolved.details.error_type == "invalid_request_error"
+
+    def test_dial_client_details_carried_on_resolved_error(self) -> None:
+        e = DialException(
+            message="raw error detail", status_code=404, type="not_found", code="file_missing"
+        )
+        details = resolve_exception(e).details
+        assert details.status_code == 404
+        assert details.code == "file_missing"
+        assert details.error_type == "not_found"
+        assert details.message == "raw error detail"
 
     def test_tool_error_without_cause_uses_tool_error_message(self) -> None:
         e = ToolErrorException("some_tool", "public tool error")
@@ -343,21 +507,21 @@ class TestNoLeakage:
     """HTTP-related exceptions must never expose internal URLs or raw error text."""
 
     _INTERNAL_URL = "http://internal-dial-core.svc.cluster.local/api"
-    _RAW_DETAIL = "raw error detail"
+    _RAW_DETAIL = "raw upstream detail"
 
     @pytest.mark.parametrize(
         "exc",
         [
             pytest.param(
-                _make_openai_status_error(openai.PermissionDeniedError, 403),
+                make_openai_status_error(openai.PermissionDeniedError, 403),
                 id="openai-403",
             ),
             pytest.param(
-                _make_openai_status_error(openai.AuthenticationError, 401),
+                make_openai_status_error(openai.AuthenticationError, 401),
                 id="openai-401",
             ),
             pytest.param(
-                _make_openai_status_error(openai.InternalServerError, 500),
+                make_openai_status_error(openai.InternalServerError, 500),
                 id="openai-500",
             ),
             pytest.param(

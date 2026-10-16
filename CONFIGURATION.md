@@ -1610,8 +1610,8 @@ The `fallback_configuration` field allows you to define strategies for handling 
 1. **HardStopStrategyModel** (`type: hard_stop`) — Terminates the agent loop. `FallbackAgentStopException`
    propagates through the orchestrator and the user receives a generic "agent was stopped" message.
    No content is sent to the LLM.
-2. **ContinueStrategyModel** (`type: continue`) — The agent continues execution. The actual tool
-   error text is **always** forwarded to the LLM as the tool-result content. Optionally appends
+2. **ContinueStrategyModel** (`type: continue`) — The agent continues execution. The tool error
+   text is **always** forwarded to the LLM as the tool-result content. Optionally appends
    `instructions` when a `trigger_on` condition matches. Catch-all strategies (`trigger_on` omitted)
    ignore `instructions` — only the error text is sent.
 
@@ -1638,7 +1638,7 @@ The `fallback_configuration` field allows you to define strategies for handling 
 | Field          | Required | Type                       | Description                               | Default Value |
 |----------------|----------|----------------------------|-------------------------------------------|---------------|
 | type           | Yes      | Enum  "contains", "equals" | The type of matching to perform           | -             |
-| value          | Yes      | String                     | The error message text to match against   | -             |
+| value          | Yes      | String                     | The error message text to match against. For DIAL deployment tools, it is matched against both the short cause sent to the LLM and the raw upstream error message; either match counts. | -             |
 | case_sensitive | No       | Boolean                    | Whether matching should be case-sensitive | `false`       |
 
 <details>
@@ -1688,9 +1688,13 @@ other error text as-is.
 - A `hard_stop` (or deprecated `stop`) strategy raises `FallbackAgentStopException`, which terminates
   the agent loop immediately. The LLM does not receive any tool-result content for that call; the
   user sees a generic "agent was stopped" message.
-- A `continue` strategy always forwards the actual tool error text to the LLM as the tool-result
+- A `continue` strategy always forwards the tool error text to the LLM as the tool-result
   content. When `trigger_on` matches and `instructions` is set, the instructions are appended
   after the error text.
+- For DIAL deployment tools, the error text is a short, safe cause plus the status code, for
+  example `The request was rate-limited by the AI model service. Please try again later. (status
+  code: 429)`. The raw upstream error message is never sent to the LLM, but `trigger_on` still
+  matches against it, so rules written against the upstream wording keep working.
 - `instructions` on a catch-all strategy (no `trigger_on`) are **deprecated and ignored**. A
   warning is logged at startup when such a configuration is detected. To preserve instruction
   injection, add a `trigger_on` matcher.

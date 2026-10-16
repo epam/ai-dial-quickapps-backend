@@ -28,7 +28,11 @@ from quickapp.config.tools.base import BaseTool as _BaseToolConfig
 from quickapp.config.tools.base import OpenAiToolConfig
 from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
-from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
+from .exceptions import (
+    HiddenToolErrorException,
+    InvalidToolCallParameterException,
+    ToolTimeoutError,
+)
 from .perf_timer.perf_timer import PerformanceTimer
 from .tool_call_result import ToolCallResult
 from .tool_fallback.processor import FallbackProcessor
@@ -237,7 +241,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             if fallback.display_error_in_stage or isinstance(e, ToolTimeoutError):
                 error_to_show = e
             else:
-                error_to_show = Exception("An error occurred while executing the tool.")
+                error_to_show = HiddenToolErrorException()
             self._report_error_to_stage(stage_wrapper, error_to_show)
             return FallbackProcessor.process_fallback(fallback.strategies, tool_call_id, e)
 
