@@ -12,6 +12,7 @@ from quickapp.common.chat_completion_stream.models import (
     NormalizedChoiceDelta,
     NormalizedCustomContent,
 )
+from quickapp.common.deployment_usage import ModelUsage
 
 
 class NormalizedCustomContentBuilder:
@@ -77,14 +78,34 @@ def _custom_content_from_delta(custom_raw: Any) -> NormalizedCustomContent | Non
     return None
 
 
+def _usage_per_model(chunk: Any) -> tuple[ModelUsage, ...]:
+    """Read DIAL ``statistics.usage_per_model``, which the OpenAI client keeps in ``model_extra``."""
+    extra = getattr(chunk, "model_extra", None)
+    statistics = extra.get("statistics") if isinstance(extra, dict) else None
+    entries = statistics.get("usage_per_model") if isinstance(statistics, dict) else None
+    if not isinstance(entries, list):
+        return ()
+    return tuple(
+        ModelUsage(
+            model=entry["model"],
+            prompt_tokens=entry.get("prompt_tokens") or 0,
+            completion_tokens=entry.get("completion_tokens") or 0,
+        )
+        for entry in entries
+        if isinstance(entry, dict) and isinstance(entry.get("model"), str)
+    )
+
+
 def _usage_footprint(chunk: Any) -> ChunkUsageFootprint | None:
     u = getattr(chunk, "usage", None)
-    if u is not None:
-        return ChunkUsageFootprint(
-            prompt_tokens=getattr(u, "prompt_tokens", None),
-            completion_tokens=getattr(u, "completion_tokens", None),
-        )
-    return None
+    per_model = _usage_per_model(chunk)
+    if u is None and not per_model:
+        return None
+    return ChunkUsageFootprint(
+        prompt_tokens=getattr(u, "prompt_tokens", None),
+        completion_tokens=getattr(u, "completion_tokens", None),
+        per_model=per_model,
+    )
 
 
 def _delta_tool_calls_tuple(delta: Any) -> tuple[Any, ...]:

@@ -3,6 +3,9 @@ import inspect
 import json
 import logging
 import mimetypes
+import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -51,6 +54,20 @@ def extract_usage(response_message):
 
 API_KEY_HEADER = "Api-Key"
 CONTENT_TYPE_HEADER = "Content-Type"
+
+
+@contextmanager
+def _temporary_env(env: dict[str, str]) -> Iterator[None]:
+    previous = {name: os.environ.get(name) for name in env}
+    os.environ.update(env)
+    try:
+        yield
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
 
 
 def _build_tool_result_messages(
@@ -370,6 +387,25 @@ class TestRunner:
                     ts,
                 )
             )
+            all_failures.extend(
+                ResponseValidator.check_usage_statistics(
+                    (
+                        response_message.custom_content.stages
+                        if response_message.custom_content
+                        else None
+                    ),
+                    test_message_data.usage_statistics_contains,
+                    test_message_data.usage_statistics_not_contains,
+                    ts,
+                )
+            )
+            all_failures.extend(
+                ResponseValidator.check_usage_per_model(
+                    response_data.get("statistics"),
+                    test_message_data.usage_per_model_contains,
+                    ts,
+                )
+            )
             # update price:
             ts.price += extract_usage(response_message)
 
@@ -451,10 +487,12 @@ def e2e_test(
     attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
     hooks: list[HookConfig] | None = None,
     toolsets: list[ToolSet] | None = None,
+    env: dict[str, str] | None = None,
 ):
     if refresh is None:
         refresh = bool_env_var("REFRESH", default="false")
 
+    _env = env or {}
     _application_context_files = application_context_files
     _include_rest_toolset = include_rest_toolset
     _attachment_strategy = attachment_strategy
@@ -498,20 +536,21 @@ def e2e_test(
 
             # Run the test multiple times according to the runs parameter
             ts = TestStats(name=f"{test_name}[{model_to_use}]", passed=0, failed=0)
-            for run_index in range(runs):
-                logger.info(f"Running test iteration {run_index + 1}/{runs}")
-                failures = await prepare_and_execute_test(
-                    args,
-                    kwargs,
-                    recwarn,
-                    request,
-                    unique_port,
-                    execution_model=model_to_use,
-                    test_name=test_name,
-                    test_stats=ts,
-                    run_index=run_index,
-                )
-                all_runs_failures.extend(failures)
+            with _temporary_env(_env):
+                for run_index in range(runs):
+                    logger.info(f"Running test iteration {run_index + 1}/{runs}")
+                    failures = await prepare_and_execute_test(
+                        args,
+                        kwargs,
+                        recwarn,
+                        request,
+                        unique_port,
+                        execution_model=model_to_use,
+                        test_name=test_name,
+                        test_stats=ts,
+                        run_index=run_index,
+                    )
+                    all_runs_failures.extend(failures)
             logger.info(ts)
             report_test_stats(request.config, ts)
 

@@ -6,8 +6,8 @@ class _AggregatedStats:
         self,
         deployment_name: str,
         deployment_id: str,
-        total_prompt_tokens: int | Literal["-"],
-        total_completion_tokens: int | Literal["-"],
+        total_prompt_tokens: int,
+        total_completion_tokens: int,
         total_cost: float | Literal["-"],
     ):
         self._deployment_name = deployment_name
@@ -25,11 +25,11 @@ class _AggregatedStats:
         return self._deployment_id
 
     @property
-    def total_prompt_tokens(self) -> int | Literal["-"]:
+    def total_prompt_tokens(self) -> int:
         return self._total_prompt_tokens
 
     @property
-    def total_completion_tokens(self) -> int | Literal["-"]:
+    def total_completion_tokens(self) -> int:
         return self._total_completion_tokens
 
     @property
@@ -37,12 +37,10 @@ class _AggregatedStats:
         return self._total_cost
 
     def add_prompt_tokens(self, tokens: int) -> None:
-        if isinstance(self.total_prompt_tokens, int):
-            self._total_prompt_tokens += tokens  # type: ignore[operator]
+        self._total_prompt_tokens += tokens
 
     def add_completion_tokens(self, tokens: int) -> None:
-        if isinstance(self.total_completion_tokens, int):
-            self._total_completion_tokens += tokens  # type: ignore[operator]
+        self._total_completion_tokens += tokens
 
     def add_total_cost(self, cost: float | Literal["-"]) -> None:
         if isinstance(self.total_cost, float) and isinstance(cost, float):

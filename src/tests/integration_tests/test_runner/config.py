@@ -15,6 +15,7 @@ from quickapp.config.hooks import HookConfig
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
 from quickapp.config.prompt import PredefinedSystemPromptConfig
 from quickapp.config.toolsets.toolset import ToolSet
+from tests.integration_tests.test_runner.stub_deployment import STUB_DEPLOYMENT_ID, STUB_TOOL_NAME
 from tests.integration_tests.test_runner.test_tool_set_rest import TestToolSetRest
 
 logger = logging.getLogger(__name__)
@@ -115,6 +116,39 @@ class TestConfig:
         if include_rest_toolset:
             tool_set_list.append(TestToolSetRest.get_rest_toolset(port=port))
         return tool_set_list
+
+    @classmethod
+    def get_usage_stub_toolset(
+        cls, deployment_id: str = STUB_DEPLOYMENT_ID, tool_name: str = STUB_TOOL_NAME
+    ) -> ToolSet:
+        """Toolset with one deployment tool served by a stub deployment of the cache middleware."""
+        return TypeAdapter(ToolSet).validate_python(
+            {
+                "name": f"usage-stub-{tool_name}",
+                "description": "Deployment tool that reports its token usage",
+                "type": "dial-deployment",
+                "tools": [
+                    {
+                        "type": "deployment-tool",
+                        "deployment": {"deployment_id": deployment_id},
+                        "open_ai_tool": {
+                            "type": "function",
+                            "function": {
+                                "name": tool_name,
+                                "description": "Answers a short question. Use it whenever the user asks you to.",
+                                "parameters": {
+                                    "type": "object",
+                                    "properties": {
+                                        "query": {"type": "string", "description": "The question."}
+                                    },
+                                    "required": ["query"],
+                                },
+                            },
+                        },
+                    }
+                ],
+            }
+        )
 
     @classmethod
     def get_mock_dial_core_url(cls, mock_dial_core_port):
