@@ -15,3 +15,11 @@ class DeploymentUsage(BaseModel):
 
     def to_dict(self):
         return self.model_dump(exclude_none=True)
+
+
+class ModelUsage(BaseModel):
+    """Tokens spent on one model, as carried by DIAL ``statistics.usage_per_model``."""
+
+    model: str
+    prompt_tokens: int = 0
+    completion_tokens: int = 0

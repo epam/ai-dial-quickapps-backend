@@ -19,6 +19,7 @@ from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
 from quickapp.core.agent import Orchestrator
 from quickapp.skills.registry.agent_skills_provider import AgentSkillsProvider
+from quickapp.usage_statistics.usage_per_model import report_usage_per_model
 
 from ._exception_message_resolver import ResolvedError, resolve_exception
 from ._initialization_error_handler import _InitializationErrorHandler
@@ -98,6 +99,7 @@ class _QuickAppCompletion(ChatCompletion):
                 await agent_invoker.invoke()
                 timer_service.add_milestone(self.__timer_period_name, "orchestrator_invoked")
                 outcome = agent_invoker.completion_kind
+                report_usage_per_model(response, agent_invoker.usage_statistics)
             except Exception as e:
                 # Raises a DIAL protocol error; the SDK delivers it as a non-200 response
                 # (or an SSE error chunk once the choice has opened the stream).
