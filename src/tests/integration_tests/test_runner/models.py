@@ -127,6 +127,11 @@ class ToolCall:
         self.max_calls = max_calls
         self.arguments: dict[str, Argument] = {}
         self.similarity_threshold = similarity_threshold
+        self.result_contains: list[str] = []
+
+    def add_result_check(self, contains: str):
+        self.result_contains.append(contains)
+        return self
 
     def add_soft_argument_check(
         self, name: str, value: list[str], similarity_threshold: float = None
@@ -179,6 +184,7 @@ class UserMessage(BaseModel):
     tool_calls: list[ToolCall] | None = None
     attachment_checks: list[AttachmentCheck] | None = None
     answer: list[str] | None = None
+    answer_not_contains: list[str] | None = None
     external_tool_calls: list[ToolCall] | None = None
     external_tool_results: dict[str, str] | None = None
 
@@ -212,6 +218,16 @@ class TstCase:
         self.response_format = response_format
         self.tool_choice = tool_choice
         self.tools = tools
+        self.tools_payload_absent: list[str] = []
+        self.tools_payload_present: list[str] = []
+
+    def add_tools_payload_check(
+        self, absent: list[str] | None = None, present: list[str] | None = None
+    ):
+        """Assert on the function names in the `tools` list sent to the orchestrator LLM."""
+        self.tools_payload_absent.extend(absent or [])
+        self.tools_payload_present.extend(present or [])
+        return self
 
     def add_user_message(
         self,
@@ -222,6 +238,7 @@ class TstCase:
         answer: list[str] | None = None,
         external_tool_calls: list[ToolCall] | None = None,
         external_tool_results: dict[str, str] | None = None,
+        answer_not_contains: list[str] | None = None,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         if external_tool_calls:
@@ -233,6 +250,7 @@ class TstCase:
                 tool_calls=tool_calls,
                 attachment_checks=attachment_checks,
                 answer=answer,
+                answer_not_contains=answer_not_contains,
                 external_tool_calls=external_tool_calls,
                 external_tool_results=external_tool_results,
             )

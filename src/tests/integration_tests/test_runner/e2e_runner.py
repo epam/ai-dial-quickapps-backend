@@ -15,9 +15,11 @@ from starlette.testclient import TestClient
 
 from quickapp.config.application import ApplicationConfig
 from quickapp.config.context import FileContextConfig
+from quickapp.config.hooks import HookConfig
 from quickapp.config.logging_config import LoggingConfig
 from quickapp.config.logging_settings import LoggingSettings
 from quickapp.config.orchestrator_attachment_strategy import LazyOnDemandAttachmentStrategy
+from quickapp.config.toolsets.toolset import ToolSet
 from quickapp.config.utils import bool_env_var
 from tests.integration_tests.conftest import FailureReason, TestStats, report_test_stats
 from tests.integration_tests.test_runner.app_test_module import TestApp
@@ -345,6 +347,17 @@ class TestRunner:
                     ts.increment_failure(FailureReason.ANSWER)
                     all_failures.extend(failures)
 
+            for forbidden in test_message_data.answer_not_contains or []:
+                if forbidden in (response_message.content or ""):
+                    ts.increment_failure(FailureReason.ANSWER)
+                    all_failures.append(
+                        Failure(
+                            actual=response_message.content,
+                            expected=f"no '{forbidden}'",
+                            comment="Answer contains forbidden text",
+                        )
+                    )
+
             attachments = (
                 getattr(response_message.custom_content, "attachments", None)
                 if response_message.custom_content
@@ -392,6 +405,7 @@ async def execute_single_test_run(
     func,
     app_config: ApplicationConfig,
     *args,
+    middleware: CacheMiddlewareApp | None = None,
     **kwargs,
 ) -> tuple[list[Failure], Any]:
     """Executes a single test run and returns failures."""
@@ -400,6 +414,17 @@ async def execute_single_test_run(
         #     with patch('chat_v2.agents.chat_hub_agent.get_today') as mock_date:
         #         mock_date.return_value = test_case.mock_date
         run_failures.extend(await TestRunner.execute_test_case(client, test_case, ts, app_config))
+        if middleware is not None and (
+            test_case.tools_payload_absent or test_case.tools_payload_present
+        ):
+            run_failures.extend(
+                ResponseValidator.check_tools_payload(
+                    middleware.recorded_requests,
+                    test_case.tools_payload_absent,
+                    test_case.tools_payload_present,
+                    ts,
+                )
+            )
 
     # Call the test itself, in most cases it would be empty
     if inspect.iscoroutinefunction(func):
@@ -416,6 +441,7 @@ def e2e_test(
     test_case: TstCase = None,
     model: str = None,
     models_applicable_for_test: list[str] | None = None,
+    model_substitutions: dict[str, str] | None = None,
     refresh: bool = None,
     config_file_set: str = "e2e",
     runs: int = 3,
@@ -423,6 +449,8 @@ def e2e_test(
     application_context_files: list[Path] | None = None,
     include_rest_toolset: bool = False,
     attachment_strategy: LazyOnDemandAttachmentStrategy | None = None,
+    hooks: list[HookConfig] | None = None,
+    toolsets: list[ToolSet] | None = None,
 ):
     if refresh is None:
         refresh = bool_env_var("REFRESH", default="false")
@@ -430,6 +458,8 @@ def e2e_test(
     _application_context_files = application_context_files
     _include_rest_toolset = include_rest_toolset
     _attachment_strategy = attachment_strategy
+    _hooks = hooks
+    _toolsets = toolsets
 
     def decorator(func):
         func = pytest.mark.filterwarnings(f"always:{TestConfig.WARNING_MESSAGE}")(func)
@@ -455,7 +485,7 @@ def e2e_test(
                     or len(models_applicable_for_test) == 0
                     or cli_model in models_applicable_for_test
                 ):
-                    model_to_use = cli_model
+                    model_to_use = (model_substitutions or {}).get(cli_model, cli_model)
                     logger.debug(f"Using model from CLI option: {model_to_use}")
                 else:
                     logger.debug(
@@ -510,11 +540,13 @@ def e2e_test(
                 config_file_set,
                 include_rest_toolset=_include_rest_toolset,
             )
+            tool_sets.extend(_toolsets or [])
             app_config: ApplicationConfig = TestConfig.create_app_configuration(
                 toolsets=tool_sets,
                 model=execution_model,
                 contexts=contexts,
                 attachment_strategy=_attachment_strategy,
+                hooks=_hooks,
             )
 
             app = TestApp.get_app(port=unique_port)
@@ -534,7 +566,15 @@ def e2e_test(
             )
             try:
                 run_failures, test_result = await execute_single_test_run(
-                    client, test_case, test_stats, recwarn, func, app_config, *args, **kwargs
+                    client,
+                    test_case,
+                    test_stats,
+                    recwarn,
+                    func,
+                    app_config,
+                    *args,
+                    middleware=middleware,
+                    **kwargs,
                 )
                 if len(run_failures) > 0:
                     test_stats.failed += 1

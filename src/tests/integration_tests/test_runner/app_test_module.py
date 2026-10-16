@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi_injector import request_scope
 from injector import Injector, provider, singleton
 
+from quickapp.agent_hooks.agent_hooks_module import AgentHooksModule
 from quickapp.attachment_processing.attachment_processing_module import AttachmentProcessingModule
 from quickapp.common import DIAL_API_KEY
 from quickapp.common.dial_settings import DialSettings
@@ -88,6 +89,7 @@ class TestApp(FastAPI):
                 FileTransferModule(),
                 AttachmentProcessingModule(),
                 SkillsModule(),
+                AgentHooksModule(),
                 DialPromptSkillsModule(),
                 DialFilesToolingModule(),
                 LazyOnDemandStrategyModule(),
