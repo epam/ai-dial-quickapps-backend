@@ -7,7 +7,7 @@ import httpx
 from aidial_client import ToolsetInfo
 from injector import AssistedBuilder, ProviderOf, inject
 from mcp.shared.exceptions import McpError
-from mcp.types import BlobResourceContents, TextResourceContents
+from mcp.types import BlobResourceContents, TextResourceContents, Tool
 
 from quickapp.common import ACCEPT_LANGUAGE, DIAL_API_KEY, StagedBaseTool
 from quickapp.common.base_initializer import CompletionInitializer
@@ -299,16 +299,9 @@ class _MCPToolInitializer(CompletionInitializer):
             )
         remove_schema_params(parameters, fixed.keys())
 
-    async def _load_tools(
-        self,
-        resolved_toolset: MCPToolSet,
-        toolset_info: MCPToolSet | DialMCPToolSet,
-        toolset_client: _MCPToolsetClient,
-        session: Any,
+    def _warn_unknown_tool_names(
+        self, resolved_toolset: MCPToolSet, server_tool_names: set[str]
     ) -> None:
-        tools = await toolset_client.get_tools_list(session)
-
-        server_tool_names = {tool.name for tool in tools}
         toolset_label = resolve_localized(resolved_toolset.name)
         for field_name, requested in (
             ("allowed_tools", resolved_toolset.allowed_tools),
@@ -324,44 +317,64 @@ class _MCPToolInitializer(CompletionInitializer):
                     sorted(unknown),
                 )
 
+    def _build_tool(
+        self,
+        tool: Tool,
+        resolved_toolset: MCPToolSet,
+        toolset_info: MCPToolSet | DialMCPToolSet,
+        toolset_client: _MCPToolsetClient,
+    ) -> _MCPTool:
+        toolset_label = resolve_localized(resolved_toolset.name)
+        open_ai_tool = self._convert_to_openai_tool(
+            sanitize_toolname(f"{toolset_label}_{tool.name}"),
+            tool.description,
+            tool.inputSchema,
+        )
+        tool_settings = (resolved_toolset.tools_config or {}).get(tool.name)
+        tool_fixed_arguments = tool_settings.fixed_arguments if tool_settings else None
+        if tool_fixed_arguments:
+            self._strip_fixed_arguments(
+                open_ai_tool,
+                tool_fixed_arguments,
+                tool.inputSchema,
+                tool_name=tool.name,
+                toolset_name=toolset_label,
+            )
+        mcp_tool = self.__tool_builder.build(
+            tool=tool,
+            tool_config=MCPTool(
+                attachment=resolved_toolset.attachment,
+                fallback_configuration=resolved_toolset.fallback_configuration,
+                open_ai_tool=open_ai_tool,
+            ),
+            toolset_client=toolset_client,
+            dial_toolset_id=(
+                toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
+            ),
+            fixed_arguments=tool_fixed_arguments,
+        )
+        toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
+        mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
+        return mcp_tool
+
+    async def _load_tools(
+        self,
+        resolved_toolset: MCPToolSet,
+        toolset_info: MCPToolSet | DialMCPToolSet,
+        toolset_client: _MCPToolsetClient,
+        session: Any,
+    ) -> None:
+        tools = await toolset_client.get_tools_list(session)
+        self._warn_unknown_tool_names(resolved_toolset, {tool.name for tool in tools})
+
         if resolved_toolset.allowed_tools:
             tools = [tool for tool in tools if tool.name in resolved_toolset.allowed_tools]
 
         hidden_names = set(resolved_toolset.hidden_from_model or [])
-        tools_config = resolved_toolset.tools_config or {}
-        toolset_stage_name = resolve_localized(resolved_toolset.name, self.__accept_language)
         created_tools: list[StagedBaseTool] = []
         model_hidden_tools: list[ModelHiddenTool] = []
         for tool in tools:
-            open_ai_tool = self._convert_to_openai_tool(
-                sanitize_toolname(f"{toolset_label}_{tool.name}"),
-                tool.description,
-                tool.inputSchema,
-            )
-            tool_settings = tools_config.get(tool.name)
-            tool_fixed_arguments = tool_settings.fixed_arguments if tool_settings else None
-            if tool_fixed_arguments:
-                self._strip_fixed_arguments(
-                    open_ai_tool,
-                    tool_fixed_arguments,
-                    tool.inputSchema,
-                    tool_name=tool.name,
-                    toolset_name=toolset_label,
-                )
-            mcp_tool = self.__tool_builder.build(
-                tool=tool,
-                tool_config=MCPTool(
-                    attachment=resolved_toolset.attachment,
-                    fallback_configuration=resolved_toolset.fallback_configuration,
-                    open_ai_tool=open_ai_tool,
-                ),
-                toolset_client=toolset_client,
-                dial_toolset_id=(
-                    toolset_info.deployment_id if isinstance(toolset_info, DialMCPToolSet) else None
-                ),
-                fixed_arguments=tool_fixed_arguments,
-            )
-            mcp_tool.stage_name_component = f"{toolset_stage_name}: {tool.name}"
+            mcp_tool = self._build_tool(tool, resolved_toolset, toolset_info, toolset_client)
             # Routing precedes the deferral decision: a model-hidden tool is never deferred.
             if tool.name in hidden_names:
                 model_hidden_tools.append(mcp_tool)
