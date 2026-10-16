@@ -320,7 +320,7 @@ class ExternalUrlFetcher:
             timeout=timeout,
             follow_redirects=True,
             max_redirects=self.__settings.max_redirects,
-            headers={},
+            headers={"User-Agent": self.__settings.user_agent},
             auth=None,
         ) as client:
             try:

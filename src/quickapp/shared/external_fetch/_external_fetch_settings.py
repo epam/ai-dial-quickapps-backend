@@ -43,6 +43,15 @@ class ExternalFetchSettings(BaseSettings):
         alias="EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS",
         gt=0,
     )
+    user_agent: str = Field(
+        default="QuickApps-ExternalFetch/1.0 (+https://github.com/epam/ai-dial-quickapps-backend)",
+        description=(
+            "User-Agent header sent on external URL fetches. Some sites (e.g. Wikimedia) "
+            "reject generic library user agents."
+        ),
+        alias="EXTERNAL_URL_FETCH_USER_AGENT",
+        min_length=1,
+    )
 
     @field_validator("host_allowlist", mode="before")
     @classmethod
