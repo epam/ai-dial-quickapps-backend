@@ -125,6 +125,11 @@ class Orchestrator:
         return self.__total_tool_calls
 
     @property
+    def usage_statistics(self) -> list[DeploymentUsage]:
+        """Usage of the orchestrator model and of the tools; empty unless usage statistics are shown."""
+        return list(self.__usage_statistics_list)
+
+    @property
     def completion_kind(self) -> str:
         """``completed`` or ``external_tool_calls`` — how the loop terminated."""
         return self.__completion_kind

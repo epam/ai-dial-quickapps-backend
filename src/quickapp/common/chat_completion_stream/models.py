@@ -4,6 +4,8 @@ from aidial_sdk.chat_completion import Attachment
 from openai.types.chat.chat_completion_chunk import ChoiceDeltaToolCall
 from pydantic import BaseModel, ConfigDict, Field
 
+from quickapp.common.deployment_usage import ModelUsage
+
 
 class NormalizedCustomContent(BaseModel):
     """Per-delta custom payload. ``attachments``: ``Attachment``"""
@@ -29,6 +31,7 @@ class ChunkUsageFootprint(BaseModel):
 
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
+    per_model: tuple[ModelUsage, ...] = Field(default_factory=tuple)
 
 
 ChatStreamEvent = ChunkUsageFootprint | NormalizedChoiceDelta

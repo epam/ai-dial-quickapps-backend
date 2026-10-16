@@ -21,6 +21,7 @@ from quickapp.common.chat_completion_stream.handler import (
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.dial_request_fields import EXTRA_BODY
+from quickapp.common.presentation_settings import PresentationSettings
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
@@ -44,6 +45,7 @@ class DialCompletionService:
         timeout_resolver: ToolTimeoutResolver,
         attachment_resolver: AttachmentResolver,
         choice: Choice,
+        presentation_settings: PresentationSettings,
     ) -> None:
         self.__azure_client = azure_client
         self.__forwarded_headers: ForwardedHeaders = forwarded_headers
@@ -51,6 +53,7 @@ class DialCompletionService:
         self.__timeout_resolver: ToolTimeoutResolver = timeout_resolver
         self.__attachment_resolver = attachment_resolver
         self.__choice = choice
+        self.__include_usage: bool = presentation_settings.show_usage_statistics
 
     async def complete_request_async(
         self,
@@ -78,7 +81,7 @@ class DialCompletionService:
                 content, relative_attachment_urls, history, supports_url_attachments
             )
             chat_params = self._build_chat_completion_params(
-                params, deployment_id, messages, self.__forwarded_headers
+                params, deployment_id, messages, self.__forwarded_headers, self.__include_usage
             )
             chunks = await self.__azure_client.chat.completions.create(**chat_params)
             result = await self._consume_stream(chunks, stage_wrapper, parent_stage)
@@ -90,7 +93,7 @@ class DialCompletionService:
             attachments=result.attachments_or_none,
             annotations=result.annotations,
             state=result.state,
-            usage=self.__get_deployment_usage(result.usage, deployment_id, deployment_name),
+            usage=self.__get_deployment_usage(result, deployment_id, deployment_name),
         )
 
     @staticmethod
@@ -99,12 +102,15 @@ class DialCompletionService:
         deployment_id: str,
         messages: list[UserMessageParam | AssistantMessageParam],
         forwarded_headers: ForwardedHeaders,
+        include_usage: bool,
     ) -> dict[str, Any]:
         chat_completion_params: dict[str, Any] = {
             "model": deployment_id,
             "stream": True,
             "messages": messages,
         }
+        if include_usage:
+            chat_completion_params["stream_options"] = {"include_usage": True}
 
         # query and attachment_urls are used only for messages; all other params go in extra_body
         extra_body: dict[str, Any] = dict(params.get(EXTRA_BODY) or {})
@@ -149,18 +155,31 @@ class DialCompletionService:
 
     @staticmethod
     def __get_deployment_usage(
-        usage: Any,
+        result: ChatStreamAccumulator,
         deployment_id: str,
         deployment_name: str,
     ) -> list[DeploymentUsage] | None:
-        if usage:
+        # A per-model breakdown (a nested QuickApp reports the models it used) supersedes the
+        # deployment's own total, which would otherwise be counted twice.
+        if result.usage_per_model:
+            return [
+                DeploymentUsage(
+                    model_name=model_usage.model,
+                    deployment_name=deployment_name,
+                    deployment_id=model_usage.model,
+                    prompt_tokens=model_usage.prompt_tokens,
+                    completion_tokens=model_usage.completion_tokens,
+                )
+                for model_usage in result.usage_per_model
+            ]
+        if result.usage:
             return [
                 DeploymentUsage(
                     model_name=deployment_id,
                     deployment_name=deployment_name,
                     deployment_id=deployment_id,
-                    prompt_tokens=usage.prompt_tokens,
-                    completion_tokens=usage.completion_tokens,
+                    prompt_tokens=result.usage.prompt_tokens,
+                    completion_tokens=result.usage.completion_tokens,
                 )
             ]
         return None
