@@ -3,6 +3,8 @@ from pathlib import Path
 
 import pytest
 
+from tests.integration_tests.test_runner.config import SimilarityThreshold
+from tests.integration_tests.test_runner.custom_function import CustomFunction
 from tests.integration_tests.test_runner.e2e_runner import e2e_test
 from tests.integration_tests.test_runner.models import ToolCall, TstCase
 from tests.integration_tests.test_runner.utils.tool_names import ToolNames
@@ -93,6 +95,104 @@ The average GDP growth for the selected countries is as follows:
     ),
 )
 def test_rag_interpreter(client):
+    pass
+
+
+@pytest.mark.integration
+@e2e_test(
+    runs=1,
+    no_cache=True,
+    config_file_set="integration_simple",
+    test_case=TstCase(
+        "RAG ignores previous documents",
+        "The second RAG call must be scoped to the file attached to the current message",
+        similarity_threshold=SimilarityThreshold.LENIENT.value,
+    )
+    .add_user_message(
+        user_message="What are the tools to use when working with ontologies? Use rag search with the attached document.",
+        attachments=[Path(__file__).parent / "test_documents/ontologies.pdf"],
+        tool_calls=[ToolCall(ToolNames.RAG_SEARCH_TOOL.value, max_calls=3)],
+    )
+    .add_user_message(
+        user_message="What is this document about? Use rag search with this attached document and answer in one sentence.",
+        attachments=[Path(__file__).parent / "test_documents/weo.pdf"],
+        tool_calls=[ToolCall(ToolNames.RAG_SEARCH_TOOL.value, max_calls=3)],
+        answer=[
+            "This document is the IMF World Economic Outlook report, which analyzes the global economy and presents growth forecasts.",
+            "The document is an International Monetary Fund report on the world economic outlook covering global growth, inflation and forecasts.",
+        ],
+    ),
+)
+def test_rag_ignores_documents_from_previous_calls(client):
+    pass
+
+
+_TEST_DOCUMENTS = Path(__file__).parent / "test_documents"
+_COUNTRIES = ["Veldoria", "Karnesia", "Tolmark", "Sundaria", "Brevonia", "Ulmenar"]
+
+
+def _contains_ignore_case(actual: str, expected: str) -> bool:
+    return expected.lower() in actual.lower()
+
+
+def _rag_reformulation_case() -> TstCase:
+    case = TstCase(
+        "RAG reformulation with files from history",
+        "The orchestrator must write self-contained RAG queries and re-attach files from earlier messages",
+        similarity_threshold=SimilarityThreshold.LENIENT.value,
+    )
+    for country in _COUNTRIES:
+        case.add_user_message(
+            user_message=f"What is the capital of {country}? Use rag search with the attached document.",
+            attachments=[_TEST_DOCUMENTS / f"country_{country.lower()}.txt"],
+            tool_calls=[ToolCall(ToolNames.RAG_SEARCH_TOOL.value, max_calls=3)],
+        )
+    case.add_user_message(
+        user_message="And what is its population? Use rag search.",
+        tool_calls=[
+            ToolCall(ToolNames.RAG_SEARCH_TOOL.value, max_calls=2)
+            .add_custom_function_argument_check("query", ["Ulmenar"], _contains_ignore_case)
+            .add_custom_function_argument_check(
+                "attachment_urls", ["country_ulmenar.txt"], CustomFunction.contains
+            )
+        ],
+        answer=[
+            "The document gives Ulmenar's population as 9,600,000 people. "
+            "It does not provide a separate population figure for the capital, Hartsvale.",
+            "According to the document, the population of Ulmenar is 9,600,000 people.",
+        ],
+    )
+    case.add_user_message(
+        user_message="Which is more populous: the country from the first document I attached or the one "
+        "from the third document, and by how many people? Use rag search once with both documents.",
+        tool_calls=[
+            ToolCall(ToolNames.RAG_SEARCH_TOOL.value, max_calls=2)
+            .add_custom_function_argument_check(
+                "query", ["Veldoria", "Tolmark"], _contains_ignore_case
+            )
+            .add_custom_function_argument_check(
+                "attachment_urls",
+                ["country_veldoria.txt", "country_tolmark.txt"],
+                CustomFunction.contains,
+            )
+        ],
+        answer=[
+            "The first document was for Veldoria and the third was for Tolmark. Tolmark is more populous: "
+            "Veldoria has 4,200,000, Tolmark has 7,900,000, a difference of 3,700,000 people.",
+            "Tolmark is more populous than Veldoria: 7,900,000 versus 4,200,000, a difference of 3,700,000 people.",
+        ],
+    )
+    return case
+
+
+@pytest.mark.integration
+@e2e_test(
+    runs=1,
+    no_cache=True,
+    config_file_set="integration_simple",
+    test_case=_rag_reformulation_case(),
+)
+def test_rag_reformulation_with_files_from_history(client):
     pass
 
 
