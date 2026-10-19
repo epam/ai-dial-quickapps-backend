@@ -75,6 +75,7 @@ class _QuickAppCompletion(ChatCompletion):
             outcome = "completed"
             error_reference: str | None = None
             agent_invoker: Orchestrator | None = None
+            usage_reported = False
             try:
                 request_context_setup = self.__injector.get(_RequestContextSetup)
                 try:
@@ -99,6 +100,7 @@ class _QuickAppCompletion(ChatCompletion):
                 await agent_invoker.invoke()
                 timer_service.add_milestone(self.__timer_period_name, "orchestrator_invoked")
                 outcome = agent_invoker.completion_kind
+                usage_reported = True
                 report_usage(response, agent_invoker.usage_statistics)
             except Exception as e:
                 # Raises a DIAL protocol error; the SDK delivers it as a non-200 response
@@ -106,6 +108,9 @@ class _QuickAppCompletion(ChatCompletion):
                 failed = True
                 outcome = "failed"
                 error_reference = uuid.uuid4().hex[:8]
+                if agent_invoker is not None and not usage_reported:
+                    # Tokens spent before the failure are still the caller's cost.
+                    self.__report_usage_of_failed_run(response, agent_invoker)
                 self.__handle_exception(e, error_reference)
             finally:
                 timer_service.stop_period(self.__timer_period_name)
@@ -173,6 +178,13 @@ class _QuickAppCompletion(ChatCompletion):
             return ConfigurationResponse()
         configurations = self.__injector.get(list[Configuration])
         return Configuration.from_list_of_configurations(configurations).to_configuration_response()
+
+    @staticmethod
+    def __report_usage_of_failed_run(response: Response, agent_invoker: Orchestrator) -> None:
+        try:
+            report_usage(response, agent_invoker.usage_statistics)
+        except Exception:
+            logger.warning("Failed to report usage of a failed run", exc_info=True)
 
     @staticmethod
     def __handle_exception(e: Exception, error_reference: str) -> None:
