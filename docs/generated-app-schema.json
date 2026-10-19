@@ -844,6 +844,23 @@
           "title": "Hidden From Model",
           "x-preview": true
         },
+        "tools_config": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/MCPToolConfig"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP branch only. Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there. Ignored (with a warning) on the chat-completion fallback branch.",
+          "title": "Tools Config",
+          "x-preview": true
+        },
         "attachment": {
           "$ref": "#/$defs/AttachmentConfig",
           "description": "Configuration for toolset attachments."
@@ -1599,6 +1616,23 @@
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
           "title": "Hidden From Model",
+          "x-preview": true
+        },
+        "tools_config": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/MCPToolConfig"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there.",
+          "title": "Tools Config",
           "x-preview": true
         },
         "attachment": {
@@ -2563,6 +2597,27 @@
       "title": "MCPServerInfo",
       "type": "object"
     },
+    "MCPToolConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "fixed_arguments": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Argument values fixed for this tool: {argument: value}. Fixed arguments are removed from the schema the model sees and added to every call, overriding any value the caller sends. Top-level arguments only. Values are stored in plain text in the app config: do not use this for secrets.",
+          "title": "Fixed Arguments"
+        }
+      },
+      "title": "MCPToolConfig",
+      "type": "object"
+    },
     "MCPToolSet": {
       "properties": {
         "name": {
@@ -2660,6 +2715,23 @@
           "default": null,
           "description": "MCP tool names (as the server reports them) that hooks can call but the model never sees: they are absent from the tools payload and the tool_search catalog, and are not executed if the model requests them. When allowed_tools is set, every entry must be listed there. Tools added to the server later stay visible to the model unless allowed_tools pins the set.",
           "title": "Hidden From Model",
+          "x-preview": true
+        },
+        "tools_config": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "$ref": "#/$defs/MCPToolConfig"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-tool settings, keyed by MCP tool name (as the server reports it). When allowed_tools is set, every key must be listed there.",
+          "title": "Tools Config",
           "x-preview": true
         },
         "attachment": {
