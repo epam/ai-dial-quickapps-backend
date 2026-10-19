@@ -63,6 +63,24 @@ async def sum_integers(incoming: list[int]):
     return {"result": total_sum}
 
 
+_STOCK_BY_SKU = {"SKU-1": 137, "SKU-2": 482}
+
+
+@mcp.tool(
+    description=(
+        "Returns the live stock quantity of a product by its SKU. "
+        "The figure changes constantly and can only be obtained from this tool."
+    )
+)
+async def lookup_stock(sku: str):
+    return {"sku": sku, "quantity": _STOCK_BY_SKU.get(sku, 0)}
+
+
+@mcp.tool(description="Returns the names of all warehouses")
+async def list_warehouses():
+    return ["North", "South", "East"]
+
+
 @mcp.tool(description="Returns a predefined small picture")
 async def get_small_picture() -> Image:
     return Image(path="./auto.jpg")
