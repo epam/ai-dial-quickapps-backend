@@ -284,6 +284,10 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             kwargs = await transformer.transform(kwargs)
         return kwargs
 
+    def _stage_parameters(self, params: dict[str, Any]) -> dict[str, Any]:
+        """The subset of call parameters shown in the tool stage."""
+        return params
+
     def _resolve_tool_name(self) -> str:
         """Best-effort tool name for lifecycle logging (the OpenAI function name,
         falling back to a set ``name`` attribute or the class name)."""
@@ -311,10 +315,10 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 if skip_parameters:
                     # Arguments were already streamed into the adopted stage; only
                     # refine the title (e.g. py-interpreter ``title`` param).
-                    stage_wrapper.append_title_from_params(params)
+                    stage_wrapper.append_title_from_params(self._stage_parameters(params))
                 else:
                     # TODO: filter params ro remove attachment_urls if it's empty
-                    stage_wrapper.add_parameters(params)
+                    stage_wrapper.add_parameters(self._stage_parameters(params))
             result: ToolCallResult = await self._run_in_stage_async(
                 stage_wrapper, tool_call_id, *args, **params
             )

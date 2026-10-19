@@ -45,6 +45,11 @@ Not every section will be relevant for every design. Omit sections that don't ap
 - **Name the trade-offs.** If you chose approach A over B, briefly explain why. Future readers (and reviewers) will ask.
 - **Scope aggressively.** A focused design that ships is better than an ambitious one that stalls. Use "Out of Scope" to
   defer related work explicitly rather than letting it creep in.
+- **Record known issues where users look.** If the feature has a nuance that does not work as intended in some
+  environment (a specific model, provider, deployment or client), describe it in a `### Known issues` subsection of
+  the capability's L2 guide under `docs/` (see [`docs/hooks.md`](../hooks.md#known-issues) for the shape): what
+  happens, where it was observed and not observed, and a workaround. Link it from the Troubleshooting table of that
+  guide. The design doc may mention it, but the guide is the source readers rely on.
 
 ## Diagrams and Code Snippets
 

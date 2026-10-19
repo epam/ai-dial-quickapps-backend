@@ -85,6 +85,26 @@ def test_settings_connect_timeout_must_be_positive(monkeypatch):
         ExternalFetchSettings()
 
 
+def test_settings_user_agent_default_is_descriptive(monkeypatch):
+    monkeypatch.delenv("EXTERNAL_URL_FETCH_USER_AGENT", raising=False)
+    user_agent = ExternalFetchSettings().user_agent
+    assert "python-httpx" not in user_agent
+    assert user_agent.startswith("QuickApps-ExternalFetch/")
+
+
+def test_settings_user_agent_reads_env_alias(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_USER_AGENT", "MyBot/2.0 (+https://example.com)")
+    assert ExternalFetchSettings().user_agent == "MyBot/2.0 (+https://example.com)"
+
+
+def test_settings_user_agent_must_not_be_empty(monkeypatch):
+    monkeypatch.setenv("EXTERNAL_URL_FETCH_USER_AGENT", "")
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        ExternalFetchSettings()
+
+
 def test_external_url_fetch_config_default_is_none():
     assert ExternalUrlFetchConfig().enabled is None
     assert ExternalUrlFetchConfig().host_allowlist is None

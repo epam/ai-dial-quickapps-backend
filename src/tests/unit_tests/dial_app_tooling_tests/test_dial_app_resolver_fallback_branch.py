@@ -210,3 +210,23 @@ async def test_fallback_warns_and_ignores_hidden_from_model(caplog: pytest.LogCa
 
     assert "hidden_from_model" in caplog.text
     assert len(context.resolved_deployment_tools) == 1
+
+
+@pytest.mark.asyncio
+async def test_fallback_warns_and_ignores_tools_config(caplog: pytest.LogCaptureFixture):
+    toolset = DialAppToolSet(
+        name="app",
+        deployment_id="dep",
+        tools_config={"search": {"fixed_arguments": {"project_key": "DIAL"}}},
+    )
+    resolver, context, _, _ = make_resolver(
+        toolsets=[toolset],
+        metadata=make_metadata(mcp=False),
+        tool_config=make_tool_config(),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        await resolver.resolve()
+
+    assert "tools_config" in caplog.text
+    assert len(context.resolved_deployment_tools) == 1

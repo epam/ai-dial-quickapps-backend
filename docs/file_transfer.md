@@ -152,6 +152,7 @@ uniformly across every consumer:
 | Redirect cap           | Default 5, hard ceiling 10 (set via `EXTERNAL_URL_FETCH_MAX_REDIRECTS`). Each hop is SSRF-checked.                                                                                                                                                    |
 | Size limit             | Same `FileLoadingSizeLimitResolver` as DIAL downloads. Streamed in chunks; aborts mid-download if the running total exceeds limit.                                                                                                                    |
 | Connect / read timeout | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` (default 5s); read uses the resolved tool timeout.                                                                                                                                                       |
+| User-Agent             | Descriptive `User-Agent` from `EXTERNAL_URL_FETCH_USER_AGENT` instead of the httpx default (some sites reject generic library agents).                                                                                                                |
 
 ### Two-tier egress policy
 

@@ -1042,6 +1042,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | mcp_server_info        | Yes      | MCPServerInfo      | MCP server info. See [MCPServerInfo structure](#mcpserverinfo-structure) | -             |
 | allowed_tools          | No       | Array of String    | Allowed MCP tool names from the server                                   | `null`        |
 | hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| tools_config           | No       | Object             | `[Preview]` Per-tool settings keyed by MCP tool name: `{tool_name: MCPToolConfig}`. See [MCP per-tool configuration](#mcp-per-tool-configuration). | `null`        |
 | resources              | No       | MCPResourcesConfig | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig   | See also: [AttachmentConfig](#attachment-configuration)                  | -             |
 | fallback_configuration | No       | ToolFallbackConfig | See also: [Tool fallback configuration](#tool-fallback-configuration)    | -             |
@@ -1066,6 +1067,7 @@ DIAL app toolsets accept the field but do not yet act on it.
 | transport              | Yes      | String `HTTP` or `SSE` | MCP protocol                                                          | `HTTP`        |
 | allowed_tools          | No       | Array of String        | Allowed MCP tool names from the server                                | `null`        |
 | hidden_from_model      | No       | Array of String    | `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| tools_config           | No       | Object             | `[Preview]` Per-tool settings keyed by MCP tool name: `{tool_name: MCPToolConfig}`. See [MCP per-tool configuration](#mcp-per-tool-configuration). | `null`        |
 | resources              | No       | MCPResourcesConfig     | MCP resource exposure config. See [MCP resources configuration](#mcp-resources-configuration). | `null` (disabled) |
 | attachment             | No       | AttachmentConfig       | See also: [AttachmentConfig](#attachment-configuration)               | -             |
 | fallback_configuration | No       | ToolFallbackConfig     | See also: [Tool fallback configuration](#tool-fallback-configuration) | -             |
@@ -1095,9 +1097,49 @@ have different semantics and will diverge once the deployment-scoped endpoint la
 | transport              | No       | One of `auto`, `mcp`, `chat-completion` | Routing override. `auto` (default): MCP if the deployment advertises `features.mcp`, otherwise chat completion. `mcp`: force MCP — initialization fails if `features.mcp` is not advertised. `chat-completion`: force chat completion — metadata fetch is skipped. | `auto`        |
 | allowed_tools          | No       | Array of String    | MCP branch only: whitelist the subset of MCP tool names that reach the agent. Ignored (with a warning) on the chat-completion fallback branch.                                             | `null`        |
 | hidden_from_model      | No       | Array of String    | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` MCP tool names hooks can call but the model never sees: they are absent from the tools payload and the `tool_search` catalog and are not executed if the model requests them. Entries must be listed in `allowed_tools` when it is set; set both, otherwise tools added to the server later stay model-visible. See [Hooks](docs/hooks.md#tools-hidden-from-the-model). | `null`        |
+| tools_config           | No       | Object             | MCP branch only; ignored (with a warning) on the chat-completion branch. `[Preview]` Per-tool settings keyed by MCP tool name: `{tool_name: MCPToolConfig}`. See [MCP per-tool configuration](#mcp-per-tool-configuration). | `null`        |
 | attachment             | No       | AttachmentConfig   | Propagated on both branches. See also: [AttachmentConfig](#attachment-configuration)                                                                                                       | -             |
 | fallback_configuration | No       | ToolFallbackConfig | Propagated on both branches. See also: [Tool fallback configuration](#tool-fallback-configuration)                                                                                         | -             |
 | conversation_mode      | No       | Object             | Resumable conversation for the **chat-completion** branch only; ignored (with a warning) on MCP. See [Conversation mode](#conversation-mode)                                              | `null`        |
+
+#### MCP per-tool configuration
+
+`[Preview]` Requires `ENABLE_PREVIEW_FEATURES=true`. Applies to `MCPToolSet`, `DialMCPToolSet` and the MCP
+branch of `DialAppToolSet`. `tools_config` holds settings for individual tools, keyed by tool name as the MCP
+server reports it (not the `<toolset>_<tool>` name the model sees). When `allowed_tools` is set, every key must
+be listed there, otherwise the manifest is rejected. A key naming a tool the server doesn't provide is logged as a warning.
+
+##### MCPToolConfig structure
+
+| Field           | Required | Type   | Description                                                                                                  | Default Value |
+|-----------------|----------|--------|--------------------------------------------------------------------------------------------------------------|---------------|
+| fixed_arguments | No       | Object | Argument values fixed for this tool: `{argument: value}`. Hidden from the model and added to every call. Not for secrets. | `null`        |
+
+##### Fixed arguments
+
+Use `fixed_arguments` to scope a tool to a fixed context, for example a Jira toolset that only works on
+project `DIAL`:
+
+```json
+{
+  "type": "dial-mcp",
+  "name": "jira",
+  "deployment_id": "toolsets/jira-mcp",
+  "allowed_tools": ["search_issues", "create_issue"],
+  "tools_config": {
+    "search_issues": { "fixed_arguments": { "project_key": "DIAL", "max_results": 50 } },
+    "create_issue": { "fixed_arguments": { "project_key": "DIAL", "issue_type": "Task" } }
+  }
+}
+```
+
+- Fixed arguments are removed from the tool schema the model sees (including the `tool_search` catalog) and
+  added to every call, including hook calls. A fixed value always overrides what the caller sends.
+- Top-level arguments only; any JSON value. Fixing an object argument replaces the whole object.
+- An argument missing from the tool's schema is reported under "Initialization issues", unless the schema
+  sets `additionalProperties: true`. Either way the tool stays available and the value is still sent.
+- The tool stage does not show fixed values, and they are logged only with [payload logging](#payload-logging) on.
+- **Not for secrets:** values are stored in plain text in the app config.
 
 #### MCP resources configuration
 
@@ -1760,6 +1802,7 @@ your gateways or downstream services expect.
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |
 | `EXTERNAL_URL_FETCH_MAX_REDIRECTS`         | `5`                                                             | No       | Maximum HTTP redirects on external URL fetches. Each hop is SSRF-checked. Hard ceiling 10.                   |
 | `EXTERNAL_URL_FETCH_CONNECT_TIMEOUT_SECONDS` | `5.0`                                                           | No       | TCP connect timeout (seconds) for external URL fetches. Read/write/pool timeouts use the resolved tool timeout. |
+| `EXTERNAL_URL_FETCH_USER_AGENT`            | `QuickApps-ExternalFetch/1.0 (+https://github.com/epam/ai-dial-quickapps-backend)` | No       | `User-Agent` header sent on external URL fetches. Some sites (e.g. Wikipedia) reject generic library user agents with `403`. Must not be empty. |
 | **Dynamic Tool Discovery** `[Preview]`     |                                                                 |          |                                                                                                              |
 | `MIN_TOOLS_FOR_DEFERRAL`                   | `10`                                                            | No       | Deployment-wide minimum toolset size for deferral to apply. Toolsets with fewer tools than this threshold are promoted to eager loading even when `deferred=true`. Apps override per-app via `orchestrator.tool_discovery.min_tools_for_deferral`. Requires `ENABLE_PREVIEW_FEATURES=true`. |
 | **Skills**                                 |                                                                 |          |                                                                                                              |
