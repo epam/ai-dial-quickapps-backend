@@ -1,4 +1,5 @@
 import copy
+from collections.abc import Collection
 from enum import Enum
 from typing import Annotated, Any, Generic, Literal, TypeAlias, TypeVar, Union
 
@@ -200,15 +201,22 @@ class OpenAiToolConfig(
 OpenAiToolConfigDict: TypeAlias = dict[str, Any]
 
 
+def remove_schema_params(parameters: OpenAiToolFunctionParameters, names: Collection[str]) -> None:
+    """Drop the named parameters from a tool schema's properties and required list, in place."""
+    for name in names:
+        parameters.properties.pop(name, None)
+    if parameters.required:
+        parameters.required = [name for name in parameters.required if name not in names]
+
+
 def remove_const_schema_params(open_ai_tool: OpenAiToolConfig) -> OpenAiToolConfig:
     """Strip const-valued parameters (fixed values hidden from the LLM) from a tool's JSON schema."""
     tool_copy = copy.deepcopy(open_ai_tool)
-    props = tool_copy.function.parameters.properties
-
-    for prop_name in list(props.keys()):
-        if issubclass(type(props[prop_name]), JsonSchemaConst):
-            del props[prop_name]
-
+    parameters = tool_copy.function.parameters
+    removed = {
+        name for name, prop in parameters.properties.items() if isinstance(prop, JsonSchemaConst)
+    }
+    remove_schema_params(parameters, removed)
     return tool_copy
 
 
