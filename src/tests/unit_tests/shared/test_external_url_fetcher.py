@@ -27,6 +27,7 @@ def _settings(allow_redirects: int = 5, connect: float = 5.0) -> MagicMock:
     s = MagicMock(spec=ExternalFetchSettings)
     s.max_redirects = allow_redirects
     s.connect_timeout_seconds = connect
+    s.user_agent = "test-agent/1.0"
     return s
 
 
@@ -136,6 +137,25 @@ async def test_no_dial_credentials_leak_to_external_host():
     forbidden = {"authorization", "api-key", "x-forwarded-for", "x-real-ip"}
     leaked = forbidden & sent_headers
     assert not leaked, f"forbidden headers reached external host: {leaked}"
+
+
+@pytest.mark.asyncio
+async def test_configured_user_agent_is_sent():
+    captured: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured.append(request)
+        return httpx.Response(200, content=b"ok", headers={"content-type": "text/plain"})
+
+    mock_transport = httpx.MockTransport(handler)
+    with patch(
+        "quickapp.shared.external_fetch.external_url_fetcher._SsrfGuardTransport",
+        return_value=mock_transport,
+    ):
+        await _fetcher(size=_size(1024)).fetch("https://example.com/file")
+
+    assert len(captured) == 1
+    assert captured[0].headers["user-agent"] == "test-agent/1.0"
 
 
 @pytest.mark.asyncio
