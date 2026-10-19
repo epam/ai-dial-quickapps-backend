@@ -586,3 +586,57 @@ async def test_chat_completion_reports_usage_per_model(make_request_completion):
 
     assert response.usage_per_model == [("gpt-5", 120, 12), ("gpt-image-1", 5, 40)]
     assert response.usage == (125, 52)
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_reports_usage_of_failed_run(make_request_completion):
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    class OrchestratorFake:
+        iteration_count = 1
+        total_tool_calls = 1
+        completion_kind = "completed"
+        usage_statistics = [
+            DeploymentUsage(model_name="gpt-5", prompt_tokens=100, completion_tokens=10),
+        ]
+
+        async def invoke(self):
+            raise ValueError("boom")
+
+    request, completion, _ = make_request_completion(OrchestratorFake(), api_key="k")
+
+    with pytest.raises(DialHTTPException):
+        await completion.chat_completion(request, response)
+
+    assert response.usage_per_model == [("gpt-5", 100, 10)]
+    assert response.usage == (100, 10)
+
+
+@pytest.mark.asyncio
+async def test_chat_completion_usage_failure_does_not_hide_run_error(make_request_completion):
+    choice = FakeChoice()
+    response = FakeResponse(choice)
+
+    def _set_usage_raises(prompt_tokens: int = 0, completion_tokens: int = 0):
+        raise RuntimeError("usage failed")
+
+    response.set_usage = _set_usage_raises  # type: ignore[method-assign]
+
+    class OrchestratorFake:
+        iteration_count = 1
+        total_tool_calls = 1
+        completion_kind = "completed"
+        usage_statistics = [
+            DeploymentUsage(model_name="gpt-5", prompt_tokens=100, completion_tokens=10),
+        ]
+
+        async def invoke(self):
+            raise OrchestratorExceedMaxIterationsException()
+
+    request, completion, _ = make_request_completion(OrchestratorFake(), api_key="k")
+
+    with pytest.raises(DialHTTPException) as exc:
+        await completion.chat_completion(request, response)
+
+    assert "usage failed" not in str(exc.value.message)
