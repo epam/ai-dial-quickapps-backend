@@ -3,8 +3,11 @@ import logging
 
 import openai
 from injector import inject
+from openai.types import CompletionUsage
+from pydantic import BaseModel, Field
 
 from quickapp.common import ORCHESTRATOR_AZURE_CLIENT
+from quickapp.common.deployment_usage import ModelUsage
 from quickapp.config.application import ApplicationConfig
 
 logger = logging.getLogger(__name__)
@@ -17,6 +20,11 @@ _ROUTING_SYSTEM_PROMPT = (
     "Example: [\"tool_a\", \"tool_b\"]\n\n"
     "Catalog:\n{catalog}"
 )
+
+
+class _RoutingResult(BaseModel):
+    names: list[str] = Field(default_factory=list)
+    usage: ModelUsage | None = None
 
 
 @inject
@@ -35,10 +43,10 @@ class _AnonymousAgent:
         self.__client = client
         self.__config = config
 
-    async def route(self, query: str, catalog: list[dict[str, str]]) -> list[str]:
-        """Return tool names from catalog that best match query."""
+    async def route(self, query: str, catalog: list[dict[str, str]]) -> _RoutingResult:
+        """Return tool names from catalog that best match query, with the tokens the call spent."""
         if not catalog:
-            return []
+            return _RoutingResult()
 
         discovery = self.__config.orchestrator.tool_discovery
         if discovery is None:
@@ -46,7 +54,7 @@ class _AnonymousAgent:
                 "Anonymous agent routing call invoked while tool_discovery is disabled — "
                 "returning no matches"
             )
-            return []
+            return _RoutingResult()
         service_model = (
             discovery.service_model or self.__config.orchestrator.deployment.deployment_id
         )
@@ -67,13 +75,24 @@ class _AnonymousAgent:
             )
         except openai.OpenAIError:
             logger.exception("Anonymous agent routing call failed")
-            return []
+            return _RoutingResult()
 
+        usage = _to_model_usage(service_model, response.usage)
         raw = (response.choices[0].message.content or "").strip()
         try:
             names = json.loads(raw)
             if isinstance(names, list):
-                return [n for n in names if isinstance(n, str)]
+                return _RoutingResult(names=[n for n in names if isinstance(n, str)], usage=usage)
         except (json.JSONDecodeError, ValueError):
             logger.warning("Anonymous agent returned non-JSON response (length=%d)", len(raw))
-        return []
+        return _RoutingResult(usage=usage)
+
+
+def _to_model_usage(model: str, usage: CompletionUsage | None) -> ModelUsage | None:
+    if usage is None:
+        return None
+    return ModelUsage(
+        model=model,
+        prompt_tokens=usage.prompt_tokens,
+        completion_tokens=usage.completion_tokens,
+    )
