@@ -1,5 +1,6 @@
 from .config_resolution import ConfigResolutionException
 from .fallback_agent_stop import FallbackAgentStopException
+from .hidden_tool_error import HiddenToolErrorException
 from .hook_initialization import HookInitializationException
 from .initialization import InitializationException
 from .invalid_tool_call_parameter import InvalidToolCallParameterException
@@ -12,6 +13,7 @@ from .skill_initialization import (
 )
 from .tool_initialization import ToolInitializationException
 from .tool_timeout import TOOL_TIMEOUT_PHRASE, ToolTimeoutError
+from .toolset import ToolsetForbiddenException, ToolsetNotFoundException
 from .unsupported_reasoning_effort import UnsupportedReasoningEffortException
 from .tool_error import ToolErrorException
 
@@ -19,6 +21,7 @@ __all__ = [
     "TOOL_TIMEOUT_PHRASE",
     "ConfigResolutionException",
     "FallbackAgentStopException",
+    "HiddenToolErrorException",
     "InitializationException",
     "InvalidToolCallParameterException",
     "OffloadConfigurationException",
@@ -28,6 +31,8 @@ __all__ = [
     "SkillInitializationException",
     "ToolInitializationException",
     "ToolTimeoutError",
+    "ToolsetForbiddenException",
+    "ToolsetNotFoundException",
     "UnsupportedReasoningEffortException",
     "HookInitializationException",
     "ToolErrorException",

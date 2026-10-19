@@ -10,6 +10,7 @@ from injector import AssistedBuilder
 from quickapp.common import StagedBaseTool, ToolCallResult
 from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
+from quickapp.common.exceptions import HiddenToolErrorException
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.config.application import StageDisplayLevel
@@ -508,3 +509,21 @@ async def test_error_at_none_level_no_stage_and_returns_fallback(
     # A result was returned (fallback), not an exception
     assert result is not None
     assert result.tool_call_id == "call-id"
+
+
+@pytest.mark.asyncio
+async def test_hidden_error_shows_placeholder_in_stage(mock_stage_wrapper_factory):
+    tool_config = _make_tool_config()
+    tool_config.fallback_configuration = ToolFallbackConfig(display_error_in_stage=False)
+    tool = FailingTestTool(
+        stage_wrapper_builder=mock_stage_wrapper_factory,
+        tool_config=tool_config,
+        perf_timer=Mock(),
+        error=RuntimeError("internal detail"),
+    )
+
+    await tool.arun("call-id", stage_level=StageDisplayLevel.INFO)
+
+    stage = mock_stage_wrapper_factory.build.return_value
+    (shown,) = stage.add_exception.call_args.args
+    assert isinstance(shown, HiddenToolErrorException)
