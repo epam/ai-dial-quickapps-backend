@@ -30,6 +30,7 @@ from quickapp.config.tools.tool_fallback import RetryStrategyModel
 
 from .exceptions import InvalidToolCallParameterException, ToolTimeoutError
 from .perf_timer.perf_timer import PerformanceTimer
+from .perf_timer.tool_milestones import bind_tool_period, unbind_tool_period
 from .tool_call_result import ToolCallResult
 from .tool_fallback.processor import FallbackProcessor
 from .utils import matches_type, substitute_media_type
@@ -305,8 +306,10 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             timer_name = f"tool_{stage_wrapper.name}_{tool_call_id}"
         start = time.perf_counter()
         self.__perf_timer.start_period(timer_name, 3)
+        period_token = bind_tool_period(self.__perf_timer, timer_name)
         try:
             params = await self._pre_process_params(**kwargs)
+            self.__perf_timer.add_milestone(timer_name, "params_preprocessed")
             if stage_wrapper:
                 if skip_parameters:
                     # Arguments were already streamed into the adopted stage; only
@@ -315,9 +318,11 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                 else:
                     # TODO: filter params ro remove attachment_urls if it's empty
                     stage_wrapper.add_parameters(self._stage_parameters(params))
+            self.__perf_timer.add_milestone(timer_name, "stage_params_added")
             result: ToolCallResult = await self._run_in_stage_async(
                 stage_wrapper, tool_call_id, *args, **params
             )
+            self.__perf_timer.add_milestone(timer_name, "tool_body_completed")
             result.tool_call_id = tool_call_id
             if result.attachments:
                 attachment_cfg = self._tool_config.attachment
@@ -331,6 +336,7 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
                         if matches_type(a.type, attachment_cfg.propagate_types_to_choice):
                             result.propagate_to_choice.append(a)
                 result.attachments = filtered
+            self.__perf_timer.add_milestone(timer_name, "attachments_filtered")
             logger.debug(
                 "Tool call %s finished: content_length=%d, attachments=%d",
                 tool_call_id,
@@ -364,4 +370,5 @@ class StagedBaseTool(ABC, BaseModel, extra='allow'):
             )
             raise
         finally:
+            unbind_tool_period(period_token)
             self.__perf_timer.stop_period(timer_name)

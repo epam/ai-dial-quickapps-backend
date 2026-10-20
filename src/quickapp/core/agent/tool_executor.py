@@ -39,7 +39,6 @@ class ToolExecutor:
         self.__enrichers = enrichers
         self.__processors = sorted(processors, key=lambda p: p.order)
         self.__perf_timer: PerformanceTimer = perf_timer
-        self.__period_name = "tool_execution"
 
     async def execute(
         self,

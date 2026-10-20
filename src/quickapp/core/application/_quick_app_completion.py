@@ -96,6 +96,7 @@ class _QuickAppCompletion(ChatCompletion):
                 self.__log_request_initialized()
                 agent_invoker = self.__injector.get(Orchestrator)  # type: ignore[type-abstract]
                 await agent_invoker.invoke()
+                timer_service.add_milestone(self.__timer_period_name, "orchestrator_invoked")
                 outcome = agent_invoker.completion_kind
             except Exception as e:
                 # Raises a DIAL protocol error; the SDK delivers it as a non-200 response

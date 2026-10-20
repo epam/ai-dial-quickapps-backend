@@ -21,6 +21,7 @@ from quickapp.common.chat_completion_stream.handler import (
 from quickapp.common.chat_completion_stream.stream_result import ChatStreamAccumulator
 from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.dial_request_fields import EXTRA_BODY
+from quickapp.common.perf_timer.tool_milestones import mark_tool_milestone
 from quickapp.common.tool_timeout_utils import translate_timeout
 from quickapp.dial_deployment_tooling._attachment_resolver import AttachmentResolver
 from quickapp.dial_deployment_tooling.constants import (
@@ -31,6 +32,10 @@ from quickapp.dial_deployment_tooling.constants import (
 from quickapp.shared.config_resolvers.tool_timeout_resolver import ToolTimeoutResolver
 
 logger = logging.getLogger(__name__)
+
+
+def _mark_first_chunk() -> None:
+    mark_tool_milestone("dial_first_chunk")
 
 
 @inject
@@ -80,8 +85,11 @@ class DialCompletionService:
             chat_params = self._build_chat_completion_params(
                 params, deployment_id, messages, self.__forwarded_headers
             )
+            mark_tool_milestone("dial_request_built")
             chunks = await self.__azure_client.chat.completions.create(**chat_params)
+            mark_tool_milestone("dial_response_started")
             result = await self._consume_stream(chunks, stage_wrapper, parent_stage)
+            mark_tool_milestone("dial_stream_completed")
 
         return ToolCallResult(
             content=result.content,
@@ -135,9 +143,10 @@ class DialCompletionService:
                 propagate_stages=True,
                 stream_content=False,
                 parent_stage=parent_stage,
+                on_first_chunk=_mark_first_chunk,
             )
         else:
-            config = ChatStreamConfig(stage_wrapper=stage_wrapper)
+            config = ChatStreamConfig(stage_wrapper=stage_wrapper, on_first_chunk=_mark_first_chunk)
         try:
             return await self.__stream_handler.process_stream(
                 chunks=chunks,

@@ -20,6 +20,7 @@ from quickapp.common.dial_request_fields import CONFIGURATION, CUSTOM_FIELDS
 from quickapp.common.messages_mixin import MessagesMixin
 from quickapp.common.payload_logging import log_payload
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
+from quickapp.common.perf_timer.tool_milestones import mark_tool_milestone
 from quickapp.common.utils import to_plain_dict
 from quickapp.config.dial_deployment import DialDeploymentParameters, DialDeploymentToolParameters
 from quickapp.config.tools.base import ConfigurableSchemaSimpleType, JsonTypeEnum, OpenAiToolConfig
@@ -122,6 +123,7 @@ class BaseDeploymentTool(StagedBaseTool):
         tool_config = cast(DialDeploymentTool, self.tool_config)
         session_id, is_first_call = self._setup_session(kwargs, tool_config, tool_call_id)
         history = await self._resolve_history(tool_config, session_id)
+        mark_tool_milestone("dial_history_resolved")
         parent_stage = (
             stage_wrapper.stage
             if self.__propagate_sub_stages and stage_wrapper is not None
