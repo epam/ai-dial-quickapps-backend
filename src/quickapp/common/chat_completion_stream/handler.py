@@ -38,6 +38,10 @@ class ChatStreamConfig(BaseModel):
     propagate_stages: bool = False
     parent_stage: Stage | None = None
     attachment_filter: Callable[[Attachment], bool] | None = None
+    on_first_chunk: Callable[[], None] | None = None
+    """Called once, when the first stream event arrives (time to first token)."""
+    on_first_tool_call: Callable[[], None] | None = None
+    """Called once, when the first tool-call delta arrives."""
 
 
 class ChatCompletionStreamHandler:
@@ -58,7 +62,12 @@ class ChatCompletionStreamHandler:
     ) -> ChatStreamAccumulator:
         pipeline = self._sink_factory.create(config)
         pipeline.on_stream_start()
-        await self._run(chat_completion=chunks, sink=pipeline)
+        await self._run(
+            chat_completion=chunks,
+            sink=pipeline,
+            on_first_chunk=config.on_first_chunk,
+            on_first_tool_call=config.on_first_tool_call,
+        )
         self._log_stream_accumulator(pipeline.accumulator)
         return pipeline.accumulator
 
@@ -67,6 +76,8 @@ class ChatCompletionStreamHandler:
         *,
         chat_completion: AsyncIterable[ChatCompletionChunk],
         sink: ChatStreamSink,
+        on_first_chunk: Callable[[], None] | None = None,
+        on_first_tool_call: Callable[[], None] | None = None,
     ) -> None:
         succeeded = False
         try:
@@ -74,6 +85,16 @@ class ChatCompletionStreamHandler:
                 chat_completion,
                 parse_chat_completion_chunk,
             ):
+                if on_first_chunk is not None:
+                    on_first_chunk()
+                    on_first_chunk = None
+                if (
+                    on_first_tool_call is not None
+                    and isinstance(event, NormalizedChoiceDelta)
+                    and event.tool_calls
+                ):
+                    on_first_tool_call()
+                    on_first_tool_call = None
                 self._apply_stream_event(event, sink)
             succeeded = True
             sink.on_stream_success()

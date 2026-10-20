@@ -1,6 +1,6 @@
 import logging
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -192,7 +192,7 @@ class Orchestrator:
         self.__perf_timer.start_period(period, level=2)
 
         model_call_start = time.perf_counter()
-        stream_result = await self.__invoke_and_accumulate_stream_with_recovery()
+        stream_result = await self.__invoke_and_accumulate_stream_with_recovery(period)
         model_call_duration = time.perf_counter() - model_call_start
 
         tool_calls = stream_result.tool_calls
@@ -260,7 +260,7 @@ class Orchestrator:
 
         adopted_stages = stream_result.adopted_tool_stages
         if internal:
-            await self._execute_internal_tool_calls(internal, adopted_stages)
+            await self._execute_internal_tool_calls(internal, adopted_stages, period)
 
         # Close stages for external/unknown tools that were not adopted by arun.
         stream_result.close_remaining_adopted_tool_stages()
@@ -277,12 +277,14 @@ class Orchestrator:
         self,
         tool_calls: list[AccumulatedToolCall],
         adopted_tool_stages: dict[str, AdoptedToolStage],
+        period: str,
     ) -> None:
         self.__total_tool_calls += len(tool_calls)
         _log_tool_calls("Agent requests internal tool calls", tool_calls)
         tool_call_results = await self.__tool_executor.execute(
             tool_calls, adopted_tool_stages=adopted_tool_stages
         )
+        self.__perf_timer.add_milestone(period, "tools_executed")
         if not tool_call_results:
             names = [tc.name for tc in tool_calls]
             raise RuntimeError(f"Tool call(s) {names} doesn't return any result.")
@@ -310,6 +312,7 @@ class Orchestrator:
                 self._send_annotations(tool_call_result.annotations)
             if tool_call_result.usage and self.__SHOW_USAGE_STATISTICS:
                 self.__usage_statistics_list.extend(tool_call_result.usage)
+        self.__perf_timer.add_milestone(period, "tool_results_applied")
 
     def _send_annotations(self, annotations: list[dict[str, Any]]) -> None:
         """Pass a tool's citation annotations through to the choice unchanged."""
@@ -338,22 +341,40 @@ class Orchestrator:
         self.__perf_timer.stop_period(period)
         self.__deferred_stage_close_registry.flush()
 
-    async def __invoke_and_accumulate_stream_with_recovery(self) -> ChatStreamAccumulator:
+    async def __invoke_and_accumulate_stream_with_recovery(
+        self, period: str
+    ) -> ChatStreamAccumulator:
         """Invoke assistant and consume stream; on APIError during stream, run recovery once."""
         while True:
             assistant_invoker = self.__assistant_invoker_provider.get()
             chat_completion_stream = await assistant_invoker.invoke()
+            self.__perf_timer.add_milestone(period, "llm_request_created")
             try:
-                return await self.accumulate_stream(chat_completion_stream)
+                stream_result = await self.accumulate_stream(chat_completion_stream, period)
+                self.__perf_timer.add_milestone(period, "llm_stream_completed")
+                return stream_result
             except APIError as e:
                 self.__chat_completion_recovery.apply_message_recovery(
                     e, retry_scope=STREAM_ACCUMULATION_RETRY_SCOPE
                 )
 
     async def accumulate_stream(
-        self, chat_completion_stream: AsyncStream[ChatCompletionChunk]
+        self, chat_completion_stream: AsyncStream[ChatCompletionChunk], period: str | None = None
     ) -> ChatStreamAccumulator:
         registry = self.__suppressed_attachment_registry
+        on_first_chunk: Callable[[], None] | None = None
+        on_first_tool_call: Callable[[], None] | None = None
+        if period is not None:
+            milestone_period = period
+
+            def mark_first_chunk() -> None:
+                self.__perf_timer.add_milestone(milestone_period, "llm_first_chunk")
+
+            def mark_first_tool_call() -> None:
+                self.__perf_timer.add_milestone(milestone_period, "llm_first_tool_call_delta")
+
+            on_first_chunk = mark_first_chunk
+            on_first_tool_call = mark_first_tool_call
         try:
             return await self.__stream_handler.process_stream(
                 chunks=chat_completion_stream,
@@ -362,6 +383,8 @@ class Orchestrator:
                     stream_content=True,
                     propagate_stages=self.__propagate_orchestrator_stages,
                     attachment_filter=lambda a: not registry.is_suppressed(a.url),
+                    on_first_chunk=on_first_chunk,
+                    on_first_tool_call=on_first_tool_call,
                 ),
             )
         except ChatStreamHandlerError:
