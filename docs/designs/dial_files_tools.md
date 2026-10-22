@@ -655,6 +655,15 @@ context. Their output is therefore capped inside the tools (`MAX_OUTPUT_CHARS = 
   `internal_file_read_chars`, and cut the whole result at the cap. `read_lines` appends
   `continue with start_line=N`; `search` appends a notice to narrow the pattern.
 
+The per-tool caps give precise continuation hints, but they are opt-in, so they are not what
+guarantees the bound. `FileToolResultBoundProcessor` (`dial_files_tooling/_output_bound_processor.py`)
+is the default-on backstop: it applies to every tool whose name starts with `internal_file_`,
+cuts any result over `MAX_RESULT_CHARS = 32000` characters on a line boundary (re-closing a
+fenced block), and appends a generic "output truncated" notice. It runs after offload
+(`order = 10`), so it also catches the original text when an offload upload fails. A new file tool
+is covered without any code of its own; a unit test fails if a `_DialFileTool` subclass is
+not registered in `ALL_FILE_TOOL_CONFIGS` or a tool name loses the prefix.
+
 // search_in_file
 {
   "name": "internal_file_search",

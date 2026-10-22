@@ -29,16 +29,16 @@ def truncate_line(line: str) -> str:
     )
 
 
-def cap_output(text: str) -> tuple[str, bool]:
-    """Limit ``text`` to ``MAX_OUTPUT_CHARS``, cutting on a line boundary when possible.
+def cap_output(text: str, limit: int = MAX_OUTPUT_CHARS) -> tuple[str, bool]:
+    """Limit ``text`` to ``limit`` chars, cutting on a line boundary when possible.
 
     Returns the (possibly shortened) text and whether anything was dropped.
     """
-    if len(text) <= MAX_OUTPUT_CHARS:
+    if len(text) <= limit:
         return text, False
-    cut = text.rfind("\n", 0, MAX_OUTPUT_CHARS + 1)
+    cut = text.rfind("\n", 0, limit + 1)
     if cut <= 0:
-        cut = MAX_OUTPUT_CHARS
+        cut = limit
     return text[:cut], True
 
 

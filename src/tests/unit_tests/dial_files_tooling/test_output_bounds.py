@@ -40,6 +40,10 @@ class TestCapOutput:
         assert len(capped) <= MAX_OUTPUT_CHARS
         assert capped == "\n".join([line] * capped.count("\n") + [line])
 
+    def test_custom_limit_is_honoured(self):
+        capped, truncated = cap_output("ab\ncd\nef", limit=5)
+        assert (capped, truncated) == ("ab\ncd", True)
+
     def test_hard_cut_when_no_line_boundary_fits(self):
         text = "z" * (MAX_OUTPUT_CHARS * 2)
         capped, truncated = cap_output(text)

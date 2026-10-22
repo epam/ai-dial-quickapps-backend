@@ -173,7 +173,7 @@ Config resolution happens **once per request** in `DialFilesToolingModule._provi
 
 The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: a sibling `@multiprovider` on `DialFilesToolingModule` contributes an `OffloadConfigurationException` (a soft `InitializationException`) when offload is `enabled` but the read-back tools are missing. It returns `[]` when `dial_files` is absent or offload is `enabled: false` — those mean offload was never requested, so there is nothing to warn about. `_InitializationErrorHandler` renders the exception as a warning line in the shared **"Initialization issues"** stage (`Status.COMPLETED`, since the exception is soft — the request still proceeds).
 
-**Order:** `0` (default). No other processors planned today.
+**Order:** `0` (default). `FileToolResultBoundProcessor` (`order = 10`, `internal_file_*` tools only) runs right after it as a backstop that caps whatever remains unbounded; see [DIAL Files Tools](dial_files_tools.md).
 
 **Owner:** `src/quickapp/dial_files_tooling/_offload_processor.py`
 
