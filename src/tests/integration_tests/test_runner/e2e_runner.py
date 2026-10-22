@@ -399,13 +399,6 @@ class TestRunner:
                     ts,
                 )
             )
-            all_failures.extend(
-                ResponseValidator.check_usage_per_model(
-                    response_data.get("statistics"),
-                    test_message_data.usage_per_model_contains,
-                    ts,
-                )
-            )
             # update price:
             ts.price += extract_usage(response_message)
 

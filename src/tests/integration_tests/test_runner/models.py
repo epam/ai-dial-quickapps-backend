@@ -187,7 +187,6 @@ class UserMessage(BaseModel):
     answer_not_contains: list[str] | None = None
     usage_statistics_contains: list[str] | None = None
     usage_statistics_not_contains: list[str] | None = None
-    usage_per_model_contains: list[str] | None = None
     external_tool_calls: list[ToolCall] | None = None
     external_tool_results: dict[str, str] | None = None
 
@@ -244,7 +243,6 @@ class TstCase:
         answer_not_contains: list[str] | None = None,
         usage_statistics_contains: list[str] | None = None,
         usage_statistics_not_contains: list[str] | None = None,
-        usage_per_model_contains: list[str] | None = None,
     ):
         tool_calls, attachment_checks = self._adjust_thresholds(tool_calls, attachment_checks)
         if external_tool_calls:
@@ -259,7 +257,6 @@ class TstCase:
                 answer_not_contains=answer_not_contains,
                 usage_statistics_contains=usage_statistics_contains,
                 usage_statistics_not_contains=usage_statistics_not_contains,
-                usage_per_model_contains=usage_per_model_contains,
                 external_tool_calls=external_tool_calls,
                 external_tool_results=external_tool_results,
             )

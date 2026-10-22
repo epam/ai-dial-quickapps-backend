@@ -372,32 +372,6 @@ class ResponseValidator:
         return failures
 
     @staticmethod
-    def check_usage_per_model(
-        statistics: dict[str, Any] | None, expected_models: list[str] | None, ts: TestStats
-    ) -> list[Failure]:
-        """Checks that the response `statistics.usage_per_model` reports every expected model."""
-        if not expected_models:
-            return []
-
-        reported = [
-            entry.get("model")
-            for entry in (statistics or {}).get("usage_per_model") or []
-            if isinstance(entry, dict)
-        ]
-        failures = []
-        for model in expected_models:
-            if model not in reported:
-                failures.append(
-                    Failure(
-                        actual=reported,
-                        expected=f"'{model}' in statistics.usage_per_model",
-                        comment="The response does not report an expected model.",
-                    )
-                )
-                ts.increment_failure(FailureReason.USAGE_STATISTICS)
-        return failures
-
-    @staticmethod
     def check_tools_payload(
         recorded_requests: list[dict[str, Any]],
         absent: list[str],
