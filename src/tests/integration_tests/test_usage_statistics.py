@@ -41,7 +41,6 @@ USAGE_ENV = {"SHOW_USAGE_STATISTICS": "true"}
             f"Tool: {STUB_TOOL_NAME} | {STUB_DEPLOYMENT_ID} | "
             f"{STUB_PROMPT_TOKENS} | {STUB_COMPLETION_TOKENS} |",
         ],
-        usage_per_model_contains=[STUB_DEPLOYMENT_ID],
     ),
 )
 def test_deployment_tool_usage_is_reported(client):
@@ -72,8 +71,6 @@ def test_deployment_tool_usage_is_reported(client):
         ],
         # The app also reports a total under its own deployment id; the breakdown supersedes it.
         usage_statistics_not_contains=[f"| {NESTED_STUB_DEPLOYMENT_ID} |"],
-        # Reported onward, so that a caller of this app sees the nested models too.
-        usage_per_model_contains=[m.model for m in NESTED_STUB_MODELS],
     ),
 )
 def test_nested_app_usage_per_model_is_reported(client):

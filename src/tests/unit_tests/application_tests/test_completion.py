@@ -9,7 +9,6 @@ from aidial_sdk.exceptions import InvalidRequestError
 from httpx import HTTPError
 
 import quickapp.core.application._quick_app_completion as quick_app_completion
-from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.exceptions import (
     ConfigResolutionException,
     OrchestratorExceedMaxIterationsException,
@@ -45,14 +44,6 @@ class FakeChoice:
 class FakeResponse:
     def __init__(self, choice: FakeChoice):
         self._choice = choice
-        self.usage_per_model: list[tuple[str, int, int]] = []
-        self.usage: tuple[int, int] | None = None
-
-    def add_usage_per_model(self, model: str, prompt_tokens: int = 0, completion_tokens: int = 0):
-        self.usage_per_model.append((model, prompt_tokens, completion_tokens))
-
-    def set_usage(self, prompt_tokens: int = 0, completion_tokens: int = 0):
-        self.usage = (prompt_tokens, completion_tokens)
 
     def create_single_choice(self):
         # synchronous context manager used inside async method
@@ -209,7 +200,6 @@ async def test_chat_completion_success(make_request_completion):
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             orchestrator_called["count"] += 1
@@ -234,7 +224,6 @@ async def test_chat_completion_orchestrator_exceed_raises_dial_error(make_reques
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             raise OrchestratorExceedMaxIterationsException()
@@ -261,7 +250,6 @@ async def test_chat_completion_generic_exception_raises_generic_message(make_req
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             raise ValueError("boom")
@@ -330,7 +318,6 @@ async def test_chat_completion_http_error_raises_safe_message(make_request_compl
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             raise HTTPError("http://internal-service/secret-endpoint failure")
@@ -366,7 +353,6 @@ async def test_chat_completion_openai_internal_server_error_raises_safe_message(
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             raise _openai.InternalServerError(
@@ -403,7 +389,6 @@ async def test_chat_completion_sets_context_messages_when_request_is_request(
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             return None
@@ -536,7 +521,6 @@ async def test_chat_completion_accepts_system_message_when_override_enabled(
         iteration_count = 1
         total_tool_calls = 0
         completion_kind = "completed"
-        usage_statistics: list = []
 
         async def invoke(self):
             pass
@@ -554,89 +538,3 @@ async def test_chat_completion_accepts_system_message_when_override_enabled(
     # The system message passed the policy check and reached message setup
     context = injector.get(_RequestContext)
     assert context.messages[0].role == Role.SYSTEM
-
-
-@pytest.mark.asyncio
-async def test_chat_completion_reports_usage_per_model(make_request_completion):
-    choice = FakeChoice()
-    response = FakeResponse(choice)
-
-    class OrchestratorFake:
-        iteration_count = 1
-        total_tool_calls = 1
-        completion_kind = "completed"
-        usage_statistics = [
-            DeploymentUsage(model_name="gpt-5", prompt_tokens=100, completion_tokens=10),
-            DeploymentUsage(
-                deployment_name="image_tool",
-                deployment_id="gpt-image-1",
-                model_name="gpt-image-1",
-                prompt_tokens=5,
-                completion_tokens=40,
-            ),
-            DeploymentUsage(model_name="gpt-5", prompt_tokens=20, completion_tokens=2),
-        ]
-
-        async def invoke(self):
-            return None
-
-    request, completion, _ = make_request_completion(OrchestratorFake(), api_key="k")
-
-    await completion.chat_completion(request, response)
-
-    assert response.usage_per_model == [("gpt-5", 120, 12), ("gpt-image-1", 5, 40)]
-    assert response.usage == (125, 52)
-
-
-@pytest.mark.asyncio
-async def test_chat_completion_reports_usage_of_failed_run(make_request_completion):
-    choice = FakeChoice()
-    response = FakeResponse(choice)
-
-    class OrchestratorFake:
-        iteration_count = 1
-        total_tool_calls = 1
-        completion_kind = "completed"
-        usage_statistics = [
-            DeploymentUsage(model_name="gpt-5", prompt_tokens=100, completion_tokens=10),
-        ]
-
-        async def invoke(self):
-            raise ValueError("boom")
-
-    request, completion, _ = make_request_completion(OrchestratorFake(), api_key="k")
-
-    with pytest.raises(DialHTTPException):
-        await completion.chat_completion(request, response)
-
-    assert response.usage_per_model == [("gpt-5", 100, 10)]
-    assert response.usage == (100, 10)
-
-
-@pytest.mark.asyncio
-async def test_chat_completion_usage_failure_does_not_hide_run_error(make_request_completion):
-    choice = FakeChoice()
-    response = FakeResponse(choice)
-
-    def _set_usage_raises(prompt_tokens: int = 0, completion_tokens: int = 0):
-        raise RuntimeError("usage failed")
-
-    response.set_usage = _set_usage_raises  # type: ignore[method-assign]
-
-    class OrchestratorFake:
-        iteration_count = 1
-        total_tool_calls = 1
-        completion_kind = "completed"
-        usage_statistics = [
-            DeploymentUsage(model_name="gpt-5", prompt_tokens=100, completion_tokens=10),
-        ]
-
-        async def invoke(self):
-            raise OrchestratorExceedMaxIterationsException()
-
-    request, completion, _ = make_request_completion(OrchestratorFake(), api_key="k")
-
-    with pytest.raises(DialHTTPException) as exc:
-        await completion.chat_completion(request, response)
-
-    assert "usage failed" not in str(exc.value.message)
