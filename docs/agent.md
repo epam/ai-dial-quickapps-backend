@@ -433,8 +433,7 @@ LLM responses are streamed and processed incrementally by the Chunk Processor:
 - **Tool Calls**: Tool call deltas are accumulated and assembled into complete calls
 - **Usage**: Token usage is captured from the final chunk: the top-level `usage` and DIAL's
   `statistics.usage_per_model`. A deployment tool's per-model breakdown replaces its
-  total, so a nested app's tokens are not counted twice. With `SHOW_USAGE_STATISTICS=true` the app reports
-  the collected usage back to its caller, also when a run fails
+  total, so a nested app's tokens are not counted twice
 - **Annotations**: Citation annotations under `delta.custom_fields.annotations` are collected
 
 The processor builds an aggregated result containing all accumulated data for the orchestrator to use.
