@@ -11,7 +11,7 @@ def _builder():
 
 
 def _make_builders():
-    return tuple(_builder() for _ in range(9))
+    return tuple(_builder() for _ in range(10))
 
 
 class TestDialFilesToolingModule:
@@ -27,7 +27,18 @@ class TestDialFilesToolingModule:
         app_config = MagicMock()
         app_config.features.dial_files = DialFilesConfig(enabled_tools="all")
         result = module._provide_dial_files_tools(app_config, *_make_builders(), [], MagicMock())
-        assert len(result) == 9
+        assert len(result) == 10
+
+    def test_read_chars_is_gated_by_enabled_tools(self):
+        module = DialFilesToolingModule()
+        app_config = MagicMock()
+        app_config.features.dial_files = DialFilesConfig(enabled_tools=["read_chars"])
+        builders = _make_builders()
+        result = module._provide_dial_files_tools(app_config, *builders, [], MagicMock())
+        assert len(result) == 1
+        # read_chars is builder[2] (list, read_lines, read_chars)
+        builders[2].build.assert_called_once()
+        assert builders[2].build.call_args.kwargs["name"] == "internal_file_read_chars"
 
     def test_enabled_subset_filters_tools(self):
         module = DialFilesToolingModule()
@@ -47,8 +58,8 @@ class TestDialFilesToolingModule:
         builders = _make_builders()
         result = module._provide_dial_files_tools(app_config, *builders, [], MagicMock())
         assert len(result) == 1
-        # find is builder[3] (list, read, search, find)
-        builders[3].build.assert_called_once()
+        # find is builder[4] (list, read_lines, read_chars, search, find)
+        builders[4].build.assert_called_once()
 
     def test_path_transformer_injected_into_tools(self):
         module = DialFilesToolingModule()
@@ -60,7 +71,7 @@ class TestDialFilesToolingModule:
         module._provide_dial_files_tools(
             app_config, *builders, [global_transformer], path_transformer
         )
-        # write is builder[4] (list, read, search, find, write); the path transformer
-        # must run last (after the global transformers).
-        transformers = builders[4].build.call_args.kwargs["argument_transformers"]
+        # write is builder[5] (list, read_lines, read_chars, search, find, write); the
+        # path transformer must run last (after the global transformers).
+        transformers = builders[5].build.call_args.kwargs["argument_transformers"]
         assert transformers == [global_transformer, path_transformer]

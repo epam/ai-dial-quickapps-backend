@@ -19,6 +19,10 @@ class TestDialFilesConfig:
         cfg = DialFilesConfig(enabled_tools=["read_lines", "search"])
         assert cfg.enabled_tools == ["read_lines", "search"]
 
+    def test_read_chars_tool_name_accepted(self):
+        cfg = DialFilesConfig(enabled_tools=["read_lines", "read_chars"])
+        assert cfg.enabled_tools == ["read_lines", "read_chars"]
+
     def test_rejects_absolute_files_url(self):
         with pytest.raises(ValidationError, match="absolute"):
             DialFilesConfig(agent_home_dir="files/bucket/")

@@ -629,10 +629,17 @@ Opt in to the built-in workspace file tools (`internal_file_*`). Omit `dial_file
 
 | Field                      | Required | Type                         | Preview | Description                                                                                                                                 | Default Value |
 |----------------------------|----------|------------------------------|---------|---------------------------------------------------------------------------------------------------------------------------------------------|---------------|
-| `enabled_tools`            | No       | `"all"` or Array[String]     | No      | Which tools to expose. Short names: `list`, `read_lines`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.                    | `"all"`       |
+| `enabled_tools`            | No       | `"all"` or Array[String]     | No      | Which tools to expose. Short names: `list`, `read_lines`, `read_chars`, `search`, `find`, `write`, `edit`, `delete`, `copy`, `move`.     | `"all"`       |
 | `agent_home_dir`           | No       | String                       | No      | Relative sub-directory under appdata used as the root for relative paths. Must end with `/`; no `files/…`, leading `/`, or `..`. Empty = appdata root. | `""`          |
 | `max_files_scanned`        | No       | Integer (`≥ 1`)              | No      | Folder-mode `search` cap: max files downloaded/scanned per call before truncation.                                                          | `50`          |
 | `tool_call_result_offload` | No       | Object or null               | **Yes** | Offload oversized tool responses to a DIAL file. See below. Requires `read_lines` and `search` in `enabled_tools`.                          | defaults (see below) |
+
+`read_chars(path, offset, length)` reads a file by character offset instead of by line, so a file with
+a few very long lines (for example 20 lines of 400 KB) can still be read page by page. To keep the
+result out of the "too large" range, `read_chars` returns at most 8000 characters per call and
+reports the total length and the next offset. `read_lines` and `search` apply the same total cap
+and shorten any line longer than 2000 characters with a pointer to `read_chars`. These tools are
+excluded from offload, so the cap is what keeps their output small.
 
 ##### Tool-call result offload
 
@@ -643,7 +650,7 @@ Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
 |------------------|----------|---------------|------------------------------------------------------------------------------|---------------|
 | `enabled`        | No       | Boolean       | Whether to offload oversized tool responses                                                          | env `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` (`true`) |
 | `size_threshold` | No       | Integer (`> 0`) | Byte threshold above which a response is offloaded                                                 | env `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` (`40000`) |
-| `excluded_tools` | No       | Array[String] | **Additional** tool names exempt from offload (additive). `internal_file_read_lines`, `internal_file_search`, and `read_skill` are always excluded. | env list (default empty) |
+| `excluded_tools` | No       | Array[String] | **Additional** tool names exempt from offload (additive). `internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`, and `read_skill` are always excluded. | env list (default empty) |
 
 ```json
 {
@@ -1792,7 +1799,7 @@ your gateways or downstream services expect.
 | **DIAL Files — Tool-Response Offload**     |                                                                 |          |                                                                                                              |
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
-| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
+| `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
 | **External URL Egress**                    |                                                                 |          |                                                                                                              |
 | `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
 | `EXTERNAL_URL_FETCH_HOST_ALLOWLIST`        | —                                                               | No       | Comma-separated allowlist of host patterns for external URL fetches. Unset (default) means no admin-level host restriction. Patterns: exact host (`example.com`) or `*.example.com` for any subdomain. Re-checked on every redirect hop. Per-app `features.external_url_fetch.host_allowlist` narrows further (intersection) but never expands. |

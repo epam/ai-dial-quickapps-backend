@@ -4,10 +4,12 @@ import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.common.utils import fenced_code_block
 from quickapp.dial_core_services.dial_file_service import FolderEntry
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._tool_configs import SEARCH_IN_FILE_TOOL_CONFIG
+from quickapp.dial_files_tooling._utils import MAX_LINE_CHARS, MAX_OUTPUT_CHARS
 from tests.unit_tests.dial_files_tooling._helpers import make_config, make_service, make_tool
 
 
@@ -136,6 +138,42 @@ class TestSearchFileMode:
             stage_wrapper=None, path="x", pattern="bar", max_depth=3
         )
         assert result.content == fenced_code_block("2:bar")
+
+
+class TestSearchOutputBounds:
+    @pytest.mark.asyncio
+    async def test_overlong_matching_line_is_truncated_with_read_chars_hint(self):
+        tool = _make_tool("short\nNEEDLE" + "x" * 400_000 + "\nend")
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="x", pattern="NEEDLE")
+        assert "2:NEEDLE" in result.content
+        assert "x" * (MAX_LINE_CHARS + 1) not in result.content
+        assert INTERNAL_FILE_READ_CHARS_TOOL_NAME in result.content
+        assert len(result.content) < MAX_OUTPUT_CHARS
+
+    @pytest.mark.asyncio
+    async def test_file_mode_total_output_is_capped_with_notice(self):
+        tool = _make_tool("\n".join(f"ERR {i} " + "a" * 500 for i in range(200)))
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="x", pattern="ERR")
+        assert "output truncated" in result.content
+        assert "ERR 199" not in result.content
+        assert len(result.content) <= MAX_OUTPUT_CHARS + 500
+        assert result.content.startswith("```\n1:ERR 0 ")
+
+    @pytest.mark.asyncio
+    async def test_folder_mode_total_output_is_capped_with_notice(self):
+        entries = [_file(f"files/appbucket/f{i}.txt") for i in range(5)]
+        body = "\n".join(f"ERR {i} " + "a" * 500 for i in range(50)).encode()
+        contents = {entry.url: body for entry in entries}
+        tool = _make_folder_tool(entries, contents)
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="", pattern="ERR")
+        assert "output truncated" in result.content
+        assert len(result.content) <= MAX_OUTPUT_CHARS + 500
+
+    @pytest.mark.asyncio
+    async def test_small_result_has_no_notice(self):
+        tool = _make_tool("foo\nbar")
+        result = await tool._run_in_stage_async(stage_wrapper=None, path="x", pattern="bar")
+        assert "truncated" not in result.content
 
 
 class TestSearchFolderMode:

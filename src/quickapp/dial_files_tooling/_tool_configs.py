@@ -5,6 +5,7 @@ from quickapp.common.tool_names import (
     INTERNAL_FILE_FIND_TOOL_NAME,
     INTERNAL_FILE_LIST_TOOL_NAME,
     INTERNAL_FILE_MOVE_TOOL_NAME,
+    INTERNAL_FILE_READ_CHARS_TOOL_NAME,
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
     INTERNAL_FILE_SEARCH_TOOL_NAME,
     INTERNAL_FILE_WRITE_TOOL_NAME,
@@ -23,6 +24,7 @@ from quickapp.config.tools.display.paramenter import (
 from quickapp.config.tools.display.tool import ToolDisplayConfig, ToolStageConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH
+from quickapp.dial_files_tooling._utils import MAX_OUTPUT_CHARS
 
 _PATH_IN_TITLE = ParameterDisplayConfig(
     stage=FormattedParameterConfig(show_value_in_stage_title=True)
@@ -110,6 +112,51 @@ READ_FILE_LINES_TOOL_CONFIG = InternalTool(
         )
     ),
     display=ToolDisplayConfig(stage=ToolStageConfig(name="Read file lines")),
+)
+
+READ_CHARS_TOOL_CONFIG = InternalTool(
+    open_ai_tool=OpenAiToolConfig(
+        function=OpenAiToolFunction(
+            name=INTERNAL_FILE_READ_CHARS_TOOL_NAME,
+            description=(
+                "Read a slice of a file stored in DIAL by character offset, not by line. "
+                "Use it for files with very long lines (minified JSON, base64, logs on one "
+                "line), where read_lines would return too much. Returns at most "
+                f"{MAX_OUTPUT_CHARS} characters per call plus the file's total character "
+                "count and the next offset, so you can page through the file."
+            ),
+            parameters=OpenAiToolFunctionParameters(
+                type=JsonTypeEnum.object,
+                properties={
+                    "path": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.string,
+                        description=(
+                            "Relative path under the agent's home dir "
+                            "(e.g. 'reports/summary.md'), or absolute DIAL file URL "
+                            "starting with 'files/' (for shared or user-uploaded files)."
+                        ),
+                        display=_PATH_IN_TITLE,
+                    ),
+                    "offset": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Index of the first character to return (0-indexed). "
+                            "Use the 'next offset' from the previous call to continue."
+                        ),
+                    ),
+                    "length": ConfigurableSchemaSimpleType(
+                        type=JsonTypeEnum.integer,
+                        description=(
+                            "Number of characters to return. Values above "
+                            f"{MAX_OUTPUT_CHARS} are limited to {MAX_OUTPUT_CHARS}."
+                        ),
+                    ),
+                },
+                required=["path", "offset", "length"],
+            ),
+        )
+    ),
+    display=ToolDisplayConfig(stage=ToolStageConfig(name="Read file characters")),
 )
 
 SEARCH_IN_FILE_TOOL_CONFIG = InternalTool(
@@ -430,6 +477,7 @@ MOVE_FILE_TOOL_CONFIG = InternalTool(
 ALL_FILE_TOOL_CONFIGS = [
     LIST_FILES_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
+    READ_CHARS_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
     FIND_FILES_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,

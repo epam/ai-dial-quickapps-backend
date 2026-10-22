@@ -2,8 +2,10 @@ import pytest
 from aidial_client._exception import ResourceNotFoundError
 
 from quickapp.common.exceptions import InvalidToolCallParameterException
+from quickapp.common.tool_names import INTERNAL_FILE_READ_CHARS_TOOL_NAME
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._tool_configs import READ_FILE_LINES_TOOL_CONFIG
+from quickapp.dial_files_tooling._utils import MAX_LINE_CHARS, MAX_OUTPUT_CHARS
 from tests.unit_tests.dial_files_tooling._helpers import make_service, make_tool
 
 
@@ -44,6 +46,37 @@ class TestReadFileLines:
             stage_wrapper=None, path="f.txt", start_line=1, end_line=3
         )
         assert result.content == "line1\nline2"
+
+    @pytest.mark.asyncio
+    async def test_overlong_line_is_truncated_with_read_chars_hint(self):
+        huge = "x" * 400_000
+        tool = _make_tool(f"first\n{huge}\nlast".encode())
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, path="f.txt", start_line=0, end_line=3
+        )
+        assert result.content.startswith("first\n" + "x" * MAX_LINE_CHARS)
+        assert INTERNAL_FILE_READ_CHARS_TOOL_NAME in result.content
+        assert len(result.content) <= MAX_OUTPUT_CHARS
+
+    @pytest.mark.asyncio
+    async def test_many_long_lines_are_capped_with_continuation_hint(self):
+        line = "y" * 1000
+        tool = _make_tool("\n".join([line] * 50).encode())
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, path="f.txt", start_line=10, end_line=50
+        )
+        kept = result.content.count(line)
+        assert 0 < kept < 40
+        assert f"start_line={10 + kept}" in result.content
+        assert len(result.content) <= MAX_OUTPUT_CHARS + 200
+
+    @pytest.mark.asyncio
+    async def test_small_slice_has_no_truncation_marker(self):
+        tool = _make_tool(b"a\nb\nc")
+        result = await tool._run_in_stage_async(
+            stage_wrapper=None, path="f.txt", start_line=0, end_line=3
+        )
+        assert result.content == "a\nb\nc"
 
     @pytest.mark.asyncio
     async def test_negative_start_raises(self):

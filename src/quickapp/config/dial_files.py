@@ -8,6 +8,7 @@ from quickapp.common.base_config import PreviewField
 DialFilesToolName = Literal[
     "list",
     "read_lines",
+    "read_chars",
     "search",
     "find",
     "write",
