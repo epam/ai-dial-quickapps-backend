@@ -3,11 +3,10 @@ from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
-from quickapp.dial_files_tooling._output_bound_processor import (
-    MAX_RESULT_CHARS,
-    ToolCallResultSizeLimitProcessor,
-)
+from quickapp.config.dial_files import ToolCallResultOffloadSettings
+from quickapp.dial_files_tooling._output_bound_processor import ToolCallResultSizeLimitProcessor
+
+MAX_RESULT_CHARS = 1_000
 
 _TOOL_NAMES = [
     "internal_file_list",
@@ -19,12 +18,9 @@ _TOOL_NAMES = [
 ]
 
 
-def _processor(enabled: bool = False, size_threshold: int = 0) -> ToolCallResultSizeLimitProcessor:
-    return ToolCallResultSizeLimitProcessor(
-        ResolvedOffloadConfig(
-            enabled=enabled, size_threshold=size_threshold, excluded_tools=frozenset()
-        )
-    )
+def _processor(max_result_chars: int = MAX_RESULT_CHARS) -> ToolCallResultSizeLimitProcessor:
+    settings = ToolCallResultOffloadSettings(size_threshold=1, max_result_chars=max_result_chars)
+    return ToolCallResultSizeLimitProcessor(settings)
 
 
 def _ctx(tool_name: str) -> ProcessingContext:
@@ -87,36 +83,14 @@ class TestToolCallResultSizeLimitProcessor:
         assert f"'{tool_name}'" in out.content
 
     @pytest.mark.asyncio
-    async def test_limit_follows_a_raised_offload_threshold(self):
-        threshold = MAX_RESULT_CHARS * 3
-        result = _result("x" * threshold)
-        out = await _processor(enabled=True, size_threshold=threshold).process(
-            result, _ctx("rest_get_logs")
-        )
-        assert out is result
+    async def test_limit_comes_from_the_setting(self):
+        result = _result("x" * 5_000)
+        assert await _processor(max_result_chars=5_000).process(result, _ctx("t")) is result
+        out = await _processor(max_result_chars=4_999).process(result, _ctx("t"))
+        assert "the limit is 4999" in out.content
 
-    @pytest.mark.asyncio
-    async def test_error_reports_the_effective_limit(self):
-        threshold = MAX_RESULT_CHARS * 3
-        out = await _processor(enabled=True, size_threshold=threshold).process(
-            _result("x" * (threshold + 1)), _ctx("rest_get_logs")
-        )
-        assert f"the limit is {threshold}" in out.content
-
-    @pytest.mark.asyncio
-    async def test_small_offload_threshold_does_not_lower_the_limit(self):
-        result = _result("x" * MAX_RESULT_CHARS)
-        out = await _processor(enabled=True, size_threshold=1_000).process(
-            result, _ctx("rest_get_logs")
-        )
-        assert out is result
-
-    @pytest.mark.asyncio
-    async def test_threshold_is_ignored_when_offload_is_disabled(self):
-        out = await _processor(enabled=False, size_threshold=MAX_RESULT_CHARS * 3).process(
-            _result("x" * (MAX_RESULT_CHARS + 1)), _ctx("rest_get_logs")
-        )
-        assert out.content.startswith("Error:")
+    def test_default_limit_is_80000(self):
+        assert ToolCallResultOffloadSettings().max_result_chars == 80_000
 
     def test_runs_after_offload(self):
         # Offload (order 0) must shrink or exclude first; the limit then backstops the rest.

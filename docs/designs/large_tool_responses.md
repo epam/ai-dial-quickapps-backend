@@ -173,7 +173,7 @@ Config resolution happens **once per request** in `DialFilesToolingModule._provi
 
 The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: a sibling `@multiprovider` on `DialFilesToolingModule` contributes an `OffloadConfigurationException` (a soft `InitializationException`) when offload is `enabled` but the read-back tools are missing. It returns `[]` when `dial_files` is absent or offload is `enabled: false` — those mean offload was never requested, so there is nothing to warn about. `_InitializationErrorHandler` renders the exception as a warning line in the shared **"Initialization issues"** stage (`Status.COMPLETED`, since the exception is soft — the request still proceeds).
 
-**Order:** `0` (default). `ToolCallResultSizeLimitProcessor` (`order = 10`, all tools) runs right after it as a backstop: a result still over `max(80000, size_threshold)` characters (offload disabled, tool excluded, or upload failed; the threshold counts only while offload is enabled) is replaced by a "response too large" error, so it never reaches the LLM context; see [DIAL Files Tools](dial_files_tools.md).
+**Order:** `0` (default). `ToolCallResultSizeLimitProcessor` (`order = 10`, all tools) runs right after it as a backstop: a result still longer than `TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS` (default 80000) characters (offload disabled, tool excluded, or upload failed); `size_threshold` is validated to stay at or below that limit is replaced by a "response too large" error, so it never reaches the LLM context; see [DIAL Files Tools](dial_files_tools.md).
 
 **Owner:** `src/quickapp/dial_files_tooling/_offload_processor.py`
 

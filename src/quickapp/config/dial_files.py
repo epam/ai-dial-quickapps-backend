@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from quickapp.common.base_config import PreviewField
@@ -27,6 +27,18 @@ class ToolCallResultOffloadSettings(BaseSettings):
     enabled_by_default: bool = Field(default=True)
     size_threshold: int = Field(default=40_000)
     excluded_tools: set[str] = Field(default=set())
+    max_result_chars: int = Field(default=80_000, gt=0)
+
+    @model_validator(mode="after")
+    def _threshold_within_max_result_chars(self) -> "ToolCallResultOffloadSettings":
+        # A response over `max_result_chars` is rejected, so every size offload would
+        # take (>= size_threshold bytes, hence >= size_threshold chars) must stay below it.
+        if self.size_threshold > self.max_result_chars:
+            raise ValueError(
+                f"TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD ({self.size_threshold}) must not "
+                f"exceed TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS ({self.max_result_chars})"
+            )
+        return self
 
 
 class ToolCallResultOffloadConfig(BaseModel):
@@ -51,7 +63,8 @@ class ToolCallResultOffloadConfig(BaseModel):
         gt=0,
         description=(
             "Byte threshold above which a tool-call response is offloaded to a file. "
-            "Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var."
+            "Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var. "
+            "Must not exceed the TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS env var."
         ),
     )
     excluded_tools: set[str] = Field(
@@ -61,6 +74,17 @@ class ToolCallResultOffloadConfig(BaseModel):
             "Defaults to the TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS env var."
         ),
     )
+
+    @field_validator("size_threshold")
+    @classmethod
+    def _validate_size_threshold(cls, value: int) -> int:
+        max_result_chars = ToolCallResultOffloadSettings().max_result_chars
+        if value > max_result_chars:
+            raise ValueError(
+                f"size_threshold ({value}) must not exceed the maximum tool response length "
+                f"({max_result_chars}, TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS)"
+            )
+        return value
 
 
 class DialFilesConfig(BaseModel):

@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider, provider
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
@@ -16,7 +16,7 @@ from quickapp.common.tool_names import (
     INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
 )
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesConfig
+from quickapp.config.dial_files import DialFilesConfig, ToolCallResultOffloadSettings
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
@@ -71,11 +71,7 @@ class DialFilesToolingModule(Module):
             to=ToolCallResultOffloadProcessor,
             scope=request_scope,
         )
-        binder.bind(
-            ToolCallResultSizeLimitProcessor,
-            to=ToolCallResultSizeLimitProcessor,
-            scope=request_scope,
-        )
+        binder.bind(ToolCallResultSizeLimitProcessor, to=ToolCallResultSizeLimitProcessor)
         logger.debug("DialFilesToolingModule configuration completed")
 
     # Read-back tools (short names in DialFilesConfig.enabled_tools) the offload
@@ -168,6 +164,11 @@ class DialFilesToolingModule(Module):
             for builder, config in tools
             if _is_enabled(config)
         ]
+
+    @singleton
+    @provider
+    def _provide_offload_settings(self) -> ToolCallResultOffloadSettings:
+        return ToolCallResultOffloadSettings()
 
     @request_scope
     @provider

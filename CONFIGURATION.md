@@ -648,8 +648,10 @@ Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
 
 Independently of this feature, a response of any tool that is still longer than 80000 characters after
 offload (offload disabled or unavailable, tool excluded, or upload failed) is not passed to the model:
-it receives an error saying the response was too large instead. While offload is enabled, the limit is
-raised to `size_threshold` if that is larger, so a response offload would have saved is never rejected.
+it receives an error saying the response was too large instead. The limit is the env setting
+`TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS` (default `80000`); `size_threshold` must not exceed it, which
+is validated both for the env values and for a per-app override, so a response offload would have saved is
+never rejected.
 
 | Field            | Required | Type          | Description                                                                                          | Default Value |
 |------------------|----------|---------------|------------------------------------------------------------------------------|---------------|
@@ -1804,6 +1806,7 @@ your gateways or downstream services expect.
 | **DIAL Files — Tool-Response Offload**     |                                                                 |          |                                                                                                              |
 | `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` | `true`                                                          | No       | Default value of the per-app `enabled` flag (`features.dial_files.tool_call_result_offload.enabled`). Apps override per-app; `enabled: false` disables offload for that app. |
 | `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD` | `40000`                                                         | No       | Default byte threshold above which a tool-call response is offloaded to a DIAL file. Apps override per-app via `features.dial_files.tool_call_result_offload.size_threshold`. |
+| `TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS` | `80000`                                                         | No       | Maximum length, in characters, of any tool response that reaches the model. A longer response (still over the limit after offload) is replaced by a "response too large" error. Must be at least `TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD`, and so at least any per-app `size_threshold`. |
 | `TOOL_CALL_RESULT_OFFLOAD__EXCLUDED_TOOLS` | `[]`                                                            | No       | Default JSON list of **additional** tool names exempt from offloading. The read-back tools (`internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`) are always excluded regardless of this value, so a large read-back slice is never re-offloaded. Apps add more per-app via `features.dial_files.tool_call_result_offload.excluded_tools`. |
 | **External URL Egress**                    |                                                                 |          |                                                                                                              |
 | `EXTERNAL_URL_FETCH_ENABLED`                 | `false`                                                         | No       | Admin cap on fetching external (non-DIAL) URLs. When `false` (default), no app may fetch external URLs regardless of its manifest; the deployment-handoff branch (deployments with `features.url_attachments`) is unaffected. Apps can opt out per-app via `features.external_url_fetch.enabled=false` even when the admin allows. |
