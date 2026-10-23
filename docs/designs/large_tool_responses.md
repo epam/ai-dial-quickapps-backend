@@ -22,7 +22,7 @@ There is also **no extension point** in the current pipeline for transforming `T
 - Rely on [DIAL Files Tools](dial_files_tools.md) (`internal_file_read_lines`, `internal_file_search`) for read-back — they are the agent-facing half of this feature and are specified in their own design. Because an offloaded response is useless without a way to read it back, this design treats DIAL Files Tools as a **hard dependency**: offload self-disables (stays inline) when the read-back tools are not exposed.
 - Keep performance impact **negligible for small responses**; net-positive for large ones (trades one HTTP upload for smaller LLM context).
 - Make the extension point **future-ready for a configuration hierarchy** (global → application → toolset → tool), without paying the cost of hierarchy logic today.
-- **Fail-soft** on upload errors: a broken DIAL file storage must not break agent iterations, and must not flood the LLM context either — the response is truncated instead.
+- **Fail-open** on upload errors: a broken DIAL file storage must not break agent iterations.
 
 ---
 
@@ -43,8 +43,8 @@ There is also **no extension point** in the current pipeline for transforming `T
 ### UC-3: DIAL file storage is unavailable during offload
 
 **Trigger:** Upload to DIAL file storage fails with a 5xx error.\
-**Behavior:** `ToolCallResultOffloadProcessor` logs a warning and returns the beginning of the content (cut on a line boundary to about `size_threshold` characters) followed by a notice that names the reason: `HTTP <status>` for a DIAL error, otherwise the exception class, never the error message, which may carry URLs or headers. Attachments and state of the original result are kept.\
-**Outcome:** The LLM context stays bounded, the agent iteration completes, and the model knows the response was cut and why. No user-visible error. An error is deliberately not raised: the tool has already run, and reporting failure would invite a retry of a call with side effects.
+**Behavior:** `ToolCallResultOffloadProcessor` logs a warning and returns the original `ToolCallResult` unchanged (fail-open).\
+**Outcome:** Large content goes into the LLM context — not ideal, but the agent iteration completes. No user-visible error.
 
 ---
 
@@ -138,7 +138,7 @@ flowchart TD
     Excluded -- no --> Size{len content<br/>≥ threshold?}
     Size -- no --> ReturnAsIs
     Size -- yes --> Upload[upload content to<br/>DIAL file storage]
-    Upload -- failure --> Warn[log warning] --> Trunc[truncate +<br/>reason notice] --> ReturnNew
+    Upload -- failure --> Warn[log warning] --> ReturnAsIs
     Upload -- success --> Build[build new ToolCallResult:<br/>short notice + file attachment<br/>+ state.offloaded_response]
     Build --> ReturnNew([return new result])
 ```
@@ -148,7 +148,7 @@ flowchart TD
 2. If `ctx.tool_name in self._excluded_tools` → return result unchanged.
 3. Size check (the canonical comparison unit is **bytes**; see _Threshold calibration_). The implementation compares `len(result.content.encode("utf-8")) < threshold`. If under threshold → return result unchanged. (A code-point pre-check is intentionally avoided: `len(result.content)` is only a lower bound on UTF-8 byte length, so it cannot safely short-circuit either direction without a separate byte confirmation.)
 4. Upload `result.content` to DIAL file storage via `AttachmentService`, path `files/{bucket}/offloaded-responses/{tool_name}-{iso8601_timestamp}.txt` (see note on extension below).
-5. On upload failure → log warning, return the truncated content plus a notice with the failure reason (**fail-soft**). The upload goes through `AttachmentService.upload_bytes`, not `upload_attachment_to_core`, because the latter swallows errors and would hide the reason.
+5. On upload failure → log warning, return original result (**fail-open**).
 6. On success → return a new `ToolCallResult` with:
    - `content` = short notice containing file URL + usage hint (`internal_file_read_lines` / `internal_file_search`)
    - `attachments` += an attachment pointing to the uploaded file (title includes tool name); attachment's media type preserves the original `result.content_type` when set, else `text/plain`
@@ -173,7 +173,7 @@ Config resolution happens **once per request** in `DialFilesToolingModule._provi
 
 The restricted-`enabled_tools` disable is **surfaced to the user**, not silent: a sibling `@multiprovider` on `DialFilesToolingModule` contributes an `OffloadConfigurationException` (a soft `InitializationException`) when offload is `enabled` but the read-back tools are missing. It returns `[]` when `dial_files` is absent or offload is `enabled: false` — those mean offload was never requested, so there is nothing to warn about. `_InitializationErrorHandler` renders the exception as a warning line in the shared **"Initialization issues"** stage (`Status.COMPLETED`, since the exception is soft — the request still proceeds).
 
-**Order:** `0` (default). `FileToolResultBoundProcessor` (`order = 10`, `internal_file_*` tools only) runs right after it as a backstop that caps whatever remains unbounded; see [DIAL Files Tools](dial_files_tools.md).
+**Order:** `0` (default). `ToolCallResultSizeLimitProcessor` (`order = 10`, all tools) runs right after it as a backstop: a result still over `max(80000, size_threshold)` characters (offload disabled, tool excluded, or upload failed; the threshold counts only while offload is enabled) is replaced by a "response too large" error, so it never reaches the LLM context; see [DIAL Files Tools](dial_files_tools.md).
 
 **Owner:** `src/quickapp/dial_files_tooling/_offload_processor.py`
 
@@ -292,7 +292,7 @@ sequenceDiagram
 
 | Failure | Behavior |
 |---------|----------|
-| Upload to DIAL storage fails | **Fail-soft**: log warning, return the truncated content with a notice stating the reason. |
+| Upload to DIAL storage fails | **Fail-open**: log warning, return original `ToolCallResult` unchanged. |
 | Read-back tools not exposed (`features.dial_files` absent, offload `enabled: false`, or `enabled_tools` excludes `read_lines`/`search`) | Offload **self-disables** at config resolution: `ResolvedOffloadConfig.enabled = False`. Large content stays inline. When offload is `enabled` but `enabled_tools` is restricted, the disable is surfaced as a warning (`OffloadConfigurationException`) in the "Initialization issues" stage (`Status.COMPLETED`). When `dial_files` is absent or offload is `enabled: false`, offload was never requested → no warning. |
 | Invalid range / bad input to DIAL files tools | `InvalidToolCallParameterException` → existing `FallbackProcessor` returns tool-call error to LLM. |
 | File URL missing or unreachable during read-back | Same as above — tool returns a meaningful error the LLM can act on. |

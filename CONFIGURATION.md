@@ -646,6 +646,11 @@ excluded from offload, so the cap is what keeps their output small.
 Nested under `features.dial_files.tool_call_result_offload`. Requires `ENABLE_PREVIEW_FEATURES=true`.
 Env defaults: `TOOL_CALL_RESULT_OFFLOAD__*`.
 
+Independently of this feature, a response of any tool that is still longer than 80000 characters after
+offload (offload disabled or unavailable, tool excluded, or upload failed) is not passed to the model:
+it receives an error saying the response was too large instead. While offload is enabled, the limit is
+raised to `size_threshold` if that is larger, so a response offload would have saved is never rejected.
+
 | Field            | Required | Type          | Description                                                                                          | Default Value |
 |------------------|----------|---------------|------------------------------------------------------------------------------|---------------|
 | `enabled`        | No       | Boolean       | Whether to offload oversized tool responses                                                          | env `TOOL_CALL_RESULT_OFFLOAD__ENABLED_BY_DEFAULT` (`true`) |

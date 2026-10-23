@@ -26,7 +26,7 @@ from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
-from quickapp.dial_files_tooling._output_bound_processor import FileToolResultBoundProcessor
+from quickapp.dial_files_tooling._output_bound_processor import ToolCallResultSizeLimitProcessor
 from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
 from quickapp.dial_files_tooling._read_chars_tool import _ReadCharsTool
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
@@ -72,8 +72,8 @@ class DialFilesToolingModule(Module):
             scope=request_scope,
         )
         binder.bind(
-            FileToolResultBoundProcessor,
-            to=FileToolResultBoundProcessor,
+            ToolCallResultSizeLimitProcessor,
+            to=ToolCallResultSizeLimitProcessor,
             scope=request_scope,
         )
         logger.debug("DialFilesToolingModule configuration completed")
@@ -87,7 +87,7 @@ class DialFilesToolingModule(Module):
     # a large read-back slice must never be re-offloaded (infinite recursion). This
     # guard cannot be removed via the per-app / env-var `excluded_tools`, which is
     # additive on top of it. Their output is bounded in the tools themselves instead,
-    # with `FileToolResultBoundProcessor` as the default-on backstop.
+    # with `ToolCallResultSizeLimitProcessor` as the default-on backstop for every tool.
     #
     # `read_skill` joins them for a different reason: its result can carry the
     # manifest's `<skill_files>` inventory, which progressive disclosure depends
@@ -203,7 +203,7 @@ class DialFilesToolingModule(Module):
     def _provide_result_processors(
         self,
         offload_processor: ToolCallResultOffloadProcessor,
-        bound_processor: FileToolResultBoundProcessor,
+        bound_processor: ToolCallResultSizeLimitProcessor,
     ) -> list[ToolCallResultProcessor]:
         return [offload_processor, bound_processor]
 

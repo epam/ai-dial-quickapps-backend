@@ -656,11 +656,11 @@ context. Their output is therefore capped inside the tools (`MAX_OUTPUT_CHARS = 
   `continue with start_line=N`; `search` appends a notice to narrow the pattern.
 
 The per-tool caps give precise continuation hints, but they are opt-in, so they are not what
-guarantees the bound. `FileToolResultBoundProcessor` (`dial_files_tooling/_output_bound_processor.py`)
-is the default-on backstop: it applies to every tool whose name starts with `internal_file_`,
-cuts any result over `max(DEFAULT_MAX_RESULT_CHARS = 32000, offload size_threshold)` characters
-(the threshold counts only while offload is enabled) on a line boundary (re-closing a fenced
-block), and appends a generic "output truncated" notice. It runs after offload
+guarantees the bound. `ToolCallResultSizeLimitProcessor` (`dial_files_tooling/_output_bound_processor.py`)
+is the default-on backstop: it applies to every tool, not only the file ones, and
+replaces any result over `MAX_RESULT_CHARS = 80000` characters (raised to the offload `size_threshold`
+while offload is enabled, so a result offload would have saved is never rejected) with an error telling
+the model the response was too large (the content is not passed on). It runs after offload
 (`order = 10`), so it also catches the original text when an offload upload fails. A new file tool
 is covered without any code of its own; a unit test fails if a `_DialFileTool` subclass is
 not registered in `ALL_FILE_TOOL_CONFIGS` or a tool name loses the prefix.
