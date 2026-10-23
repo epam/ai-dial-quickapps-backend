@@ -10,6 +10,7 @@ from quickapp.common.chat_completion_stream.stream_result import (
     Usage,
     ensure_attachment_url_or_data,
 )
+from quickapp.common.deployment_usage import ModelUsage
 
 
 def test_apply_usage_footprint_raw_usage_none_uses_token_pair():
@@ -80,3 +81,20 @@ def test_extend_annotations_accumulates_in_order():
     acc.extend_annotations([{"id": "a"}])
     acc.extend_annotations([{"id": "b"}])
     assert acc.annotations == [{"id": "a"}, {"id": "b"}]
+
+
+def test_apply_usage_footprint_collects_usage_per_model():
+    accumulator = ChatStreamAccumulator()
+    accumulator.apply_usage_footprint(
+        ChunkUsageFootprint(
+            per_model=(ModelUsage(model="a", prompt_tokens=1, completion_tokens=2),)
+        )
+    )
+    accumulator.apply_usage_footprint(
+        ChunkUsageFootprint(
+            per_model=(ModelUsage(model="b", prompt_tokens=3, completion_tokens=4),)
+        )
+    )
+
+    assert [m.model for m in accumulator.usage_per_model] == ["a", "b"]
+    assert accumulator.usage is None

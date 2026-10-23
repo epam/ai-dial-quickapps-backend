@@ -10,6 +10,7 @@ from quickapp.common._stage_delta_types import StageDeltaItem, get_stage_index
 from quickapp.common.chat_completion_stream.adopted_tool_stage import AdoptedToolStage
 from quickapp.common.chat_completion_stream.models import ChunkUsageFootprint
 from quickapp.common.chat_completion_stream.tool_call import AccumulatedToolCall
+from quickapp.common.deployment_usage import ModelUsage
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,7 @@ class ChatStreamAccumulator:
         self.__annotations: list[dict[str, Any]] = []
         self.__accumulated_tool_calls: dict[int, AccumulatedToolCall] = {}
         self.__usage: Usage | None = None
+        self.__usage_per_model: list[ModelUsage] = []
         self.__stages_by_index: dict[int, _AccumulatedStageData] = {}
         self.__state: dict[str, Any] = {}
         self.__adopted_tool_stages: dict[str, AdoptedToolStage] = {}
@@ -148,9 +150,14 @@ class ChatStreamAccumulator:
     def set_usage(self, usage: Usage) -> None:
         self.__usage = usage
 
+    @property
+    def usage_per_model(self) -> list[ModelUsage]:
+        return list(self.__usage_per_model)
+
     def apply_usage_footprint(self, fp: ChunkUsageFootprint) -> None:
         if fp.prompt_tokens is not None and fp.completion_tokens is not None:
             self.__usage = Usage(fp.prompt_tokens, fp.completion_tokens)
+        self.__usage_per_model.extend(fp.per_model)
 
     @property
     def stages(self) -> list[dict[str, Any]]:

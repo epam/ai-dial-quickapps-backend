@@ -1,3 +1,4 @@
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, call
 
 import pytest
@@ -15,6 +16,10 @@ from quickapp.dial_deployment_tooling.constants import EXTRA_HEADERS
 from quickapp.dial_deployment_tooling.dial_completion_service import DialCompletionService
 from tests.unit_tests.common.common import noop_timeout_resolver
 from tests.unit_tests.stream_test_doubles import DummyStageWrapper
+
+
+def _settings(show_usage_statistics: bool = False):
+    return SimpleNamespace(show_usage_statistics=show_usage_statistics)
 
 
 @pytest.fixture
@@ -54,6 +59,7 @@ def completion_service(azure_client, attachment_resolver):
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
         choice=MagicMock(),
+        presentation_settings=_settings(),
     )
 
 
@@ -193,6 +199,7 @@ async def test_nested_propagation_still_streams_response_into_calling_stage(
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
         choice=choice,
+        presentation_settings=_settings(),
     )
     await service.complete_request_async(
         params={"query": "Test query"},
@@ -330,6 +337,7 @@ async def test_forwarded_x_headers_passed_to_chat_completion(
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
         choice=MagicMock(),
+        presentation_settings=_settings(),
     )
 
     await service.complete_request_async(
@@ -402,6 +410,7 @@ async def test_annotations_from_custom_fields_land_on_tool_call_result(
         timeout_resolver=noop_timeout_resolver(),
         attachment_resolver=attachment_resolver,
         choice=MagicMock(),
+        presentation_settings=_settings(),
     )
 
     result = await service.complete_request_async(
@@ -442,3 +451,120 @@ async def test_static_tools_and_reasoning_effort_reach_extra_body(
     extra_body = azure_client.chat.completions.create.call_args[1][EXTRA_BODY]
     assert extra_body["tools"] == tools
     assert extra_body["reasoning_effort"] == "high"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("show_usage_statistics", "expected_stream_options"),
+    [(True, {"include_usage": True}), (False, None)],
+)
+async def test_stream_options_requested_only_when_usage_statistics_shown(
+    azure_client,
+    attachment_resolver,
+    mock_stage_wrapper,
+    show_usage_statistics,
+    expected_stream_options,
+):
+    service = DialCompletionService(
+        azure_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
+        presentation_settings=_settings(show_usage_statistics),
+    )
+
+    await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="test-deployment",
+        deployment_name="Test Deployment",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    call_args = azure_client.chat.completions.create.call_args[1]
+    assert call_args.get("stream_options") == expected_stream_options
+
+
+def _stream_chunk(usage=None, extra=None):
+    chunk = MagicMock()
+    chunk.choices = []
+    chunk.usage = usage
+    chunk.model_extra = extra or {}
+    return chunk
+
+
+@pytest.mark.asyncio
+async def test_per_model_usage_supersedes_the_deployment_total(
+    azure_client, attachment_resolver, mock_stage_wrapper
+):
+    """A nested app reports the models it used: they replace its total so nothing is counted twice."""
+    total = MagicMock(prompt_tokens=105, completion_tokens=60)
+    breakdown = {
+        "statistics": {
+            "usage_per_model": [
+                {"index": 0, "model": "gpt-5", "prompt_tokens": 100, "completion_tokens": 20},
+                {"index": 1, "model": "gpt-image-1", "prompt_tokens": 5, "completion_tokens": 40},
+            ]
+        }
+    }
+
+    async def stream():
+        yield _stream_chunk(usage=total)
+        yield _stream_chunk(extra=breakdown)
+
+    azure_client.chat.completions.create.return_value = stream()
+    service = DialCompletionService(
+        azure_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
+        presentation_settings=_settings(True),
+    )
+
+    result = await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="nested-app",
+        deployment_name="nested_app_tool",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    assert [
+        (u.deployment_name, u.deployment_id, u.model_name, u.prompt_tokens, u.completion_tokens)
+        for u in result.usage
+    ] == [
+        ("nested_app_tool", "gpt-5", "gpt-5", 100, 20),
+        ("nested_app_tool", "gpt-image-1", "gpt-image-1", 5, 40),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_total_usage_is_used_when_there_is_no_breakdown(
+    azure_client, attachment_resolver, mock_stage_wrapper
+):
+    async def stream():
+        yield _stream_chunk(usage=MagicMock(prompt_tokens=11, completion_tokens=7))
+
+    azure_client.chat.completions.create.return_value = stream()
+    service = DialCompletionService(
+        azure_client,
+        forwarded_headers=None,
+        stream_handler=ChatCompletionStreamHandler.with_default_sinks(),
+        timeout_resolver=noop_timeout_resolver(),
+        attachment_resolver=attachment_resolver,
+        choice=MagicMock(),
+        presentation_settings=_settings(True),
+    )
+
+    result = await service.complete_request_async(
+        params={"query": "Test query"},
+        deployment_id="dial-document",
+        deployment_name="document_tool",
+        stage_wrapper=mock_stage_wrapper,
+    )
+
+    assert [(u.deployment_id, u.model_name, u.prompt_tokens) for u in result.usage] == [
+        ("dial-document", "dial-document", 11)
+    ]

@@ -2,7 +2,9 @@ from unittest.mock import AsyncMock, MagicMock
 
 import openai
 import pytest
+from openai.types import CompletionUsage
 
+from quickapp.common.deployment_usage import ModelUsage
 from quickapp.tool_discovery._anonymous_agent import _AnonymousAgent
 
 
@@ -20,10 +22,11 @@ def _make_config(
     return config
 
 
-def _make_response(content: str):
+def _make_response(content: str, usage: CompletionUsage | None = None):
     response = MagicMock()
     response.choices = [MagicMock()]
     response.choices[0].message.content = content
+    response.usage = usage
     return response
 
 
@@ -37,7 +40,7 @@ async def test_route_returns_empty_list_for_empty_catalog():
 
     result = await agent.route("find a tool", [])
 
-    assert result == []
+    assert result.names == []
     client.chat.completions.create.assert_not_called()
 
 
@@ -48,7 +51,7 @@ async def test_route_fails_open_when_tool_discovery_is_none():
 
     result = await agent.route("find a tool", CATALOG)
 
-    assert result == []
+    assert result.names == []
     client.chat.completions.create.assert_not_called()
 
 
@@ -60,7 +63,7 @@ async def test_route_returns_matched_names_on_valid_json_response():
 
     result = await agent.route("find a tool", CATALOG)
 
-    assert result == ["tool_a", "tool_b"]
+    assert result.names == ["tool_a", "tool_b"]
 
 
 @pytest.mark.asyncio
@@ -100,7 +103,7 @@ async def test_route_returns_empty_list_on_non_json_response():
 
     result = await agent.route("find a tool", CATALOG)
 
-    assert result == []
+    assert result.names == []
 
 
 @pytest.mark.asyncio
@@ -111,7 +114,7 @@ async def test_route_filters_out_non_string_entries_from_response():
 
     result = await agent.route("find a tool", CATALOG)
 
-    assert result == ["tool_a"]
+    assert result.names == ["tool_a"]
 
 
 @pytest.mark.asyncio
@@ -122,4 +125,47 @@ async def test_route_returns_empty_list_on_openai_error():
 
     result = await agent.route("find a tool", CATALOG)
 
-    assert result == []
+    assert result.names == []
+
+
+_USAGE = CompletionUsage(prompt_tokens=120, completion_tokens=8, total_tokens=128)
+
+
+@pytest.mark.asyncio
+async def test_route_returns_usage_of_the_routing_call():
+    client = AsyncMock()
+    client.chat.completions.create.return_value = _make_response('["tool_a"]', _USAGE)
+    agent = _AnonymousAgent(
+        client=client, config=_make_config(tool_discovery=True, service_model="cheap-router-model")
+    )
+
+    result = await agent.route("find a tool", CATALOG)
+
+    assert result.usage == ModelUsage(
+        model="cheap-router-model", prompt_tokens=120, completion_tokens=8
+    )
+
+
+@pytest.mark.asyncio
+async def test_route_returns_usage_on_non_json_response():
+    client = AsyncMock()
+    client.chat.completions.create.return_value = _make_response("not json", _USAGE)
+    agent = _AnonymousAgent(client=client, config=_make_config(tool_discovery=True))
+
+    result = await agent.route("find a tool", CATALOG)
+
+    assert result.names == []
+    assert result.usage == ModelUsage(
+        model="orchestrator-model", prompt_tokens=120, completion_tokens=8
+    )
+
+
+@pytest.mark.asyncio
+async def test_route_returns_no_usage_on_openai_error():
+    client = AsyncMock()
+    client.chat.completions.create.side_effect = openai.APIConnectionError(request=MagicMock())
+    agent = _AnonymousAgent(client=client, config=_make_config(tool_discovery=True))
+
+    result = await agent.route("find a tool", CATALOG)
+
+    assert result.usage is None

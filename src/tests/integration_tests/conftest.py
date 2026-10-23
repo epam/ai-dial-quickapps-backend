@@ -32,6 +32,7 @@ class FailureReason(Enum):
     TOOL_CALL_MISMATCH = "Tool call mismatch failures"
     LLM_CACHE_MISSING = "Missing cached LLM responses"
     TOOLS_PAYLOAD = "Tools payload sent to the LLM failures"
+    USAGE_STATISTICS = "Usage Statistics stage failures"
     # Add more reasons as needed
 
     def __str__(self):
