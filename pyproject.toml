@@ -84,7 +84,7 @@ sentence-transformers = { version = "^5.6.0" }
 # 2.10.x keeps the classic flat nvidia-*-cu12 deps (simple Linux/x86_64 markers) that
 # ORT handles
 torch = { version = ">=2.10.0,<2.11.0" }
-pillow = "^12.2.0"
+pillow = "^13.0.0"
 pytest-asyncio = "^1.3.0"
 pytest-xdist = "^3.8.0"
 pytest-cov = "^7.0.0"
