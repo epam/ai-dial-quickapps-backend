@@ -2,7 +2,7 @@ import logging
 from typing import Any
 
 from fastapi_injector import request_scope
-from injector import AssistedBuilder, Binder, Module, multiprovider, provider, singleton
+from injector import AssistedBuilder, Binder, Module, multiprovider, provider
 
 from quickapp.common import StagedBaseTool
 from quickapp.common.abstract.base_tool_argument_transformer import ToolArgumentTransformer
@@ -16,7 +16,7 @@ from quickapp.common.tool_names import (
     INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
 )
 from quickapp.config.application import ApplicationConfig
-from quickapp.config.dial_files import DialFilesConfig, ToolCallResultOffloadSettings
+from quickapp.config.dial_files import DialFilesConfig
 from quickapp.config.tools.internal import InternalTool
 from quickapp.dial_files_tooling._copy_file_tool import _CopyFileTool
 from quickapp.dial_files_tooling._delete_file_tool import _DeleteFileTool
@@ -26,7 +26,6 @@ from quickapp.dial_files_tooling._list_files_tool import _ListFilesTool
 from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
-from quickapp.dial_files_tooling._output_bound_processor import ToolCallResultSizeLimitProcessor
 from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
 from quickapp.dial_files_tooling._read_chars_tool import _ReadCharsTool
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
@@ -71,7 +70,6 @@ class DialFilesToolingModule(Module):
             to=ToolCallResultOffloadProcessor,
             scope=request_scope,
         )
-        binder.bind(ToolCallResultSizeLimitProcessor, to=ToolCallResultSizeLimitProcessor)
         logger.debug("DialFilesToolingModule configuration completed")
 
     # Read-back tools (short names in DialFilesConfig.enabled_tools) the offload
@@ -83,7 +81,7 @@ class DialFilesToolingModule(Module):
     # a large read-back slice must never be re-offloaded (infinite recursion). This
     # guard cannot be removed via the per-app / env-var `excluded_tools`, which is
     # additive on top of it. Their output is bounded in the tools themselves instead,
-    # with `ToolCallResultSizeLimitProcessor` as the default-on backstop for every tool.
+    # with `ToolCallResultSizeLimitProcessor` (core/agent) as the default-on backstop for every tool.
     #
     # `read_skill` joins them for a different reason: its result can carry the
     # manifest's `<skill_files>` inventory, which progressive disclosure depends
@@ -165,11 +163,6 @@ class DialFilesToolingModule(Module):
             if _is_enabled(config)
         ]
 
-    @singleton
-    @provider
-    def _provide_offload_settings(self) -> ToolCallResultOffloadSettings:
-        return ToolCallResultOffloadSettings()
-
     @request_scope
     @provider
     def _provide_offload_config(self, app_config: ApplicationConfig) -> ResolvedOffloadConfig:
@@ -201,12 +194,11 @@ class DialFilesToolingModule(Module):
         )
 
     @multiprovider
-    def _provide_result_processors(
+    def _provide_offload_processors(
         self,
-        offload_processor: ToolCallResultOffloadProcessor,
-        bound_processor: ToolCallResultSizeLimitProcessor,
+        processor: ToolCallResultOffloadProcessor,
     ) -> list[ToolCallResultProcessor]:
-        return [offload_processor, bound_processor]
+        return [processor]
 
     @multiprovider
     def _provide_initialization_exceptions(

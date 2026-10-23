@@ -6,6 +6,7 @@ from quickapp.config.dial_files import (
     ToolCallResultOffloadConfig,
     ToolCallResultOffloadSettings,
 )
+from quickapp.config.tool_result_limit import ToolResultLimitSettings
 
 
 class TestDialFilesConfig:
@@ -56,24 +57,23 @@ class TestDialFilesConfig:
             DialFilesConfig(agent_home_dir="a//b/")
 
 
-class TestMaxResultCharsConsistency:
+class TestResultLimitConsistency:
     def test_default_threshold_fits_default_limit(self):
-        settings = ToolCallResultOffloadSettings()
-        assert settings.size_threshold <= settings.max_result_chars
+        assert ToolCallResultOffloadSettings().size_threshold <= ToolResultLimitSettings().max_chars
 
     def test_env_threshold_above_limit_is_rejected(self, monkeypatch):
         monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD", "90000")
-        with pytest.raises(ValidationError, match="MAX_RESULT_CHARS"):
+        with pytest.raises(ValidationError, match="TOOL_CALL_RESULT_LIMIT__MAX_CHARS"):
             ToolCallResultOffloadSettings()
 
     def test_raising_both_env_values_is_accepted(self, monkeypatch):
         monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD", "90000")
-        monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS", "120000")
+        monkeypatch.setenv("TOOL_CALL_RESULT_LIMIT__MAX_CHARS", "120000")
         assert ToolCallResultOffloadSettings().size_threshold == 90_000
 
-    def test_max_result_chars_must_be_positive(self):
+    def test_max_chars_must_be_positive(self):
         with pytest.raises(ValidationError):
-            ToolCallResultOffloadSettings(size_threshold=1, max_result_chars=0)
+            ToolResultLimitSettings(max_chars=0)
 
     def test_per_app_threshold_above_limit_is_rejected(self):
         with pytest.raises(ValidationError, match="must not exceed"):
@@ -83,5 +83,5 @@ class TestMaxResultCharsConsistency:
         assert ToolCallResultOffloadConfig(size_threshold=80_000).size_threshold == 80_000
 
     def test_per_app_threshold_follows_a_raised_env_limit(self, monkeypatch):
-        monkeypatch.setenv("TOOL_CALL_RESULT_OFFLOAD__MAX_RESULT_CHARS", "200000")
+        monkeypatch.setenv("TOOL_CALL_RESULT_LIMIT__MAX_CHARS", "200000")
         assert ToolCallResultOffloadConfig(size_threshold=150_000).size_threshold == 150_000

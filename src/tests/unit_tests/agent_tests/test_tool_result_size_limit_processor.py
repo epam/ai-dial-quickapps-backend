@@ -3,8 +3,8 @@ from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
 from quickapp.common.tool_call_result import ToolCallResult
-from quickapp.config.dial_files import ToolCallResultOffloadSettings
-from quickapp.dial_files_tooling._output_bound_processor import ToolCallResultSizeLimitProcessor
+from quickapp.config.tool_result_limit import ToolResultLimitSettings
+from quickapp.core.agent._tool_result_size_limit_processor import ToolCallResultSizeLimitProcessor
 
 MAX_RESULT_CHARS = 1_000
 
@@ -18,9 +18,8 @@ _TOOL_NAMES = [
 ]
 
 
-def _processor(max_result_chars: int = MAX_RESULT_CHARS) -> ToolCallResultSizeLimitProcessor:
-    settings = ToolCallResultOffloadSettings(size_threshold=1, max_result_chars=max_result_chars)
-    return ToolCallResultSizeLimitProcessor(settings)
+def _processor(max_chars: int = MAX_RESULT_CHARS) -> ToolCallResultSizeLimitProcessor:
+    return ToolCallResultSizeLimitProcessor(ToolResultLimitSettings(max_chars=max_chars))
 
 
 def _ctx(tool_name: str) -> ProcessingContext:
@@ -85,12 +84,12 @@ class TestToolCallResultSizeLimitProcessor:
     @pytest.mark.asyncio
     async def test_limit_comes_from_the_setting(self):
         result = _result("x" * 5_000)
-        assert await _processor(max_result_chars=5_000).process(result, _ctx("t")) is result
-        out = await _processor(max_result_chars=4_999).process(result, _ctx("t"))
+        assert await _processor(max_chars=5_000).process(result, _ctx("t")) is result
+        out = await _processor(max_chars=4_999).process(result, _ctx("t"))
         assert "the limit is 4999" in out.content
 
     def test_default_limit_is_80000(self):
-        assert ToolCallResultOffloadSettings().max_result_chars == 80_000
+        assert ToolResultLimitSettings().max_chars == 80_000
 
     def test_runs_after_offload(self):
         # Offload (order 0) must shrink or exclude first; the limit then backstops the rest.
