@@ -71,7 +71,11 @@ class DialFilesToolingModule(Module):
             to=ToolCallResultOffloadProcessor,
             scope=request_scope,
         )
-        binder.bind(FileToolResultBoundProcessor, to=FileToolResultBoundProcessor)
+        binder.bind(
+            FileToolResultBoundProcessor,
+            to=FileToolResultBoundProcessor,
+            scope=request_scope,
+        )
         logger.debug("DialFilesToolingModule configuration completed")
 
     # Read-back tools (short names in DialFilesConfig.enabled_tools) the offload

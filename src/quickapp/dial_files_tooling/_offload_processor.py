@@ -1,8 +1,8 @@
-import base64
 import logging
 import re
 from datetime import datetime, timezone
 
+from aidial_client import DialException
 from aidial_sdk.chat_completion import Attachment
 from injector import inject
 
@@ -17,6 +17,7 @@ from quickapp.common.tool_names import (
 )
 from quickapp.dial_core_services.attachment_service import AttachmentService
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
+from quickapp.dial_files_tooling._utils import cap_output
 
 logger = logging.getLogger(__name__)
 
@@ -48,23 +49,15 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
         safe_tool_name = re.sub(r"[_:]", "-", ctx.tool_name)
         filename = f"offloaded-responses/{safe_tool_name}-{timestamp}.txt"
 
-        upload_attachment = Attachment(
-            title=filename,
-            data=base64.b64encode(content_bytes).decode(),
-            type=result.content_type or "text/plain",
-        )
-
         try:
-            uploaded = await self._attachment_service.upload_attachment_to_core(upload_attachment)
-            if uploaded.url is None:
-                raise RuntimeError("Upload returned no URL")
-        except Exception:
+            uploaded = await self._upload(content_bytes, filename, result.content_type)
+        except Exception as e:
             logger.warning(
-                "Failed to offload large response for tool '%s', returning original",
+                "Failed to offload large response for tool '%s', truncating it instead",
                 ctx.tool_name,
                 exc_info=True,
             )
-            return result
+            return self._truncated_unsaved(result, ctx.tool_name, content_size, e)
 
         file_url = uploaded.url
         notice = (
@@ -92,3 +85,33 @@ class ToolCallResultOffloadProcessor(ToolCallResultProcessor):
             attachments=[*(result.attachments or []), uploaded],
             state=state,
         )
+
+    async def _upload(
+        self, content_bytes: bytes, filename: str, content_type: str | None
+    ) -> Attachment:
+        # `upload_bytes`, not `upload_attachment_to_core`: the latter swallows upload
+        # errors, which would hide the reason from the model.
+        file = await self._attachment_service.upload_bytes(
+            data=content_bytes, content_type=content_type, filename=filename
+        )
+        return Attachment(title=filename, url=file.url, type=content_type or "text/plain")
+
+    def _truncated_unsaved(
+        self, result: ToolCallResult, tool_name: str, content_size: int, error: Exception
+    ) -> ToolCallResult:
+        """Bound an oversized response that could not be saved, so it cannot flood the context."""
+        notice = (
+            f"-- Response from '{tool_name}' was too large ({content_size} bytes) and could not "
+            f"be saved to DIAL storage ({self._failure_reason(error)}); only the beginning is "
+            "shown. Narrow the request to get less data. --"
+        )
+        room = max(self._config.size_threshold - len(notice), self._config.size_threshold // 2)
+        capped, _ = cap_output(result.content, room)
+        return result.model_copy(update={"content": f"{capped}\n{notice}"})
+
+    @staticmethod
+    def _failure_reason(error: Exception) -> str:
+        # Status code or exception class only: error messages may carry URLs or headers.
+        if isinstance(error, DialException):
+            return f"HTTP {error.status_code}"
+        return type(error).__name__

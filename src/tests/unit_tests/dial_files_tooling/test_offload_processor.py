@@ -1,7 +1,7 @@
-import base64
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from aidial_client import DialException
 from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
@@ -17,9 +17,8 @@ def _make_config(**overrides) -> ResolvedOffloadConfig:
 
 
 def _make_attachment_service(upload_url: str = "https://storage/offloaded.txt") -> MagicMock:
-    uploaded = Attachment(title="offloaded.txt", url=upload_url, type="text/plain")
     svc = MagicMock()
-    svc.upload_attachment_to_core = AsyncMock(return_value=uploaded)
+    svc.upload_bytes = AsyncMock(return_value=MagicMock(url=upload_url))
     return svc
 
 
@@ -94,27 +93,48 @@ class TestToolCallResultOffloadProcessor:
         out = await proc.process(result, _make_ctx())
         assert out.content == content
 
-    @pytest.mark.asyncio
-    async def test_upload_failure_returns_original(self):
-        content = "x" * 200
-        result = ToolCallResult(content=content, content_type="text/plain")
+    @staticmethod
+    def _failing_processor(error: Exception, **config) -> ToolCallResultOffloadProcessor:
         svc = MagicMock()
-        svc.upload_attachment_to_core = AsyncMock(side_effect=RuntimeError("storage down"))
-        proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
-        out = await proc.process(result, _make_ctx())
-        assert out.content == content
+        svc.upload_bytes = AsyncMock(side_effect=error)
+        return ToolCallResultOffloadProcessor(config=_make_config(**config), attachment_service=svc)
 
     @pytest.mark.asyncio
-    async def test_upload_returns_no_url_returns_original(self):
-        content = "x" * 200
+    async def test_upload_failure_truncates_instead_of_returning_original(self):
+        content = "\n".join(f"line {i:04d}" for i in range(1000))
         result = ToolCallResult(content=content, content_type="text/plain")
-        no_url_attachment = MagicMock()
-        no_url_attachment.url = None
-        svc = MagicMock()
-        svc.upload_attachment_to_core = AsyncMock(return_value=no_url_attachment)
-        proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
-        out = await proc.process(result, _make_ctx())
-        assert out.content == content
+        proc = self._failing_processor(RuntimeError("storage down"), size_threshold=2000)
+        out = await proc.process(result, _make_ctx("fetch_logs"))
+        assert len(out.content) <= 2000
+        assert out.content.startswith("line 0000\nline 0001")
+        assert "'fetch_logs' was too large" in out.content
+        assert out.attachments is None
+        assert out.state is None
+
+    @pytest.mark.asyncio
+    async def test_upload_failure_reports_dial_status_code_as_reason(self):
+        proc = self._failing_processor(DialException("secret internal detail", status_code=503))
+        out = await proc.process(ToolCallResult(content="x" * 200), _make_ctx())
+        assert "could not be saved to DIAL storage (HTTP 503)" in out.content
+        assert "secret internal detail" not in out.content
+
+    @pytest.mark.asyncio
+    async def test_upload_failure_reports_exception_class_for_other_errors(self):
+        proc = self._failing_processor(TimeoutError("https://host/files?token=abc"))
+        out = await proc.process(ToolCallResult(content="x" * 200), _make_ctx())
+        assert "(TimeoutError)" in out.content
+        assert "token=abc" not in out.content
+
+    @pytest.mark.asyncio
+    async def test_upload_failure_keeps_other_result_fields(self):
+        existing = Attachment(title="a.png", url="files/b/a.png", type="image/png")
+        result = ToolCallResult(
+            tool_call_id="id1", content="x" * 200, attachments=[existing], state={"k": "v"}
+        )
+        out = await self._failing_processor(RuntimeError()).process(result, _make_ctx())
+        assert out.tool_call_id == "id1"
+        assert out.attachments == [existing]
+        assert out.state == {"k": "v"}
 
     @pytest.mark.asyncio
     async def test_high_threshold_skips_offload(self):
@@ -138,12 +158,12 @@ class TestToolCallResultOffloadProcessor:
         assert any(a.title == "existing.png" for a in out.attachments)
 
     @pytest.mark.asyncio
-    async def test_upload_receives_base64_encoded_content(self):
+    async def test_upload_receives_raw_utf8_content(self):
         content = "hello world " * 20  # > 100 bytes
         result = ToolCallResult(content=content, content_type="text/plain")
         svc = _make_attachment_service()
         proc = ToolCallResultOffloadProcessor(config=_make_config(), attachment_service=svc)
         await proc.process(result, _make_ctx())
-        uploaded_att: Attachment = svc.upload_attachment_to_core.call_args[0][0]
-        assert uploaded_att.data is not None
-        assert base64.b64decode(uploaded_att.data) == content.encode("utf-8")
+        kwargs = svc.upload_bytes.call_args.kwargs
+        assert kwargs["data"] == content.encode("utf-8")
+        assert kwargs["content_type"] == "text/plain"
