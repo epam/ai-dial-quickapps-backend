@@ -637,7 +637,7 @@ class Features(BaseModel):
   "parameters": {
     "path":   {"type": "string",  "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."},
     "offset": {"type": "integer", "description": "Index of the first character to return (0-indexed). Use the 'next offset' from the previous call to continue."},
-    "length": {"type": "integer", "description": "Number of characters to return. Values above 8000 are limited to 8000."}
+    "length": {"type": "integer", "description": "Number of characters to return, from 1 to 8000. Larger files are read page by page."}
   },
   "required": ["path", "offset", "length"]
 }
@@ -648,7 +648,8 @@ context. Their output is therefore capped inside the tools (`MAX_OUTPUT_CHARS = 
 `MAX_LINE_CHARS = 2000` per line, in `dial_files_tooling/_utils.py`). 8000 characters is at most
 32 000 UTF-8 bytes, below the default 40 000-byte offload threshold:
 
-- `read_chars` clamps `length` to the cap and ends every response with a footer such as
+- `read_chars` rejects a `length` above the cap with an error (like it does for a non-positive `length`)
+  and ends every response with a footer such as
   `-- chars 0-8000 of 400000; next offset: 8000 --` (or `end of file`). `offset` beyond the end of
   the file is rejected; `offset` equal to the length returns an empty slice.
 - `read_lines` and `search` truncate a line longer than 2000 characters with a marker pointing at

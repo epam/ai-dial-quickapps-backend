@@ -71,18 +71,20 @@ class TestReadChars:
         assert exc.value.parameter_name == "length"
 
     @pytest.mark.asyncio
-    async def test_length_is_clamped_to_cap(self):
+    async def test_length_above_cap_raises(self):
         tool = _make_tool("x" * (MAX_OUTPUT_CHARS * 3))
-        content = await _read(tool, offset=0, length=10_000_000)
+        with pytest.raises(InvalidToolCallParameterException) as exc:
+            await _read(tool, offset=0, length=MAX_OUTPUT_CHARS + 1)
+        assert exc.value.parameter_name == "length"
+        assert str(MAX_OUTPUT_CHARS) in exc.value.message
+
+    @pytest.mark.asyncio
+    async def test_length_at_cap_is_accepted(self):
+        tool = _make_tool("x" * (MAX_OUTPUT_CHARS * 3))
+        content = await _read(tool, offset=0, length=MAX_OUTPUT_CHARS)
         body, _, footer = content.rpartition("\n")
         assert body == "x" * MAX_OUTPUT_CHARS
         assert f"next offset: {MAX_OUTPUT_CHARS}" in footer
-        assert f"limited to {MAX_OUTPUT_CHARS}" in footer
-
-    @pytest.mark.asyncio
-    async def test_unclamped_read_has_no_limit_note(self):
-        content = await _read(_make_tool(), offset=0, length=4)
-        assert "limited" not in content
 
     @pytest.mark.asyncio
     async def test_offset_and_length_count_characters_not_bytes(self):

@@ -147,8 +147,8 @@ READ_CHARS_TOOL_CONFIG = InternalTool(
                     "length": ConfigurableSchemaSimpleType(
                         type=JsonTypeEnum.integer,
                         description=(
-                            "Number of characters to return. Values above "
-                            f"{MAX_OUTPUT_CHARS} are limited to {MAX_OUTPUT_CHARS}."
+                            f"Number of characters to return, from 1 to {MAX_OUTPUT_CHARS}. "
+                            "Larger files are read page by page."
                         ),
                     ),
                 },

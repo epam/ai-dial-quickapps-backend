@@ -223,7 +223,7 @@
       },
       "length": {
         "type": "integer",
-        "description": "Number of characters to return. Values above 8000 are limited to 8000."
+        "description": "Number of characters to return, from 1 to 8000. Larger files are read page by page."
       }
     },
     "required": [

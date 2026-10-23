@@ -23,6 +23,10 @@ class _ReadCharsTool(_DialFileTool):
             raise InvalidToolCallParameterException("offset", "offset must be >= 0")
         if length < 1:
             raise InvalidToolCallParameterException("length", "length must be >= 1")
+        if length > MAX_OUTPUT_CHARS:
+            raise InvalidToolCallParameterException(
+                "length", f"length must be <= {MAX_OUTPUT_CHARS}; read the file page by page"
+            )
 
         url = await self._home_resolver.resolve_appdata_url(path)
         text, _ = await self._download_text(url, display_path=path)
@@ -32,9 +36,8 @@ class _ReadCharsTool(_DialFileTool):
                 "offset", f"offset is beyond the end of the file ({total} characters)"
             )
 
-        effective_length = min(length, MAX_OUTPUT_CHARS)
-        end = min(offset + effective_length, total)
-        footer = self._footer(offset, end, total, limited=length > MAX_OUTPUT_CHARS)
+        end = min(offset + length, total)
+        footer = self._footer(offset, end, total)
 
         result = ToolCallResult(content=f"{text[offset:end]}\n{footer}", content_type="text/plain")
         if stage_wrapper:
@@ -42,9 +45,6 @@ class _ReadCharsTool(_DialFileTool):
         return result
 
     @staticmethod
-    def _footer(offset: int, end: int, total: int, limited: bool) -> str:
-        parts = [f"chars {offset}-{end} of {total}"]
-        if limited:
-            parts.append(f"length limited to {MAX_OUTPUT_CHARS}")
-        parts.append("end of file" if end >= total else f"next offset: {end}")
-        return f"-- {'; '.join(parts)} --"
+    def _footer(offset: int, end: int, total: int) -> str:
+        position = "end of file" if end >= total else f"next offset: {end}"
+        return f"-- chars {offset}-{end} of {total}; {position} --"
