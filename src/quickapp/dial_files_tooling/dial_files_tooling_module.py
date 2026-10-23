@@ -9,6 +9,7 @@ from quickapp.common.abstract.base_tool_argument_transformer import ToolArgument
 from quickapp.common.abstract.tool_call_result_processor import ToolCallResultProcessor
 from quickapp.common.exceptions import InitializationException, OffloadConfigurationException
 from quickapp.common.tool_names import (
+    INTERNAL_FILE_READ_CHARS_TOOL_NAME,
     INTERNAL_FILE_READ_LINES_TOOL_NAME,
     INTERNAL_FILE_SEARCH_TOOL_NAME,
     INTERNAL_FILE_TOOL_NAME_PREFIX,
@@ -26,6 +27,7 @@ from quickapp.dial_files_tooling._move_file_tool import _MoveFileTool
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
 from quickapp.dial_files_tooling._path_argument_transformer import _AppdataHomePathTransformer
+from quickapp.dial_files_tooling._read_chars_tool import _ReadCharsTool
 from quickapp.dial_files_tooling._read_file_lines_tool import _ReadFileLinesTool
 from quickapp.dial_files_tooling._search_in_file_tool import _SearchInFileTool
 from quickapp.dial_files_tooling._stage_wrapper import _FileStageWrapper
@@ -36,6 +38,7 @@ from quickapp.dial_files_tooling._tool_configs import (
     FIND_FILES_TOOL_CONFIG,
     LIST_FILES_TOOL_CONFIG,
     MOVE_FILE_TOOL_CONFIG,
+    READ_CHARS_TOOL_CONFIG,
     READ_FILE_LINES_TOOL_CONFIG,
     SEARCH_IN_FILE_TOOL_CONFIG,
     WRITE_FILE_TOOL_CONFIG,
@@ -54,6 +57,7 @@ class DialFilesToolingModule(Module):
         )
         binder.bind(_ListFilesTool, to=_ListFilesTool, scope=request_scope)
         binder.bind(_ReadFileLinesTool, to=_ReadFileLinesTool, scope=request_scope)
+        binder.bind(_ReadCharsTool, to=_ReadCharsTool, scope=request_scope)
         binder.bind(_SearchInFileTool, to=_SearchInFileTool, scope=request_scope)
         binder.bind(_FindFilesTool, to=_FindFilesTool, scope=request_scope)
         binder.bind(_WriteFileTool, to=_WriteFileTool, scope=request_scope)
@@ -72,10 +76,12 @@ class DialFilesToolingModule(Module):
     # notice points the LLM at. Offloading is useless without them.
     _REQUIRED_READ_BACK_TOOLS = frozenset({"read_lines", "search"})
 
-    # The same two read-back tools in full (LLM-facing) name form. Always excluded
-    # from offload, regardless of config: a large read-back slice must never be
-    # re-offloaded (infinite recursion). This guard cannot be removed via the
-    # per-app / env-var `excluded_tools`, which is additive on top of it.
+    # The read-back tools in full (LLM-facing) name form (read_chars included, though
+    # offload does not require it). Always excluded from offload, regardless of config:
+    # a large read-back slice must never be re-offloaded (infinite recursion). This
+    # guard cannot be removed via the per-app / env-var `excluded_tools`, which is
+    # additive on top of it. Their output is bounded in the tools themselves instead,
+    # with `ToolCallResultSizeLimitProcessor` (core/agent) as the default-on backstop for every tool.
     #
     # `read_skill` joins them for a different reason: its result can carry the
     # manifest's `<skill_files>` inventory, which progressive disclosure depends
@@ -84,6 +90,7 @@ class DialFilesToolingModule(Module):
     _MANDATORY_EXCLUDED_TOOLS = frozenset(
         {
             INTERNAL_FILE_READ_LINES_TOOL_NAME,
+            INTERNAL_FILE_READ_CHARS_TOOL_NAME,
             INTERNAL_FILE_SEARCH_TOOL_NAME,
             INTERNAL_SKILLS_READ_SKILL_TOOL_NAME,
         }
@@ -103,6 +110,7 @@ class DialFilesToolingModule(Module):
         app_config: ApplicationConfig,
         list_builder: AssistedBuilder[_ListFilesTool],
         read_builder: AssistedBuilder[_ReadFileLinesTool],
+        read_chars_builder: AssistedBuilder[_ReadCharsTool],
         search_builder: AssistedBuilder[_SearchInFileTool],
         find_builder: AssistedBuilder[_FindFilesTool],
         write_builder: AssistedBuilder[_WriteFileTool],
@@ -120,6 +128,7 @@ class DialFilesToolingModule(Module):
         tools: list[tuple[AssistedBuilder[Any], InternalTool]] = [
             (list_builder, LIST_FILES_TOOL_CONFIG),
             (read_builder, READ_FILE_LINES_TOOL_CONFIG),
+            (read_chars_builder, READ_CHARS_TOOL_CONFIG),
             (search_builder, SEARCH_IN_FILE_TOOL_CONFIG),
             (find_builder, FIND_FILES_TOOL_CONFIG),
             (write_builder, WRITE_FILE_TOOL_CONFIG),

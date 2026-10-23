@@ -7,9 +7,19 @@ from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.common.utils import fenced_code_block
 from quickapp.dial_files_tooling._base_file_tool import _MAX_DEPTH, _DialFileTool
 from quickapp.dial_files_tooling._glob import _glob_to_regex
-from quickapp.dial_files_tooling._utils import is_root_reference, relative_to
+from quickapp.dial_files_tooling._utils import (
+    MAX_OUTPUT_CHARS,
+    cap_output,
+    is_root_reference,
+    relative_to,
+    truncate_line,
+)
 
 _OUTPUT_MODES = ("content", "files_with_matches")
+_OUTPUT_TRUNCATED_NOTICE = (
+    f"-- output truncated at {MAX_OUTPUT_CHARS} characters; "
+    "narrow the pattern, reduce context_lines, or use name_filter --"
+)
 
 
 class _SearchInFileTool(_DialFileTool):
@@ -74,7 +84,14 @@ class _SearchInFileTool(_DialFileTool):
         indices = self._matching_line_indices(lines, pattern, case_insensitive)
         if not indices:
             return "No matches found."
-        return fenced_code_block(self._format_matches(lines, indices, context_lines))
+        return self._fence_bounded(self._format_matches(lines, indices, context_lines))
+
+    @staticmethod
+    def _fence_bounded(text: str) -> str:
+        """Fence ``text`` after capping its size (read-back results are never offloaded)."""
+        capped, truncated = cap_output(text)
+        block = fenced_code_block(capped)
+        return f"{block}\n{_OUTPUT_TRUNCATED_NOTICE}" if truncated else block
 
     async def _search_folder(
         self,
@@ -135,12 +152,12 @@ class _SearchInFileTool(_DialFileTool):
         if not matches:
             return "No matches found."
         if output_mode == "files_with_matches":
-            return fenced_code_block("\n".join(display for display, _, _ in matches))
+            return self._fence_bounded("\n".join(display for display, _, _ in matches))
         blocks = [
             f"{display}\n{self._format_matches(lines, indices, context_lines)}"
             for display, lines, indices in matches
         ]
-        return fenced_code_block("\n\n".join(blocks))
+        return self._fence_bounded("\n\n".join(blocks))
 
     @staticmethod
     def _matching_line_indices(lines: list[str], pattern: str, case_insensitive: bool) -> list[int]:
@@ -160,7 +177,10 @@ class _SearchInFileTool(_DialFileTool):
             else:
                 merged.append((start, end))
         parts = [
-            "\n".join(f"{n}:{line}" for n, line in enumerate(lines[start:end], start=start + 1))
+            "\n".join(
+                f"{n}:{truncate_line(line)}"
+                for n, line in enumerate(lines[start:end], start=start + 1)
+            )
             for start, end in merged
         ]
         return "\n--\n".join(parts)

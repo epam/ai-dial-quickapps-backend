@@ -466,8 +466,8 @@ Uses the same private-SDK transport as `DialFileService.copy` (see Component 7.5
 **What:** `OpenAiToolConfig` definitions with JSON-schema parameters, plus `ToolDisplayConfig` for the DIAL stage UI.
 
 **Highlights:**
-- Tool name prefix: `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`, `internal_file_copy`, `internal_file_move`.
-- Stage titles: `List files`, `Read file lines`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
+- Tool name prefix: `internal_file_`. Names: `internal_file_list`, `internal_file_read_lines`, `internal_file_read_chars`, `internal_file_search`, `internal_file_write`, `internal_file_edit`, `internal_file_delete`, `internal_file_copy`, `internal_file_move`.
+- Stage titles: `List files`, `Read file lines`, `Read file characters`, `Search in file`, `Write file`, `Edit file`, `Delete file`, `Copy file`, `Move file`.
 - The `path` parameter renders in the stage as `**File:** {basename}` (last path segment of the display path, computed via `_to_display_path`) so the UI stays compact.
 
 **Owner:** `src/quickapp/dial_files_tooling/_tool_configs.py`
@@ -488,6 +488,7 @@ from pydantic import BaseModel, Field
 DialFilesToolName = Literal[
     "internal_file_list",
     "internal_file_read_lines",
+    "internal_file_read_chars",
     "internal_file_search",
     "internal_file_write",
     "internal_file_edit",
@@ -628,6 +629,41 @@ class Features(BaseModel):
   },
   "required": ["path", "start_line", "end_line"]
 }
+
+// read_chars
+{
+  "name": "internal_file_read_chars",
+  "description": "Read a slice of a file stored in DIAL by character offset, not by line. Use it for files with very long lines. Returns at most 8000 characters per call plus the total character count and the next offset.",
+  "parameters": {
+    "path":   {"type": "string",  "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."},
+    "offset": {"type": "integer", "description": "Index of the first character to return (0-indexed). Use the 'next offset' from the previous call to continue."},
+    "length": {"type": "integer", "description": "Number of characters to return, from 1 to 8000. Larger files are read page by page."}
+  },
+  "required": ["path", "offset", "length"]
+}
+
+**Bounded read-back output.** `read_lines`, `read_chars`, and `search` are always excluded from
+offload (a slice must never be re-offloaded), so an oversized result would go straight into the LLM
+context. Their output is therefore capped inside the tools (`MAX_OUTPUT_CHARS = 8000` characters,
+`MAX_LINE_CHARS = 2000` per line, in `dial_files_tooling/_utils.py`). 8000 characters is at most
+32 000 UTF-8 bytes, below the default 40 000-byte offload threshold:
+
+- `read_chars` rejects a `length` above the cap with an error (like it does for a non-positive `length`)
+  and ends every response with a footer such as
+  `-- chars 0-8000 of 400000; next offset: 8000 --` (or `end of file`). `offset` beyond the end of
+  the file is rejected; `offset` equal to the length returns an empty slice.
+- `read_lines` and `search` truncate a line longer than 2000 characters with a marker pointing at
+  `internal_file_read_chars`, and cut the whole result at the cap. `read_lines` appends
+  `continue with start_line=N`; `search` appends a notice to narrow the pattern.
+
+The per-tool caps give precise continuation hints, but they are opt-in, so they are not what
+guarantees the bound. `ToolCallResultSizeLimitProcessor` (`core/agent/_tool_result_size_limit_processor.py`)
+is the default-on backstop: it is not specific to file tools, it applies to every tool, and
+replaces any result longer than `TOOL_CALL_RESULT_LIMIT__MAX_CHARS` (default 80000) characters
+with an error telling the model the response was too large (the content is not passed on). Config
+validation requires the offload `size_threshold` (env and per-app) to be at most that limit, so a result
+offload would have saved is never rejected. It runs after offload (`order = 10`), so it also catches
+the original text when an offload upload fails.
 
 // search_in_file
 {
@@ -882,6 +918,7 @@ Moved to: final/report.md
 
 - `internal_file_list(path, max_depth=1)`
 - `internal_file_read_lines(path, start_line, end_line)`
+- `internal_file_read_chars(path, offset, length)`
 - `internal_file_search(path, pattern, context_lines=0, case_insensitive=False)`
 - `internal_file_write(path, content, content_type="text/plain", overwrite=False)`
 - `internal_file_edit(path, old_string, new_string)` (relative-only)

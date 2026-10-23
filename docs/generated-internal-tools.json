@@ -202,6 +202,37 @@
     ]
   },
   {
+    "name": "internal_file_read_chars",
+    "description": "Read a slice of a file stored in DIAL by character offset, not by line. Use it for files with very long lines (minified JSON, base64, logs on one line), where read_lines would return too much. Returns at most 8000 characters per call plus the file's total character count and the next offset, so you can page through the file.",
+    "properties": {
+      "path": {
+        "display": {
+          "stage": {
+            "ignore": false,
+            "ignore_parameter_name": false,
+            "show_value_in_stage_title": true,
+            "order": 0
+          }
+        },
+        "type": "string",
+        "description": "Relative path under the agent's home dir (e.g. 'reports/summary.md'), or absolute DIAL file URL starting with 'files/' (for shared or user-uploaded files)."
+      },
+      "offset": {
+        "type": "integer",
+        "description": "Index of the first character to return (0-indexed). Use the 'next offset' from the previous call to continue."
+      },
+      "length": {
+        "type": "integer",
+        "description": "Number of characters to return, from 1 to 8000. Larger files are read page by page."
+      }
+    },
+    "required": [
+      "path",
+      "offset",
+      "length"
+    ]
+  },
+  {
     "name": "internal_file_read_lines",
     "description": "Read a range of lines from a file stored in DIAL. Use start_line and end_line (0-indexed, end exclusive) to retrieve a slice. Prefer small initial windows (around 20 lines); widen on subsequent calls only if more context is needed.",
     "properties": {

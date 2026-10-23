@@ -4,6 +4,7 @@ from quickapp.common.base_stage_wrapper import BaseStageWrapper
 from quickapp.common.exceptions import InvalidToolCallParameterException
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_files_tooling._base_file_tool import _DialFileTool
+from quickapp.dial_files_tooling._utils import cap_output, truncate_line
 
 
 class _ReadFileLinesTool(_DialFileTool):
@@ -25,10 +26,24 @@ class _ReadFileLinesTool(_DialFileTool):
 
         url = await self._home_resolver.resolve_appdata_url(path)
         text, _ = await self._download_text(url, display_path=path)
-        lines = text.splitlines()
-        sliced = "\n".join(lines[start_line:end_line])
+        lines = text.splitlines()[start_line:end_line]
 
-        result = ToolCallResult(content=sliced, content_type="text/plain")
+        result = ToolCallResult(
+            content=self._render_bounded(lines, start_line), content_type="text/plain"
+        )
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result
+
+    @staticmethod
+    def _render_bounded(lines: list[str], start_line: int) -> str:
+        """Join the lines, capping line length and total size so the slice stays small.
+
+        Read-back results are never offloaded, so an unbounded slice (a few very long
+        lines) would otherwise land in the LLM context in full.
+        """
+        bounded, truncated = cap_output("\n".join(truncate_line(line) for line in lines))
+        if not truncated:
+            return bounded
+        next_start = start_line + bounded.count("\n") + 1
+        return f"{bounded}\n-- output truncated; continue with start_line={next_start} --"

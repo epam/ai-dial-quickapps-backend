@@ -33,6 +33,7 @@ from quickapp.common.stage_close_registry import DeferredStageCloseRegistry
 from quickapp.common.state_holder import StateHolder
 from quickapp.config.agent_settings import AgentSettings
 from quickapp.config.application import ApplicationConfig
+from quickapp.config.tool_result_limit import ToolResultLimitSettings
 from quickapp.config.tools.base import (
     BaseOpenAITool,
     ConfigurableSchemaArray,
@@ -58,6 +59,7 @@ from quickapp.core.agent._prompt_providers import ConfigBasedPromptProvider
 from quickapp.core.agent._scrub_extra_fields_transformer import _ScrubExtraFieldsTransformer
 from quickapp.core.agent._suppressed_attachment_registry import SuppressedAttachmentRegistry
 from quickapp.core.agent._tool_choice_holder import _ToolChoiceHolder
+from quickapp.core.agent._tool_result_size_limit_processor import ToolCallResultSizeLimitProcessor
 from quickapp.core.agent.assistant_invoker import AssistantInvoker
 from quickapp.core.agent.lazy_loaded_tools_holder import LazyLoadedToolsHolder
 from quickapp.core.agent.models import OpenAiToolConfigDict
@@ -122,6 +124,8 @@ class AgentModule(Module):
             _ScrubExtraFieldsTransformer, to=_ScrubExtraFieldsTransformer, scope=request_scope
         )
         binder.bind(AgentSettings, to=AgentSettings, scope=singleton)
+        binder.bind(ToolResultLimitSettings, to=ToolResultLimitSettings, scope=singleton)
+        binder.bind(ToolCallResultSizeLimitProcessor, to=ToolCallResultSizeLimitProcessor)
         binder.bind(ConfigBasedPromptProvider, to=ConfigBasedPromptProvider, scope=request_scope)
         binder.bind(
             OrchestratorDeploymentCacheService,
@@ -300,8 +304,11 @@ class AgentModule(Module):
         return []
 
     @multiprovider
-    def provide_tool_call_result_processors(self) -> list[ToolCallResultProcessor]:
-        return []
+    def provide_tool_call_result_processors(
+        self,
+        size_limit_processor: ToolCallResultSizeLimitProcessor,
+    ) -> list[ToolCallResultProcessor]:
+        return [size_limit_processor]
 
     @multiprovider
     def provide_prompt_parts(

@@ -1457,6 +1457,7 @@
                 "enum": [
                   "list",
                   "read_lines",
+                  "read_chars",
                   "search",
                   "find",
                   "write",
@@ -3929,7 +3930,7 @@
           "type": "boolean"
         },
         "size_threshold": {
-          "description": "Byte threshold above which a tool-call response is offloaded to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var.",
+          "description": "Byte threshold above which a tool-call response is offloaded to a file. Defaults to the TOOL_CALL_RESULT_OFFLOAD__SIZE_THRESHOLD env var. Must not exceed the TOOL_CALL_RESULT_LIMIT__MAX_CHARS env var.",
           "exclusiveMinimum": 0,
           "title": "Size Threshold",
           "type": "integer"

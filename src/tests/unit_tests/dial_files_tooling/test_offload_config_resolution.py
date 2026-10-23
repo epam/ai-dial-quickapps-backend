@@ -69,6 +69,7 @@ class TestOffloadConfigResolution:
             {
                 "tool_a",
                 "internal_file_read_lines",
+                "internal_file_read_chars",
                 "internal_file_search",
                 "internal_skills_read_skill",
             }
@@ -77,8 +78,16 @@ class TestOffloadConfigResolution:
     def test_read_back_tools_always_excluded_even_when_config_omits_them(self):
         config = _resolve(_make_app_config(offload=_make_offload(excluded_tools=set())))
         assert "internal_file_read_lines" in config.excluded_tools
+        assert "internal_file_read_chars" in config.excluded_tools
         assert "internal_file_search" in config.excluded_tools
         assert "internal_skills_read_skill" in config.excluded_tools
+
+    def test_read_chars_is_not_a_required_read_back_tool(self):
+        # Apps restricting enabled_tools to read_lines + search must not start
+        # getting an initialization warning because of the new tool.
+        config = _resolve(_make_app_config(enabled_tools=["read_lines", "search"]))
+        assert config.enabled is True
+        assert config.missing_read_back_tools == ()
 
     def test_disabled_when_read_back_tools_not_in_enabled_list(self):
         config = _resolve(_make_app_config(enabled_tools=["write", "edit"]))
