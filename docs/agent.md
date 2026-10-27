@@ -156,6 +156,58 @@ Level semantics, the single-writer ERROR rule, and the content policy live in `C
 
 ---
 
+## Prompt caching
+
+Every orchestrator iteration resends the tool definitions, the system prompt and the growing history. When the
+orchestrator deployment advertises `features.cache` (Core `cacheSupported`), `_ChatCompletionConfigBuilder` marks
+the outbound payload with `custom_fields.cache_breakpoint` (`_PromptCacheBreakpoints`). Providers cache the
+prefix in the order `tools → system → messages`, and each breakpoint caches everything before it. Cached parts
+are read on later iterations, turns and conversations within the provider's TTL (5 minutes on Claude, refreshed
+by every hit).
+
+| Priority | Breakpoint on | Caches | Reused by |
+|---|---|---|---|
+| 1 | The system message | Tools + system prompt | Every conversation of the app |
+| 2 | The last message | Tools + system prompt + history | The next iteration of the turn |
+| 3 | The last function tool (static tools from `defaults.tools` are skipped) | Tools | Calls where only the system prompt changed |
+
+- **Gate:** `features.cache` on the orchestrator deployment **and** `PROMPT_CACHE_BREAKPOINTS_ENABLED` (default
+  `true`). `autoCachingSupported` alone does not turn it on: Core and the adapter already handle automatic
+  caching.
+- **Slots:** Claude allows 4 breakpoints per request, and one is kept free for a request-level breakpoint an admin
+  may preset in Core `defaults`. Breakpoints the client sent are kept and use slots first; ours fill the rest in
+  priority order.
+
+### Known issues
+
+- **No effect without `cacheSupported`** on the orchestrator deployment. Workaround: set the flag on Claude
+  deployments whose adapter caches.
+- **Prefix below the model minimum** (512–4,096 tokens depending on the model) is silently not cached. No
+  workaround.
+- **The history misses on the first call of every turn.** Synthetic pairs with `append_if_changed` (the
+  file-transfer `read_skill` pair, config hooks) are rebuilt in place each turn, and with `features.timestamp`
+  each rebuild gets a new `[Timestamp: …]` line, so everything after the first user message changes. Later
+  calls of the turn hit. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **Writes cost more.** On Claude, cached tokens written for the first time cost 1.25×. Because of the miss
+  above, a turn with a single model call (no tool call) writes the history and never reads it back, so it pays
+  25% more on the history. Turns with 2 or more calls pay less; it breaks even when about 26–28% of turns make
+  a 2nd call. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+- **One miss when the tools change:** a `tool_search` load, a different client tool set, or the first file
+  attachment (which turns on `available_context`, and with `lazy_on_demand` the get-content tool).
+- **One miss when only the system prompt changes:** an inbound system message with
+  `ALLOW_OVERRIDE_SYSTEM_MESSAGE=true`, skills picked from a message, or an edited prompt or skill. The tools
+  are still read from the cache through the last-tool breakpoint.
+- **A miss when toolsets answer in a different order.** With 2 or more MCP or `dial-app` toolsets, they load
+  in parallel and publish their tools, MCP resource cards and tool-search summaries in completion order, so
+  the prefix can differ between requests. No workaround.
+- **Load concentration.** On a multi-upstream deployment with only `cacheSupported`, every conversation of an
+  app shares one routing key, so Core sends them all to the upstream that holds the entry and falls back only
+  when it is unavailable. Watch that upstream's rate limits. Workaround: `PROMPT_CACHE_BREAKPOINTS_ENABLED=false`.
+
+Design: [`designs/prompt_cache_breakpoints.md`](designs/prompt_cache_breakpoints.md).
+
+---
+
 ## Agent Loop (Orchestrator)
 
 The orchestrator implements an iterative agent loop that continues until the LLM produces a final response without tool
