@@ -6,8 +6,8 @@ from quickapp.skills.invocation.skill_invocation_module import SkillInvocationMo
 from quickapp.skills.registry.skills_module import SkillsModule
 
 # ``app_factory`` splices this array in, so a new skill source joins by appending here.
-# Preview-gated entries stay in the list — ``AppFactory.build_di_modules`` filters
-# ``is_preview_module`` over the flattened result.
+# A preview-gated source would still be listed here: ``AppFactory.build_di_modules``
+# filters ``is_preview_module`` over the flattened result.
 #
 # Deliberately not in ``skills/__init__.py``: assembling the array imports every
 # sub-package, which would give the contract package a dependency on its own sources and

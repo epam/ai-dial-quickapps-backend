@@ -1,5 +1,6 @@
 # Design: Folder Context
 - **Status:** Implemented
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
 - **User-facing:** [CONFIGURATION - Folder context](../../CONFIGURATION.md#folder-context-type-folder)
 - **Dependencies:**
   - [dial_files_tools.md](dial_files_tools.md) — DIAL file tools (`list`, read/write surface)

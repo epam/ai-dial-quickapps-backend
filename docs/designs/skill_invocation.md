@@ -1,6 +1,7 @@
 # Design: Invoking a Skill from a Message
 - **Status:** Implemented
-- **User-facing:** [docs/skills.md](../skills.md#invoking-a-skill-from-a-message-preview)
+- **Graduated:** out of preview, stable since [PR#693](https://github.com/epam/ai-dial-quickapps-backend/pull/693)
+- **User-facing:** [docs/skills.md](../skills.md#invoking-a-skill-from-a-message)
 - **Approved:** 2026-09-14
 - **Issue:** [epam/ai-dial-quickapps-backend#549](https://github.com/epam/ai-dial-quickapps-backend/issues/549), a
 

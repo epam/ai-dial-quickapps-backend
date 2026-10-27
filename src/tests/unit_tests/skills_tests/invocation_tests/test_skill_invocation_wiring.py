@@ -1,5 +1,5 @@
 """DI wiring for ``SkillInvocationModule`` — an ordinary provider, initializer and
-transformer, registered in ``app_factory`` behind the preview flag."""
+transformer, registered in ``app_factory``."""
 
 from unittest.mock import MagicMock, patch
 
