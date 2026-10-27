@@ -197,3 +197,45 @@ def test_parse_chunk_without_custom_fields_attribute():
     _, deltas = parse_chat_completion_chunk(chunk)
 
     assert deltas[0].annotations == ()
+
+
+def test_parse_chunk_usage_per_model_from_model_extra():
+    chunk = SimpleNamespace(
+        usage=None,
+        choices=[],
+        model_extra={
+            "statistics": {
+                "usage_per_model": [
+                    {"index": 0, "model": "gpt-5", "prompt_tokens": 10, "completion_tokens": 2},
+                    {
+                        "index": 1,
+                        "model": "gpt-image-1",
+                        "prompt_tokens": 1,
+                        "completion_tokens": 3,
+                    },
+                ]
+            }
+        },
+    )
+
+    footprint, deltas = parse_chat_completion_chunk(chunk)
+
+    assert footprint is not None
+    assert footprint.prompt_tokens is None
+    assert [(m.model, m.prompt_tokens, m.completion_tokens) for m in footprint.per_model] == [
+        ("gpt-5", 10, 2),
+        ("gpt-image-1", 1, 3),
+    ]
+    assert deltas == []
+
+
+def test_parse_chunk_ignores_malformed_usage_per_model():
+    chunk = SimpleNamespace(
+        usage=None,
+        choices=[],
+        model_extra={"statistics": {"usage_per_model": [{"prompt_tokens": 1}, "junk"]}},
+    )
+
+    footprint, _ = parse_chat_completion_chunk(chunk)
+
+    assert footprint is None

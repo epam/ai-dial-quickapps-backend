@@ -47,6 +47,7 @@ REMOTE_DIAL_API_KEY=...
 | `test_multi_tool.py` | Multi-tool chaining and multi-turn conversations |
 | `test_e2e.py` | Happy-path smoke tests (always live, no cache) |
 | `test_hidden_from_model.py` | MCP tools listed in `hidden_from_model`: callable by hooks, absent from the `tools` sent to the LLM, `requires_mcp`, live (`no_cache=True`) |
+| `test_usage_statistics.py` | A deployment tool's usage reaches the "Usage Statistics" stage; the tool is a stub deployment served by the cache middleware (`test_runner/stub_deployment.py`) that reports usage only on `stream_options.include_usage`; live orchestrator (`no_cache=True`) |
 
 ## Writing a New Test
 
@@ -91,6 +92,7 @@ The test function body is almost always empty — assertions happen in the decor
 | `app_config_path` | None | Custom app config path |
 | `hooks` | None | `list[HookConfig]` placed in the app config (`ApplicationConfig.hooks`) |
 | `toolsets` | None | Extra `ToolSet` objects appended after the `config_file_set` toolsets |
+| `env` | None | `dict[str, str]` of environment variables set for the test's runs and restored afterwards (e.g. `SHOW_USAGE_STATISTICS`) |
 
 ### `config_file_set` Values
 
@@ -112,6 +114,7 @@ TstCase(name="...", description="...", similarity_threshold=0.9, response_format
         answer_not_contains=["x"],   # substrings the response must not contain
         attachments=[Path(...)],     # files to upload
         attachment_checks=[...],     # expected attachments in response
+        usage_statistics_contains=["Orchestrator"],  # texts the "Usage Statistics" stage must contain
     )
     .add_mock_date(date_obj)         # for date-dependent tests
     .add_py_interpreter_session_flow()  # reuse interpreter session across turns

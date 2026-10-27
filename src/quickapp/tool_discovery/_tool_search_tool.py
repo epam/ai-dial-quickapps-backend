@@ -12,6 +12,7 @@ from quickapp.common.deferred_tool_types import (
     DeferredToolDefinition,
     DeferredToolsetSummary,
 )
+from quickapp.common.deployment_usage import DeploymentUsage, ModelUsage
 from quickapp.common.perf_timer.perf_timer import PerformanceTimer
 from quickapp.config.application import StageDisplayLevel
 from quickapp.config.tools.base import OpenAiToolConfig, OpenAiToolConfigDict
@@ -89,11 +90,11 @@ class _ToolSearchTool(StagedBaseTool):
                 stage_wrapper.add_result(result)
             return result
 
-        matched_names = await self.__anonymous_agent.route(query, catalog)
+        routing = await self.__anonymous_agent.route(query, catalog)
 
         discovered: list[dict[str, str]] = []
         new_definitions = []
-        for name in matched_names:
+        for name in routing.names:
             definition = self.__definitions_by_name.get(name)
             if definition is None:
                 logger.warning("tool_search matched unknown tool name %r — skipping", name)
@@ -112,7 +113,22 @@ class _ToolSearchTool(StagedBaseTool):
             content = "No matching tools found for the given query."
             content_type = "text/plain"
 
-        result = ToolCallResult(content=content, content_type=content_type)
+        result = ToolCallResult(
+            content=content, content_type=content_type, usage=self.__routing_usage(routing.usage)
+        )
         if stage_wrapper:
             stage_wrapper.add_result(result)
         return result
+
+    def __routing_usage(self, usage: ModelUsage | None) -> list[DeploymentUsage] | None:
+        if usage is None:
+            return None
+        return [
+            DeploymentUsage(
+                model_name=usage.model,
+                deployment_name=self._resolve_tool_name(),
+                deployment_id=usage.model,
+                prompt_tokens=usage.prompt_tokens,
+                completion_tokens=usage.completion_tokens,
+            )
+        ]

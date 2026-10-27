@@ -74,9 +74,9 @@ async def test_process_usage_statistics_single_deployment(
         assert len(args) == 1
         assert args[0].deployment_name == "Model A"
         assert args[0].deployment_id == "deploy1"
-        assert args[0].total_prompt_tokens == "-"
-        assert args[0].total_completion_tokens == "-"
-        assert args[0].total_cost == 2.0  #
+        assert args[0].total_prompt_tokens == 100
+        assert args[0].total_completion_tokens == 50
+        assert args[0].total_cost == 2.0
 
 
 @pytest.mark.asyncio
@@ -134,8 +134,8 @@ async def test_process_usage_statistics_multiple_deployments(
             prompt_tokens=1000,
             completion_tokens=1000,
         ),
-        DeploymentUsage(  # Another instance of Model 1
-            deployment_id="deploy2",
+        DeploymentUsage(  # Another call of Model 1
+            deployment_id="deploy1",
             deployment_name="Model A",
             model_name="gpt-4-mini",
             prompt_tokens=100,
@@ -177,11 +177,11 @@ async def test_process_usage_statistics_multiple_deployments(
         assert orchestrator.total_completion_tokens == 75
         assert orchestrator.total_cost == 3.0
 
-        # Find and verify Model A entry (combined from 2 instances)
+        # Find and verify Model A entry (combined from 2 calls)
         model_a = next(a for a in args if a.deployment_name == "Model A")
-        assert model_a.deployment_id in ["deploy1", "deploy2"]
-        assert model_a.total_prompt_tokens == "-"  # Not tracked for deployments
-        assert model_a.total_completion_tokens == "-"  # Not tracked for deployments
+        assert model_a.deployment_id == "deploy1"
+        assert model_a.total_prompt_tokens == 1100
+        assert model_a.total_completion_tokens == 1100
         assert model_a.total_cost == 7.7
 
 
@@ -217,6 +217,43 @@ async def test_process_usage_statistics_no_price_for_model(
         assert len(args) == 1
         assert args[0].deployment_name == "Model A"
         assert args[0].deployment_id == "deploy1"
-        assert args[0].total_prompt_tokens == "-"
-        assert args[0].total_completion_tokens == "-"
+        assert args[0].total_prompt_tokens == 100
+        assert args[0].total_completion_tokens == 50
         assert args[0].total_cost == "-"
+
+
+@pytest.mark.asyncio
+async def test_process_usage_statistics_one_row_per_model_of_a_tool(
+    service, mock_pricing_service, mock_choice
+):
+    """A nested app reports several models under one tool name: each model keeps its own row."""
+    usages = [
+        DeploymentUsage(
+            deployment_id="gpt-5",
+            deployment_name="nested_app_tool",
+            model_name="gpt-5",
+            prompt_tokens=100,
+            completion_tokens=20,
+        ),
+        DeploymentUsage(
+            deployment_id="gpt-image-1",
+            deployment_name="nested_app_tool",
+            model_name="gpt-image-1",
+            prompt_tokens=5,
+            completion_tokens=40,
+        ),
+    ]
+    mock_pricing_service.get_price.return_value = _Pricing(0.01, 0.02)
+
+    with patch(
+        "quickapp.usage_statistics.usage_statistics_service._UsageStatisticsRenderer"
+    ) as mock_renderer:
+        await service.process_usage_statistics(usages)
+
+        args = mock_renderer.render_usage_statistics_table.call_args[0][0]
+        assert [
+            (a.deployment_id, a.total_prompt_tokens, a.total_completion_tokens) for a in args
+        ] == [
+            ("gpt-5", 100, 20),
+            ("gpt-image-1", 5, 40),
+        ]

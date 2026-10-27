@@ -17,6 +17,10 @@ from tests.integration_tests.test_runner.cache.cache_request import CacheRequest
 from tests.integration_tests.test_runner.cache.cache_response import CacheResponse
 from tests.integration_tests.test_runner.cache.llm_cache import LlmCache, get_cache_key
 from tests.integration_tests.test_runner.config import TestConfig
+from tests.integration_tests.test_runner.stub_deployment import (
+    STUB_DEPLOYMENT_IDS,
+    build_stub_response,
+)
 from tests.integration_tests.test_runner.utils.string_utils import sanitize_for_directory
 
 llm_cache = None
@@ -245,6 +249,11 @@ class CacheMiddlewareApp(FastAPI):
             messages[0]["content"] = messages[0]["content"][:30] + "..."
         logger.info(f"Receive POST request to {request.url.path}:")
         logger.info(f"## messages: {messages}:")
+
+        path_parts = request.url.path.split('/')
+        if len(path_parts) >= 4 and path_parts[2] == "deployments":
+            if path_parts[3] in STUB_DEPLOYMENT_IDS:
+                return build_stub_response(path_parts[3], parsed_body)
 
         cache_response = None
 
