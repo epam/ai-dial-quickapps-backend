@@ -5,6 +5,7 @@ import pytest
 from aidial_sdk.chat_completion import Attachment
 
 from quickapp.common.abstract.tool_call_result_processor import ProcessingContext
+from quickapp.common.deployment_usage import DeploymentUsage
 from quickapp.common.tool_call_result import ToolCallResult
 from quickapp.dial_files_tooling._offload_config import ResolvedOffloadConfig
 from quickapp.dial_files_tooling._offload_processor import ToolCallResultOffloadProcessor
@@ -136,6 +137,35 @@ class TestToolCallResultOffloadProcessor:
         assert out.attachments is not None
         assert len(out.attachments) == 2
         assert any(a.title == "existing.png" for a in out.attachments)
+
+    @pytest.mark.asyncio
+    async def test_offload_keeps_usage_annotations_and_propagated_attachments(self):
+        usage = [
+            DeploymentUsage(
+                model_name="gpt-4o",
+                deployment_name="nested_app",
+                deployment_id="gpt-4o",
+                prompt_tokens=120,
+                completion_tokens=30,
+            )
+        ]
+        annotations = [{"type": "citation", "url": "https://example.com/doc"}]
+        propagated = [Attachment(title="chart.png", url="https://example.com/chart.png")]
+        result = ToolCallResult(
+            tool_call_id="result-call-id",
+            content="x" * 200,
+            content_type="text/plain",
+            usage=usage,
+            annotations=annotations,
+            propagate_to_choice=propagated,
+        )
+        proc = _make_processor()
+        out = await proc.process(result, _make_ctx())
+        assert "https://storage/offloaded.txt" in out.content
+        assert out.tool_call_id == "result-call-id"
+        assert out.usage == usage
+        assert out.annotations == annotations
+        assert out.propagate_to_choice == propagated
 
     @pytest.mark.asyncio
     async def test_upload_receives_base64_encoded_content(self):
